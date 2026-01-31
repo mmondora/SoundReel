@@ -37,11 +37,23 @@ function decodeHtmlEntities(text: string): string {
 }
 
 function getPlatformLabel(platform: string): string {
-  switch (platform) {
-    case 'instagram': return 'IG';
-    case 'tiktok': return 'TT';
-    default: return 'WEB';
-  }
+  const labels: Record<string, string> = {
+    instagram: 'IG',
+    tiktok: 'TT',
+    youtube: 'YT',
+    facebook: 'FB',
+    twitter: 'X',
+    threads: 'TH',
+    snapchat: 'SC',
+    pinterest: 'PIN',
+    linkedin: 'LI',
+    reddit: 'RD',
+    vimeo: 'VM',
+    twitch: 'TW',
+    spotify: 'SP',
+    soundcloud: 'SND'
+  };
+  return labels[platform] || 'WEB';
 }
 
 function getChannelIcon(channel: string): string {

@@ -10,7 +10,6 @@ export function setLogger(logger: Logger): void {
 }
 
 const COBALT_API_URL = 'https://api.cobalt.tools/';
-const INSTAGRAM_OEMBED_URL = 'https://api.instagram.com/oembed';
 
 /**
  * Decode HTML entities in text (e.g., &quot; -> ", &#x1f3a7; -> 🎧)
@@ -71,6 +70,7 @@ interface CobaltResponse {
 interface OEmbedResponse {
   version?: string;
   title?: string;
+  description?: string;
   author_name?: string;
   author_url?: string;
   provider_name?: string;
@@ -83,22 +83,22 @@ interface OEmbedResponse {
 }
 
 /**
- * Try Instagram oEmbed API for metadata
+ * Try oEmbed API for metadata (works with multiple platforms)
  */
-async function extractWithOEmbed(url: string): Promise<{
+async function extractWithOEmbed(url: string, oEmbedEndpoint: string, platformName: string): Promise<{
   caption: string | null;
   thumbnailUrl: string | null;
   authorName: string | null;
   success: boolean;
 }> {
   const startTime = Date.now();
-  const requestUrl = `${INSTAGRAM_OEMBED_URL}?url=${encodeURIComponent(url)}&omitscript=true`;
+  const requestUrl = `${oEmbedEndpoint}?url=${encodeURIComponent(url)}&format=json&omitscript=true`;
   const requestHeaders = {
     'Accept': 'application/json',
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
   };
 
-  log.debug('Tentativo oEmbed Instagram', {
+  log.debug(`Tentativo oEmbed ${platformName}`, {
     requestUrl,
     headers: requestHeaders
   });
@@ -130,7 +130,7 @@ async function extractWithOEmbed(url: string): Promise<{
       throw bodyError;
     }
 
-    log.debug('oEmbed risposta', {
+    log.debug(`oEmbed ${platformName} risposta`, {
       status: response.status,
       statusText: response.statusText,
       durationMs,
@@ -139,11 +139,12 @@ async function extractWithOEmbed(url: string): Promise<{
     });
 
     if (!response.ok) {
-      log.warn('oEmbed fallito - status non ok', {
+      log.warn(`oEmbed ${platformName} fallito - status non ok`, {
         status: response.status,
         reason: response.status === 400 ? 'URL non valido o contenuto privato' :
                 response.status === 404 ? 'Contenuto non trovato' :
                 response.status === 429 ? 'Rate limit raggiunto' :
+                response.status === 401 ? 'Autenticazione richiesta' :
                 'Errore sconosciuto'
       });
       return { caption: null, thumbnailUrl: null, authorName: null, success: false };
@@ -153,17 +154,20 @@ async function extractWithOEmbed(url: string): Promise<{
     try {
       data = JSON.parse(bodyText);
     } catch (parseError) {
-      log.warn('oEmbed risposta non è JSON valido', {
+      log.warn(`oEmbed ${platformName} risposta non è JSON valido`, {
         bodyPreview: truncate(bodyText, 500)
       });
       return { caption: null, thumbnailUrl: null, authorName: null, success: false };
     }
 
-    const caption = data.title ? decodeHtmlEntities(data.title) : null;
+    // Try multiple fields for caption (different platforms use different fields)
+    const caption = decodeHtmlEntities(
+      data.title || data.description || ''
+    ) || null;
     const thumbnailUrl = data.thumbnail_url || null;
     const authorName = data.author_name || null;
 
-    log.info('oEmbed estrazione riuscita', {
+    log.info(`oEmbed ${platformName} estrazione riuscita`, {
       hasCaption: !!caption,
       captionPreview: caption ? truncate(caption, 100) : null,
       hasThumbnail: !!thumbnailUrl,
@@ -175,7 +179,7 @@ async function extractWithOEmbed(url: string): Promise<{
 
   } catch (error) {
     const durationMs = Date.now() - startTime;
-    log.error('oEmbed errore di rete', error instanceof Error ? error : new Error(String(error)), {
+    log.error(`oEmbed ${platformName} errore di rete`, error instanceof Error ? error : new Error(String(error)), {
       requestUrl,
       durationMs
     });
@@ -426,15 +430,116 @@ async function scrapeOgMeta(url: string): Promise<{
   }
 }
 
-export function detectPlatform(url: string): 'instagram' | 'tiktok' | 'other' {
+import type { SocialPlatform } from '../types';
+
+interface PlatformConfig {
+  name: SocialPlatform;
+  patterns: string[];
+  oEmbedUrl?: string;
+  label: string;
+}
+
+const PLATFORMS: PlatformConfig[] = [
+  {
+    name: 'instagram',
+    patterns: ['instagram.com', 'instagr.am'],
+    oEmbedUrl: 'https://api.instagram.com/oembed',
+    label: 'IG'
+  },
+  {
+    name: 'tiktok',
+    patterns: ['tiktok.com', 'vm.tiktok.com'],
+    oEmbedUrl: 'https://www.tiktok.com/oembed',
+    label: 'TT'
+  },
+  {
+    name: 'youtube',
+    patterns: ['youtube.com', 'youtu.be', 'youtube-nocookie.com'],
+    oEmbedUrl: 'https://www.youtube.com/oembed',
+    label: 'YT'
+  },
+  {
+    name: 'facebook',
+    patterns: ['facebook.com', 'fb.watch', 'fb.com'],
+    oEmbedUrl: 'https://www.facebook.com/plugins/video/oembed.json',
+    label: 'FB'
+  },
+  {
+    name: 'twitter',
+    patterns: ['twitter.com', 'x.com'],
+    oEmbedUrl: 'https://publish.twitter.com/oembed',
+    label: 'X'
+  },
+  {
+    name: 'threads',
+    patterns: ['threads.net'],
+    label: 'TH'
+  },
+  {
+    name: 'snapchat',
+    patterns: ['snapchat.com', 'snap.com'],
+    label: 'SC'
+  },
+  {
+    name: 'pinterest',
+    patterns: ['pinterest.com', 'pin.it'],
+    label: 'PIN'
+  },
+  {
+    name: 'linkedin',
+    patterns: ['linkedin.com'],
+    label: 'LI'
+  },
+  {
+    name: 'reddit',
+    patterns: ['reddit.com', 'redd.it'],
+    oEmbedUrl: 'https://www.reddit.com/oembed',
+    label: 'RD'
+  },
+  {
+    name: 'vimeo',
+    patterns: ['vimeo.com'],
+    oEmbedUrl: 'https://vimeo.com/api/oembed.json',
+    label: 'VM'
+  },
+  {
+    name: 'twitch',
+    patterns: ['twitch.tv', 'clips.twitch.tv'],
+    label: 'TW'
+  },
+  {
+    name: 'spotify',
+    patterns: ['open.spotify.com'],
+    oEmbedUrl: 'https://open.spotify.com/oembed',
+    label: 'SP'
+  },
+  {
+    name: 'soundcloud',
+    patterns: ['soundcloud.com'],
+    oEmbedUrl: 'https://soundcloud.com/oembed',
+    label: 'SND'
+  }
+];
+
+export function detectPlatform(url: string): SocialPlatform {
   const lowerUrl = url.toLowerCase();
-  if (lowerUrl.includes('instagram.com') || lowerUrl.includes('instagr.am')) {
-    return 'instagram';
+
+  for (const platform of PLATFORMS) {
+    if (platform.patterns.some(pattern => lowerUrl.includes(pattern))) {
+      return platform.name;
+    }
   }
-  if (lowerUrl.includes('tiktok.com') || lowerUrl.includes('vm.tiktok.com')) {
-    return 'tiktok';
-  }
+
   return 'other';
+}
+
+export function getPlatformConfig(platform: SocialPlatform): PlatformConfig | undefined {
+  return PLATFORMS.find(p => p.name === platform);
+}
+
+export function getPlatformLabel(platform: SocialPlatform): string {
+  const config = PLATFORMS.find(p => p.name === platform);
+  return config?.label || 'WEB';
 }
 
 export interface ExtractContentOptions {
@@ -444,10 +549,13 @@ export interface ExtractContentOptions {
 export async function extractContent(url: string, options: ExtractContentOptions = {}): Promise<ExtractedContent> {
   const { cobaltEnabled = false } = options;
   const platform = detectPlatform(url);
+  const platformConfig = getPlatformConfig(platform);
 
   log.info('Inizio estrazione contenuto', {
     url,
     platform,
+    platformLabel: platformConfig?.label || 'WEB',
+    hasOEmbed: !!platformConfig?.oEmbedUrl,
     cobaltEnabled
   });
 
@@ -456,10 +564,10 @@ export async function extractContent(url: string, options: ExtractContentOptions
   let audioUrl: string | null = null;
   let authorName: string | null = null;
 
-  // Step 1: Try oEmbed for Instagram (best source for metadata)
-  if (platform === 'instagram') {
-    log.debug('Step 1: Tentativo oEmbed (Instagram)');
-    const oembedResult = await extractWithOEmbed(url);
+  // Step 1: Try oEmbed if platform supports it (best source for metadata)
+  if (platformConfig?.oEmbedUrl) {
+    log.debug(`Step 1: Tentativo oEmbed (${platform})`);
+    const oembedResult = await extractWithOEmbed(url, platformConfig.oEmbedUrl, platform);
 
     if (oembedResult.success) {
       caption = oembedResult.caption;
@@ -467,6 +575,7 @@ export async function extractContent(url: string, options: ExtractContentOptions
       authorName = oembedResult.authorName;
 
       log.info('oEmbed ha fornito metadata', {
+        platform,
         hasCaption: !!caption,
         hasThumbnail: !!thumbnailUrl,
         authorName
@@ -474,12 +583,14 @@ export async function extractContent(url: string, options: ExtractContentOptions
     } else {
       log.debug('oEmbed non ha fornito risultati, procedo con OG scraping');
     }
+  } else {
+    log.debug(`Step 1: Skip oEmbed (${platform} non lo supporta)`);
   }
 
-  // Step 2: OG scraping as fallback or primary (non-Instagram)
+  // Step 2: OG scraping as fallback or primary (if no oEmbed)
   if (!caption || !thumbnailUrl) {
     log.debug('Step 2: OG scraping', {
-      reason: platform !== 'instagram' ? 'Piattaforma non-Instagram' :
+      reason: !platformConfig?.oEmbedUrl ? `${platform} non supporta oEmbed` :
               !caption && !thumbnailUrl ? 'oEmbed non ha fornito dati' :
               !caption ? 'Manca caption da oEmbed' : 'Manca thumbnail da oEmbed'
     });

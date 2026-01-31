@@ -1,0 +1,416 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "country": "IT",
+    "last_updated": "2026-01-31"
+  },
+  
+  "user_subscriptions": {
+    "netflix": true,
+    "now": true,
+    "primevideo": false,
+    "disneyplus": false,
+    "crunchyroll_premium": false,
+    "paramount": false,
+    "appletv": false,
+    "dazn": false,
+    "timvision": false,
+    "infinity_plus": false
+  },
+
+  "platforms": {
+    "subscription": [
+      {
+        "id": "netflix",
+        "name": "Netflix",
+        "url": "https://www.netflix.com",
+        "deeplink": "https://www.netflix.com/title/{id}",
+        "justwatch_id": 8,
+        "logo": "netflix.png",
+        "enabled": true
+      },
+      {
+        "id": "now",
+        "name": "NOW",
+        "url": "https://www.nowtv.it",
+        "deeplink": "https://www.nowtv.it/watch/{id}",
+        "justwatch_id": 39,
+        "logo": "now.png",
+        "enabled": true
+      },
+      {
+        "id": "primevideo",
+        "name": "Prime Video",
+        "url": "https://www.primevideo.com",
+        "deeplink": "https://www.primevideo.com/detail/{id}",
+        "justwatch_id": 9,
+        "logo": "primevideo.png",
+        "enabled": true
+      },
+      {
+        "id": "disneyplus",
+        "name": "Disney+",
+        "url": "https://www.disneyplus.com",
+        "deeplink": "https://www.disneyplus.com/video/{id}",
+        "justwatch_id": 337,
+        "logo": "disneyplus.png",
+        "enabled": true
+      },
+      {
+        "id": "crunchyroll_premium",
+        "name": "Crunchyroll",
+        "url": "https://www.crunchyroll.com",
+        "deeplink": "https://www.crunchyroll.com/it/watch/{id}",
+        "justwatch_id": 283,
+        "logo": "crunchyroll.png",
+        "categories": ["anime"],
+        "enabled": true
+      },
+      {
+        "id": "paramount",
+        "name": "Paramount+",
+        "url": "https://www.paramountplus.com",
+        "deeplink": "https://www.paramountplus.com/movies/video/{id}",
+        "justwatch_id": 531,
+        "logo": "paramount.png",
+        "enabled": true
+      },
+      {
+        "id": "appletv",
+        "name": "Apple TV+",
+        "url": "https://tv.apple.com",
+        "deeplink": "https://tv.apple.com/it/movie/{slug}/{id}",
+        "justwatch_id": 350,
+        "logo": "appletv.png",
+        "enabled": true
+      },
+      {
+        "id": "dazn",
+        "name": "DAZN",
+        "url": "https://www.dazn.com/it-IT",
+        "deeplink": "https://www.dazn.com/it-IT/sport/{id}",
+        "justwatch_id": 212,
+        "logo": "dazn.png",
+        "categories": ["sports"],
+        "enabled": true
+      },
+      {
+        "id": "timvision",
+        "name": "TimVision",
+        "url": "https://www.timvision.it",
+        "deeplink": "https://www.timvision.it/detail/{id}",
+        "justwatch_id": 109,
+        "logo": "timvision.png",
+        "enabled": true
+      },
+      {
+        "id": "infinity_plus",
+        "name": "Infinity+",
+        "url": "https://www.mediasetinfinity.mediaset.it",
+        "deeplink": "https://mediasetinfinity.mediaset.it/video/{id}",
+        "justwatch_id": null,
+        "logo": "infinityplus.png",
+        "enabled": true
+      }
+    ],
+
+    "free": [
+      {
+        "id": "raiplay",
+        "name": "RaiPlay",
+        "url": "https://www.raiplay.it",
+        "deeplink": "https://www.raiplay.it/programmi/{slug}",
+        "justwatch_id": 222,
+        "logo": "raiplay.png",
+        "categories": ["general", "documentary", "kids"],
+        "requires_login": true,
+        "description": "Catalogo italiano, fiction RAI, archivio storico",
+        "enabled": true
+      },
+      {
+        "id": "mediaset",
+        "name": "Mediaset Infinity Free",
+        "url": "https://mediasetinfinity.mediaset.it",
+        "deeplink": "https://mediasetinfinity.mediaset.it/video/{id}",
+        "justwatch_id": 359,
+        "logo": "mediaset.png",
+        "categories": ["general"],
+        "requires_login": true,
+        "description": "Serie TV, reality, film, programmi on-demand",
+        "enabled": true
+      },
+      {
+        "id": "plutotv",
+        "name": "Pluto TV",
+        "url": "https://pluto.tv/it",
+        "deeplink": "https://pluto.tv/it/on-demand/{type}/{slug}",
+        "justwatch_id": 300,
+        "logo": "plutotv.png",
+        "categories": ["general", "anime"],
+        "requires_login": false,
+        "description": "Canali live 24/7, film USA, reality",
+        "enabled": true
+      },
+      {
+        "id": "rakuten_free",
+        "name": "Rakuten TV Free",
+        "url": "https://rakuten.tv/it",
+        "deeplink": "https://rakuten.tv/it/movies/{slug}",
+        "justwatch_id": 35,
+        "logo": "rakuten.png",
+        "categories": ["general"],
+        "requires_login": false,
+        "description": "Film recenti con pubblicità",
+        "enabled": true
+      },
+      {
+        "id": "plex",
+        "name": "Plex",
+        "url": "https://www.plex.tv",
+        "deeplink": "https://watch.plex.tv/movie/{slug}",
+        "justwatch_id": 538,
+        "logo": "plex.png",
+        "categories": ["general"],
+        "requires_login": true,
+        "description": "Canali live + library on-demand, 80+ canali IT",
+        "enabled": true
+      },
+      {
+        "id": "tubi",
+        "name": "Tubi",
+        "url": "https://tubitv.com",
+        "deeplink": "https://tubitv.com/movies/{id}",
+        "justwatch_id": 73,
+        "logo": "tubi.png",
+        "categories": ["general"],
+        "requires_login": false,
+        "description": "Film e serie USA",
+        "enabled": true
+      },
+      {
+        "id": "chili_free",
+        "name": "CHILI Free",
+        "url": "https://it.chili.com",
+        "deeplink": "https://it.chili.com/film/{slug}",
+        "justwatch_id": null,
+        "logo": "chili.png",
+        "categories": ["general"],
+        "requires_login": true,
+        "description": "Sezione gratuita con film e documentari",
+        "enabled": true
+      },
+      {
+        "id": "popcorntv",
+        "name": "PopcornTV",
+        "url": "https://www.popcorntv.it",
+        "deeplink": "https://www.popcorntv.it/film/{slug}",
+        "justwatch_id": null,
+        "logo": "popcorntv.png",
+        "categories": ["general", "anime"],
+        "requires_login": false,
+        "description": "Film e serie italiane gratuite",
+        "enabled": true
+      },
+      {
+        "id": "vvvvid",
+        "name": "VVVVID",
+        "url": "https://www.vvvvid.it",
+        "deeplink": "https://www.vvvvid.it/show/{id}",
+        "justwatch_id": 553,
+        "logo": "vvvvid.png",
+        "categories": ["anime", "general"],
+        "requires_login": false,
+        "description": "Riferimento italiano per anime, film indie, cinema cult",
+        "enabled": true
+      },
+      {
+        "id": "crunchyroll_free",
+        "name": "Crunchyroll Free",
+        "url": "https://www.crunchyroll.com",
+        "deeplink": "https://www.crunchyroll.com/it/watch/{id}",
+        "justwatch_id": 283,
+        "logo": "crunchyroll.png",
+        "categories": ["anime"],
+        "requires_login": false,
+        "description": "Catalogo limitato free con ads, simulcast",
+        "enabled": true
+      },
+      {
+        "id": "yamato_youtube",
+        "name": "Yamato Animation",
+        "url": "https://www.youtube.com/@YamatoAnimation",
+        "deeplink": "https://www.youtube.com/watch?v={id}",
+        "justwatch_id": null,
+        "logo": "yamato.png",
+        "categories": ["anime"],
+        "requires_login": false,
+        "description": "Anime completi doppiati ITA su YouTube",
+        "enabled": true
+      },
+      {
+        "id": "arte",
+        "name": "Arte.tv",
+        "url": "https://www.arte.tv/it",
+        "deeplink": "https://www.arte.tv/it/videos/{id}",
+        "justwatch_id": 234,
+        "logo": "arte.png",
+        "categories": ["documentary", "general"],
+        "requires_login": false,
+        "description": "Documentari europei alta qualità, cinema d'autore",
+        "enabled": true
+      },
+      {
+        "id": "la7",
+        "name": "La7",
+        "url": "https://www.la7.it",
+        "deeplink": "https://www.la7.it/rivedila7/player?id={id}",
+        "justwatch_id": null,
+        "logo": "la7.png",
+        "categories": ["general", "news"],
+        "requires_login": false,
+        "description": "News, talk show, Propaganda Live",
+        "enabled": true
+      },
+      {
+        "id": "tv8",
+        "name": "TV8",
+        "url": "https://tv8.it",
+        "deeplink": "https://tv8.it/video/{id}",
+        "justwatch_id": null,
+        "logo": "tv8.png",
+        "categories": ["general"],
+        "requires_login": false,
+        "description": "Film, eventi live, X Factor",
+        "enabled": true
+      },
+      {
+        "id": "cielo",
+        "name": "Cielo",
+        "url": "https://www.cielotv.it",
+        "deeplink": "https://www.cielotv.it/video/{id}",
+        "justwatch_id": null,
+        "logo": "cielo.png",
+        "categories": ["general"],
+        "requires_login": false,
+        "description": "Film e serie TV",
+        "enabled": true
+      },
+      {
+        "id": "nove",
+        "name": "NOVE",
+        "url": "https://www.nove.tv",
+        "deeplink": "https://www.nove.tv/video/{id}",
+        "justwatch_id": null,
+        "logo": "nove.png",
+        "categories": ["general", "documentary"],
+        "requires_login": false,
+        "description": "Real Time, documentari, show",
+        "enabled": true
+      },
+      {
+        "id": "youtube",
+        "name": "YouTube",
+        "url": "https://www.youtube.com",
+        "deeplink": "https://www.youtube.com/watch?v={id}",
+        "justwatch_id": 192,
+        "logo": "youtube.png",
+        "categories": ["general"],
+        "requires_login": false,
+        "description": "Canali ufficiali film gratuiti",
+        "enabled": true
+      },
+      {
+        "id": "raiplay_yoyo",
+        "name": "Rai Yoyo",
+        "url": "https://www.raiplay.it/canali/raiyoyo",
+        "deeplink": "https://www.raiplay.it/video/{id}",
+        "justwatch_id": null,
+        "logo": "raiyoyo.png",
+        "categories": ["kids"],
+        "requires_login": true,
+        "description": "Cartoni per piccoli 0-6 anni",
+        "enabled": true
+      },
+      {
+        "id": "raiplay_gulp",
+        "name": "Rai Gulp",
+        "url": "https://www.raiplay.it/canali/raigulp",
+        "deeplink": "https://www.raiplay.it/video/{id}",
+        "justwatch_id": null,
+        "logo": "raigulp.png",
+        "categories": ["kids"],
+        "requires_login": true,
+        "description": "Serie per ragazzi 6-12 anni",
+        "enabled": true
+      },
+      {
+        "id": "boing",
+        "name": "Boing",
+        "url": "https://www.bfrenz.tv",
+        "deeplink": "https://www.bfrenz.tv/video/{id}",
+        "justwatch_id": null,
+        "logo": "boing.png",
+        "categories": ["kids"],
+        "requires_login": false,
+        "description": "Cartoni animati 6-14 anni",
+        "enabled": true
+      },
+      {
+        "id": "cartoonito",
+        "name": "Cartoonito",
+        "url": "https://www.cartoonito.it",
+        "deeplink": "https://www.cartoonito.it/video/{id}",
+        "justwatch_id": null,
+        "logo": "cartoonito.png",
+        "categories": ["kids"],
+        "requires_login": false,
+        "description": "Prescolare 0-6 anni",
+        "enabled": true
+      },
+      {
+        "id": "samsung_tvplus",
+        "name": "Samsung TV Plus",
+        "url": "https://www.samsung.com/it/tvs/smart-tv/samsung-tv-plus/",
+        "deeplink": null,
+        "justwatch_id": null,
+        "logo": "samsungtvplus.png",
+        "categories": ["general"],
+        "requires_login": false,
+        "description": "170+ canali live, solo TV Samsung",
+        "enabled": false
+      },
+      {
+        "id": "lg_channels",
+        "name": "LG Channels",
+        "url": "https://www.lg.com/it/lg-channels",
+        "deeplink": null,
+        "justwatch_id": null,
+        "logo": "lgchannels.png",
+        "categories": ["general"],
+        "requires_login": false,
+        "description": "100+ canali, solo LG TV",
+        "enabled": false
+      }
+    ]
+  },
+
+  "categories": {
+    "general": "Film e Serie TV",
+    "anime": "Anime",
+    "documentary": "Documentari",
+    "kids": "Bambini",
+    "news": "News",
+    "sports": "Sport",
+    "music": "Musica"
+  },
+
+  "ui": {
+    "badge_colors": {
+      "free": "#22c55e",
+      "subscription_active": "#3b82f6",
+      "subscription_inactive": "#6b7280",
+      "rent": "#f97316",
+      "buy": "#ea580c"
+    }
+  }
+}

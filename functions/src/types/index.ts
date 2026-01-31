@@ -28,10 +28,27 @@ export interface EntryResults {
   films: Film[];
 }
 
+export type SocialPlatform =
+  | 'instagram'
+  | 'tiktok'
+  | 'youtube'
+  | 'facebook'
+  | 'twitter'
+  | 'threads'
+  | 'snapchat'
+  | 'pinterest'
+  | 'linkedin'
+  | 'reddit'
+  | 'vimeo'
+  | 'twitch'
+  | 'spotify'
+  | 'soundcloud'
+  | 'other';
+
 export interface Entry {
   id?: string;
   sourceUrl: string;
-  sourcePlatform: 'instagram' | 'tiktok' | 'other';
+  sourcePlatform: SocialPlatform;
   inputChannel: 'telegram' | 'web';
   caption: string | null;
   thumbnailUrl: string | null;

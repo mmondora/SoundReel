@@ -2,6 +2,27 @@
 
 Tutte le modifiche rilevanti a SoundReel sono documentate in questo file.
 
+## [1.2.0] - 2026-01-31
+
+### Novità
+- **Supporto multi-piattaforma**: L'app ora funziona con qualsiasi social network
+  - Instagram, TikTok, YouTube, Facebook, Twitter/X
+  - Threads, Snapchat, Pinterest, LinkedIn, Reddit
+  - Vimeo, Twitch, Spotify, SoundCloud
+  - Qualsiasi altro URL con meta tag OG
+
+### Miglioramenti
+- Estrazione oEmbed generica per tutte le piattaforme che lo supportano
+- Badge piattaforma dinamico con label specifiche (YT, FB, X, etc.)
+- Fallback automatico su OG scraping per piattaforme senza oEmbed
+
+### Modifiche Tecniche
+- Nuovo sistema di configurazione piattaforme con pattern matching
+- Tipo `SocialPlatform` condiviso tra frontend e backend
+- Funzione `getPlatformConfig()` per accesso dinamico alla configurazione
+
+---
+
 ## [1.1.0] - 2026-01-31
 
 ### Novità

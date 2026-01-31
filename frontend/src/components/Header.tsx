@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import type { JournalStats } from '../types';
 import { deleteAllEntries } from '../services/api';
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 interface HeaderProps {
   stats: JournalStats;
