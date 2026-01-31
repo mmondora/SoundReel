@@ -1,0 +1,26 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Entries: leggibili dal frontend (single user, no auth multi-utente)
+    // Scrittura solo da Cloud Functions (admin SDK bypassa le rules)
+    match /entries/{entryId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Config (Spotify tokens, etc): solo Cloud Functions
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Logs: leggibili dal frontend per debug console
+    // Scrittura solo da Cloud Functions (admin SDK bypassa le rules)
+    match /logs/{logId} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}
