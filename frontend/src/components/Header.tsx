@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { JournalStats } from '../types';
 import { deleteAllEntries } from '../services/api';
+import { useLanguage, interpolate } from '../i18n';
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 interface HeaderProps {
   stats: JournalStats;
@@ -11,19 +12,20 @@ interface HeaderProps {
 
 export function Header({ stats }: HeaderProps) {
   const [deleting, setDeleting] = useState(false);
+  const { t } = useLanguage();
 
   const handleDeleteAll = async () => {
-    if (!confirm(`Sei sicuro di voler eliminare tutte le ${stats.totalEntries} entry? Questa azione non può essere annullata.`)) {
+    if (!confirm(interpolate(t.confirmDeleteAll, { count: stats.totalEntries }))) {
       return;
     }
 
     setDeleting(true);
     try {
       const result = await deleteAllEntries();
-      alert(`Eliminate ${result.deleted} entry`);
+      alert(interpolate(t.deleted, { count: result.deleted }));
     } catch (err) {
-      console.error('Errore eliminazione:', err);
-      alert('Errore durante l\'eliminazione');
+      console.error('Error deleting:', err);
+      alert(t.errorDelete);
     } finally {
       setDeleting(false);
     }
@@ -39,23 +41,23 @@ export function Header({ stats }: HeaderProps) {
           <span className="version-badge">v{APP_VERSION}</span>
         </div>
         <div className="stats">
-          <span className="stat">{stats.totalEntries} entries</span>
-          <span className="stat">{stats.totalSongs} canzoni</span>
-          <span className="stat">{stats.totalFilms} film</span>
+          <span className="stat">{stats.totalEntries} {t.entries}</span>
+          <span className="stat">{stats.totalSongs} {t.songs}</span>
+          <span className="stat">{stats.totalFilms} {t.films}</span>
           {stats.totalEntries > 0 && (
             <button
               className="delete-all-btn"
               onClick={handleDeleteAll}
               disabled={deleting}
             >
-              {deleting ? 'Eliminazione...' : 'Cancella tutto'}
+              {deleting ? t.deleting : t.deleteAll}
             </button>
           )}
         </div>
         <nav className="nav">
-          <Link to="/console" className="nav-link">Console</Link>
-          <Link to="/prompts" className="nav-link">Prompt AI</Link>
-          <Link to="/settings" className="nav-link">Impostazioni</Link>
+          <Link to="/console" className="nav-link">{t.console}</Link>
+          <Link to="/prompts" className="nav-link">{t.aiPrompts}</Link>
+          <Link to="/settings" className="nav-link">{t.settings}</Link>
         </nav>
       </div>
     </header>

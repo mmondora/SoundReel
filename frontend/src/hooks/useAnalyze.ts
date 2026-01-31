@@ -1,35 +1,37 @@
 import { useState, useCallback } from 'react';
 import { analyzeUrl as callAnalyzeApi } from '../services/api';
 
+export type SuccessStatus = 'existing' | 'completed' | null;
+
 export function useAnalyze() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [successStatus, setSuccessStatus] = useState<SuccessStatus>(null);
 
   const analyze = useCallback(async (url: string) => {
     setLoading(true);
     setError(null);
-    setSuccess(null);
+    setSuccessStatus(null);
 
     try {
       const response = await callAnalyzeApi(url);
       if (!response.success) {
-        throw new Error(response.error || 'Errore sconosciuto');
+        throw new Error(response.error || 'GENERIC_ERROR');
       }
 
-      // Show success message
+      // Set success status code
       if (response.existing) {
-        setSuccess('URL già analizzato in precedenza');
+        setSuccessStatus('existing');
       } else {
-        setSuccess('Analisi completata!');
+        setSuccessStatus('completed');
       }
 
       // Clear success message after 3 seconds
-      setTimeout(() => setSuccess(null), 3000);
+      setTimeout(() => setSuccessStatus(null), 3000);
 
       return response.entryId;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Errore durante l\'analisi';
+      const message = err instanceof Error ? err.message : 'GENERIC_ERROR';
       setError(message);
       return null;
     } finally {
@@ -42,8 +44,8 @@ export function useAnalyze() {
   }, []);
 
   const clearSuccess = useCallback(() => {
-    setSuccess(null);
+    setSuccessStatus(null);
   }, []);
 
-  return { analyze, loading, error, success, clearError, clearSuccess };
+  return { analyze, loading, error, successStatus, clearError, clearSuccess };
 }

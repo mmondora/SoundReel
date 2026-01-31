@@ -4,6 +4,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { initiateSpotifyAuth, exchangeCodeForTokens } from '../services/spotify';
 import { getFeatures, updateFeatures, FeaturesConfig } from '../services/api';
+import { useLanguage, Language } from '../i18n';
 import type { SpotifyConfig } from '../types';
 
 export function Settings() {
@@ -14,6 +15,7 @@ export function Settings() {
   const [connecting, setConnecting] = useState(false);
   const [savingFeatures, setSavingFeatures] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { t, language, setLanguage } = useLanguage();
 
   useEffect(() => {
     loadConfigs();
@@ -49,11 +51,11 @@ export function Settings() {
         const features = await getFeatures();
         setFeaturesConfig(features);
       } catch (err) {
-        console.error('Errore caricamento features:', err);
+        console.error('Error loading features:', err);
         setFeaturesConfig({ cobaltEnabled: false, allowDuplicateUrls: false });
       }
     } catch (err) {
-      console.error('Errore caricamento config:', err);
+      console.error('Error loading config:', err);
     } finally {
       setLoading(false);
     }
@@ -68,8 +70,8 @@ export function Settings() {
       const result = await updateFeatures({ cobaltEnabled: newValue });
       setFeaturesConfig(result.config);
     } catch (err) {
-      console.error('Errore aggiornamento features:', err);
-      setError('Errore durante l\'aggiornamento delle impostazioni');
+      console.error('Error updating features:', err);
+      setError(t.errorSettings);
     } finally {
       setSavingFeatures(false);
     }
@@ -84,8 +86,8 @@ export function Settings() {
       const result = await updateFeatures({ allowDuplicateUrls: newValue });
       setFeaturesConfig(result.config);
     } catch (err) {
-      console.error('Errore aggiornamento features:', err);
-      setError('Errore durante l\'aggiornamento delle impostazioni');
+      console.error('Error updating features:', err);
+      setError(t.errorSettings);
     } finally {
       setSavingFeatures(false);
     }
@@ -112,7 +114,7 @@ export function Settings() {
 
       window.history.replaceState({}, '', '/settings');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Errore durante la connessione');
+      setError(err instanceof Error ? err.message : t.errorGeneric);
     } finally {
       setConnecting(false);
     }
@@ -122,15 +124,19 @@ export function Settings() {
     await initiateSpotifyAuth();
   }
 
+  function handleLanguageChange(newLang: Language) {
+    setLanguage(newLang);
+  }
+
   if (loading) {
     return (
       <div className="settings">
         <header className="settings-header">
-          <Link to="/" className="back-link">← Torna al Journal</Link>
-          <h1>Impostazioni</h1>
+          <Link to="/" className="back-link">{t.backToJournal}</Link>
+          <h1>{t.settingsTitle}</h1>
         </header>
         <main className="settings-content">
-          <p>Caricamento...</p>
+          <p>{t.loading}</p>
         </main>
       </div>
     );
@@ -139,43 +145,66 @@ export function Settings() {
   return (
     <div className="settings">
       <header className="settings-header">
-        <Link to="/" className="back-link">← Torna al Journal</Link>
-        <h1>Impostazioni</h1>
+        <Link to="/" className="back-link">{t.backToJournal}</Link>
+        <h1>{t.settingsTitle}</h1>
       </header>
       <main className="settings-content">
+        {/* Language Section */}
         <section className="settings-section">
-          <h2>Spotify</h2>
+          <h2>{t.language}</h2>
+          <div className="feature-toggle">
+            <div className="feature-info">
+              <p className="feature-description">{t.languageDescription}</p>
+            </div>
+            <div className="language-selector">
+              <button
+                className={`lang-btn ${language === 'it' ? 'active' : ''}`}
+                onClick={() => handleLanguageChange('it')}
+              >
+                {t.italian}
+              </button>
+              <button
+                className={`lang-btn ${language === 'en' ? 'active' : ''}`}
+                onClick={() => handleLanguageChange('en')}
+              >
+                {t.english}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Spotify Section */}
+        <section className="settings-section">
+          <h2>{t.spotify}</h2>
           {spotifyConfig?.connected ? (
             <div className="spotify-connected">
-              <p className="status connected">Connesso</p>
+              <p className="status connected">{t.spotifyConnected}</p>
               {spotifyConfig.playlistName && (
-                <p>Playlist: {spotifyConfig.playlistName}</p>
+                <p>{t.playlist}: {spotifyConfig.playlistName}</p>
               )}
             </div>
           ) : (
             <div className="spotify-disconnected">
-              <p>Collega il tuo account Spotify per aggiungere automaticamente le canzoni a una playlist.</p>
+              <p>{t.spotifyHint}</p>
               <button
                 onClick={handleConnect}
                 disabled={connecting}
                 className="connect-btn"
               >
-                {connecting ? 'Connessione...' : 'Collega Spotify'}
+                {connecting ? t.connecting : t.connectSpotify}
               </button>
               {error && <p className="error-message">{error}</p>}
             </div>
           )}
         </section>
 
+        {/* Audio Extraction Section */}
         <section className="settings-section">
-          <h2>Estrazione Audio</h2>
+          <h2>{t.audioExtraction}</h2>
           <div className="feature-toggle">
             <div className="feature-info">
-              <h3>Cobalt.tools</h3>
-              <p className="feature-description">
-                Estrae l'audio dai video per il riconoscimento musicale tramite AudD.
-                Richiede autenticazione API (attualmente non disponibile con l'istanza pubblica).
-              </p>
+              <h3>{t.cobaltTitle}</h3>
+              <p className="feature-description">{t.cobaltDescription}</p>
             </div>
             <label className="toggle-switch">
               <input
@@ -188,17 +217,13 @@ export function Settings() {
             </label>
           </div>
           {featuresConfig?.cobaltEnabled && (
-            <p className="feature-warning">
-              Cobalt potrebbe non funzionare con l'API pubblica. Considera self-hosting.
-            </p>
+            <p className="feature-warning">{t.cobaltWarning}</p>
           )}
 
           <div className="feature-toggle" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
             <div className="feature-info">
-              <h3>Ammetti URL duplicati</h3>
-              <p className="feature-description">
-                Disabilita il controllo di idempotenza. Permette di analizzare lo stesso URL più volte (utile per test).
-              </p>
+              <h3>{t.allowDuplicates}</h3>
+              <p className="feature-description">{t.allowDuplicatesDescription}</p>
             </div>
             <label className="toggle-switch">
               <input

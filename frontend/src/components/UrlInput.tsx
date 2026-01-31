@@ -1,14 +1,17 @@
 import { useState, FormEvent } from 'react';
+import { useLanguage } from '../i18n';
+import type { SuccessStatus } from '../hooks/useAnalyze';
 
 interface UrlInputProps {
   onSubmit: (url: string) => void;
   loading: boolean;
   error: string | null;
-  success: string | null;
+  successStatus: SuccessStatus;
 }
 
-export function UrlInput({ onSubmit, loading, error, success }: UrlInputProps) {
+export function UrlInput({ onSubmit, loading, error, successStatus }: UrlInputProps) {
   const [url, setUrl] = useState('');
+  const { t } = useLanguage();
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -18,6 +21,18 @@ export function UrlInput({ onSubmit, loading, error, success }: UrlInputProps) {
     }
   };
 
+  // Translate success status to message
+  const successMessage = successStatus === 'existing'
+    ? t.urlAlreadyAnalyzed
+    : successStatus === 'completed'
+      ? t.analysisComplete
+      : null;
+
+  // Translate generic error codes
+  const errorMessage = error === 'GENERIC_ERROR'
+    ? t.errorAnalysis
+    : error;
+
   return (
     <form className="url-input-form" onSubmit={handleSubmit}>
       <div className="input-wrapper">
@@ -25,7 +40,7 @@ export function UrlInput({ onSubmit, loading, error, success }: UrlInputProps) {
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="Incolla un link da Instagram, TikTok..."
+          placeholder={t.inputPlaceholder}
           disabled={loading}
           className="url-input"
         />
@@ -33,12 +48,12 @@ export function UrlInput({ onSubmit, loading, error, success }: UrlInputProps) {
           {loading ? (
             <span className="spinner" />
           ) : (
-            'Analizza'
+            t.analyze
           )}
         </button>
       </div>
-      {error && <p className="error-message">{error}</p>}
-      {success && <p className="success-message">{success}</p>}
+      {errorMessage && <p className="error-message">{errorMessage}</p>}
+      {successMessage && <p className="success-message">{successMessage}</p>}
     </form>
   );
 }

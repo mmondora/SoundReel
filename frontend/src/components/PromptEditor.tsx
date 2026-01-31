@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { PromptTemplate } from '../types';
+import { useLanguage } from '../i18n';
 
 interface PromptEditorProps {
   promptId: string;
@@ -10,10 +11,12 @@ interface PromptEditorProps {
 }
 
 export function PromptEditor({ promptId, prompt, onSave, onReset, saving }: PromptEditorProps) {
+  const { t, language } = useLanguage();
   const [template, setTemplate] = useState(prompt.template);
   const [name, setName] = useState(prompt.name);
   const [description, setDescription] = useState(prompt.description);
   const [hasChanges, setHasChanges] = useState(false);
+  const dateLocale = language === 'it' ? 'it-IT' : 'en-US';
 
   const handleTemplateChange = (value: string) => {
     setTemplate(value);
@@ -26,7 +29,7 @@ export function PromptEditor({ promptId, prompt, onSave, onReset, saving }: Prom
   };
 
   const handleReset = async () => {
-    if (confirm('Sei sicuro di voler ripristinare il template di default?')) {
+    if (confirm(t.resetConfirm)) {
       await onReset();
       setHasChanges(false);
     }
@@ -40,7 +43,7 @@ export function PromptEditor({ promptId, prompt, onSave, onReset, saving }: Prom
           value={name}
           onChange={(e) => { setName(e.target.value); setHasChanges(true); }}
           className="prompt-name-input"
-          placeholder="Nome del prompt"
+          placeholder={t.promptName}
         />
         <span className="prompt-id">{promptId}</span>
       </div>
@@ -50,11 +53,11 @@ export function PromptEditor({ promptId, prompt, onSave, onReset, saving }: Prom
         value={description}
         onChange={(e) => { setDescription(e.target.value); setHasChanges(true); }}
         className="prompt-description-input"
-        placeholder="Descrizione"
+        placeholder={t.promptDescription}
       />
 
       <div className="prompt-variables">
-        <span className="variables-label">Variabili disponibili:</span>
+        <span className="variables-label">{t.availableVariables}:</span>
         {prompt.variables.map((v) => (
           <code key={v} className="variable-tag">{'{{' + v + '}}'}</code>
         ))}
@@ -74,20 +77,20 @@ export function PromptEditor({ promptId, prompt, onSave, onReset, saving }: Prom
           disabled={saving || !hasChanges}
           className="save-btn"
         >
-          {saving ? 'Salvataggio...' : 'Salva'}
+          {saving ? t.saving : t.save}
         </button>
         <button
           onClick={handleReset}
           disabled={saving}
           className="reset-btn"
         >
-          Ripristina default
+          {t.resetDefault}
         </button>
       </div>
 
       {prompt.updatedAt && (
         <p className="prompt-updated">
-          Ultimo aggiornamento: {new Date(prompt.updatedAt).toLocaleString('it-IT')}
+          {t.lastUpdated}: {new Date(prompt.updatedAt).toLocaleString(dateLocale)}
         </p>
       )}
     </div>

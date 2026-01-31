@@ -1,10 +1,13 @@
 import type { Song } from '../types';
+import { useLanguage } from '../i18n';
 
 interface SongItemProps {
   song: Song;
 }
 
 export function SongItem({ song }: SongItemProps) {
+  const { t } = useLanguage();
+
   return (
     <div className="song-item">
       <div className="song-info">
@@ -19,7 +22,7 @@ export function SongItem({ song }: SongItemProps) {
             target="_blank"
             rel="noopener noreferrer"
             className="action-link spotify"
-            title="Apri su Spotify"
+            title={t.openOnSpotify}
           >
             <span className="icon">S</span>
           </a>
@@ -30,13 +33,13 @@ export function SongItem({ song }: SongItemProps) {
             target="_blank"
             rel="noopener noreferrer"
             className="action-link youtube"
-            title="Cerca su YouTube"
+            title={t.searchOnYoutube}
           >
             <span className="icon">Y</span>
           </a>
         )}
         {song.addedToPlaylist && (
-          <span className="playlist-badge" title="Aggiunta alla playlist">
+          <span className="playlist-badge" title={t.addedToPlaylist}>
             +
           </span>
         )}

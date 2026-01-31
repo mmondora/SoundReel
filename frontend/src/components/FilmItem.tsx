@@ -1,10 +1,13 @@
 import type { Film } from '../types';
+import { useLanguage } from '../i18n';
 
 interface FilmItemProps {
   film: Film;
 }
 
 export function FilmItem({ film }: FilmItemProps) {
+  const { t } = useLanguage();
+
   return (
     <div className="film-item">
       <div className="film-info">
@@ -19,7 +22,7 @@ export function FilmItem({ film }: FilmItemProps) {
             target="_blank"
             rel="noopener noreferrer"
             className="action-link imdb"
-            title="Apri su IMDb"
+            title={t.openOnIMDb}
           >
             IMDb
           </a>

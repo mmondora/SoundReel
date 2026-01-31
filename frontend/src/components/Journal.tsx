@@ -1,5 +1,6 @@
 import type { Entry } from '../types';
 import { EntryCard } from './EntryCard';
+import { useLanguage } from '../i18n';
 
 interface JournalProps {
   entries: Entry[];
@@ -7,11 +8,13 @@ interface JournalProps {
 }
 
 export function Journal({ entries, loading }: JournalProps) {
+  const { t } = useLanguage();
+
   if (loading) {
     return (
       <div className="journal-loading">
         <span className="spinner" />
-        <p>Caricamento journal...</p>
+        <p>{t.loading}</p>
       </div>
     );
   }
@@ -19,8 +22,8 @@ export function Journal({ entries, loading }: JournalProps) {
   if (entries.length === 0) {
     return (
       <div className="journal-empty">
-        <p>Nessuna entry ancora.</p>
-        <p>Incolla un link qui sopra per iniziare!</p>
+        <p>{t.noEntries}</p>
+        <p>{t.noEntriesHint}</p>
       </div>
     );
   }

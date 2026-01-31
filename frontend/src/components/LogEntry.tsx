@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { LogEntry as LogEntryType } from '../types';
+import { useLanguage } from '../i18n';
 
 interface LogEntryProps {
   log: LogEntryType;
@@ -21,11 +22,13 @@ const levelIcons: Record<string, string> = {
 
 export function LogEntry({ log }: LogEntryProps) {
   const [expanded, setExpanded] = useState(false);
+  const { t, language } = useLanguage();
+  const timeLocale = language === 'it' ? 'it-IT' : 'en-US';
 
   const formatTime = (timestamp: string) => {
     try {
       const date = new Date(timestamp);
-      const time = date.toLocaleTimeString('it-IT', {
+      const time = date.toLocaleTimeString(timeLocale, {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit'
@@ -72,13 +75,13 @@ export function LogEntry({ log }: LogEntryProps) {
         <div className="log-entry-details">
           {log.data && (
             <div className="log-data">
-              <strong>Data:</strong>
+              <strong>{t.data}:</strong>
               <pre>{JSON.stringify(log.data, null, 2)}</pre>
             </div>
           )}
           {log.error && (
             <div className="log-error">
-              <strong>Error:</strong>
+              <strong>{t.errorLabel}:</strong>
               <pre>{log.error}</pre>
             </div>
           )}

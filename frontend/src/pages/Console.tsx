@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import { useLogs } from '../hooks/useLogs';
 import { LogEntry } from '../components/LogEntry';
 import { LogFilters } from '../components/LogFilters';
+import { useLanguage } from '../i18n';
 import type { LogFilters as LogFiltersType } from '../types';
 
 export function Console() {
+  const { t } = useLanguage();
   const [filters, setFilters] = useState<LogFiltersType>({
     level: 'all',
     function: 'all',
@@ -16,27 +18,27 @@ export function Console() {
   const { logs, loading, error, availableFunctions, clearLogs } = useLogs(filters);
 
   const handleClearLogs = useCallback(async () => {
-    if (!confirm('Sei sicuro di voler cancellare tutti i log?')) {
+    if (!confirm(t.confirmClearLogs)) {
       return;
     }
 
     try {
       await clearLogs();
     } catch (err) {
-      alert('Errore durante la cancellazione dei log');
+      alert(t.clearLogsError);
     }
-  }, [clearLogs]);
+  }, [clearLogs, t]);
 
   return (
     <div className="console-page">
       <div className="console-header">
         <div className="console-header-left">
-          <Link to="/" className="back-link">← Home</Link>
-          <h1>Debug Console</h1>
+          <Link to="/" className="back-link">← {t.home}</Link>
+          <h1>{t.debugConsole}</h1>
         </div>
         <div className="console-stats">
-          <span className="log-count">{logs.length} log</span>
-          <span className="live-indicator">LIVE</span>
+          <span className="log-count">{logs.length} {t.logs}</span>
+          <span className="live-indicator">{t.live}</span>
         </div>
       </div>
 
@@ -51,9 +53,9 @@ export function Console() {
 
       <div className="log-list">
         {loading ? (
-          <div className="console-loading">Caricamento log...</div>
+          <div className="console-loading">{t.loadingLogs}</div>
         ) : logs.length === 0 ? (
-          <div className="console-empty">Nessun log trovato</div>
+          <div className="console-empty">{t.noLogsFound}</div>
         ) : (
           logs.map((log) => <LogEntry key={log.id} log={log} />)
         )}

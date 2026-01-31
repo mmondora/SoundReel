@@ -2,6 +2,28 @@
 
 Tutte le modifiche rilevanti a SoundReel sono documentate in questo file.
 
+## [1.3.0] - 2026-01-31
+
+### Novità
+- **Internazionalizzazione (i18n)**: Supporto completo per Italiano e Inglese
+  - Selettore lingua nelle Impostazioni
+  - Default automatico basato sulla lingua del browser
+  - Persistenza della preferenza in localStorage
+
+### Miglioramenti
+- Tutte le label UI ora localizzate
+- Date e orari formattati secondo la lingua selezionata
+- Messaggi di errore e successo localizzati
+- Tooltip e placeholder tradotti
+
+### Modifiche Tecniche
+- Nuovo sistema i18n basato su React Context
+- File `translations.ts` con tutte le stringhe
+- Hook `useLanguage()` per accedere alle traduzioni
+- Funzione `interpolate()` per stringhe parametriche
+
+---
+
 ## [1.2.0] - 2026-01-31
 
 ### Novità

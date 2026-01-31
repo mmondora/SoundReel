@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ActionLogItem } from '../types';
+import { useLanguage } from '../i18n';
 
 interface ActionLogProps {
   log: ActionLogItem[];
@@ -7,6 +8,8 @@ interface ActionLogProps {
 
 export function ActionLog({ log }: ActionLogProps) {
   const [expanded, setExpanded] = useState(false);
+  const { t, language } = useLanguage();
+  const timeLocale = language === 'it' ? 'it-IT' : 'en-US';
 
   if (log.length === 0) return null;
 
@@ -16,7 +19,7 @@ export function ActionLog({ log }: ActionLogProps) {
         className="action-log-toggle"
         onClick={() => setExpanded(!expanded)}
       >
-        {expanded ? 'Nascondi' : 'Mostra'} dettagli pipeline ({log.length} step)
+        {expanded ? t.hideLog : t.showLog} ({log.length} step)
       </button>
       {expanded && (
         <ul className="action-log-list">
@@ -24,7 +27,7 @@ export function ActionLog({ log }: ActionLogProps) {
             <li key={index} className="action-log-item">
               <span className="action-name">{item.action}</span>
               <span className="action-time">
-                {new Date(item.timestamp).toLocaleTimeString('it-IT')}
+                {new Date(item.timestamp).toLocaleTimeString(timeLocale)}
               </span>
             </li>
           ))}

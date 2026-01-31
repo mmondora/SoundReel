@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { LanguageProvider } from './i18n';
 import { Home } from './pages/Home';
 import { Settings } from './pages/Settings';
 import { Prompts } from './pages/Prompts';
@@ -7,13 +8,15 @@ import './styles/index.css';
 
 export function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/prompts" element={<Prompts />} />
-        <Route path="/console" element={<Console />} />
-      </Routes>
-    </BrowserRouter>
+    <LanguageProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/prompts" element={<Prompts />} />
+          <Route path="/console" element={<Console />} />
+        </Routes>
+      </BrowserRouter>
+    </LanguageProvider>
   );
 }

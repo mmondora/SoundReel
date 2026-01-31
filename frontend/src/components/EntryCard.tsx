@@ -4,6 +4,7 @@ import { SongItem } from './SongItem';
 import { FilmItem } from './FilmItem';
 import { ActionLog } from './ActionLog';
 import { deleteEntry } from '../services/api';
+import { useLanguage } from '../i18n';
 
 interface EntryCardProps {
   entry: Entry;
@@ -88,22 +89,24 @@ function parseFirestoreDate(timestamp: unknown): Date | null {
 
 export function EntryCard({ entry }: EntryCardProps) {
   const [deleting, setDeleting] = useState(false);
+  const { t, language } = useLanguage();
   const hasSongs = entry.results.songs.length > 0;
   const hasFilms = entry.results.films.length > 0;
   const hasContent = hasSongs || hasFilms;
   const isCompact = !hasContent && entry.status === 'completed';
 
   const parsedDate = parseFirestoreDate(entry.createdAt);
+  const dateLocale = language === 'it' ? 'it-IT' : 'en-US';
 
   const handleDelete = async () => {
-    if (!confirm('Sei sicuro di voler eliminare questa entry?')) return;
+    if (!confirm(t.confirmDelete)) return;
 
     setDeleting(true);
     try {
       await deleteEntry(entry.id);
     } catch (err) {
-      console.error('Errore eliminazione:', err);
-      alert('Errore durante l\'eliminazione');
+      console.error('Error deleting:', err);
+      alert(t.deleteError);
     } finally {
       setDeleting(false);
     }
@@ -124,7 +127,7 @@ export function EntryCard({ entry }: EntryCardProps) {
           </a>
           <span className="channel-badge">{getChannelIcon(entry.inputChannel)}</span>
           <time className="entry-date">
-            {parsedDate ? parsedDate.toLocaleDateString('it-IT', {
+            {parsedDate ? parsedDate.toLocaleDateString(dateLocale, {
               day: 'numeric',
               month: 'short',
               hour: '2-digit',
@@ -134,16 +137,16 @@ export function EntryCard({ entry }: EntryCardProps) {
         </div>
         <div className="entry-actions-header">
           {entry.status === 'processing' && (
-            <span className="status-badge processing">In elaborazione...</span>
+            <span className="status-badge processing">{t.processing}</span>
           )}
           {entry.status === 'error' && (
-            <span className="status-badge error">Errore</span>
+            <span className="status-badge error">{t.error}</span>
           )}
           <button
             className="delete-btn"
             onClick={handleDelete}
             disabled={deleting}
-            title="Elimina entry"
+            title={t.deleteEntry}
           >
             {deleting ? '...' : '×'}
           </button>
@@ -156,7 +159,7 @@ export function EntryCard({ entry }: EntryCardProps) {
 
       {hasSongs && (
         <section className="entry-section songs">
-          <h3 className="section-title">Canzoni</h3>
+          <h3 className="section-title">{t.songsSection}</h3>
           {entry.results.songs.map((song, index) => (
             <SongItem key={index} song={song} />
           ))}
@@ -165,7 +168,7 @@ export function EntryCard({ entry }: EntryCardProps) {
 
       {hasFilms && (
         <section className="entry-section films">
-          <h3 className="section-title">Film</h3>
+          <h3 className="section-title">{t.filmsSection}</h3>
           {entry.results.films.map((film, index) => (
             <FilmItem key={index} film={film} />
           ))}
@@ -173,7 +176,7 @@ export function EntryCard({ entry }: EntryCardProps) {
       )}
 
       {isCompact && (
-        <p className="no-results">Nessun contenuto trovato</p>
+        <p className="no-results">{t.noContentFound}</p>
       )}
 
       {!isCompact && <ActionLog log={entry.actionLog} />}

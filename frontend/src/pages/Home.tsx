@@ -6,7 +6,7 @@ import { useAnalyze } from '../hooks/useAnalyze';
 
 export function Home() {
   const { entries, stats, loading: journalLoading } = useJournal();
-  const { analyze, loading: analyzeLoading, error, success, clearError } = useAnalyze();
+  const { analyze, loading: analyzeLoading, error, successStatus, clearError } = useAnalyze();
 
   const handleSubmit = async (url: string) => {
     clearError();
@@ -21,7 +21,7 @@ export function Home() {
           onSubmit={handleSubmit}
           loading={analyzeLoading}
           error={error}
-          success={success}
+          successStatus={successStatus}
         />
         <Journal entries={entries} loading={journalLoading} />
       </main>

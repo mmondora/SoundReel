@@ -791,6 +791,35 @@ body {
   cursor: not-allowed;
 }
 
+/* Language Selector */
+.language-selector {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.lang-btn {
+  padding: 0.5rem 1rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.lang-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.lang-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
 /* ==================== PROMPTS PAGE ==================== */
 .prompts-page {
   min-height: 100vh;

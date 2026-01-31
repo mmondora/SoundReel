@@ -1,4 +1,5 @@
 import type { LogFilters as LogFiltersType, LogLevel } from '../types';
+import { useLanguage } from '../i18n';
 
 interface LogFiltersProps {
   filters: LogFiltersType;
@@ -13,13 +14,14 @@ export function LogFilters({
   onFiltersChange,
   onClearLogs
 }: LogFiltersProps) {
+  const { t } = useLanguage();
   const levels: Array<LogLevel | 'all'> = ['all', 'debug', 'info', 'warn', 'error'];
 
   return (
     <div className="log-filters">
       <div className="log-filters-row">
         <div className="filter-group">
-          <label>Level</label>
+          <label>{t.level}</label>
           <select
             value={filters.level}
             onChange={(e) =>
@@ -28,21 +30,21 @@ export function LogFilters({
           >
             {levels.map((level) => (
               <option key={level} value={level}>
-                {level === 'all' ? 'Tutti' : level.toUpperCase()}
+                {level === 'all' ? t.allLevels : level.toUpperCase()}
               </option>
             ))}
           </select>
         </div>
 
         <div className="filter-group">
-          <label>Function</label>
+          <label>{t.function}</label>
           <select
             value={filters.function}
             onChange={(e) =>
               onFiltersChange({ ...filters, function: e.target.value })
             }
           >
-            <option value="all">Tutte</option>
+            <option value="all">{t.allFunctions}</option>
             {availableFunctions.map((fn) => (
               <option key={fn} value={fn}>
                 {fn}
@@ -52,10 +54,10 @@ export function LogFilters({
         </div>
 
         <div className="filter-group filter-group-search">
-          <label>Cerca</label>
+          <label>{t.search}</label>
           <input
             type="text"
-            placeholder="Cerca nei log..."
+            placeholder={t.searchLogs}
             value={filters.search}
             onChange={(e) =>
               onFiltersChange({ ...filters, search: e.target.value })
@@ -64,10 +66,10 @@ export function LogFilters({
         </div>
 
         <div className="filter-group">
-          <label>Entry ID</label>
+          <label>{t.entryId}</label>
           <input
             type="text"
-            placeholder="ID entry..."
+            placeholder="ID..."
             value={filters.entryId || ''}
             onChange={(e) =>
               onFiltersChange({
@@ -79,7 +81,7 @@ export function LogFilters({
         </div>
 
         <button className="btn-clear-logs" onClick={onClearLogs}>
-          Cancella Log
+          {t.clearLogs}
         </button>
       </div>
     </div>
