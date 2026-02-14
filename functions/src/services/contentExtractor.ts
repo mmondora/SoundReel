@@ -582,12 +582,12 @@ export async function extractContent(url: string, options: ExtractContentOptions
   let authorName: string | null = null;
 
   // Step 1: Try oEmbed if platform supports it (best source for metadata)
-  if (platformConfig?.oEmbedUrl) {
+  // Skip oEmbed for Instagram — their endpoint requires a Facebook Graph API token,
+  // session cookies don't work. Go straight to OG scraping with cookies instead.
+  const skipOEmbed = platform === 'instagram';
+  if (platformConfig?.oEmbedUrl && !skipOEmbed) {
     log.debug(`Step 1: Tentativo oEmbed (${platform})`);
-    const oembedResult = await extractWithOEmbed(
-      url, platformConfig.oEmbedUrl, platform,
-      platform === 'instagram' ? instagramCookies : undefined
-    );
+    const oembedResult = await extractWithOEmbed(url, platformConfig.oEmbedUrl, platform);
 
     if (oembedResult.success) {
       caption = oembedResult.caption;
@@ -604,7 +604,7 @@ export async function extractContent(url: string, options: ExtractContentOptions
       log.debug('oEmbed non ha fornito risultati, procedo con OG scraping');
     }
   } else {
-    log.debug(`Step 1: Skip oEmbed (${platform} non lo supporta)`);
+    log.debug(`Step 1: Skip oEmbed (${skipOEmbed ? 'Instagram richiede Graph API token' : `${platform} non lo supporta`})`);
   }
 
   // Step 2: OG scraping as fallback or primary (if no oEmbed)
