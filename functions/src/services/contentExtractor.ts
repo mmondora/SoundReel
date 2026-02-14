@@ -318,6 +318,7 @@ async function extractWithCobalt(url: string): Promise<{
 async function scrapeOgMeta(url: string, cookies?: InstagramCookies): Promise<{
   caption: string | null;
   thumbnailUrl: string | null;
+  videoUrl: string | null;
 }> {
   const startTime = Date.now();
   const requestHeaders: Record<string, string> = {
@@ -366,7 +367,7 @@ async function scrapeOgMeta(url: string, cookies?: InstagramCookies): Promise<{
                 response.status === 429 ? 'Rate limit' :
                 'Errore HTTP'
       });
-      return { caption: null, thumbnailUrl: null };
+      return { caption: null, thumbnailUrl: null, videoUrl: null };
     }
 
     const html = await response.text();
@@ -405,6 +406,13 @@ async function scrapeOgMeta(url: string, cookies?: InstagramCookies): Promise<{
     const caption = rawCaption ? decodeHtmlEntities(rawCaption) : null;
     const thumbnailUrl = ogTags['og:image'] || null;
 
+    // Extract video URL from og:video or Instagram embedded data
+    let videoUrl: string | null = ogTags['og:video'] || ogTags['og:video:secure_url'] || null;
+
+    if (!videoUrl && cookies && url.includes('instagram')) {
+      videoUrl = extractInstagramVideoUrl(html);
+    }
+
     // Check for Instagram-specific issues
     if (url.includes('instagram')) {
       const isLoginPage = html.includes('loginForm') || html.includes('Log in to Instagram');
@@ -424,10 +432,11 @@ async function scrapeOgMeta(url: string, cookies?: InstagramCookies): Promise<{
     log.info('OG scraping completato', {
       hasCaption: !!caption,
       captionPreview: caption ? truncate(caption, 100) : null,
-      hasThumbnail: !!thumbnailUrl
+      hasThumbnail: !!thumbnailUrl,
+      hasVideo: !!videoUrl
     });
 
-    return { caption, thumbnailUrl };
+    return { caption, thumbnailUrl, videoUrl };
 
   } catch (error) {
     const durationMs = Date.now() - startTime;
@@ -436,8 +445,67 @@ async function scrapeOgMeta(url: string, cookies?: InstagramCookies): Promise<{
       durationMs,
       errorMessage: error instanceof Error ? error.message : String(error)
     });
-    return { caption: null, thumbnailUrl: null };
+    return { caption: null, thumbnailUrl: null, videoUrl: null };
   }
+}
+
+/**
+ * Extract video URL from Instagram's authenticated HTML page.
+ * Instagram embeds video URLs in multiple places when authenticated:
+ * - JSON-LD structured data
+ * - Inline script data (window.__additionalDataLoaded, etc.)
+ * - Direct video_url fields in embedded JSON
+ */
+function extractInstagramVideoUrl(html: string): string | null {
+  // Method 1: JSON-LD contentUrl
+  try {
+    const ldJsonRegex = /<script\s+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    let ldMatch;
+    while ((ldMatch = ldJsonRegex.exec(html)) !== null) {
+      try {
+        const ldData = JSON.parse(ldMatch[1]);
+        const contentUrl = ldData.contentUrl || ldData.video?.contentUrl;
+        if (contentUrl && typeof contentUrl === 'string') {
+          log.info('Instagram video URL trovato via JSON-LD', {
+            urlPreview: truncate(contentUrl, 200)
+          });
+          return contentUrl;
+        }
+      } catch { /* not valid JSON, skip */ }
+    }
+  } catch { /* regex failed, continue */ }
+
+  // Method 2: video_url in inline script data
+  try {
+    const videoUrlRegex = /"video_url"\s*:\s*"([^"]+)"/g;
+    const videoMatch = videoUrlRegex.exec(html);
+    if (videoMatch?.[1]) {
+      const videoUrl = videoMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+      log.info('Instagram video URL trovato via inline script', {
+        urlPreview: truncate(videoUrl, 200)
+      });
+      return videoUrl;
+    }
+  } catch { /* regex failed, continue */ }
+
+  // Method 3: video_versions array (highest quality first)
+  try {
+    const versionsRegex = /"video_versions"\s*:\s*\[([\s\S]*?)\]/g;
+    const versionsMatch = versionsRegex.exec(html);
+    if (versionsMatch?.[1]) {
+      const urlInVersion = /"url"\s*:\s*"([^"]+)"/.exec(versionsMatch[1]);
+      if (urlInVersion?.[1]) {
+        const videoUrl = urlInVersion[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+        log.info('Instagram video URL trovato via video_versions', {
+          urlPreview: truncate(videoUrl, 200)
+        });
+        return videoUrl;
+      }
+    }
+  } catch { /* regex failed, continue */ }
+
+  log.debug('Nessun video URL trovato nell\'HTML Instagram');
+  return null;
 }
 
 import type { SocialPlatform } from '../types';
@@ -628,6 +696,12 @@ export async function extractContent(url: string, options: ExtractContentOptions
     if (!thumbnailUrl && ogResult.thumbnailUrl) {
       thumbnailUrl = ogResult.thumbnailUrl;
       log.debug('Thumbnail ottenuta da OG scraping');
+    }
+    if (!audioUrl && ogResult.videoUrl) {
+      audioUrl = ogResult.videoUrl;
+      log.info('Video/audio URL ottenuto da OG scraping (Instagram authenticated)', {
+        urlPreview: truncate(ogResult.videoUrl, 200)
+      });
     }
   }
 
