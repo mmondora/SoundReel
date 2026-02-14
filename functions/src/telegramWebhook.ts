@@ -1,6 +1,7 @@
 import { onRequest } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 import { db } from './utils/firestore';
+import { detectPlatform } from './services/contentExtractor';
 import { getPrompt, renderTemplate } from './services/promptLoader';
 import { Logger } from './services/debugLogger';
 
@@ -245,8 +246,18 @@ export const telegramWebhook = onRequest(
         return;
       }
 
-      log.info('URL estratto', { url });
-      await sendTelegramMessage(chatId, '⏳ Sto analizzando il link...', token);
+      const platform = detectPlatform(url);
+      const platformNames: Record<string, string> = {
+        instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube',
+        facebook: 'Facebook', twitter: 'X/Twitter', threads: 'Threads',
+        spotify: 'Spotify', reddit: 'Reddit', linkedin: 'LinkedIn',
+        pinterest: 'Pinterest', vimeo: 'Vimeo', twitch: 'Twitch',
+        snapchat: 'Snapchat', soundcloud: 'SoundCloud', other: 'Web'
+      };
+      const platformLabel = platformNames[platform] || platform;
+
+      log.info('URL estratto', { url, platform });
+      await sendTelegramMessage(chatId, `✅ Ricevuto! Link da <b>${platformLabel}</b>\n🔗 ${url}\n\n⏳ Analisi in corso...`, token);
 
       // Chiama la pipeline di analisi
       const functionsUrl = `https://europe-west1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/analyzeUrl`;
