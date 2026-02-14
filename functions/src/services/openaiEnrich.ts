@@ -1,17 +1,16 @@
-import { getPerplexityConfig } from '../utils/firestore';
+import { getOpenAIConfig } from '../utils/firestore';
 import type { EnrichmentItem, EntryResults } from '../types';
 
-interface PerplexityMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
+interface OpenAIResponseOutput {
+  type: string;
+  content?: Array<{
+    type: string;
+    text?: string;
+  }>;
 }
 
-interface PerplexityResponse {
-  choices: Array<{
-    message: {
-      content: string;
-    };
-  }>;
+interface OpenAIResponse {
+  output: OpenAIResponseOutput[];
 }
 
 function buildPrompt(results: EntryResults, caption: string | null): string {
@@ -37,7 +36,7 @@ function buildPrompt(results: EntryResults, caption: string | null): string {
 
 ${items.join('\n')}
 
-Per ogni elemento rilevante (canzone, film, prodotto, brand, luogo, persona, evento menzionato), trova link utili e verificati dal web.
+Cerca nel web e trova link utili e verificati per ogni elemento rilevante (canzone, film, prodotto, brand, luogo, persona, evento menzionato).
 Per le canzoni: link ufficiali (video musicale, lyrics, pagina artista).
 Per i film: trailer, pagina Wikipedia o review.
 Per prodotti/brand: sito ufficiale, pagina prodotto.
@@ -58,47 +57,47 @@ Formato:
 Se non trovi nulla di rilevante, rispondi con un array vuoto: []`;
 }
 
-export async function enrichWithPerplexity(
+export async function enrichWithOpenAI(
   results: EntryResults,
   caption: string | null
 ): Promise<EnrichmentItem[]> {
-  const config = await getPerplexityConfig();
+  const config = await getOpenAIConfig();
   if (!config.apiKey) {
-    throw new Error('Perplexity API key non configurata. Vai nelle Impostazioni per inserirla.');
+    throw new Error('OpenAI API key non configurata. Vai nelle Impostazioni per inserirla.');
   }
-  const apiKey = config.apiKey;
 
-  const messages: PerplexityMessage[] = [
-    {
-      role: 'system',
-      content: 'Sei un assistente che trova link verificati dal web per arricchire contenuti estratti da post social. Rispondi sempre e solo in JSON valido.'
-    },
-    {
-      role: 'user',
-      content: buildPrompt(results, caption)
-    }
-  ];
-
-  const response = await fetch('https://api.perplexity.ai/chat/completions', {
+  const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
+      'Authorization': `Bearer ${config.apiKey}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'sonar',
-      messages,
+      model: 'gpt-4o-mini',
+      tools: [{ type: 'web_search_preview' }],
+      input: buildPrompt(results, caption),
       temperature: 0.2
     })
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Perplexity API error ${response.status}: ${errorText}`);
+    throw new Error(`OpenAI API error ${response.status}: ${errorText}`);
   }
 
-  const data = await response.json() as PerplexityResponse;
-  const content = data.choices?.[0]?.message?.content;
+  const data = await response.json() as OpenAIResponse;
+
+  // Extract text from the response output
+  let content = '';
+  for (const output of data.output) {
+    if (output.type === 'message' && output.content) {
+      for (const block of output.content) {
+        if (block.type === 'output_text' && block.text) {
+          content += block.text;
+        }
+      }
+    }
+  }
 
   if (!content) {
     return [];

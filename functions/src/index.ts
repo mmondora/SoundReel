@@ -6,4 +6,4 @@ export { cleanupLogs, clearAllLogs } from './cleanupLogs';
 export { getFeatures, updateFeatures } from './featuresConfig';
 export { getInstagramCookies, updateInstagramCookies } from './instagramConfig';
 export { enrichEntry } from './enrichEntry';
-export { getPerplexity, updatePerplexity } from './perplexityConfig';
+export { getOpenAI, updateOpenAI } from './openaiConfig';

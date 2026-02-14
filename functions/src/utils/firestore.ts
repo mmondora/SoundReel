@@ -144,20 +144,20 @@ export async function updateInstagramConfig(updates: Partial<InstagramConfig>): 
   await db.collection('config').doc('instagram').set(updates, { merge: true });
 }
 
-export interface PerplexityConfig {
+export interface OpenAIConfig {
   apiKey: string | null;
   enabled: boolean;
 }
 
-const DEFAULT_PERPLEXITY: PerplexityConfig = {
+const DEFAULT_OPENAI: OpenAIConfig = {
   apiKey: null,
   enabled: false
 };
 
-export async function getPerplexityConfig(): Promise<PerplexityConfig> {
-  const doc = await db.collection('config').doc('perplexity').get();
+export async function getOpenAIConfig(): Promise<OpenAIConfig> {
+  const doc = await db.collection('config').doc('openai').get();
   if (!doc.exists) {
-    return DEFAULT_PERPLEXITY;
+    return DEFAULT_OPENAI;
   }
   const data = doc.data();
   return {
@@ -166,8 +166,8 @@ export async function getPerplexityConfig(): Promise<PerplexityConfig> {
   };
 }
 
-export async function updatePerplexityConfig(updates: Partial<PerplexityConfig>): Promise<void> {
-  await db.collection('config').doc('perplexity').set(updates, { merge: true });
+export async function updateOpenAIConfig(updates: Partial<OpenAIConfig>): Promise<void> {
+  await db.collection('config').doc('openai').set(updates, { merge: true });
 }
 
 export { db };

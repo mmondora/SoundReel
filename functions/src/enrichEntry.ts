@@ -1,5 +1,5 @@
 import { onRequest } from 'firebase-functions/v2/https';
-import { enrichWithPerplexity } from './services/perplexityEnrich';
+import { enrichWithOpenAI } from './services/openaiEnrich';
 import { getEntry, updateEntry, appendActionLog } from './utils/firestore';
 import { createActionLog } from './utils/logger';
 import { Logger } from './services/debugLogger';
@@ -41,7 +41,7 @@ export const enrichEntry = onRequest(
         return;
       }
 
-      const enrichments = await enrichWithPerplexity(entry.results, entry.caption);
+      const enrichments = await enrichWithOpenAI(entry.results, entry.caption);
 
       log.info('Enrichment completato', {
         entryId,
@@ -54,7 +54,7 @@ export const enrichEntry = onRequest(
       });
 
       await appendActionLog(entryId, createActionLog('enriched', {
-        provider: 'perplexity',
+        provider: 'openai',
         items: enrichments.length,
         links: enrichments.reduce((sum, item) => sum + item.links.length, 0)
       }));

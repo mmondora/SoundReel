@@ -1,12 +1,12 @@
 import { onRequest } from 'firebase-functions/v2/https';
-import { getPerplexityConfig, updatePerplexityConfig, PerplexityConfig } from './utils/firestore';
+import { getOpenAIConfig, updateOpenAIConfig, OpenAIConfig } from './utils/firestore';
 
 function maskValue(value: string | null): string | null {
   if (!value || value.length <= 8) return value ? '••••••••' : null;
   return '•'.repeat(value.length - 4) + value.slice(-4);
 }
 
-export const getPerplexity = onRequest(
+export const getOpenAI = onRequest(
   {
     region: 'europe-west1',
     cors: true
@@ -18,20 +18,20 @@ export const getPerplexity = onRequest(
     }
 
     try {
-      const config = await getPerplexityConfig();
+      const config = await getOpenAIConfig();
       res.json({
         apiKey: maskValue(config.apiKey),
         enabled: config.enabled,
         hasKey: !!config.apiKey
       });
     } catch (error) {
-      console.error('Errore getPerplexity:', error);
+      console.error('Errore getOpenAI:', error);
       res.status(500).json({ error: 'Errore interno' });
     }
   }
 );
 
-export const updatePerplexity = onRequest(
+export const updateOpenAI = onRequest(
   {
     region: 'europe-west1',
     cors: true
@@ -44,7 +44,7 @@ export const updatePerplexity = onRequest(
 
     try {
       const body = req.body;
-      const updates: Partial<PerplexityConfig> = {};
+      const updates: Partial<OpenAIConfig> = {};
 
       if ('apiKey' in body && typeof body.apiKey === 'string') {
         updates.apiKey = body.apiKey.trim() || null;
@@ -58,8 +58,8 @@ export const updatePerplexity = onRequest(
         return;
       }
 
-      await updatePerplexityConfig(updates);
-      const newConfig = await getPerplexityConfig();
+      await updateOpenAIConfig(updates);
+      const newConfig = await getOpenAIConfig();
       res.json({
         success: true,
         config: {
@@ -69,7 +69,7 @@ export const updatePerplexity = onRequest(
         }
       });
     } catch (error) {
-      console.error('Errore updatePerplexity:', error);
+      console.error('Errore updateOpenAI:', error);
       res.status(500).json({ error: 'Errore interno' });
     }
   }

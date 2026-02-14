@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { initiateSpotifyAuth, exchangeCodeForTokens } from '../services/spotify';
-import { getFeatures, updateFeatures, FeaturesConfig, getInstagramConfig, updateInstagramConfig, InstagramConfigResponse, getPerplexityConfig, updatePerplexityConfig, PerplexityConfigResponse } from '../services/api';
+import { getFeatures, updateFeatures, FeaturesConfig, getInstagramConfig, updateInstagramConfig, InstagramConfigResponse, getOpenAIConfig, updateOpenAIConfig, OpenAIConfigResponse } from '../services/api';
 import { useLanguage, Language } from '../i18n';
 import type { SpotifyConfig } from '../types';
 
@@ -11,7 +11,7 @@ export function Settings() {
   const [searchParams] = useSearchParams();
   const [spotifyConfig, setSpotifyConfig] = useState<SpotifyConfig | null>(null);
   const [featuresConfig, setFeaturesConfig] = useState<FeaturesConfig | null>(null);
-  const [pplxConfig, setPplxConfig] = useState<PerplexityConfigResponse | null>(null);
+  const [pplxConfig, setPplxConfig] = useState<OpenAIConfigResponse | null>(null);
   const [pplxApiKey, setPplxApiKey] = useState('');
   const [pplxEnabled, setPplxEnabled] = useState(false);
   const [savingPplx, setSavingPplx] = useState(false);
@@ -68,13 +68,13 @@ export function Settings() {
         setFeaturesConfig({ cobaltEnabled: false, allowDuplicateUrls: false });
       }
 
-      // Load Perplexity config
+      // Load OpenAI config
       try {
-        const pplx = await getPerplexityConfig();
+        const pplx = await getOpenAIConfig();
         setPplxConfig(pplx);
         setPplxEnabled(pplx.enabled);
       } catch (err) {
-        console.error('Error loading Perplexity config:', err);
+        console.error('Error loading OpenAI config:', err);
       }
 
       // Load Instagram config
@@ -125,21 +125,21 @@ export function Settings() {
     }
   }
 
-  async function handleSavePerplexity() {
+  async function handleSaveOpenAI() {
     setSavingPplx(true);
     setPplxMessage(null);
     try {
       const updates: Record<string, string | boolean> = { enabled: pplxEnabled };
       if (pplxApiKey) updates.apiKey = pplxApiKey;
 
-      const result = await updatePerplexityConfig(updates);
+      const result = await updateOpenAIConfig(updates);
       setPplxConfig(result.config);
       setPplxApiKey('');
       setPplxEnabled(result.config.enabled);
-      setPplxMessage(t.perplexitySaveSuccess);
+      setPplxMessage(t.openaiSaveSuccess);
     } catch (err) {
-      console.error('Error saving Perplexity config:', err);
-      setPplxMessage(t.perplexitySaveError);
+      console.error('Error saving OpenAI config:', err);
+      setPplxMessage(t.openaiSaveError);
     } finally {
       setSavingPplx(false);
     }
@@ -313,14 +313,14 @@ export function Settings() {
           </div>
         </section>
 
-        {/* Perplexity Section */}
+        {/* OpenAI Section */}
         <section className="settings-section">
-          <h2>{t.perplexitySection}</h2>
-          <p className="feature-description">{t.perplexityDescription}</p>
+          <h2>{t.openaiSection}</h2>
+          <p className="feature-description">{t.openaiDescription}</p>
 
           <div className="feature-toggle" style={{ marginTop: '1rem' }}>
             <div className="feature-info">
-              <h3>{t.perplexitySection}</h3>
+              <h3>{t.openaiSection}</h3>
             </div>
             <label className="toggle-switch">
               <input
@@ -335,7 +335,7 @@ export function Settings() {
 
           <div style={{ marginTop: '1rem' }}>
             <label className="field-label" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              {t.perplexityApiKey}
+              {t.openaiApiKey}
             </label>
             <input
               type="password"
@@ -350,21 +350,21 @@ export function Settings() {
 
           <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <button
-              onClick={handleSavePerplexity}
+              onClick={handleSaveOpenAI}
               disabled={savingPplx}
               className="connect-btn"
             >
               {savingPplx ? t.saving : t.save}
             </button>
             {pplxMessage && (
-              <span style={{ fontSize: '0.85rem', color: pplxMessage === t.perplexitySaveSuccess ? 'var(--success)' : 'var(--error)' }}>
+              <span style={{ fontSize: '0.85rem', color: pplxMessage === t.openaiSaveSuccess ? 'var(--success)' : 'var(--error)' }}>
                 {pplxMessage}
               </span>
             )}
           </div>
 
           <p style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            {t.perplexityHowTo}
+            {t.openaiHowTo}
           </p>
 
           {pplxConfig?.hasKey && (

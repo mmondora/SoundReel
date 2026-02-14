@@ -131,13 +131,13 @@ export interface Translations {
   searchLogs: string;
   clearLogsError: string;
 
-  // Perplexity
-  perplexitySection: string;
-  perplexityDescription: string;
-  perplexityApiKey: string;
-  perplexitySaveSuccess: string;
-  perplexitySaveError: string;
-  perplexityHowTo: string;
+  // OpenAI Enrichment
+  openaiSection: string;
+  openaiDescription: string;
+  openaiApiKey: string;
+  openaiSaveSuccess: string;
+  openaiSaveError: string;
+  openaiHowTo: string;
 
   // Instagram
   instagramCookies: string;
@@ -302,13 +302,13 @@ export const translations: Record<Language, Translations> = {
     searchLogs: 'Cerca nei log...',
     clearLogsError: 'Errore durante la cancellazione dei log',
 
-    // Perplexity
-    perplexitySection: 'Perplexity AI',
-    perplexityDescription: 'Usa Perplexity per arricchire i risultati con link verificati dal web. Serve una API key da perplexity.ai/settings/api.',
-    perplexityApiKey: 'API Key',
-    perplexitySaveSuccess: 'Configurazione Perplexity salvata!',
-    perplexitySaveError: 'Errore nel salvataggio della configurazione Perplexity',
-    perplexityHowTo: 'Vai su perplexity.ai/settings/api per generare una chiave.',
+    // OpenAI Enrichment
+    openaiSection: 'OpenAI Deep Search',
+    openaiDescription: 'Usa OpenAI con web search per arricchire i risultati con link verificati. Serve una API key da platform.openai.com.',
+    openaiApiKey: 'API Key',
+    openaiSaveSuccess: 'Configurazione OpenAI salvata!',
+    openaiSaveError: 'Errore nel salvataggio della configurazione OpenAI',
+    openaiHowTo: 'Vai su platform.openai.com/api-keys per generare una chiave.',
 
     // Instagram
     instagramCookies: 'Cookie Instagram',
@@ -472,13 +472,13 @@ export const translations: Record<Language, Translations> = {
     searchLogs: 'Search logs...',
     clearLogsError: 'Error clearing logs',
 
-    // Perplexity
-    perplexitySection: 'Perplexity AI',
-    perplexityDescription: 'Use Perplexity to enrich results with verified web links. Requires an API key from perplexity.ai/settings/api.',
-    perplexityApiKey: 'API Key',
-    perplexitySaveSuccess: 'Perplexity config saved!',
-    perplexitySaveError: 'Error saving Perplexity config',
-    perplexityHowTo: 'Go to perplexity.ai/settings/api to generate a key.',
+    // OpenAI Enrichment
+    openaiSection: 'OpenAI Deep Search',
+    openaiDescription: 'Use OpenAI with web search to enrich results with verified links. Requires an API key from platform.openai.com.',
+    openaiApiKey: 'API Key',
+    openaiSaveSuccess: 'OpenAI config saved!',
+    openaiSaveError: 'Error saving OpenAI config',
+    openaiHowTo: 'Go to platform.openai.com/api-keys to generate a key.',
 
     // Instagram
     instagramCookies: 'Instagram Cookies',

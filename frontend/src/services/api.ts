@@ -142,27 +142,27 @@ export async function getInstagramConfig(): Promise<InstagramConfigResponse> {
   return response.json();
 }
 
-export interface PerplexityConfigResponse {
+export interface OpenAIConfigResponse {
   apiKey: string | null;
   enabled: boolean;
   hasKey: boolean;
 }
 
-export async function getPerplexityConfig(): Promise<PerplexityConfigResponse> {
-  const response = await fetch(`${FUNCTIONS_BASE_URL}/getPerplexity`);
+export async function getOpenAIConfig(): Promise<OpenAIConfigResponse> {
+  const response = await fetch(`${FUNCTIONS_BASE_URL}/getOpenAI`);
 
   if (!response.ok) {
-    throw new Error('Errore durante il caricamento della configurazione Perplexity');
+    throw new Error('Errore durante il caricamento della configurazione OpenAI');
   }
 
   return response.json();
 }
 
-export async function updatePerplexityConfig(updates: {
+export async function updateOpenAIConfig(updates: {
   apiKey?: string;
   enabled?: boolean;
-}): Promise<{ success: boolean; config: PerplexityConfigResponse }> {
-  const response = await fetch(`${FUNCTIONS_BASE_URL}/updatePerplexity`, {
+}): Promise<{ success: boolean; config: OpenAIConfigResponse }> {
+  const response = await fetch(`${FUNCTIONS_BASE_URL}/updateOpenAI`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -171,7 +171,7 @@ export async function updatePerplexityConfig(updates: {
   });
 
   if (!response.ok) {
-    throw new Error('Errore durante l\'aggiornamento della configurazione Perplexity');
+    throw new Error('Errore durante l\'aggiornamento della configurazione OpenAI');
   }
 
   return response.json();
