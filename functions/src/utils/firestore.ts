@@ -185,4 +185,27 @@ export async function updateOpenAIConfig(updates: Partial<OpenAIConfig>): Promis
   await db.collection('config').doc('openai').set(updates, { merge: true });
 }
 
+export interface ApiKeysConfig {
+  keys: string[];
+}
+
+const DEFAULT_API_KEYS: ApiKeysConfig = {
+  keys: []
+};
+
+export async function getApiKeysConfig(): Promise<ApiKeysConfig> {
+  const doc = await db.collection('config').doc('apiKeys').get();
+  if (!doc.exists) {
+    return DEFAULT_API_KEYS;
+  }
+  const data = doc.data();
+  return {
+    keys: data?.keys ?? []
+  };
+}
+
+export async function updateApiKeysConfig(updates: Partial<ApiKeysConfig>): Promise<void> {
+  await db.collection('config').doc('apiKeys').set(updates, { merge: true });
+}
+
 export { db };

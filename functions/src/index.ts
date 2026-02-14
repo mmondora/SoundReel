@@ -7,3 +7,5 @@ export { getFeatures, updateFeatures } from './featuresConfig';
 export { getInstagramCookies, updateInstagramCookies } from './instagramConfig';
 export { enrichEntry } from './enrichEntry';
 export { getOpenAI, updateOpenAI } from './openaiConfig';
+export { readEntries, testReadConnection } from './soundreelRead';
+export { getApiKeys, updateApiKeys } from './apiKeysConfig';
