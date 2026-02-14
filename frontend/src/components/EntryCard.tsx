@@ -313,7 +313,7 @@ export function EntryCard({ entry }: EntryCardProps) {
               {retrying ? '...' : '↻'}
             </button>
           )}
-          {entry.status === 'completed' && hasContent && (
+          {entry.status === 'completed' && (hasContent || entry.caption) && (
             <button
               className="enrich-btn"
               onClick={handleEnrich}
