@@ -4,3 +4,4 @@ export { updatePrompt, getPrompts, resetPrompt } from './updatePrompt';
 export { deleteEntry, deleteAllEntries } from './deleteEntries';
 export { cleanupLogs, clearAllLogs } from './cleanupLogs';
 export { getFeatures, updateFeatures } from './featuresConfig';
+export { getInstagramCookies, updateInstagramCookies } from './instagramConfig';

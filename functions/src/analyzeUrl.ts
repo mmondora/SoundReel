@@ -5,7 +5,7 @@ import { analyzeWithAi, geminiApiKey } from './services/aiAnalysis';
 import { searchTrack, addToPlaylist, generateYoutubeSearchUrl, spotifyClientId, spotifyClientSecret } from './services/spotify';
 import { searchFilm, generateImdbUrl, tmdbApiKey } from './services/filmSearch';
 import { mergeResults } from './services/resultMerger';
-import { findEntryByUrl, createEntry, updateEntry, appendActionLog, getFeaturesConfig } from './utils/firestore';
+import { findEntryByUrl, createEntry, updateEntry, appendActionLog, getFeaturesConfig, getInstagramConfig } from './utils/firestore';
 import { createActionLog } from './utils/logger';
 import { Logger } from './services/debugLogger';
 import type { Entry, Song, Film, Note, ExtractedLink } from './types';
@@ -92,7 +92,24 @@ export const analyzeUrl = onRequest(
       log.info('Inizio estrazione contenuto');
       let content;
       try {
-        content = await extractContent(url, { cobaltEnabled: featuresConfig.cobaltEnabled });
+        // Load Instagram cookies if platform is Instagram
+        const extractOptions: { cobaltEnabled: boolean; instagramCookies?: { sessionId: string; csrfToken: string; dsUserId: string } } = {
+          cobaltEnabled: featuresConfig.cobaltEnabled
+        };
+        if (platform === 'instagram') {
+          const igConfig = await getInstagramConfig();
+          if (igConfig.enabled && igConfig.sessionId && igConfig.csrfToken && igConfig.dsUserId) {
+            extractOptions.instagramCookies = {
+              sessionId: igConfig.sessionId,
+              csrfToken: igConfig.csrfToken,
+              dsUserId: igConfig.dsUserId
+            };
+            log.info('Cookie Instagram abilitati');
+          } else {
+            log.debug('Cookie Instagram non configurati o disabilitati');
+          }
+        }
+        content = await extractContent(url, extractOptions);
         log.info('Estrazione contenuto completata', {
           hasCaption: content.hasCaption,
           hasAudio: content.hasAudio,

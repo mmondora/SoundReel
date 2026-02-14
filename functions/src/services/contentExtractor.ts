@@ -310,17 +310,22 @@ async function extractWithCobalt(url: string): Promise<{
 /**
  * Scrape OG meta tags as fallback
  */
-async function scrapeOgMeta(url: string): Promise<{
+async function scrapeOgMeta(url: string, cookies?: InstagramCookies): Promise<{
   caption: string | null;
   thumbnailUrl: string | null;
 }> {
   const startTime = Date.now();
-  const requestHeaders = {
+  const requestHeaders: Record<string, string> = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
     'Cache-Control': 'no-cache'
   };
+
+  if (cookies) {
+    requestHeaders['Cookie'] = `sessionid=${cookies.sessionId}; csrftoken=${cookies.csrfToken}; ds_user_id=${cookies.dsUserId}`;
+    log.info('OG scraping con cookie Instagram', { hasCookies: true });
+  }
 
   log.debug('Tentativo OG scraping', {
     requestUrl: url,
@@ -542,12 +547,19 @@ export function getPlatformLabel(platform: SocialPlatform): string {
   return config?.label || 'WEB';
 }
 
+export interface InstagramCookies {
+  sessionId: string;
+  csrfToken: string;
+  dsUserId: string;
+}
+
 export interface ExtractContentOptions {
   cobaltEnabled?: boolean;
+  instagramCookies?: InstagramCookies;
 }
 
 export async function extractContent(url: string, options: ExtractContentOptions = {}): Promise<ExtractedContent> {
-  const { cobaltEnabled = false } = options;
+  const { cobaltEnabled = false, instagramCookies } = options;
   const platform = detectPlatform(url);
   const platformConfig = getPlatformConfig(platform);
 
@@ -595,7 +607,10 @@ export async function extractContent(url: string, options: ExtractContentOptions
               !caption ? 'Manca caption da oEmbed' : 'Manca thumbnail da oEmbed'
     });
 
-    const ogResult = await scrapeOgMeta(url);
+    const ogResult = await scrapeOgMeta(
+      url,
+      platform === 'instagram' ? instagramCookies : undefined
+    );
 
     // Use OG results only for missing data
     if (!caption && ogResult.caption) {

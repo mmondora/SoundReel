@@ -126,6 +126,17 @@ export interface Translations {
   searchLogs: string;
   clearLogsError: string;
 
+  // Instagram
+  instagramCookies: string;
+  instagramCookiesDescription: string;
+  instagramSessionId: string;
+  instagramCsrfToken: string;
+  instagramDsUserId: string;
+  instagramSaveSuccess: string;
+  instagramSaveError: string;
+  instagramHowTo: string;
+  instagramHowToSteps: string;
+
   // Errors
   errorGeneric: string;
   errorAnalysis: string;
@@ -264,6 +275,17 @@ export const translations: Record<Language, Translations> = {
     searchLogs: 'Cerca nei log...',
     clearLogsError: 'Errore durante la cancellazione dei log',
 
+    // Instagram
+    instagramCookies: 'Cookie Instagram',
+    instagramCookiesDescription: 'Inserisci i cookie di sessione Instagram per accedere ai contenuti protetti. Senza questi cookie, Instagram blocca l\'accesso programmatico.',
+    instagramSessionId: 'Session ID',
+    instagramCsrfToken: 'CSRF Token',
+    instagramDsUserId: 'User ID (ds_user_id)',
+    instagramSaveSuccess: 'Cookie Instagram salvati!',
+    instagramSaveError: 'Errore nel salvataggio dei cookie',
+    instagramHowTo: 'Come ottenere i cookie',
+    instagramHowToSteps: '1. Apri Instagram nel browser e fai login\n2. Apri DevTools (F12) → Application → Cookies → instagram.com\n3. Copia i valori di: sessionid, csrftoken, ds_user_id',
+
     // Errors
     errorGeneric: 'Si è verificato un errore',
     errorAnalysis: 'Errore durante l\'analisi',
@@ -400,6 +422,17 @@ export const translations: Record<Language, Translations> = {
     allFunctions: 'All',
     searchLogs: 'Search logs...',
     clearLogsError: 'Error clearing logs',
+
+    // Instagram
+    instagramCookies: 'Instagram Cookies',
+    instagramCookiesDescription: 'Enter your Instagram session cookies to access protected content. Without these cookies, Instagram blocks programmatic access.',
+    instagramSessionId: 'Session ID',
+    instagramCsrfToken: 'CSRF Token',
+    instagramDsUserId: 'User ID (ds_user_id)',
+    instagramSaveSuccess: 'Instagram cookies saved!',
+    instagramSaveError: 'Error saving cookies',
+    instagramHowTo: 'How to get cookies',
+    instagramHowToSteps: '1. Open Instagram in your browser and log in\n2. Open DevTools (F12) → Application → Cookies → instagram.com\n3. Copy the values of: sessionid, csrftoken, ds_user_id',
 
     // Errors
     errorGeneric: 'An error occurred',

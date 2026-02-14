@@ -104,4 +104,36 @@ export async function updateFeaturesConfig(updates: Partial<FeaturesConfig>): Pr
   await db.collection('config').doc('features').set(updates, { merge: true });
 }
 
+export interface InstagramConfig {
+  sessionId: string | null;
+  csrfToken: string | null;
+  dsUserId: string | null;
+  enabled: boolean;
+}
+
+const DEFAULT_INSTAGRAM: InstagramConfig = {
+  sessionId: null,
+  csrfToken: null,
+  dsUserId: null,
+  enabled: false
+};
+
+export async function getInstagramConfig(): Promise<InstagramConfig> {
+  const doc = await db.collection('config').doc('instagram').get();
+  if (!doc.exists) {
+    return DEFAULT_INSTAGRAM;
+  }
+  const data = doc.data();
+  return {
+    sessionId: data?.sessionId ?? null,
+    csrfToken: data?.csrfToken ?? null,
+    dsUserId: data?.dsUserId ?? null,
+    enabled: data?.enabled ?? false
+  };
+}
+
+export async function updateInstagramConfig(updates: Partial<InstagramConfig>): Promise<void> {
+  await db.collection('config').doc('instagram').set(updates, { merge: true });
+}
+
 export { db };

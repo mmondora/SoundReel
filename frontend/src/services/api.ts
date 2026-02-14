@@ -101,3 +101,42 @@ export async function updateFeatures(updates: Partial<FeaturesConfig>): Promise<
 
   return response.json();
 }
+
+export interface InstagramConfigResponse {
+  sessionId: string | null;
+  csrfToken: string | null;
+  dsUserId: string | null;
+  enabled: boolean;
+  hasCredentials: boolean;
+}
+
+export async function getInstagramConfig(): Promise<InstagramConfigResponse> {
+  const response = await fetch(`${FUNCTIONS_BASE_URL}/getInstagramCookies`);
+
+  if (!response.ok) {
+    throw new Error('Errore durante il caricamento della configurazione Instagram');
+  }
+
+  return response.json();
+}
+
+export async function updateInstagramConfig(updates: {
+  sessionId?: string;
+  csrfToken?: string;
+  dsUserId?: string;
+  enabled?: boolean;
+}): Promise<{ success: boolean; config: InstagramConfigResponse }> {
+  const response = await fetch(`${FUNCTIONS_BASE_URL}/updateInstagramCookies`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(updates)
+  });
+
+  if (!response.ok) {
+    throw new Error('Errore durante l\'aggiornamento della configurazione Instagram');
+  }
+
+  return response.json();
+}
