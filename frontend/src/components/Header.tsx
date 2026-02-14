@@ -4,7 +4,7 @@ import type { JournalStats } from '../types';
 import { deleteAllEntries } from '../services/api';
 import { useLanguage, interpolate } from '../i18n';
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 
 interface HeaderProps {
   stats: JournalStats;
