@@ -1,4 +1,5 @@
 import { getOpenAIConfig } from '../utils/firestore';
+import { getPrompt, renderTemplate } from './promptLoader';
 import type { EnrichmentItem, EntryResults } from '../types';
 
 interface OpenAIResponseOutput {
@@ -13,48 +14,15 @@ interface OpenAIResponse {
   output: OpenAIResponseOutput[];
 }
 
-function buildPrompt(results: EntryResults, caption: string | null): string {
-  const items: string[] = [];
-
-  for (const song of results.songs) {
-    items.push(`- Canzone: "${song.title}" di ${song.artist}`);
-  }
-  for (const film of results.films) {
-    items.push(`- Film: "${film.title}"${film.director ? ` di ${film.director}` : ''}${film.year ? ` (${film.year})` : ''}`);
-  }
-  for (const note of results.notes) {
-    items.push(`- ${note.category}: ${note.text}`);
-  }
-  for (const tag of results.tags) {
-    items.push(`- Tag: #${tag}`);
-  }
-  if (caption) {
-    items.push(`- Caption del post: "${caption.slice(0, 500)}"`);
-  }
-
-  return `Dato il seguente contenuto estratto da un post social:
-
-${items.join('\n')}
-
-Cerca nel web e trova link utili e verificati per ogni elemento rilevante (canzone, film, prodotto, brand, luogo, persona, evento menzionato).
-Per le canzoni: link ufficiali (video musicale, lyrics, pagina artista).
-Per i film: trailer, pagina Wikipedia o review.
-Per prodotti/brand: sito ufficiale, pagina prodotto.
-Per luoghi/eventi: sito ufficiale, mappa, info.
-Per persone: profilo ufficiale, Wikipedia.
-
-Rispondi SOLO con un JSON array valido, senza markdown, senza backtick, senza testo aggiuntivo.
-Formato:
-[
-  {
-    "label": "Nome dell'elemento",
-    "links": [
-      { "url": "https://...", "title": "Titolo del link", "snippet": "Breve descrizione" }
-    ]
-  }
-]
-
-Se non trovi nulla di rilevante, rispondi con un array vuoto: []`;
+async function buildPrompt(results: EntryResults, caption: string | null): Promise<string> {
+  const promptConfig = await getPrompt('enrichment');
+  return renderTemplate(promptConfig.template, {
+    songs: results.songs,
+    films: results.films,
+    notes: results.notes,
+    tags: results.tags,
+    caption: caption ? caption.slice(0, 500) : null
+  });
 }
 
 export async function enrichWithOpenAI(
@@ -75,7 +43,7 @@ export async function enrichWithOpenAI(
     body: JSON.stringify({
       model: 'gpt-4o-mini',
       tools: [{ type: 'web_search_preview' }],
-      input: buildPrompt(results, caption),
+      input: await buildPrompt(results, caption),
       temperature: 0.2
     })
   });

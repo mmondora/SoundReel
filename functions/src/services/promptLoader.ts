@@ -13,6 +13,7 @@ export interface PromptTemplate {
 export interface PromptsConfig {
   contentAnalysis: PromptTemplate;
   telegramResponse: PromptTemplate;
+  enrichment: PromptTemplate;
 }
 
 const DEFAULT_PROMPTS: PromptsConfig = {
@@ -73,6 +74,49 @@ Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti, senza a
 
 Se non trovi nulla, rispondi: { "songs": [], "films": [], "notes": [], "links": [], "tags": [], "summary": null }`,
     variables: ['caption', 'hasImage'],
+    updatedAt: new Date().toISOString()
+  },
+  enrichment: {
+    name: 'Enrichment (OpenAI Deep Search)',
+    description: 'Prompt per arricchire i risultati con link verificati dal web',
+    template: `Dato il seguente contenuto estratto da un post social:
+
+{{#each songs}}
+- Canzone: "{{title}}" di {{artist}}
+{{/each}}
+{{#each films}}
+- Film: "{{title}}"{{#if director}} di {{director}}{{/if}}{{#if year}} ({{year}}){{/if}}
+{{/each}}
+{{#each notes}}
+- {{category}}: {{text}}
+{{/each}}
+{{#each tags}}
+- Tag: #{{this}}
+{{/each}}
+{{#if caption}}
+- Caption del post: "{{caption}}"
+{{/if}}
+
+Cerca nel web e trova link utili e verificati per ogni elemento rilevante (canzone, film, prodotto, brand, luogo, persona, evento menzionato).
+Per le canzoni: link ufficiali (video musicale, lyrics, pagina artista).
+Per i film: trailer, pagina Wikipedia o review.
+Per prodotti/brand: sito ufficiale, pagina prodotto.
+Per luoghi/eventi: sito ufficiale, mappa, info.
+Per persone: profilo ufficiale, Wikipedia.
+
+Rispondi SOLO con un JSON array valido, senza markdown, senza backtick, senza testo aggiuntivo.
+Formato:
+[
+  {
+    "label": "Nome dell'elemento",
+    "links": [
+      { "url": "https://...", "title": "Titolo del link", "snippet": "Breve descrizione" }
+    ]
+  }
+]
+
+Se non trovi nulla di rilevante, rispondi con un array vuoto: []`,
+    variables: ['songs', 'films', 'notes', 'tags', 'caption'],
     updatedAt: new Date().toISOString()
   },
   telegramResponse: {
@@ -145,7 +189,8 @@ export async function getPrompts(): Promise<PromptsConfig> {
     const data = doc.data() as Partial<PromptsConfig>;
     cachedPrompts = {
       contentAnalysis: data.contentAnalysis || DEFAULT_PROMPTS.contentAnalysis,
-      telegramResponse: data.telegramResponse || DEFAULT_PROMPTS.telegramResponse
+      telegramResponse: data.telegramResponse || DEFAULT_PROMPTS.telegramResponse,
+      enrichment: data.enrichment || DEFAULT_PROMPTS.enrichment
     };
     cacheTimestamp = now;
 

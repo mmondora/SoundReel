@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import Handlebars from 'handlebars';
 import type { PromptTemplate } from '../types';
 import { useLanguage } from '../i18n';
 
@@ -10,6 +11,15 @@ interface PromptEditorProps {
   saving: boolean;
 }
 
+function validateTemplate(tmpl: string): { valid: boolean; error: string | null } {
+  try {
+    Handlebars.precompile(tmpl);
+    return { valid: true, error: null };
+  } catch (e) {
+    return { valid: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export function PromptEditor({ promptId, prompt, onSave, onReset, saving }: PromptEditorProps) {
   const { t, language } = useLanguage();
   const [template, setTemplate] = useState(prompt.template);
@@ -17,6 +27,8 @@ export function PromptEditor({ promptId, prompt, onSave, onReset, saving }: Prom
   const [description, setDescription] = useState(prompt.description);
   const [hasChanges, setHasChanges] = useState(false);
   const dateLocale = language === 'it' ? 'it-IT' : 'en-US';
+
+  const validation = useMemo(() => validateTemplate(template), [template]);
 
   const handleTemplateChange = (value: string) => {
     setTemplate(value);
@@ -66,15 +78,21 @@ export function PromptEditor({ promptId, prompt, onSave, onReset, saving }: Prom
       <textarea
         value={template}
         onChange={(e) => handleTemplateChange(e.target.value)}
-        className="prompt-textarea"
+        className={`prompt-textarea ${!validation.valid ? 'template-invalid' : ''}`}
         rows={20}
         spellCheck={false}
       />
 
+      {!validation.valid && (
+        <div className="template-validation template-validation-error">
+          {t.templateError}: {validation.error}
+        </div>
+      )}
+
       <div className="prompt-actions">
         <button
           onClick={handleSave}
-          disabled={saving || !hasChanges}
+          disabled={saving || !hasChanges || !validation.valid}
           className="save-btn"
         >
           {saving ? t.saving : t.save}

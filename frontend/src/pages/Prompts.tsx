@@ -19,7 +19,8 @@ export function Prompts() {
 
   const promptLabels: Record<PromptId, { icon: string; label: string }> = {
     contentAnalysis: { icon: 'AI', label: t.contentAnalysis },
-    telegramResponse: { icon: 'TG', label: t.telegramResponse }
+    telegramResponse: { icon: 'TG', label: t.telegramResponse },
+    enrichment: { icon: '🔍', label: t.enrichmentPrompt }
   };
 
   useEffect(() => {

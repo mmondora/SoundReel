@@ -108,6 +108,7 @@ export interface Translations {
   promptsTitle: string;
   contentAnalysis: string;
   telegramResponse: string;
+  enrichmentPrompt: string;
   variables: string;
   availableVariables: string;
   promptName: string;
@@ -120,6 +121,8 @@ export interface Translations {
   lastUpdated: string;
   promptSaved: string;
   promptReset: string;
+  templateError: string;
+  templateValid: string;
   loadError: string;
   saveError: string;
   resetError: string;
@@ -279,6 +282,7 @@ export const translations: Record<Language, Translations> = {
     promptsTitle: 'Prompt AI',
     contentAnalysis: 'Analisi Contenuto',
     telegramResponse: 'Risposta Telegram',
+    enrichmentPrompt: 'Enrichment OpenAI',
     variables: 'Variabili',
     availableVariables: 'Variabili disponibili',
     promptName: 'Nome del prompt',
@@ -291,6 +295,8 @@ export const translations: Record<Language, Translations> = {
     lastUpdated: 'Ultimo aggiornamento',
     promptSaved: 'Prompt salvato con successo!',
     promptReset: 'Prompt ripristinato!',
+    templateError: 'Errore nel template',
+    templateValid: 'Template valido',
     loadError: 'Errore nel caricamento',
     saveError: 'Errore nel salvataggio',
     resetError: 'Errore nel reset',
@@ -449,6 +455,7 @@ export const translations: Record<Language, Translations> = {
     promptsTitle: 'AI Prompts',
     contentAnalysis: 'Content Analysis',
     telegramResponse: 'Telegram Response',
+    enrichmentPrompt: 'OpenAI Enrichment',
     variables: 'Variables',
     availableVariables: 'Available variables',
     promptName: 'Prompt name',
@@ -461,6 +468,8 @@ export const translations: Record<Language, Translations> = {
     lastUpdated: 'Last updated',
     promptSaved: 'Prompt saved successfully!',
     promptReset: 'Prompt reset!',
+    templateError: 'Template error',
+    templateValid: 'Template valid',
     loadError: 'Error loading',
     saveError: 'Error saving',
     resetError: 'Error resetting',

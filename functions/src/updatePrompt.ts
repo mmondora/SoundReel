@@ -4,7 +4,7 @@ import { logInfo, logError } from './utils/logger';
 import { invalidateCache, getDefaultPrompts, type PromptsConfig } from './services/promptLoader';
 
 interface UpdatePromptRequest {
-  promptId: 'contentAnalysis' | 'telegramResponse';
+  promptId: 'contentAnalysis' | 'telegramResponse' | 'enrichment';
   template: string;
   name?: string;
   description?: string;
@@ -103,7 +103,8 @@ export const getPrompts = onRequest(
       const data = doc.data() as Partial<PromptsConfig>;
       const prompts: PromptsConfig = {
         contentAnalysis: data.contentAnalysis || defaults.contentAnalysis,
-        telegramResponse: data.telegramResponse || defaults.telegramResponse
+        telegramResponse: data.telegramResponse || defaults.telegramResponse,
+        enrichment: data.enrichment || defaults.enrichment
       };
 
       res.json({

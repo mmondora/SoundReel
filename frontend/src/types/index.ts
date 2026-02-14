@@ -116,6 +116,7 @@ export interface PromptTemplate {
 export interface PromptsConfig {
   contentAnalysis: PromptTemplate;
   telegramResponse: PromptTemplate;
+  enrichment: PromptTemplate;
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
