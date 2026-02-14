@@ -185,6 +185,8 @@ export function EntryCard({ entry }: EntryCardProps) {
   const [accentColor, setAccentColor] = useState<string | null>(null);
   const captionRef = useRef<HTMLDivElement>(null);
   const { t, language } = useLanguage();
+  const [transcriptionExpanded, setTranscriptionExpanded] = useState(false);
+  const [visualContextExpanded, setVisualContextExpanded] = useState(false);
   const hasSongs = entry.results.songs.length > 0;
   const hasFilms = entry.results.films.length > 0;
   const hasNotes = (entry.results.notes?.length || 0) > 0;
@@ -192,7 +194,10 @@ export function EntryCard({ entry }: EntryCardProps) {
   const hasTags = (entry.results.tags?.length || 0) > 0;
   const hasSummary = !!entry.results.summary;
   const hasEnrichments = (entry.results.enrichments?.length || 0) > 0;
-  const hasContent = hasSongs || hasFilms || hasNotes || hasLinks || hasTags;
+  const hasTranscription = !!entry.results.transcription;
+  const hasVisualContext = !!entry.results.visualContext;
+  const hasOverlayText = !!entry.results.overlayText;
+  const hasContent = hasSongs || hasFilms || hasNotes || hasLinks || hasTags || hasTranscription || hasVisualContext || hasOverlayText;
   const isCompact = !hasContent && entry.status === 'completed';
 
   const parsedDate = parseFirestoreDate(entry.createdAt);
@@ -267,9 +272,21 @@ export function EntryCard({ entry }: EntryCardProps) {
       className={`entry-card ${entry.status}${isCompact ? ' compact' : ''}${accentColor ? ' has-accent' : ''}`}
       style={cardStyle}
     >
+      {entry.mediaUrl && (
+        <div className="entry-media">
+          <video
+            src={entry.mediaUrl}
+            controls
+            preload="metadata"
+            poster={entry.thumbnailUrl || undefined}
+            className="entry-video"
+          />
+        </div>
+      )}
+
       <header className="entry-header">
         <div className="entry-meta">
-          {entry.thumbnailUrl && (
+          {!entry.mediaUrl && entry.thumbnailUrl && (
             <img
               src={entry.thumbnailUrl}
               alt=""
@@ -354,6 +371,42 @@ export function EntryCard({ entry }: EntryCardProps) {
               {captionExpanded ? t.showLess : t.showMore}
             </button>
           )}
+        </div>
+      )}
+
+      {hasTranscription && (
+        <section className="entry-section transcription">
+          <h3
+            className="section-title collapsible"
+            onClick={() => setTranscriptionExpanded(!transcriptionExpanded)}
+            style={{ cursor: 'pointer' }}
+          >
+            {t.transcription} {transcriptionExpanded ? '▾' : '▸'}
+          </h3>
+          {transcriptionExpanded && (
+            <p className="media-analysis-text">{entry.results.transcription}</p>
+          )}
+        </section>
+      )}
+
+      {hasVisualContext && (
+        <section className="entry-section visual-context">
+          <h3
+            className="section-title collapsible"
+            onClick={() => setVisualContextExpanded(!visualContextExpanded)}
+            style={{ cursor: 'pointer' }}
+          >
+            {t.visualContext} {visualContextExpanded ? '▾' : '▸'}
+          </h3>
+          {visualContextExpanded && (
+            <p className="media-analysis-text">{entry.results.visualContext}</p>
+          )}
+        </section>
+      )}
+
+      {hasOverlayText && (
+        <div className="entry-overlay-text">
+          <span className="overlay-label">{t.overlayText}:</span> {entry.results.overlayText}
         </div>
       )}
 

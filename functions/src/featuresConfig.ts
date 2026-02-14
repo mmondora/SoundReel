@@ -37,7 +37,7 @@ export const updateFeatures = onRequest(
       const updates: Partial<FeaturesConfig> = req.body;
 
       // Validate that only allowed fields are being updated
-      const allowedFields = ['cobaltEnabled', 'allowDuplicateUrls'];
+      const allowedFields = ['cobaltEnabled', 'allowDuplicateUrls', 'autoEnrichEnabled', 'mediaAnalysisEnabled', 'useVertexAi', 'transcriptionEnabled', 'aiAnalysisEnabled'];
       const filteredUpdates: Partial<FeaturesConfig> = {};
 
       for (const key of allowedFields) {

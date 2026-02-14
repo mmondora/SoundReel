@@ -89,11 +89,21 @@ export async function updateSpotifyConfig(updates: {
 export interface FeaturesConfig {
   cobaltEnabled: boolean;
   allowDuplicateUrls: boolean;
+  autoEnrichEnabled: boolean;
+  mediaAnalysisEnabled: boolean;
+  useVertexAi: boolean;
+  transcriptionEnabled: boolean;
+  aiAnalysisEnabled: boolean;
 }
 
 const DEFAULT_FEATURES: FeaturesConfig = {
   cobaltEnabled: false, // Disabled by default - requires auth
-  allowDuplicateUrls: false // Disabled by default - idempotency enabled
+  allowDuplicateUrls: false, // Disabled by default - idempotency enabled
+  autoEnrichEnabled: false, // Disabled by default - requires OpenAI config
+  mediaAnalysisEnabled: false, // Disabled by default - uses more resources
+  useVertexAi: true, // Enabled by default - uses GCP ADC
+  transcriptionEnabled: true, // Enabled by default
+  aiAnalysisEnabled: true // Enabled by default
 };
 
 export async function getFeaturesConfig(): Promise<FeaturesConfig> {
@@ -104,7 +114,12 @@ export async function getFeaturesConfig(): Promise<FeaturesConfig> {
   const data = doc.data();
   return {
     cobaltEnabled: data?.cobaltEnabled ?? DEFAULT_FEATURES.cobaltEnabled,
-    allowDuplicateUrls: data?.allowDuplicateUrls ?? DEFAULT_FEATURES.allowDuplicateUrls
+    allowDuplicateUrls: data?.allowDuplicateUrls ?? DEFAULT_FEATURES.allowDuplicateUrls,
+    autoEnrichEnabled: data?.autoEnrichEnabled ?? DEFAULT_FEATURES.autoEnrichEnabled,
+    mediaAnalysisEnabled: data?.mediaAnalysisEnabled ?? DEFAULT_FEATURES.mediaAnalysisEnabled,
+    useVertexAi: data?.useVertexAi ?? DEFAULT_FEATURES.useVertexAi,
+    transcriptionEnabled: data?.transcriptionEnabled ?? DEFAULT_FEATURES.transcriptionEnabled,
+    aiAnalysisEnabled: data?.aiAnalysisEnabled ?? DEFAULT_FEATURES.aiAnalysisEnabled
   };
 }
 

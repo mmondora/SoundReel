@@ -1,14 +1,17 @@
 import { onRequest } from 'firebase-functions/v2/https';
 import { extractContent, detectPlatform, setLogger as setContentExtractorLogger } from './services/contentExtractor';
 import { recognizeAudio, auddApiKey } from './services/audioRecognition';
-import { analyzeWithAi, geminiApiKey } from './services/aiAnalysis';
+import { analyzeWithAi, geminiApiKey, AiAnalysisResponse } from './services/aiAnalysis';
 import { searchTrack, addToPlaylist, generateYoutubeSearchUrl, spotifyClientId, spotifyClientSecret } from './services/spotify';
 import { searchFilm, generateImdbUrl, tmdbApiKey } from './services/filmSearch';
 import { mergeResults } from './services/resultMerger';
-import { findEntryByUrl, createEntry, updateEntry, appendActionLog, getFeaturesConfig, getInstagramConfig } from './utils/firestore';
+import { downloadMedia } from './services/mediaDownloader';
+import { transcribeAudio } from './services/transcribeAudio';
+import { enrichWithOpenAI } from './services/openaiEnrich';
+import { findEntryByUrl, createEntry, updateEntry, appendActionLog, getFeaturesConfig, getInstagramConfig, getOpenAIConfig } from './utils/firestore';
 import { createActionLog } from './utils/logger';
 import { Logger } from './services/debugLogger';
-import type { Entry, Song, Film, Note, ExtractedLink } from './types';
+import type { Entry, Song, Film, Note, ExtractedLink, MediaAiAnalysisResult } from './types';
 
 interface AnalyzeRequest {
   url: string;
@@ -18,8 +21,8 @@ interface AnalyzeRequest {
 export const analyzeUrl = onRequest(
   {
     region: 'europe-west1',
-    timeoutSeconds: 120,
-    memory: '512MiB',
+    timeoutSeconds: 300,
+    memory: '1GiB',
     secrets: [auddApiKey, geminiApiKey, spotifyClientId, spotifyClientSecret, tmdbApiKey],
     cors: true
   },
@@ -75,6 +78,7 @@ export const analyzeUrl = onRequest(
         inputChannel: channel,
         caption: null,
         thumbnailUrl: null,
+        mediaUrl: null,
         status: 'processing',
         results: { songs: [], films: [], notes: [], links: [], tags: [], summary: null },
         actionLog: [createActionLog('url_received', { channel, platform })],
@@ -130,14 +134,99 @@ export const analyzeUrl = onRequest(
 
       await updateEntry(entryId, {
         caption: content.caption,
-        thumbnailUrl: content.thumbnailUrl
+        thumbnailUrl: content.thumbnailUrl,
+        mediaUrl: content.videoUrl || content.audioUrl || null
       });
 
+      // Step 3.5: Download media for deep analysis if enabled
+      let media = null;
+      if (featuresConfig.mediaAnalysisEnabled && content.audioUrl) {
+        log.info('Download media per analisi approfondita');
+        try {
+          media = await downloadMedia(content.audioUrl);
+          if (media) {
+            await appendActionLog(entryId, createActionLog('media_downloaded', {
+              mimeType: media.mimeType,
+              sizeBytes: media.sizeBytes
+            }));
+          } else {
+            await appendActionLog(entryId, createActionLog('media_download_skipped', {
+              reason: 'too_large_or_failed'
+            }));
+          }
+        } catch (dlError) {
+          log.warn('Errore download media, continuo senza', {
+            error: dlError instanceof Error ? dlError.message : String(dlError)
+          });
+          await appendActionLog(entryId, createActionLog('media_download_failed', {
+            error: dlError instanceof Error ? dlError.message : String(dlError)
+          }));
+        }
+      }
+
+      // Step 3.7: Trascrizione audio dedicata (Gemini STT)
+      let transcript: string | null = null;
+      if (featuresConfig.transcriptionEnabled) {
+        try {
+          log.info('Inizio trascrizione audio');
+          const transcriptionResult = await transcribeAudio(
+            media,
+            content.audioUrl || content.videoUrl,
+            undefined,
+            featuresConfig.useVertexAi
+          );
+          transcript = transcriptionResult.transcript;
+
+          const transcribeDetails: Record<string, unknown> = {
+            status: transcriptionResult.status,
+            reason: transcriptionResult.reason || null,
+            transcriptLength: transcript?.length || 0,
+            durationMs: transcriptionResult.durationMs
+          };
+          if (transcriptionResult.usageMetadata) {
+            transcribeDetails.tokenUsage = transcriptionResult.usageMetadata;
+          }
+          await appendActionLog(entryId, createActionLog('transcribe', transcribeDetails));
+
+          if (transcript) {
+            await updateEntry(entryId, { 'results.transcript': transcript });
+            log.info('Trascrizione completata', { length: transcript.length });
+          } else {
+            log.info('Trascrizione: nessun parlato trovato o step skippato', {
+              status: transcriptionResult.status,
+              reason: transcriptionResult.reason
+            });
+          }
+        } catch (transcribeError) {
+          log.warn('Errore trascrizione, continuo senza', {
+            error: transcribeError instanceof Error ? transcribeError.message : String(transcribeError)
+          });
+          await appendActionLog(entryId, createActionLog('transcribe', {
+            status: 'error',
+            error: transcribeError instanceof Error ? transcribeError.message : String(transcribeError)
+          }));
+        }
+      } else {
+        log.info('Trascrizione disabilitata nelle impostazioni');
+        await appendActionLog(entryId, createActionLog('transcribe', {
+          status: 'skipped',
+          reason: 'disabled in settings'
+        }));
+      }
+
       // Step 4 & 5: Audio recognition e AI analysis in parallelo
-      const [auddResult, aiResult] = await Promise.all([
+      const emptyAiResponse: AiAnalysisResponse = {
+        result: { songs: [], films: [], notes: [], links: [], tags: [], summary: null },
+        usageMetadata: null
+      };
+
+      const [auddResult, aiResponse] = await Promise.all([
         content.audioUrl ? recognizeAudio(content.audioUrl) : Promise.resolve(null),
-        analyzeWithAi(content.caption, content.thumbnailUrl)
+        featuresConfig.aiAnalysisEnabled
+          ? analyzeWithAi(content.caption, content.thumbnailUrl, media, transcript, featuresConfig.useVertexAi)
+          : Promise.resolve(emptyAiResponse)
       ]);
+      const aiResult = aiResponse.result;
 
       // Use AudD result, or fall back to Instagram music metadata
       let audioResult = auddResult;
@@ -167,14 +256,23 @@ export const analyzeUrl = onRequest(
         }));
       }
 
-      await appendActionLog(entryId, createActionLog('ai_analyzed', {
-        provider: 'gemini',
-        songs: aiResult.songs.length,
-        films: aiResult.films.length,
-        notes: aiResult.notes.length,
-        links: aiResult.links.length,
-        tags: aiResult.tags.length
-      }));
+      const aiAnalyzedDetails: Record<string, unknown> = featuresConfig.aiAnalysisEnabled
+        ? {
+            provider: featuresConfig.useVertexAi ? 'vertex_ai' : 'google_ai_studio',
+            songs: aiResult.songs.length,
+            films: aiResult.films.length,
+            notes: aiResult.notes.length,
+            links: aiResult.links.length,
+            tags: aiResult.tags.length
+          }
+        : {
+            status: 'skipped',
+            reason: 'disabled in settings'
+          };
+      if (aiResponse.usageMetadata) {
+        aiAnalyzedDetails.tokenUsage = aiResponse.usageMetadata;
+      }
+      await appendActionLog(entryId, createActionLog('ai_analyzed', aiAnalyzedDetails));
 
       // Step 6: Merge risultati
       const merged = mergeResults(audioResult, aiResult);
@@ -227,16 +325,36 @@ export const analyzeUrl = onRequest(
         });
       }
 
-      // Step 9: Prepara notes, links, tags, summary
+      // Step 9: Prepara notes, links, tags, summary + media analysis fields
       const notes: Note[] = merged.notes;
       const links: ExtractedLink[] = merged.links;
       const tags: string[] = merged.tags;
       const summary: string | null = merged.summary;
 
+      // Extract media analysis fields if present
+      const mediaAiResult = aiResult as MediaAiAnalysisResult;
+      const transcription = mediaAiResult.transcription || null;
+      const visualContext = mediaAiResult.visualContext || null;
+      const overlayText = mediaAiResult.overlayText || null;
+
+      if (transcription || visualContext || overlayText) {
+        await appendActionLog(entryId, createActionLog('media_analysis_complete', {
+          hasTranscription: !!transcription,
+          hasVisualContext: !!visualContext,
+          hasOverlayText: !!overlayText
+        }));
+      }
+
       // Step 10: Aggiorna entry con risultati finali
+      const results: Record<string, unknown> = { songs, films, notes, links, tags, summary };
+      if (transcript) results.transcript = transcript;
+      if (transcription) results.transcription = transcription;
+      if (visualContext) results.visualContext = visualContext;
+      if (overlayText) results.overlayText = overlayText;
+
       await updateEntry(entryId, {
         status: 'completed',
-        results: { songs, films, notes, links, tags, summary }
+        results
       });
 
       await appendActionLog(entryId, createActionLog('completed', {
@@ -247,6 +365,40 @@ export const analyzeUrl = onRequest(
         totalTags: tags.length,
         addedToPlaylist: songs.filter(s => s.addedToPlaylist).length
       }));
+
+      // Step 11: Auto-enrichment (if enabled)
+      if (featuresConfig.autoEnrichEnabled) {
+        try {
+          const openaiConfig = await getOpenAIConfig();
+          if (openaiConfig.enabled && openaiConfig.apiKey) {
+            log.info('Auto-enrichment iniziato');
+            const entryResults = { songs, films, notes, links, tags, summary: summary ?? null };
+            const enrichments = await enrichWithOpenAI(entryResults, content.caption);
+
+            if (enrichments.length > 0) {
+              await updateEntry(entryId, {
+                'results.enrichments': enrichments
+              });
+              await appendActionLog(entryId, createActionLog('auto_enriched', {
+                provider: 'openai',
+                items: enrichments.length,
+                links: enrichments.reduce((sum, item) => sum + item.links.length, 0)
+              }));
+              results.enrichments = enrichments;
+              log.info('Auto-enrichment completato', { items: enrichments.length });
+            }
+          } else {
+            log.info('Auto-enrichment saltato: OpenAI non configurato');
+          }
+        } catch (enrichError) {
+          log.warn('Auto-enrichment fallito, non bloccante', {
+            error: enrichError instanceof Error ? enrichError.message : String(enrichError)
+          });
+          await appendActionLog(entryId, createActionLog('auto_enrich_failed', {
+            error: enrichError instanceof Error ? enrichError.message : String(enrichError)
+          }));
+        }
+      }
 
       log.info('Analisi completata', {
         entryId,
@@ -267,8 +419,9 @@ export const analyzeUrl = onRequest(
           inputChannel: channel,
           caption: content.caption,
           thumbnailUrl: content.thumbnailUrl,
+          mediaUrl: content.videoUrl || content.audioUrl || null,
           status: 'completed',
-          results: { songs, films, notes, links, tags, summary }
+          results
         }
       });
     } catch (error) {

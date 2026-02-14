@@ -9,7 +9,7 @@ export function setLogger(logger: Logger): void {
   log = logger;
 }
 
-const COBALT_API_URL = 'https://api.cobalt.tools/';
+const COBALT_API_URL = 'https://cobalt-972218119922.europe-west1.run.app/';
 
 /**
  * Decode HTML entities in text (e.g., &quot; -> ", &#x1f3a7; -> 🎧)
@@ -63,7 +63,8 @@ interface CobaltResponse {
   status: string;
   url?: string;
   audio?: string;
-  error?: string;
+  filename?: string;
+  error?: string | { code: string };
   text?: string;
 }
 
@@ -193,9 +194,9 @@ async function extractWithOEmbed(url: string, oEmbedEndpoint: string, platformNa
 }
 
 /**
- * Try Cobalt.tools API for audio extraction
+ * Try Cobalt.tools API for media extraction
  */
-async function extractWithCobalt(url: string): Promise<{
+async function extractWithCobalt(url: string, audioOnly: boolean = true): Promise<{
   audioUrl: string | null;
   success: boolean;
 }> {
@@ -204,10 +205,10 @@ async function extractWithCobalt(url: string): Promise<{
     'Accept': 'application/json',
     'Content-Type': 'application/json'
   };
-  const payload = {
+  const payload: Record<string, unknown> = {
     url,
-    aFormat: 'mp3',
-    isAudioOnly: true
+    downloadMode: audioOnly ? 'audio' : 'auto',
+    audioFormat: 'mp3'
   };
 
   log.debug('Tentativo cobalt.tools per audio', {
@@ -266,7 +267,7 @@ async function extractWithCobalt(url: string): Promise<{
       text: data.text
     });
 
-    if (data.status === 'success' || data.status === 'stream' || data.status === 'redirect') {
+    if (data.status === 'success' || data.status === 'stream' || data.status === 'redirect' || data.status === 'tunnel') {
       const audioUrl = data.url || data.audio || null;
 
       if (audioUrl) {
@@ -284,8 +285,9 @@ async function extractWithCobalt(url: string): Promise<{
     }
 
     // Handle specific Cobalt error statuses
+    const errorCode = typeof data.error === 'object' ? data.error?.code : data.error;
     const errorReason =
-      data.status === 'error' ? (data.text || data.error || 'Errore generico Cobalt') :
+      data.status === 'error' ? (errorCode || data.text || 'Errore generico Cobalt') :
       data.status === 'rate-limit' ? 'Rate limit Cobalt raggiunto' :
       data.status === 'picker' ? 'Cobalt richiede selezione manuale (picker)' :
       `Status Cobalt non gestito: ${data.status}`;
@@ -294,7 +296,7 @@ async function extractWithCobalt(url: string): Promise<{
       status: data.status,
       reason: errorReason,
       errorText: data.text,
-      errorField: data.error,
+      errorField: errorCode,
       instagramNote: url.includes('instagram') ?
         'Instagram spesso richiede autenticazione o blocca scraping automatico' : undefined
     });
@@ -716,6 +718,7 @@ export async function extractContent(url: string, options: ExtractContentOptions
   let caption: string | null = null;
   let thumbnailUrl: string | null = null;
   let audioUrl: string | null = null;
+  let videoUrl: string | null = null;
   let authorName: string | null = null;
   let musicInfo: { title: string; artist: string } | null = null;
 
@@ -728,6 +731,7 @@ export async function extractContent(url: string, options: ExtractContentOptions
       caption = igResult.caption;
       thumbnailUrl = igResult.thumbnailUrl;
       audioUrl = igResult.videoUrl;
+      videoUrl = igResult.videoUrl;
       musicInfo = igResult.musicInfo;
       log.info('Instagram API ha fornito dati', {
         hasCaption: !!caption,
@@ -780,11 +784,27 @@ export async function extractContent(url: string, options: ExtractContentOptions
     }
   }
 
-  // Step 4: Try Cobalt for audio extraction (only if enabled and no audio yet)
-  if (cobaltEnabled && !audioUrl) {
-    log.debug('Step 4: Tentativo estrazione audio con Cobalt');
-    const cobaltResult = await extractWithCobalt(url);
-    audioUrl = cobaltResult.audioUrl;
+  // Step 4: Try Cobalt for audio + video extraction (only if enabled)
+  if (cobaltEnabled) {
+    const promises: Promise<{ audioUrl: string | null; success: boolean }>[] = [];
+
+    if (!audioUrl) {
+      log.debug('Step 4a: Tentativo estrazione audio con Cobalt');
+      promises.push(extractWithCobalt(url, true));
+    } else {
+      promises.push(Promise.resolve({ audioUrl, success: true }));
+    }
+
+    if (!videoUrl) {
+      log.debug('Step 4b: Tentativo estrazione video con Cobalt');
+      promises.push(extractWithCobalt(url, false));
+    } else {
+      promises.push(Promise.resolve({ audioUrl: videoUrl, success: true }));
+    }
+
+    const [audioResult, videoResult] = await Promise.all(promises);
+    if (!audioUrl && audioResult.audioUrl) audioUrl = audioResult.audioUrl;
+    if (!videoUrl && videoResult.audioUrl) videoUrl = videoResult.audioUrl;
   } else if (!audioUrl) {
     log.debug('Step 4: Nessuna estrazione audio (Cobalt disabilitato o audio già presente)');
   }
@@ -794,6 +814,7 @@ export async function extractContent(url: string, options: ExtractContentOptions
     caption,
     thumbnailUrl,
     audioUrl,
+    videoUrl,
     hasAudio: !!audioUrl,
     hasCaption: !!caption,
     musicInfo
@@ -804,12 +825,14 @@ export async function extractContent(url: string, options: ExtractContentOptions
     captionLength: caption?.length || 0,
     hasThumbnail: !!thumbnailUrl,
     hasAudio: !!audioUrl,
+    hasVideo: !!videoUrl,
     authorName,
     platform,
     summary: {
       caption: caption ? truncate(caption, 80) : '[MANCANTE]',
       thumbnailUrl: thumbnailUrl ? truncate(thumbnailUrl, 80) : '[MANCANTE]',
-      audioUrl: audioUrl ? truncate(audioUrl, 80) : '[MANCANTE - Instagram potrebbe richiedere interazione]'
+      audioUrl: audioUrl ? truncate(audioUrl, 80) : '[MANCANTE]',
+      videoUrl: videoUrl ? truncate(videoUrl, 80) : '[MANCANTE]'
     }
   });
 

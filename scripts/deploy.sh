@@ -7,6 +7,10 @@ echo "==================="
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
+# Bump version
+echo ""
+NEW_VERSION=$("$PROJECT_DIR/scripts/bump-version.sh")
+
 # Build frontend
 echo ""
 echo "📦 Build frontend..."
@@ -27,4 +31,4 @@ echo "☁️ Deploy su Firebase..."
 firebase deploy
 
 echo ""
-echo "✅ Deploy completato!"
+echo "✅ Deploy v$NEW_VERSION completato!"

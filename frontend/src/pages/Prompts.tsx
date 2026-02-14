@@ -19,6 +19,7 @@ export function Prompts() {
 
   const promptLabels: Record<PromptId, { icon: string; label: string }> = {
     contentAnalysis: { icon: 'AI', label: t.contentAnalysis },
+    mediaAnalysis: { icon: 'AV', label: t.mediaAnalysisPrompt },
     telegramResponse: { icon: 'TG', label: t.telegramResponse },
     enrichment: { icon: '🔍', label: t.enrichmentPrompt }
   };

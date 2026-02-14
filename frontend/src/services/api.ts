@@ -96,6 +96,11 @@ export async function deleteAllEntries(): Promise<{ success: boolean; deleted: n
 export interface FeaturesConfig {
   cobaltEnabled: boolean;
   allowDuplicateUrls: boolean;
+  autoEnrichEnabled: boolean;
+  mediaAnalysisEnabled: boolean;
+  useVertexAi: boolean;
+  transcriptionEnabled: boolean;
+  aiAnalysisEnabled: boolean;
 }
 
 export async function getFeatures(): Promise<FeaturesConfig> {

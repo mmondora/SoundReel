@@ -3,8 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { initiateSpotifyAuth, exchangeCodeForTokens } from '../services/spotify';
-import { getFeatures, updateFeatures, FeaturesConfig, getInstagramConfig, updateInstagramConfig, InstagramConfigResponse, getOpenAIConfig, updateOpenAIConfig, OpenAIConfigResponse } from '../services/api';
-import { useLanguage, Language } from '../i18n';
+import { getFeatures, updateFeatures, FeaturesConfig, getInstagramConfig, updateInstagramConfig, InstagramConfigResponse, getOpenAIConfig, updateOpenAIConfig, OpenAIConfigResponse, deleteAllEntries } from '../services/api';
+import { useLanguage, Language, interpolate } from '../i18n';
 import type { SpotifyConfig } from '../types';
 
 export function Settings() {
@@ -24,6 +24,7 @@ export function Settings() {
   const [savingIg, setSavingIg] = useState(false);
   const [igMessage, setIgMessage] = useState<string | null>(null);
   const [showIgHowTo, setShowIgHowTo] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [savingFeatures, setSavingFeatures] = useState(false);
@@ -65,7 +66,7 @@ export function Settings() {
         setFeaturesConfig(features);
       } catch (err) {
         console.error('Error loading features:', err);
-        setFeaturesConfig({ cobaltEnabled: false, allowDuplicateUrls: false });
+        setFeaturesConfig({ cobaltEnabled: false, allowDuplicateUrls: false, autoEnrichEnabled: false, mediaAnalysisEnabled: false, useVertexAi: true, transcriptionEnabled: true, aiAnalysisEnabled: true });
       }
 
       // Load OpenAI config
@@ -125,6 +126,54 @@ export function Settings() {
     }
   }
 
+  async function handleToggleAutoEnrich() {
+    if (!featuresConfig) return;
+
+    setSavingFeatures(true);
+    try {
+      const newValue = !featuresConfig.autoEnrichEnabled;
+      const result = await updateFeatures({ autoEnrichEnabled: newValue });
+      setFeaturesConfig(result.config);
+    } catch (err) {
+      console.error('Error updating features:', err);
+      setError(t.errorSettings);
+    } finally {
+      setSavingFeatures(false);
+    }
+  }
+
+  async function handleToggleMediaAnalysis() {
+    if (!featuresConfig) return;
+
+    setSavingFeatures(true);
+    try {
+      const newValue = !featuresConfig.mediaAnalysisEnabled;
+      const result = await updateFeatures({ mediaAnalysisEnabled: newValue });
+      setFeaturesConfig(result.config);
+    } catch (err) {
+      console.error('Error updating features:', err);
+      setError(t.errorSettings);
+    } finally {
+      setSavingFeatures(false);
+    }
+  }
+
+  async function handleToggleFeature(field: keyof FeaturesConfig) {
+    if (!featuresConfig) return;
+
+    setSavingFeatures(true);
+    try {
+      const newValue = !featuresConfig[field];
+      const result = await updateFeatures({ [field]: newValue });
+      setFeaturesConfig(result.config);
+    } catch (err) {
+      console.error(`Error updating ${field}:`, err);
+      setError(t.errorSettings);
+    } finally {
+      setSavingFeatures(false);
+    }
+  }
+
   async function handleSaveOpenAI() {
     setSavingPplx(true);
     setPplxMessage(null);
@@ -166,6 +215,22 @@ export function Settings() {
       setIgMessage(t.instagramSaveError);
     } finally {
       setSavingIg(false);
+    }
+  }
+
+  async function handleDeleteAll() {
+    if (!confirm(interpolate(t.confirmDeleteAll, { count: '?' }))) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      const result = await deleteAllEntries();
+      alert(interpolate(t.deleted, { count: result.deleted }));
+    } catch (err) {
+      console.error('Error deleting:', err);
+      alert(t.errorDelete);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -311,6 +376,98 @@ export function Settings() {
               <span className="toggle-slider"></span>
             </label>
           </div>
+        </section>
+
+        {/* Pipeline Features Section */}
+        <section className="settings-section">
+          <h2>{t.pipelineFeatures}</h2>
+
+          <div className="feature-toggle">
+            <div className="feature-info">
+              <h3>{t.mediaAnalysis}</h3>
+              <p className="feature-description">{t.mediaAnalysisDescription}</p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={featuresConfig?.mediaAnalysisEnabled ?? false}
+                onChange={handleToggleMediaAnalysis}
+                disabled={savingFeatures}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div className="feature-toggle" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
+            <div className="feature-info">
+              <h3>{t.aiAnalysisToggle}</h3>
+              <p className="feature-description">{t.aiAnalysisToggleDescription}</p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={featuresConfig?.aiAnalysisEnabled ?? true}
+                onChange={() => handleToggleFeature('aiAnalysisEnabled')}
+                disabled={savingFeatures}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div className="feature-toggle" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
+            <div className="feature-info">
+              <h3>{t.transcriptionToggle}</h3>
+              <p className="feature-description">{t.transcriptionToggleDescription}</p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={featuresConfig?.transcriptionEnabled ?? true}
+                onChange={() => handleToggleFeature('transcriptionEnabled')}
+                disabled={savingFeatures}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div className="feature-toggle" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
+            <div className="feature-info">
+              <h3>{t.autoEnrich}</h3>
+              <p className="feature-description">{t.autoEnrichDescription}</p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={featuresConfig?.autoEnrichEnabled ?? false}
+                onChange={handleToggleAutoEnrich}
+                disabled={savingFeatures}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+        </section>
+
+        {/* Gemini Provider Section */}
+        <section className="settings-section">
+          <h2>{t.geminiProvider}</h2>
+          <div className="feature-toggle">
+            <div className="feature-info">
+              <h3>{t.useVertexAi}</h3>
+              <p className="feature-description">{t.useVertexAiDescription}</p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={featuresConfig?.useVertexAi ?? true}
+                onChange={() => handleToggleFeature('useVertexAi')}
+                disabled={savingFeatures}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+          {!featuresConfig?.useVertexAi && (
+            <p className="feature-warning">{t.vertexAiWarning}</p>
+          )}
         </section>
 
         {/* OpenAI Section */}
@@ -473,6 +630,24 @@ export function Settings() {
                 {t.instagramHowToSteps}
               </pre>
             )}
+          </div>
+        </section>
+
+        {/* Danger Zone */}
+        <section className="settings-section" style={{ borderColor: 'var(--error)', borderWidth: '1px' }}>
+          <h2 style={{ color: 'var(--error)' }}>{t.dangerZone}</h2>
+          <div className="feature-toggle">
+            <div className="feature-info">
+              <h3>{t.deleteAll}</h3>
+              <p className="feature-description">{t.deleteAllDescription}</p>
+            </div>
+            <button
+              className="delete-all-btn"
+              onClick={handleDeleteAll}
+              disabled={deleting}
+            >
+              {deleting ? t.deleting : t.deleteAll}
+            </button>
           </div>
         </section>
       </main>

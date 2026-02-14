@@ -162,6 +162,48 @@ export interface Translations {
   enrichError: string;
   retryError: string;
 
+  // Media Analysis & Auto-enrich
+  transcription: string;
+  visualContext: string;
+  overlayText: string;
+  autoEnrich: string;
+  autoEnrichDescription: string;
+  mediaAnalysis: string;
+  mediaAnalysisDescription: string;
+  mediaAnalysisPrompt: string;
+  pipelineFeatures: string;
+
+  // Gemini Provider
+  geminiProvider: string;
+  useVertexAi: string;
+  useVertexAiDescription: string;
+  vertexAiWarning: string;
+  aiAnalysisToggle: string;
+  aiAnalysisToggleDescription: string;
+  transcriptionToggle: string;
+  transcriptionToggleDescription: string;
+
+  // Inspector
+  selectEntry: string;
+  selectEntryHint: string;
+  openOriginal: string;
+  copyUrl: string;
+  urlCopied: string;
+  transcript: string;
+  deepSearch: string;
+  runDeepSearch: string;
+  timeAgo: string;
+  justNow: string;
+  minutesAgo: string;
+  hoursAgo: string;
+  yesterday: string;
+  daysAgo: string;
+  back: string;
+
+  // Danger Zone
+  dangerZone: string;
+  deleteAllDescription: string;
+
   // Errors
   errorGeneric: string;
   errorAnalysis: string;
@@ -251,8 +293,8 @@ export const translations: Record<Language, Translations> = {
     // Features
     audioExtraction: 'Estrazione Audio',
     cobaltTitle: 'Cobalt.tools',
-    cobaltDescription: 'Estrae l\'audio dai video per il riconoscimento musicale tramite AudD. Richiede autenticazione API.',
-    cobaltWarning: 'Cobalt potrebbe non funzionare con l\'API pubblica. Considera self-hosting.',
+    cobaltDescription: 'Estrae l\'audio dai video usando l\'istanza privata di Cobalt su Cloud Run per il riconoscimento musicale tramite AudD.',
+    cobaltWarning: 'Usa l\'istanza self-hosted su GCP (europe-west1). Nessuna API key richiesta.',
     allowDuplicates: 'Ammetti URL duplicati',
     allowDuplicatesDescription: 'Disabilita il controllo di idempotenza. Permette di analizzare lo stesso URL più volte (utile per test).',
 
@@ -335,6 +377,48 @@ export const translations: Record<Language, Translations> = {
     enrichmentsSection: 'Approfondimenti',
     enrichError: 'Errore durante l\'arricchimento',
     retryError: 'Errore durante la rianalisi',
+
+    // Media Analysis & Auto-enrich
+    transcription: 'Trascrizione',
+    visualContext: 'Contesto visivo',
+    overlayText: 'Testo nel video',
+    autoEnrich: 'Auto-enrichment',
+    autoEnrichDescription: 'Arricchisce automaticamente i risultati con link verificati dal web (OpenAI) al termine di ogni analisi.',
+    mediaAnalysis: 'Analisi media avanzata',
+    mediaAnalysisDescription: 'Scarica audio/video e li analizza con Gemini per trascrizione, riconoscimento scene e testo sovrapposto.',
+    mediaAnalysisPrompt: 'Analisi Media',
+    pipelineFeatures: 'Pipeline',
+
+    // Gemini Provider
+    geminiProvider: 'Gemini Provider',
+    useVertexAi: 'Usa Vertex AI',
+    useVertexAiDescription: 'Utilizza Vertex AI (GCP) invece di Google AI Studio. Vertex AI fattura sul progetto GCP.',
+    vertexAiWarning: 'Google AI Studio potrebbe avere quota esaurita. Vertex AI usa la fatturazione GCP.',
+    aiAnalysisToggle: 'Analisi AI',
+    aiAnalysisToggleDescription: 'Analizza il contenuto con Gemini per estrarre canzoni, film, note e tag.',
+    transcriptionToggle: 'Trascrizione audio',
+    transcriptionToggleDescription: 'Trascrive il parlato dall\'audio usando Gemini.',
+
+    // Inspector
+    selectEntry: 'Seleziona un\'entry per esplorare i dettagli',
+    selectEntryHint: 'Clicca su una card a sinistra',
+    openOriginal: 'Apri originale',
+    copyUrl: 'Copia URL',
+    urlCopied: 'URL copiato!',
+    transcript: 'Trascrizione',
+    deepSearch: 'Deep Search',
+    runDeepSearch: 'Esegui Deep Search',
+    timeAgo: 'fa',
+    justNow: 'adesso',
+    minutesAgo: '{count}m fa',
+    hoursAgo: '{count}h fa',
+    yesterday: 'ieri',
+    daysAgo: '{count}g fa',
+    back: '← Indietro',
+
+    // Danger Zone
+    dangerZone: 'Zona pericolosa',
+    deleteAllDescription: 'Elimina tutte le entry dal database. Questa azione non può essere annullata.',
 
     // Errors
     errorGeneric: 'Si è verificato un errore',
@@ -424,8 +508,8 @@ export const translations: Record<Language, Translations> = {
     // Features
     audioExtraction: 'Audio Extraction',
     cobaltTitle: 'Cobalt.tools',
-    cobaltDescription: 'Extracts audio from videos for music recognition via AudD. Requires API authentication.',
-    cobaltWarning: 'Cobalt may not work with the public API. Consider self-hosting.',
+    cobaltDescription: 'Extracts audio from videos using the private Cobalt instance on Cloud Run for music recognition via AudD.',
+    cobaltWarning: 'Uses the self-hosted instance on GCP (europe-west1). No API key required.',
     allowDuplicates: 'Allow duplicate URLs',
     allowDuplicatesDescription: 'Disable idempotency check. Allows analyzing the same URL multiple times (useful for testing).',
 
@@ -508,6 +592,48 @@ export const translations: Record<Language, Translations> = {
     enrichmentsSection: 'Deep Links',
     enrichError: 'Error during enrichment',
     retryError: 'Error during re-analysis',
+
+    // Media Analysis & Auto-enrich
+    transcription: 'Transcription',
+    visualContext: 'Visual context',
+    overlayText: 'Text in video',
+    autoEnrich: 'Auto-enrichment',
+    autoEnrichDescription: 'Automatically enrich results with verified web links (OpenAI) after each analysis.',
+    mediaAnalysis: 'Advanced media analysis',
+    mediaAnalysisDescription: 'Downloads audio/video and analyzes them with Gemini for transcription, scene recognition, and overlay text.',
+    mediaAnalysisPrompt: 'Media Analysis',
+    pipelineFeatures: 'Pipeline',
+
+    // Gemini Provider
+    geminiProvider: 'Gemini Provider',
+    useVertexAi: 'Use Vertex AI',
+    useVertexAiDescription: 'Use Vertex AI (GCP) instead of Google AI Studio. Vertex AI bills to the GCP project.',
+    vertexAiWarning: 'Google AI Studio quota may be exhausted. Vertex AI uses GCP billing.',
+    aiAnalysisToggle: 'AI Analysis',
+    aiAnalysisToggleDescription: 'Analyze content with Gemini to extract songs, films, notes, and tags.',
+    transcriptionToggle: 'Audio transcription',
+    transcriptionToggleDescription: 'Transcribes speech from audio using Gemini.',
+
+    // Inspector
+    selectEntry: 'Select an entry to explore details',
+    selectEntryHint: 'Click a card on the left',
+    openOriginal: 'Open original',
+    copyUrl: 'Copy URL',
+    urlCopied: 'URL copied!',
+    transcript: 'Transcript',
+    deepSearch: 'Deep Search',
+    runDeepSearch: 'Run Deep Search',
+    timeAgo: 'ago',
+    justNow: 'just now',
+    minutesAgo: '{count}m ago',
+    hoursAgo: '{count}h ago',
+    yesterday: 'yesterday',
+    daysAgo: '{count}d ago',
+    back: '← Back',
+
+    // Danger Zone
+    dangerZone: 'Danger Zone',
+    deleteAllDescription: 'Delete all entries from the database. This action cannot be undone.',
 
     // Errors
     errorGeneric: 'An error occurred',

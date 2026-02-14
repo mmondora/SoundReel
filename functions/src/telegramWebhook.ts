@@ -105,7 +105,12 @@ interface AnalyzeResult {
 }
 
 async function formatTelegramResponse(result: AnalyzeResult, entryId: string): Promise<string> {
-  const { songs, films, notes, links, tags } = result.entry?.results || { songs: [], films: [], notes: [], links: [], tags: [] };
+  const results = result.entry?.results || { songs: [], films: [], notes: [], links: [], tags: [] };
+  const { songs, films, notes, links, tags } = results;
+  const rawTranscript = (results as Record<string, unknown>).transcript as string | null | undefined;
+  const transcript = rawTranscript
+    ? (rawTranscript.length > 500 ? rawTranscript.substring(0, 500) + '...' : rawTranscript)
+    : null;
 
   try {
     const promptConfig = await getPrompt('telegramResponse');
@@ -120,6 +125,8 @@ async function formatTelegramResponse(result: AnalyzeResult, entryId: string): P
       hasNotes: notes.length > 0,
       hasLinks: links.length > 0,
       hasTags: tags.length > 0,
+      hasTranscript: !!transcript,
+      transcript,
       frontendUrl: `https://soundreel-776c1.web.app/#${entryId}`
     });
 

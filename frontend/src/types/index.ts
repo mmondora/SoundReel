@@ -51,7 +51,11 @@ export interface EntryResults {
   links: ExtractedLink[];
   tags: string[];
   summary?: string | null;
+  transcript?: string | null;
   enrichments?: EnrichmentItem[];
+  transcription?: string | null;
+  visualContext?: string | null;
+  overlayText?: string | null;
 }
 
 export type SocialPlatform =
@@ -78,6 +82,7 @@ export interface Entry {
   inputChannel: 'telegram' | 'web';
   caption: string | null;
   thumbnailUrl: string | null;
+  mediaUrl: string | null;
   status: 'processing' | 'completed' | 'error';
   results: EntryResults;
   actionLog: ActionLogItem[];
@@ -103,6 +108,8 @@ export interface SpotifyConfig {
 export interface FeaturesConfig {
   cobaltEnabled: boolean;
   allowDuplicateUrls: boolean;
+  autoEnrichEnabled: boolean;
+  mediaAnalysisEnabled: boolean;
 }
 
 export interface PromptTemplate {
@@ -117,6 +124,7 @@ export interface PromptsConfig {
   contentAnalysis: PromptTemplate;
   telegramResponse: PromptTemplate;
   enrichment: PromptTemplate;
+  mediaAnalysis: PromptTemplate;
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';

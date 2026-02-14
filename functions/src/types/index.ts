@@ -51,7 +51,11 @@ export interface EntryResults {
   links: ExtractedLink[];
   tags: string[];
   summary: string | null;
+  transcript?: string | null;
   enrichments?: EnrichmentItem[];
+  transcription?: string | null;
+  visualContext?: string | null;
+  overlayText?: string | null;
 }
 
 export type SocialPlatform =
@@ -78,6 +82,7 @@ export interface Entry {
   inputChannel: 'telegram' | 'web';
   caption: string | null;
   thumbnailUrl: string | null;
+  mediaUrl: string | null;
   status: 'processing' | 'completed' | 'error';
   results: EntryResults;
   actionLog: ActionLogItem[];
@@ -93,6 +98,7 @@ export interface ExtractedContent {
   caption: string | null;
   thumbnailUrl: string | null;
   audioUrl: string | null;
+  videoUrl: string | null;
   hasAudio: boolean;
   hasCaption: boolean;
   musicInfo: MusicMetadata | null;
@@ -115,6 +121,18 @@ export interface AiAnalysisResult {
   summary: string | null;
 }
 
+export interface MediaAiAnalysisResult extends AiAnalysisResult {
+  transcription: string | null;
+  visualContext: string | null;
+  overlayText: string | null;
+}
+
+export interface DownloadedMedia {
+  buffer: Buffer;
+  mimeType: string;
+  sizeBytes: number;
+}
+
 export interface AudioRecognitionResult {
   title: string;
   artist: string;
@@ -134,6 +152,13 @@ export interface TmdbSearchResult {
   imdbId: string | null;
   posterPath: string | null;
   releaseDate: string | null;
+}
+
+export interface GeminiUsageMetadata {
+  promptTokenCount: number;
+  candidatesTokenCount: number;
+  totalTokenCount: number;
+  estimatedCostUSD: number;
 }
 
 export interface SpotifyTokens {

@@ -4,13 +4,13 @@ import { logInfo, logError } from './utils/logger';
 import { invalidateCache, getDefaultPrompts, type PromptsConfig } from './services/promptLoader';
 
 interface UpdatePromptRequest {
-  promptId: 'contentAnalysis' | 'telegramResponse' | 'enrichment';
+  promptId: 'contentAnalysis' | 'telegramResponse' | 'enrichment' | 'mediaAnalysis';
   template: string;
   name?: string;
   description?: string;
 }
 
-const VALID_PROMPT_IDS: Array<keyof PromptsConfig> = ['contentAnalysis', 'telegramResponse'];
+const VALID_PROMPT_IDS: Array<keyof PromptsConfig> = ['contentAnalysis', 'telegramResponse', 'mediaAnalysis'];
 
 export const updatePrompt = onRequest(
   {
@@ -104,7 +104,8 @@ export const getPrompts = onRequest(
       const prompts: PromptsConfig = {
         contentAnalysis: data.contentAnalysis || defaults.contentAnalysis,
         telegramResponse: data.telegramResponse || defaults.telegramResponse,
-        enrichment: data.enrichment || defaults.enrichment
+        enrichment: data.enrichment || defaults.enrichment,
+        mediaAnalysis: data.mediaAnalysis || defaults.mediaAnalysis
       };
 
       res.json({

@@ -1,45 +1,48 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { defineSecret } from 'firebase-functions/params';
+import { generateContent, geminiApiKey } from './geminiClient';
 import { logInfo, logWarning, logError } from '../utils/logger';
 import { getPrompt, renderTemplate } from './promptLoader';
-import type { AiAnalysisResult } from '../types';
+import type { AiAnalysisResult, MediaAiAnalysisResult, DownloadedMedia, GeminiUsageMetadata } from '../types';
 
-const geminiApiKey = defineSecret('GEMINI_API_KEY');
+type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
+
+export interface AiAnalysisResponse {
+  result: AiAnalysisResult | MediaAiAnalysisResult;
+  usageMetadata: GeminiUsageMetadata | null;
+}
 
 export async function analyzeWithAi(
   caption: string | null,
-  thumbnailUrl: string | null
-): Promise<AiAnalysisResult> {
+  thumbnailUrl: string | null,
+  media?: DownloadedMedia | null,
+  transcript?: string | null,
+  useVertexAi: boolean = true
+): Promise<AiAnalysisResponse> {
   const emptyResult: AiAnalysisResult = { songs: [], films: [], notes: [], links: [], tags: [], summary: null };
 
-  if (!caption && !thumbnailUrl) {
+  if (!caption && !thumbnailUrl && !media) {
     logInfo('Nessun contenuto da analizzare con AI');
-    return emptyResult;
+    return { result: emptyResult, usageMetadata: null };
   }
 
   try {
-    const apiKey = geminiApiKey.value();
-    if (!apiKey) {
-      logWarning('GEMINI_API_KEY non configurata');
-      return emptyResult;
-    }
+    const useMediaPrompt = !!media;
+    logInfo('Analisi AI con Gemini', { hasCaption: !!caption, hasThumbnail: !!thumbnailUrl, hasMedia: !!media, useMediaPrompt, useVertexAi });
 
-    logInfo('Analisi AI con Gemini', { hasCaption: !!caption, hasThumbnail: !!thumbnailUrl });
-
-    // Carica il prompt da Firestore (con cache)
-    const promptConfig = await getPrompt('contentAnalysis');
+    // Choose prompt based on media availability
+    const promptId = useMediaPrompt ? 'mediaAnalysis' : 'contentAnalysis';
+    const promptConfig = await getPrompt(promptId);
     const prompt = renderTemplate(promptConfig.template, {
       caption: caption || '[nessuna caption]',
-      hasImage: !!thumbnailUrl
+      hasImage: !!thumbnailUrl,
+      transcript: transcript || null,
+      hasTranscript: !!transcript
     });
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
-    const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
+    const parts: GeminiPart[] = [
       { text: prompt }
     ];
 
+    // Add thumbnail image
     if (thumbnailUrl) {
       try {
         const imageResponse = await fetch(thumbnailUrl);
@@ -60,19 +63,30 @@ export async function analyzeWithAi(
       }
     }
 
-    const result = await model.generateContent(parts);
-    const response = result.response;
-    const text = response.text();
+    // Add media (audio/video) if available
+    if (media) {
+      const base64Media = media.buffer.toString('base64');
+      parts.push({
+        inlineData: {
+          mimeType: media.mimeType,
+          data: base64Media
+        }
+      });
+      logInfo('Media aggiunto al prompt AI', { mimeType: media.mimeType, sizeBytes: media.sizeBytes });
+    }
+
+    const response = await generateContent(parts, useVertexAi);
+    const text = response.text;
 
     logInfo('Risposta Gemini ricevuta', { length: text.length });
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       logWarning('Nessun JSON trovato nella risposta Gemini');
-      return emptyResult;
+      return { result: emptyResult, usageMetadata: response.usageMetadata };
     }
 
-    const parsed = JSON.parse(jsonMatch[0]) as AiAnalysisResult;
+    const parsed = JSON.parse(jsonMatch[0]);
 
     logInfo('AI analisi completata', {
       songs: parsed.songs?.length || 0,
@@ -80,10 +94,13 @@ export async function analyzeWithAi(
       notes: parsed.notes?.length || 0,
       links: parsed.links?.length || 0,
       tags: parsed.tags?.length || 0,
-      hasSummary: !!parsed.summary
+      hasSummary: !!parsed.summary,
+      hasTranscription: !!parsed.transcription,
+      hasVisualContext: !!parsed.visualContext,
+      hasOverlayText: !!parsed.overlayText
     });
 
-    return {
+    const baseResult: AiAnalysisResult = {
       songs: parsed.songs || [],
       films: parsed.films || [],
       notes: parsed.notes || [],
@@ -91,9 +108,23 @@ export async function analyzeWithAi(
       tags: parsed.tags || [],
       summary: parsed.summary || null
     };
+
+    if (useMediaPrompt) {
+      return {
+        result: {
+          ...baseResult,
+          transcription: parsed.transcription || null,
+          visualContext: parsed.visualContext || null,
+          overlayText: parsed.overlayText || null
+        } as MediaAiAnalysisResult,
+        usageMetadata: response.usageMetadata
+      };
+    }
+
+    return { result: baseResult, usageMetadata: response.usageMetadata };
   } catch (error) {
     logError('Errore analisi AI', error);
-    return emptyResult;
+    return { result: emptyResult, usageMetadata: null };
   }
 }
 

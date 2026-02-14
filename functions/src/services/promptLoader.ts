@@ -14,6 +14,7 @@ export interface PromptsConfig {
   contentAnalysis: PromptTemplate;
   telegramResponse: PromptTemplate;
   enrichment: PromptTemplate;
+  mediaAnalysis: PromptTemplate;
 }
 
 const DEFAULT_PROMPTS: PromptsConfig = {
@@ -50,6 +51,11 @@ Per i TAG estrai tutti gli hashtag (#esempio) e le menzioni (@utente).
 Caption del post:
 "{{caption}}"
 
+{{#if hasTranscript}}
+Trascrizione audio del video:
+"{{transcript}}"
+{{/if}}
+
 {{#if hasImage}}[Thumbnail del post allegata come immagine]{{/if}}
 
 IMPORTANTE: Se trovi artisti musicali menzionati (anche solo negli hashtag), includili come canzoni usando la loro hit più famosa.
@@ -73,7 +79,7 @@ Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti, senza a
 }
 
 Se non trovi nulla, rispondi: { "songs": [], "films": [], "notes": [], "links": [], "tags": [], "summary": null }`,
-    variables: ['caption', 'hasImage'],
+    variables: ['caption', 'hasImage', 'transcript', 'hasTranscript'],
     updatedAt: new Date().toISOString()
   },
   enrichment: {
@@ -119,6 +125,62 @@ Se non trovi nulla di rilevante, rispondi con un array vuoto: []`,
     variables: ['songs', 'films', 'notes', 'tags', 'caption'],
     updatedAt: new Date().toISOString()
   },
+  mediaAnalysis: {
+    name: 'Analisi Media (Audio/Video)',
+    description: 'Prompt per analizzare audio e video con trascrizione, riconoscimento musica e descrizione visiva',
+    template: `Analizza in dettaglio questo contenuto multimediale proveniente da un post social.
+
+{{#if caption}}Caption del post: "{{caption}}"{{/if}}
+
+{{#if hasImage}}[Thumbnail del post allegata come immagine]{{/if}}
+
+[File media (audio/video) allegato]
+
+Esegui TUTTE le seguenti analisi:
+
+1. TRASCRIZIONE: Trascrivi FEDELMENTE tutto il parlato, i dialoghi, la voce narrante e qualsiasi testo pronunciato nel media. Se non c'è parlato, scrivi null.
+
+2. MUSICA: Identifica canzoni in sottofondo o cantate. Per ciascuna indica titolo, artista e album se possibile.
+
+3. FILM/SERIE: Identifica riferimenti a film, serie TV, scene o citazioni riconoscibili.
+
+4. CONTESTO VISIVO: Descrivi brevemente le scene principali del video: ambientazioni, persone, azioni, prodotti mostrati, brand visibili.
+
+5. TESTO SOVRAPPOSTO: Trascrivi qualsiasi testo che appare sovrapposto nel video (sottotitoli aggiunti, didascalie, scritte grafiche). Se non c'è testo sovrapposto, scrivi null.
+
+6. NOTE: Estrai osservazioni utili (luoghi, eventi, brand, libri, prodotti, citazioni, persone) con le categorie appropriate.
+
+7. LINK: Estrai tutti gli URL presenti nel testo o mostrati nel video.
+
+8. TAG: Estrai hashtag e menzioni.
+
+9. SUMMARY: Un breve riassunto di 1-2 frasi del contenuto complessivo.
+
+Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
+{
+  "transcription": "trascrizione completa del parlato o null",
+  "songs": [
+    { "title": "nome canzone", "artist": "artista", "album": "album o null" }
+  ],
+  "films": [
+    { "title": "titolo", "director": "regista o null", "year": "anno o null" }
+  ],
+  "visualContext": "descrizione delle scene principali del video o null",
+  "overlayText": "testo sovrapposto nel video o null",
+  "notes": [
+    { "text": "descrizione", "category": "place|event|brand|book|product|quote|person|other" }
+  ],
+  "links": [
+    { "url": "https://...", "label": "descrizione del link o null" }
+  ],
+  "tags": ["#hashtag", "@utente"],
+  "summary": "breve riassunto di 1-2 frasi"
+}
+
+Se non trovi nulla per un campo, usa un array vuoto [] o null.`,
+    variables: ['caption', 'hasImage'],
+    updatedAt: new Date().toISOString()
+  },
   telegramResponse: {
     name: 'Risposta Telegram',
     description: 'Template per la risposta del bot dopo l\'analisi',
@@ -156,10 +218,15 @@ Se non trovi nulla di rilevante, rispondi con un array vuoto: []`,
 🏷 {{#each tags}}{{this}} {{/each}}
 {{/if}}
 
+{{#if hasTranscript}}
+💬 Trascrizione:
+{{transcript}}
+{{/if}}
+
 {{#unless hasSongs}}{{#unless hasFilms}}{{#unless hasNotes}}{{#unless hasLinks}}{{#unless hasTags}}
 ❌ Nessun contenuto identificato.
 {{/unless}}{{/unless}}{{/unless}}{{/unless}}{{/unless}}`,
-    variables: ['songs', 'films', 'notes', 'links', 'tags', 'hasSongs', 'hasFilms', 'hasNotes', 'hasLinks', 'hasTags', 'frontendUrl'],
+    variables: ['songs', 'films', 'notes', 'links', 'tags', 'hasSongs', 'hasFilms', 'hasNotes', 'hasLinks', 'hasTags', 'hasTranscript', 'transcript', 'frontendUrl'],
     updatedAt: new Date().toISOString()
   }
 };
@@ -190,7 +257,8 @@ export async function getPrompts(): Promise<PromptsConfig> {
     cachedPrompts = {
       contentAnalysis: data.contentAnalysis || DEFAULT_PROMPTS.contentAnalysis,
       telegramResponse: data.telegramResponse || DEFAULT_PROMPTS.telegramResponse,
-      enrichment: data.enrichment || DEFAULT_PROMPTS.enrichment
+      enrichment: data.enrichment || DEFAULT_PROMPTS.enrichment,
+      mediaAnalysis: data.mediaAnalysis || DEFAULT_PROMPTS.mediaAnalysis
     };
     cacheTimestamp = now;
 
