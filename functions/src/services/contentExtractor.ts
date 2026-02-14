@@ -315,10 +315,9 @@ async function extractWithCobalt(url: string): Promise<{
 /**
  * Scrape OG meta tags as fallback
  */
-async function scrapeOgMeta(url: string, cookies?: InstagramCookies): Promise<{
+async function scrapeOgMeta(url: string): Promise<{
   caption: string | null;
   thumbnailUrl: string | null;
-  videoUrl: string | null;
 }> {
   const startTime = Date.now();
   const requestHeaders: Record<string, string> = {
@@ -327,11 +326,6 @@ async function scrapeOgMeta(url: string, cookies?: InstagramCookies): Promise<{
     'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
     'Cache-Control': 'no-cache'
   };
-
-  if (cookies) {
-    requestHeaders['Cookie'] = `sessionid=${cookies.sessionId}; csrftoken=${cookies.csrfToken}; ds_user_id=${cookies.dsUserId}`;
-    log.info('OG scraping con cookie Instagram', { hasCookies: true });
-  }
 
   log.debug('Tentativo OG scraping', {
     requestUrl: url,
@@ -367,7 +361,7 @@ async function scrapeOgMeta(url: string, cookies?: InstagramCookies): Promise<{
                 response.status === 429 ? 'Rate limit' :
                 'Errore HTTP'
       });
-      return { caption: null, thumbnailUrl: null, videoUrl: null };
+      return { caption: null, thumbnailUrl: null };
     }
 
     const html = await response.text();
@@ -406,13 +400,6 @@ async function scrapeOgMeta(url: string, cookies?: InstagramCookies): Promise<{
     const caption = rawCaption ? decodeHtmlEntities(rawCaption) : null;
     const thumbnailUrl = ogTags['og:image'] || null;
 
-    // Extract video URL from og:video or Instagram embedded data
-    let videoUrl: string | null = ogTags['og:video'] || ogTags['og:video:secure_url'] || null;
-
-    if (!videoUrl && cookies && url.includes('instagram')) {
-      videoUrl = extractInstagramVideoUrl(html);
-    }
-
     // Check for Instagram-specific issues
     if (url.includes('instagram')) {
       const isLoginPage = html.includes('loginForm') || html.includes('Log in to Instagram');
@@ -432,11 +419,10 @@ async function scrapeOgMeta(url: string, cookies?: InstagramCookies): Promise<{
     log.info('OG scraping completato', {
       hasCaption: !!caption,
       captionPreview: caption ? truncate(caption, 100) : null,
-      hasThumbnail: !!thumbnailUrl,
-      hasVideo: !!videoUrl
+      hasThumbnail: !!thumbnailUrl
     });
 
-    return { caption, thumbnailUrl, videoUrl };
+    return { caption, thumbnailUrl };
 
   } catch (error) {
     const durationMs = Date.now() - startTime;
@@ -445,67 +431,117 @@ async function scrapeOgMeta(url: string, cookies?: InstagramCookies): Promise<{
       durationMs,
       errorMessage: error instanceof Error ? error.message : String(error)
     });
-    return { caption: null, thumbnailUrl: null, videoUrl: null };
+    return { caption: null, thumbnailUrl: null };
   }
 }
 
 /**
- * Extract video URL from Instagram's authenticated HTML page.
- * Instagram embeds video URLs in multiple places when authenticated:
- * - JSON-LD structured data
- * - Inline script data (window.__additionalDataLoaded, etc.)
- * - Direct video_url fields in embedded JSON
+ * Convert Instagram shortcode to numeric media ID.
+ * Instagram uses a custom base64 encoding for shortcodes.
  */
-function extractInstagramVideoUrl(html: string): string | null {
-  // Method 1: JSON-LD contentUrl
-  try {
-    const ldJsonRegex = /<script\s+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-    let ldMatch;
-    while ((ldMatch = ldJsonRegex.exec(html)) !== null) {
-      try {
-        const ldData = JSON.parse(ldMatch[1]);
-        const contentUrl = ldData.contentUrl || ldData.video?.contentUrl;
-        if (contentUrl && typeof contentUrl === 'string') {
-          log.info('Instagram video URL trovato via JSON-LD', {
-            urlPreview: truncate(contentUrl, 200)
-          });
-          return contentUrl;
-        }
-      } catch { /* not valid JSON, skip */ }
-    }
-  } catch { /* regex failed, continue */ }
+function shortcodeToMediaId(shortcode: string): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  let mediaId = BigInt(0);
+  for (const char of shortcode) {
+    mediaId = mediaId * BigInt(64) + BigInt(alphabet.indexOf(char));
+  }
+  return mediaId.toString();
+}
 
-  // Method 2: video_url in inline script data
-  try {
-    const videoUrlRegex = /"video_url"\s*:\s*"([^"]+)"/g;
-    const videoMatch = videoUrlRegex.exec(html);
-    if (videoMatch?.[1]) {
-      const videoUrl = videoMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-      log.info('Instagram video URL trovato via inline script', {
-        urlPreview: truncate(videoUrl, 200)
-      });
-      return videoUrl;
-    }
-  } catch { /* regex failed, continue */ }
+/**
+ * Extract shortcode from an Instagram URL.
+ * Supports /reel/XXX/, /p/XXX/, /tv/XXX/
+ */
+function extractShortcode(url: string): string | null {
+  const match = url.match(/instagram\.com\/(?:reel|p|tv)\/([A-Za-z0-9_-]+)/);
+  return match?.[1] || null;
+}
 
-  // Method 3: video_versions array (highest quality first)
+/**
+ * Fetch Instagram media data via the private API.
+ * Uses i.instagram.com/api/v1/media/{id}/info/ with session cookies.
+ * This works from datacenter IPs unlike HTML scraping.
+ */
+async function fetchInstagramApi(url: string, cookies: InstagramCookies): Promise<{
+  caption: string | null;
+  thumbnailUrl: string | null;
+  videoUrl: string | null;
+  success: boolean;
+}> {
+  const shortcode = extractShortcode(url);
+  if (!shortcode) {
+    log.warn('Instagram: impossibile estrarre shortcode dall\'URL', { url });
+    return { caption: null, thumbnailUrl: null, videoUrl: null, success: false };
+  }
+
+  const mediaId = shortcodeToMediaId(shortcode);
+  const apiUrl = `https://i.instagram.com/api/v1/media/${mediaId}/info/`;
+
+  log.debug('Instagram API request', { shortcode, mediaId, apiUrl });
+
+  const startTime = Date.now();
   try {
-    const versionsRegex = /"video_versions"\s*:\s*\[([\s\S]*?)\]/g;
-    const versionsMatch = versionsRegex.exec(html);
-    if (versionsMatch?.[1]) {
-      const urlInVersion = /"url"\s*:\s*"([^"]+)"/.exec(versionsMatch[1]);
-      if (urlInVersion?.[1]) {
-        const videoUrl = urlInVersion[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-        log.info('Instagram video URL trovato via video_versions', {
-          urlPreview: truncate(videoUrl, 200)
-        });
-        return videoUrl;
+    const response = await fetch(apiUrl, {
+      headers: {
+        'User-Agent': 'Instagram 275.0.0.27.98 Android (33/13; 440dpi; 1080x2400; samsung; SM-G991B; o1s; exynos2100)',
+        'Cookie': `sessionid=${cookies.sessionId}; csrftoken=${cookies.csrfToken}; ds_user_id=${cookies.dsUserId}`,
+        'X-CSRFToken': cookies.csrfToken,
+        'X-IG-App-ID': '936619743392459',
+        'Accept': '*/*',
       }
-    }
-  } catch { /* regex failed, continue */ }
+    });
 
-  log.debug('Nessun video URL trovato nell\'HTML Instagram');
-  return null;
+    const durationMs = Date.now() - startTime;
+
+    if (!response.ok) {
+      log.warn('Instagram API errore', {
+        status: response.status,
+        durationMs,
+        shortcode
+      });
+      return { caption: null, thumbnailUrl: null, videoUrl: null, success: false };
+    }
+
+    const data = await response.json();
+    const item = data?.items?.[0];
+
+    if (!item) {
+      log.warn('Instagram API: nessun item trovato', { shortcode, mediaId });
+      return { caption: null, thumbnailUrl: null, videoUrl: null, success: false };
+    }
+
+    // Extract caption
+    const caption = item.caption?.text || null;
+
+    // Extract video URL (first video version = highest quality)
+    let videoUrl: string | null = null;
+    if (item.video_versions?.length > 0) {
+      videoUrl = item.video_versions[0].url || null;
+    }
+
+    // Extract thumbnail
+    const thumbnailUrl = item.image_versions2?.candidates?.[0]?.url || null;
+
+    log.info('Instagram API estrazione riuscita', {
+      durationMs,
+      hasCaption: !!caption,
+      captionPreview: caption ? truncate(caption, 100) : null,
+      hasVideo: !!videoUrl,
+      hasThumbnail: !!thumbnailUrl,
+      mediaType: item.media_type,
+      hasAudio: item.has_audio
+    });
+
+    return { caption, thumbnailUrl, videoUrl, success: true };
+
+  } catch (error) {
+    const durationMs = Date.now() - startTime;
+    log.error('Instagram API errore di rete', error instanceof Error ? error : new Error(String(error)), {
+      apiUrl,
+      durationMs
+    });
+    return { caption: null, thumbnailUrl: null, videoUrl: null, success: false };
+  }
 }
 
 import type { SocialPlatform } from '../types';
@@ -649,12 +685,28 @@ export async function extractContent(url: string, options: ExtractContentOptions
   let audioUrl: string | null = null;
   let authorName: string | null = null;
 
-  // Step 1: Try oEmbed if platform supports it (best source for metadata)
-  // Skip oEmbed for Instagram — their endpoint requires a Facebook Graph API token,
-  // session cookies don't work. Go straight to OG scraping with cookies instead.
-  const skipOEmbed = platform === 'instagram';
-  if (platformConfig?.oEmbedUrl && !skipOEmbed) {
-    log.debug(`Step 1: Tentativo oEmbed (${platform})`);
+  // Step 1: For Instagram with cookies, use the private API (works from datacenter IPs)
+  if (platform === 'instagram' && instagramCookies) {
+    log.debug('Step 1: Instagram API (private endpoint)');
+    const igResult = await fetchInstagramApi(url, instagramCookies);
+
+    if (igResult.success) {
+      caption = igResult.caption;
+      thumbnailUrl = igResult.thumbnailUrl;
+      audioUrl = igResult.videoUrl;
+      log.info('Instagram API ha fornito dati', {
+        hasCaption: !!caption,
+        hasThumbnail: !!thumbnailUrl,
+        hasVideo: !!audioUrl
+      });
+    } else {
+      log.warn('Instagram API fallita, fallback su OG scraping');
+    }
+  }
+
+  // Step 2: Try oEmbed if platform supports it (skip for Instagram)
+  if (!caption && !thumbnailUrl && platformConfig?.oEmbedUrl && platform !== 'instagram') {
+    log.debug(`Step 2: Tentativo oEmbed (${platform})`);
     const oembedResult = await extractWithOEmbed(url, platformConfig.oEmbedUrl, platform);
 
     if (oembedResult.success) {
@@ -671,24 +723,17 @@ export async function extractContent(url: string, options: ExtractContentOptions
     } else {
       log.debug('oEmbed non ha fornito risultati, procedo con OG scraping');
     }
-  } else {
-    log.debug(`Step 1: Skip oEmbed (${skipOEmbed ? 'Instagram richiede Graph API token' : `${platform} non lo supporta`})`);
   }
 
-  // Step 2: OG scraping as fallback or primary (if no oEmbed)
+  // Step 3: OG scraping as fallback
   if (!caption || !thumbnailUrl) {
-    log.debug('Step 2: OG scraping', {
-      reason: !platformConfig?.oEmbedUrl ? `${platform} non supporta oEmbed` :
-              !caption && !thumbnailUrl ? 'oEmbed non ha fornito dati' :
-              !caption ? 'Manca caption da oEmbed' : 'Manca thumbnail da oEmbed'
+    log.debug('Step 3: OG scraping', {
+      reason: !caption && !thumbnailUrl ? 'Dati mancanti' :
+              !caption ? 'Manca caption' : 'Manca thumbnail'
     });
 
-    const ogResult = await scrapeOgMeta(
-      url,
-      platform === 'instagram' ? instagramCookies : undefined
-    );
+    const ogResult = await scrapeOgMeta(url);
 
-    // Use OG results only for missing data
     if (!caption && ogResult.caption) {
       caption = ogResult.caption;
       log.debug('Caption ottenuta da OG scraping');
@@ -697,21 +742,15 @@ export async function extractContent(url: string, options: ExtractContentOptions
       thumbnailUrl = ogResult.thumbnailUrl;
       log.debug('Thumbnail ottenuta da OG scraping');
     }
-    if (!audioUrl && ogResult.videoUrl) {
-      audioUrl = ogResult.videoUrl;
-      log.info('Video/audio URL ottenuto da OG scraping (Instagram authenticated)', {
-        urlPreview: truncate(ogResult.videoUrl, 200)
-      });
-    }
   }
 
-  // Step 3: Try Cobalt for audio extraction (only if enabled)
-  if (cobaltEnabled) {
-    log.debug('Step 3: Tentativo estrazione audio con Cobalt');
+  // Step 4: Try Cobalt for audio extraction (only if enabled and no audio yet)
+  if (cobaltEnabled && !audioUrl) {
+    log.debug('Step 4: Tentativo estrazione audio con Cobalt');
     const cobaltResult = await extractWithCobalt(url);
     audioUrl = cobaltResult.audioUrl;
-  } else {
-    log.debug('Step 3: Cobalt disabilitato, skip estrazione audio');
+  } else if (!audioUrl) {
+    log.debug('Step 4: Nessuna estrazione audio (Cobalt disabilitato o audio già presente)');
   }
 
   // Final summary
