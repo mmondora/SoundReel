@@ -84,12 +84,18 @@ export interface Entry {
   createdAt: FirebaseFirestore.FieldValue | string;
 }
 
+export interface MusicMetadata {
+  title: string;
+  artist: string;
+}
+
 export interface ExtractedContent {
   caption: string | null;
   thumbnailUrl: string | null;
   audioUrl: string | null;
   hasAudio: boolean;
   hasCaption: boolean;
+  musicInfo: MusicMetadata | null;
 }
 
 export interface AiAnalysisResult {

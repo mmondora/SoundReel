@@ -134,17 +134,31 @@ export const analyzeUrl = onRequest(
       });
 
       // Step 4 & 5: Audio recognition e AI analysis in parallelo
-      const [audioResult, aiResult] = await Promise.all([
+      const [auddResult, aiResult] = await Promise.all([
         content.audioUrl ? recognizeAudio(content.audioUrl) : Promise.resolve(null),
         analyzeWithAi(content.caption, content.thumbnailUrl)
       ]);
 
-      if (audioResult) {
+      // Use AudD result, or fall back to Instagram music metadata
+      let audioResult = auddResult;
+      if (auddResult) {
         await appendActionLog(entryId, createActionLog('audio_analyzed', {
           provider: 'audd',
           found: true,
-          title: audioResult.title,
-          artist: audioResult.artist
+          title: auddResult.title,
+          artist: auddResult.artist
+        }));
+      } else if (content.musicInfo) {
+        audioResult = {
+          title: content.musicInfo.title,
+          artist: content.musicInfo.artist,
+          album: null
+        };
+        await appendActionLog(entryId, createActionLog('audio_analyzed', {
+          provider: 'instagram_metadata',
+          found: true,
+          title: content.musicInfo.title,
+          artist: content.musicInfo.artist
         }));
       } else if (content.audioUrl) {
         await appendActionLog(entryId, createActionLog('audio_analyzed', {

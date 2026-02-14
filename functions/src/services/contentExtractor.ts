@@ -462,16 +462,19 @@ function extractShortcode(url: string): string | null {
  * Uses i.instagram.com/api/v1/media/{id}/info/ with session cookies.
  * This works from datacenter IPs unlike HTML scraping.
  */
-async function fetchInstagramApi(url: string, cookies: InstagramCookies): Promise<{
+interface InstagramApiResult {
   caption: string | null;
   thumbnailUrl: string | null;
   videoUrl: string | null;
+  musicInfo: { title: string; artist: string } | null;
   success: boolean;
-}> {
+}
+
+async function fetchInstagramApi(url: string, cookies: InstagramCookies): Promise<InstagramApiResult> {
   const shortcode = extractShortcode(url);
   if (!shortcode) {
     log.warn('Instagram: impossibile estrarre shortcode dall\'URL', { url });
-    return { caption: null, thumbnailUrl: null, videoUrl: null, success: false };
+    return { caption: null, thumbnailUrl: null, videoUrl: null, musicInfo: null, success: false };
   }
 
   const mediaId = shortcodeToMediaId(shortcode);
@@ -499,7 +502,7 @@ async function fetchInstagramApi(url: string, cookies: InstagramCookies): Promis
         durationMs,
         shortcode
       });
-      return { caption: null, thumbnailUrl: null, videoUrl: null, success: false };
+      return { caption: null, thumbnailUrl: null, videoUrl: null, musicInfo: null, success: false };
     }
 
     const data = await response.json();
@@ -507,7 +510,7 @@ async function fetchInstagramApi(url: string, cookies: InstagramCookies): Promis
 
     if (!item) {
       log.warn('Instagram API: nessun item trovato', { shortcode, mediaId });
-      return { caption: null, thumbnailUrl: null, videoUrl: null, success: false };
+      return { caption: null, thumbnailUrl: null, videoUrl: null, musicInfo: null, success: false };
     }
 
     // Extract caption
@@ -522,17 +525,47 @@ async function fetchInstagramApi(url: string, cookies: InstagramCookies): Promis
     // Extract thumbnail
     const thumbnailUrl = item.image_versions2?.candidates?.[0]?.url || null;
 
+    // Extract music metadata from reel clips_metadata
+    let musicInfo: { title: string; artist: string } | null = null;
+    const musicAsset = item.clips_metadata?.music_info?.music_asset_info;
+    if (musicAsset?.title && musicAsset?.display_artist) {
+      musicInfo = {
+        title: musicAsset.title,
+        artist: musicAsset.display_artist
+      };
+      log.info('Instagram musica del reel trovata', {
+        title: musicInfo.title,
+        artist: musicInfo.artist
+      });
+    } else {
+      // Try alternative path: item.music_metadata
+      const altMusic = item.music_metadata?.music_info?.music_asset_info;
+      if (altMusic?.title && altMusic?.display_artist) {
+        musicInfo = {
+          title: altMusic.title,
+          artist: altMusic.display_artist
+        };
+        log.info('Instagram musica del reel trovata (alt path)', {
+          title: musicInfo.title,
+          artist: musicInfo.artist
+        });
+      }
+    }
+
     log.info('Instagram API estrazione riuscita', {
       durationMs,
       hasCaption: !!caption,
       captionPreview: caption ? truncate(caption, 100) : null,
       hasVideo: !!videoUrl,
       hasThumbnail: !!thumbnailUrl,
+      hasMusic: !!musicInfo,
+      musicTitle: musicInfo?.title,
+      musicArtist: musicInfo?.artist,
       mediaType: item.media_type,
       hasAudio: item.has_audio
     });
 
-    return { caption, thumbnailUrl, videoUrl, success: true };
+    return { caption, thumbnailUrl, videoUrl, musicInfo, success: true };
 
   } catch (error) {
     const durationMs = Date.now() - startTime;
@@ -540,7 +573,7 @@ async function fetchInstagramApi(url: string, cookies: InstagramCookies): Promis
       apiUrl,
       durationMs
     });
-    return { caption: null, thumbnailUrl: null, videoUrl: null, success: false };
+    return { caption: null, thumbnailUrl: null, videoUrl: null, musicInfo: null, success: false };
   }
 }
 
@@ -684,6 +717,7 @@ export async function extractContent(url: string, options: ExtractContentOptions
   let thumbnailUrl: string | null = null;
   let audioUrl: string | null = null;
   let authorName: string | null = null;
+  let musicInfo: { title: string; artist: string } | null = null;
 
   // Step 1: For Instagram with cookies, use the private API (works from datacenter IPs)
   if (platform === 'instagram' && instagramCookies) {
@@ -694,10 +728,12 @@ export async function extractContent(url: string, options: ExtractContentOptions
       caption = igResult.caption;
       thumbnailUrl = igResult.thumbnailUrl;
       audioUrl = igResult.videoUrl;
+      musicInfo = igResult.musicInfo;
       log.info('Instagram API ha fornito dati', {
         hasCaption: !!caption,
         hasThumbnail: !!thumbnailUrl,
-        hasVideo: !!audioUrl
+        hasVideo: !!audioUrl,
+        hasMusic: !!musicInfo
       });
     } else {
       log.warn('Instagram API fallita, fallback su OG scraping');
@@ -759,7 +795,8 @@ export async function extractContent(url: string, options: ExtractContentOptions
     thumbnailUrl,
     audioUrl,
     hasAudio: !!audioUrl,
-    hasCaption: !!caption
+    hasCaption: !!caption,
+    musicInfo
   };
 
   log.info('Estrazione completata', {
