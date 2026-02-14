@@ -33,12 +33,25 @@ export interface ExtractedLink {
   label: string | null;
 }
 
+export interface EnrichmentLink {
+  url: string;
+  title: string;
+  snippet: string;
+}
+
+export interface EnrichmentItem {
+  label: string;
+  links: EnrichmentLink[];
+}
+
 export interface EntryResults {
   songs: Song[];
   films: Film[];
   notes: Note[];
   links: ExtractedLink[];
   tags: string[];
+  summary: string | null;
+  enrichments?: EnrichmentItem[];
 }
 
 export type SocialPlatform =
@@ -93,6 +106,7 @@ export interface AiAnalysisResult {
   notes: Note[];
   links: ExtractedLink[];
   tags: string[];
+  summary: string | null;
 }
 
 export interface AudioRecognitionResult {

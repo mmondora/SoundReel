@@ -23,6 +23,14 @@ export async function findEntryByUrl(sourceUrl: string): Promise<Entry | null> {
   return { id: doc.id, ...doc.data() } as Entry;
 }
 
+export async function getEntry(entryId: string): Promise<Entry | null> {
+  const doc = await db.collection('entries').doc(entryId).get();
+  if (!doc.exists) {
+    return null;
+  }
+  return { id: doc.id, ...doc.data() } as Entry;
+}
+
 export async function createEntry(entry: Omit<Entry, 'id'>): Promise<string> {
   const docRef = await db.collection('entries').add({
     ...entry,
@@ -33,7 +41,7 @@ export async function createEntry(entry: Omit<Entry, 'id'>): Promise<string> {
 
 export async function updateEntry(
   entryId: string,
-  updates: Partial<Entry>
+  updates: Partial<Entry> | Record<string, unknown>
 ): Promise<void> {
   await db.collection('entries').doc(entryId).update(updates);
 }
@@ -134,6 +142,32 @@ export async function getInstagramConfig(): Promise<InstagramConfig> {
 
 export async function updateInstagramConfig(updates: Partial<InstagramConfig>): Promise<void> {
   await db.collection('config').doc('instagram').set(updates, { merge: true });
+}
+
+export interface PerplexityConfig {
+  apiKey: string | null;
+  enabled: boolean;
+}
+
+const DEFAULT_PERPLEXITY: PerplexityConfig = {
+  apiKey: null,
+  enabled: false
+};
+
+export async function getPerplexityConfig(): Promise<PerplexityConfig> {
+  const doc = await db.collection('config').doc('perplexity').get();
+  if (!doc.exists) {
+    return DEFAULT_PERPLEXITY;
+  }
+  const data = doc.data();
+  return {
+    apiKey: data?.apiKey ?? null,
+    enabled: data?.enabled ?? false
+  };
+}
+
+export async function updatePerplexityConfig(updates: Partial<PerplexityConfig>): Promise<void> {
+  await db.collection('config').doc('perplexity').set(updates, { merge: true });
 }
 
 export { db };

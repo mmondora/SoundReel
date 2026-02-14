@@ -76,7 +76,7 @@ export const analyzeUrl = onRequest(
         caption: null,
         thumbnailUrl: null,
         status: 'processing',
-        results: { songs: [], films: [], notes: [], links: [], tags: [] },
+        results: { songs: [], films: [], notes: [], links: [], tags: [], summary: null },
         actionLog: [createActionLog('url_received', { channel, platform })],
         createdAt: ''
       };
@@ -213,15 +213,16 @@ export const analyzeUrl = onRequest(
         });
       }
 
-      // Step 9: Prepara notes, links, tags
+      // Step 9: Prepara notes, links, tags, summary
       const notes: Note[] = merged.notes;
       const links: ExtractedLink[] = merged.links;
       const tags: string[] = merged.tags;
+      const summary: string | null = merged.summary;
 
       // Step 10: Aggiorna entry con risultati finali
       await updateEntry(entryId, {
         status: 'completed',
-        results: { songs, films, notes, links, tags }
+        results: { songs, films, notes, links, tags, summary }
       });
 
       await appendActionLog(entryId, createActionLog('completed', {
@@ -253,7 +254,7 @@ export const analyzeUrl = onRequest(
           caption: content.caption,
           thumbnailUrl: content.thumbnailUrl,
           status: 'completed',
-          results: { songs, films, notes, links, tags }
+          results: { songs, films, notes, links, tags, summary }
         }
       });
     } catch (error) {

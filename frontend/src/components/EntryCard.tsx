@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import type { Entry, Note } from '../types';
 import { SongItem } from './SongItem';
 import { FilmItem } from './FilmItem';
 import { ActionLog } from './ActionLog';
-import { deleteEntry } from '../services/api';
+import { deleteEntry, retryEntry, enrichEntry } from '../services/api';
 import { useLanguage } from '../i18n';
 
 interface EntryCardProps {
@@ -35,6 +35,58 @@ function decodeHtmlEntities(text: string): string {
         return _;
       }
     });
+}
+
+/**
+ * Parse caption text and return JSX with highlighted URLs, @mentions, and #hashtags
+ */
+function renderCaptionWithLinks(text: string): ReactNode[] {
+  const urlRegex = /(https?:\/\/[^\s,)]+)/g;
+  const mentionRegex = /(@[\w.]+)/g;
+  const hashtagRegex = /(#[\w\u00C0-\u024F]+)/g;
+
+  // Combined regex to split on any of the three patterns
+  const combined = /(https?:\/\/[^\s,)]+|@[\w.]+|#[\w\u00C0-\u024F]+)/g;
+
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = combined.exec(text)) !== null) {
+    // Add text before the match
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    const token = match[0];
+    if (urlRegex.test(token)) {
+      parts.push(
+        <a key={match.index} href={token} target="_blank" rel="noopener noreferrer" className="caption-link">
+          {token}
+        </a>
+      );
+    } else if (mentionRegex.test(token)) {
+      parts.push(<span key={match.index} className="caption-mention">{token}</span>);
+    } else if (hashtagRegex.test(token)) {
+      parts.push(<span key={match.index} className="caption-hashtag">{token}</span>);
+    } else {
+      parts.push(token);
+    }
+
+    // Reset lastIndex of sub-regexes (they're used only for .test())
+    urlRegex.lastIndex = 0;
+    mentionRegex.lastIndex = 0;
+    hashtagRegex.lastIndex = 0;
+
+    lastIndex = match.index + token.length;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
 }
 
 function getPlatformLabel(platform: string): string {
@@ -87,6 +139,32 @@ function parseFirestoreDate(timestamp: unknown): Date | null {
   return null;
 }
 
+/**
+ * Extract dominant color from an image using a 1x1 canvas downscale
+ */
+function extractDominantColor(
+  imgUrl: string,
+  onColor: (color: string) => void
+): void {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, 1, 1);
+      const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+      onColor(`${r}, ${g}, ${b}`);
+    } catch {
+      // CORS or other canvas error — ignore
+    }
+  };
+  img.src = imgUrl;
+}
+
 const NOTE_CATEGORY_LABELS: Record<Note['category'], { icon: string; key: keyof typeof import('../i18n/translations').translations.it }> = {
   place: { icon: '📍', key: 'notePlace' },
   event: { icon: '📅', key: 'noteEvent' },
@@ -100,17 +178,47 @@ const NOTE_CATEGORY_LABELS: Record<Note['category'], { icon: string; key: keyof 
 
 export function EntryCard({ entry }: EntryCardProps) {
   const [deleting, setDeleting] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [enriching, setEnriching] = useState(false);
+  const [captionExpanded, setCaptionExpanded] = useState(false);
+  const [needsToggle, setNeedsToggle] = useState(false);
+  const [accentColor, setAccentColor] = useState<string | null>(null);
+  const captionRef = useRef<HTMLDivElement>(null);
   const { t, language } = useLanguage();
   const hasSongs = entry.results.songs.length > 0;
   const hasFilms = entry.results.films.length > 0;
   const hasNotes = (entry.results.notes?.length || 0) > 0;
   const hasLinks = (entry.results.links?.length || 0) > 0;
   const hasTags = (entry.results.tags?.length || 0) > 0;
+  const hasSummary = !!entry.results.summary;
+  const hasEnrichments = (entry.results.enrichments?.length || 0) > 0;
   const hasContent = hasSongs || hasFilms || hasNotes || hasLinks || hasTags;
   const isCompact = !hasContent && entry.status === 'completed';
 
   const parsedDate = parseFirestoreDate(entry.createdAt);
   const dateLocale = language === 'it' ? 'it-IT' : 'en-US';
+
+  // Extract accent color from thumbnail
+  useEffect(() => {
+    if (entry.thumbnailUrl) {
+      extractDominantColor(entry.thumbnailUrl, setAccentColor);
+    }
+  }, [entry.thumbnailUrl]);
+
+  // Check if caption needs expand/collapse toggle
+  const checkCaptionOverflow = useCallback(() => {
+    const el = captionRef.current;
+    if (el && !captionExpanded) {
+      setNeedsToggle(el.scrollHeight > el.clientHeight);
+    }
+  }, [captionExpanded]);
+
+  useEffect(() => {
+    checkCaptionOverflow();
+    // Re-check on window resize
+    window.addEventListener('resize', checkCaptionOverflow);
+    return () => window.removeEventListener('resize', checkCaptionOverflow);
+  }, [checkCaptionOverflow, entry.caption]);
 
   const handleDelete = async () => {
     if (!confirm(t.confirmDelete)) return;
@@ -126,10 +234,49 @@ export function EntryCard({ entry }: EntryCardProps) {
     }
   };
 
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      await retryEntry(entry.id, entry.sourceUrl);
+    } catch (err) {
+      console.error('Error retrying:', err);
+      alert(t.retryError);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const handleEnrich = async () => {
+    setEnriching(true);
+    try {
+      await enrichEntry(entry.id);
+    } catch (err) {
+      console.error('Error enriching:', err);
+      alert(t.enrichError);
+    } finally {
+      setEnriching(false);
+    }
+  };
+
+  const cardStyle = accentColor
+    ? { '--card-accent': accentColor } as React.CSSProperties
+    : undefined;
+
   return (
-    <article className={`entry-card ${entry.status}${isCompact ? ' compact' : ''}`}>
+    <article
+      className={`entry-card ${entry.status}${isCompact ? ' compact' : ''}${accentColor ? ' has-accent' : ''}`}
+      style={cardStyle}
+    >
       <header className="entry-header">
         <div className="entry-meta">
+          {entry.thumbnailUrl && (
+            <img
+              src={entry.thumbnailUrl}
+              alt=""
+              className="entry-thumbnail"
+              loading="lazy"
+            />
+          )}
           <a
             href={entry.sourceUrl}
             target="_blank"
@@ -156,6 +303,26 @@ export function EntryCard({ entry }: EntryCardProps) {
           {entry.status === 'error' && (
             <span className="status-badge error">{t.error}</span>
           )}
+          {entry.status === 'completed' && (
+            <button
+              className="retry-btn"
+              onClick={handleRetry}
+              disabled={retrying}
+              title={t.retryEntry}
+            >
+              {retrying ? '...' : '↻'}
+            </button>
+          )}
+          {entry.status === 'completed' && hasContent && (
+            <button
+              className="enrich-btn"
+              onClick={handleEnrich}
+              disabled={enriching}
+              title={t.enrichEntry}
+            >
+              {enriching ? '...' : '🔍'}
+            </button>
+          )}
           <button
             className="delete-btn"
             onClick={handleDelete}
@@ -167,8 +334,27 @@ export function EntryCard({ entry }: EntryCardProps) {
         </div>
       </header>
 
+      {hasSummary && (
+        <p className="entry-summary">{entry.results.summary}</p>
+      )}
+
       {entry.caption && (
-        <p className="entry-caption">{decodeHtmlEntities(entry.caption)}</p>
+        <div className="entry-caption-wrapper">
+          <div
+            ref={captionRef}
+            className={`entry-caption${captionExpanded ? '' : ' collapsed'}`}
+          >
+            {renderCaptionWithLinks(decodeHtmlEntities(entry.caption))}
+          </div>
+          {(needsToggle || captionExpanded) && (
+            <button
+              className="caption-toggle"
+              onClick={() => setCaptionExpanded(!captionExpanded)}
+            >
+              {captionExpanded ? t.showLess : t.showMore}
+            </button>
+          )}
+        </div>
       )}
 
       {hasSongs && (
@@ -228,6 +414,29 @@ export function EntryCard({ entry }: EntryCardProps) {
               );
             })}
           </ul>
+        </section>
+      )}
+
+      {hasEnrichments && (
+        <section className="entry-section enrichments">
+          <h3 className="section-title">{t.enrichmentsSection}</h3>
+          {entry.results.enrichments!.map((item, index) => (
+            <div key={index} className="enrichment-item">
+              <span className="enrichment-label">{item.label}</span>
+              <ul className="enrichment-links">
+                {item.links.map((link, linkIndex) => (
+                  <li key={linkIndex} className="enrichment-link">
+                    <a href={link.url} target="_blank" rel="noopener noreferrer">
+                      {link.title}
+                    </a>
+                    {link.snippet && (
+                      <span className="enrichment-snippet">{link.snippet}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </section>
       )}
 

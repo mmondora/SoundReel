@@ -56,6 +56,28 @@ export async function deleteEntry(entryId: string): Promise<{ success: boolean }
   return response.json();
 }
 
+export async function retryEntry(entryId: string, sourceUrl: string): Promise<AnalyzeResponse> {
+  await deleteEntry(entryId);
+  return analyzeUrl(sourceUrl);
+}
+
+export async function enrichEntry(entryId: string): Promise<{ success: boolean; enrichments: unknown[] }> {
+  const response = await fetch(`${FUNCTIONS_BASE_URL}/enrichEntry`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ entryId })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(error || 'Errore durante l\'enrichment');
+  }
+
+  return response.json();
+}
+
 export async function deleteAllEntries(): Promise<{ success: boolean; deleted: number }> {
   const response = await fetch(`${FUNCTIONS_BASE_URL}/deleteAllEntries`, {
     method: 'POST',
@@ -115,6 +137,41 @@ export async function getInstagramConfig(): Promise<InstagramConfigResponse> {
 
   if (!response.ok) {
     throw new Error('Errore durante il caricamento della configurazione Instagram');
+  }
+
+  return response.json();
+}
+
+export interface PerplexityConfigResponse {
+  apiKey: string | null;
+  enabled: boolean;
+  hasKey: boolean;
+}
+
+export async function getPerplexityConfig(): Promise<PerplexityConfigResponse> {
+  const response = await fetch(`${FUNCTIONS_BASE_URL}/getPerplexity`);
+
+  if (!response.ok) {
+    throw new Error('Errore durante il caricamento della configurazione Perplexity');
+  }
+
+  return response.json();
+}
+
+export async function updatePerplexityConfig(updates: {
+  apiKey?: string;
+  enabled?: boolean;
+}): Promise<{ success: boolean; config: PerplexityConfigResponse }> {
+  const response = await fetch(`${FUNCTIONS_BASE_URL}/updatePerplexity`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(updates)
+  });
+
+  if (!response.ok) {
+    throw new Error('Errore durante l\'aggiornamento della configurazione Perplexity');
   }
 
   return response.json();

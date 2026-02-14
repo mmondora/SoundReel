@@ -420,15 +420,104 @@ body {
   cursor: not-allowed;
 }
 
+/* Accent color border for cards with thumbnail */
+.entry-card.has-accent {
+  border-left: 4px solid rgba(var(--card-accent), 0.7);
+}
+
+/* Thumbnail in header */
+.entry-thumbnail {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+/* Summary */
+.entry-summary {
+  font-size: 1.05rem;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+.entry-card.has-accent .entry-summary {
+  color: rgba(var(--card-accent), 1);
+}
+
+/* Tag badges with accent tint */
+.entry-card.has-accent .tag-badge {
+  background: rgba(var(--card-accent), 0.1);
+  color: rgba(var(--card-accent), 1);
+}
+
+/* Caption wrapper */
+.entry-caption-wrapper {
+  margin-bottom: 1.25rem;
+}
+
 .entry-caption {
   font-size: 0.95rem;
   color: var(--text-secondary);
-  margin-bottom: 1.25rem;
   line-height: 1.7;
+  white-space: pre-line;
+}
+
+.entry-caption.collapsed {
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 6;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* Caption toggle button */
+.caption-toggle {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.25rem 0;
+  margin-top: 0.25rem;
+  transition: color 0.2s;
+}
+
+.caption-toggle:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+/* Caption inline highlights */
+.caption-link {
+  color: var(--accent);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.caption-link:hover {
+  text-decoration: underline;
+}
+
+.caption-mention {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.caption-hashtag {
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+.entry-card.has-accent .caption-link,
+.entry-card.has-accent .caption-mention {
+  color: rgba(var(--card-accent), 1);
+}
+
+.entry-card.has-accent .caption-hashtag {
+  color: rgba(var(--card-accent), 0.8);
 }
 
 /* ==================== SECTIONS ==================== */
@@ -654,6 +743,91 @@ body {
   padding: 0.15rem 0.5rem;
   border-radius: 4px;
   flex-shrink: 0;
+}
+
+/* ==================== RETRY & ENRICH BUTTONS ==================== */
+.retry-btn,
+.enrich-btn {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.retry-btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.enrich-btn:hover:not(:disabled) {
+  background: rgba(255, 149, 0, 0.1);
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.retry-btn:disabled,
+.enrich-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==================== ENRICHMENTS ==================== */
+.enrichment-item {
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.enrichment-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.enrichment-item:first-child {
+  padding-top: 0;
+}
+
+.enrichment-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  display: block;
+  margin-bottom: 0.375rem;
+}
+
+.enrichment-links {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.enrichment-link a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.enrichment-link a:hover {
+  text-decoration: underline;
+}
+
+.enrichment-snippet {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: 0.125rem;
 }
 
 .no-results {

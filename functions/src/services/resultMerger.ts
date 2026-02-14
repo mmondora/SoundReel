@@ -16,6 +16,7 @@ interface MergedResults {
   notes: Note[];
   links: ExtractedLink[];
   tags: string[];
+  summary: string | null;
 }
 
 function normalizeSongKey(title: string, artist: string): string {
@@ -96,7 +97,8 @@ export function mergeResults(
     films: mergedFilms,
     notes: aiResult.notes,
     links: aiResult.links,
-    tags: aiResult.tags
+    tags: aiResult.tags,
+    summary: aiResult.summary
   };
 }
 

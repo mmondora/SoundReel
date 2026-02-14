@@ -36,6 +36,11 @@ export interface Translations {
   showLog: string;
   hideLog: string;
 
+  // Caption toggle & Summary
+  showMore: string;
+  showLess: string;
+  summarySection: string;
+
   // Notes, Links, Tags
   notesSection: string;
   linksSection: string;
@@ -126,6 +131,14 @@ export interface Translations {
   searchLogs: string;
   clearLogsError: string;
 
+  // Perplexity
+  perplexitySection: string;
+  perplexityDescription: string;
+  perplexityApiKey: string;
+  perplexitySaveSuccess: string;
+  perplexitySaveError: string;
+  perplexityHowTo: string;
+
   // Instagram
   instagramCookies: string;
   instagramCookiesDescription: string;
@@ -136,6 +149,15 @@ export interface Translations {
   instagramSaveError: string;
   instagramHowTo: string;
   instagramHowToSteps: string;
+
+  // Retry & Enrich
+  retryEntry: string;
+  retrying: string;
+  enrichEntry: string;
+  enriching: string;
+  enrichmentsSection: string;
+  enrichError: string;
+  retryError: string;
 
   // Errors
   errorGeneric: string;
@@ -184,6 +206,11 @@ export const translations: Record<Language, Translations> = {
     deleteError: 'Errore durante l\'eliminazione',
     showLog: 'Mostra log',
     hideLog: 'Nascondi log',
+
+    // Caption toggle & Summary
+    showMore: 'Mostra tutto',
+    showLess: 'Mostra meno',
+    summarySection: 'Sintesi',
 
     // Notes, Links, Tags
     notesSection: 'Note',
@@ -275,6 +302,14 @@ export const translations: Record<Language, Translations> = {
     searchLogs: 'Cerca nei log...',
     clearLogsError: 'Errore durante la cancellazione dei log',
 
+    // Perplexity
+    perplexitySection: 'Perplexity AI',
+    perplexityDescription: 'Usa Perplexity per arricchire i risultati con link verificati dal web. Serve una API key da perplexity.ai/settings/api.',
+    perplexityApiKey: 'API Key',
+    perplexitySaveSuccess: 'Configurazione Perplexity salvata!',
+    perplexitySaveError: 'Errore nel salvataggio della configurazione Perplexity',
+    perplexityHowTo: 'Vai su perplexity.ai/settings/api per generare una chiave.',
+
     // Instagram
     instagramCookies: 'Cookie Instagram',
     instagramCookiesDescription: 'Inserisci i cookie di sessione Instagram per accedere ai contenuti protetti. Senza questi cookie, Instagram blocca l\'accesso programmatico.',
@@ -285,6 +320,15 @@ export const translations: Record<Language, Translations> = {
     instagramSaveError: 'Errore nel salvataggio dei cookie',
     instagramHowTo: 'Come ottenere i cookie',
     instagramHowToSteps: '1. Apri Instagram nel browser e fai login\n2. Apri DevTools (F12) → Application → Cookies → instagram.com\n3. Copia i valori di: sessionid, csrftoken, ds_user_id',
+
+    // Retry & Enrich
+    retryEntry: 'Rianalizza',
+    retrying: 'Rianalisi...',
+    enrichEntry: 'Arricchisci',
+    enriching: 'Arricchimento...',
+    enrichmentsSection: 'Approfondimenti',
+    enrichError: 'Errore durante l\'arricchimento',
+    retryError: 'Errore durante la rianalisi',
 
     // Errors
     errorGeneric: 'Si è verificato un errore',
@@ -332,6 +376,11 @@ export const translations: Record<Language, Translations> = {
     deleteError: 'Error deleting entry',
     showLog: 'Show log',
     hideLog: 'Hide log',
+
+    // Caption toggle & Summary
+    showMore: 'Show more',
+    showLess: 'Show less',
+    summarySection: 'Summary',
 
     // Notes, Links, Tags
     notesSection: 'Notes',
@@ -423,6 +472,14 @@ export const translations: Record<Language, Translations> = {
     searchLogs: 'Search logs...',
     clearLogsError: 'Error clearing logs',
 
+    // Perplexity
+    perplexitySection: 'Perplexity AI',
+    perplexityDescription: 'Use Perplexity to enrich results with verified web links. Requires an API key from perplexity.ai/settings/api.',
+    perplexityApiKey: 'API Key',
+    perplexitySaveSuccess: 'Perplexity config saved!',
+    perplexitySaveError: 'Error saving Perplexity config',
+    perplexityHowTo: 'Go to perplexity.ai/settings/api to generate a key.',
+
     // Instagram
     instagramCookies: 'Instagram Cookies',
     instagramCookiesDescription: 'Enter your Instagram session cookies to access protected content. Without these cookies, Instagram blocks programmatic access.',
@@ -433,6 +490,15 @@ export const translations: Record<Language, Translations> = {
     instagramSaveError: 'Error saving cookies',
     instagramHowTo: 'How to get cookies',
     instagramHowToSteps: '1. Open Instagram in your browser and log in\n2. Open DevTools (F12) → Application → Cookies → instagram.com\n3. Copy the values of: sessionid, csrftoken, ds_user_id',
+
+    // Retry & Enrich
+    retryEntry: 'Re-analyze',
+    retrying: 'Re-analyzing...',
+    enrichEntry: 'Enrich',
+    enriching: 'Enriching...',
+    enrichmentsSection: 'Deep Links',
+    enrichError: 'Error during enrichment',
+    retryError: 'Error during re-analysis',
 
     // Errors
     errorGeneric: 'An error occurred',

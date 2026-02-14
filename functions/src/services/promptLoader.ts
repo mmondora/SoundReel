@@ -67,10 +67,11 @@ Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti, senza a
   "links": [
     { "url": "https://...", "label": "descrizione del link o null" }
   ],
-  "tags": ["#hashtag", "@utente"]
+  "tags": ["#hashtag", "@utente"],
+  "summary": "breve riassunto di 1-2 frasi del contenuto del post"
 }
 
-Se non trovi nulla, rispondi: { "songs": [], "films": [], "notes": [], "links": [], "tags": [] }`,
+Se non trovi nulla, rispondi: { "songs": [], "films": [], "notes": [], "links": [], "tags": [], "summary": null }`,
     variables: ['caption', 'hasImage'],
     updatedAt: new Date().toISOString()
   },
