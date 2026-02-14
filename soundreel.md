@@ -42,8 +42,12 @@ SoundReel è una web app personale (single-user) che analizza contenuti social �
 - Cancella l'entry esistente e rilancia l'analisi sullo stesso URL
 
 ### Prompt AI personalizzabili
-- Due prompt modificabili dall'interfaccia: analisi contenuto (Gemini) e risposta Telegram
-- Template Handlebars con variabili disponibili
+- Tre prompt modificabili dall'interfaccia:
+  1. **Analisi contenuto** (Gemini) — estrae songs, films, notes, links, tags, summary dalla caption e thumbnail
+  2. **Risposta Telegram** — formatta la risposta del bot con i risultati dell'analisi
+  3. **Enrichment OpenAI** — genera la richiesta di deep search per arricchire i risultati con link verificati
+- Template Handlebars con variabili disponibili per ciascun prompt
+- Validazione sintassi Handlebars in tempo reale nell'editor (errori evidenziati, salvataggio bloccato se il template non è valido)
 - Reset ai default in qualsiasi momento
 
 ### Console di debug
@@ -153,7 +157,7 @@ SPA React con 4 pagine:
 |---|---|---|
 | `/` | Home | Input URL + Journal con entry card in tempo reale |
 | `/settings` | Impostazioni | Spotify, Instagram, OpenAI, feature flags, lingua |
-| `/prompts` | Prompt AI | Editor dei template Gemini e Telegram |
+| `/prompts` | Prompt AI | Editor dei 3 template (Gemini, Telegram, Enrichment) con validazione Handlebars |
 | `/console` | Console | Log di debug con filtri e dati espandibili |
 
 Aggiornamenti in tempo reale tramite Firestore `onSnapshot`. Dark mode non presente, tema chiaro Apple-style. Supporto multilingua italiano/inglese.
