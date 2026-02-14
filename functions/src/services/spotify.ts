@@ -211,4 +211,9 @@ export function generateYoutubeSearchUrl(title: string, artist: string): string 
   return `https://youtube.com/results?search_query=${query}`;
 }
 
+export function generateSoundcloudSearchUrl(title: string, artist: string): string {
+  const query = encodeURIComponent(`${artist} ${title}`);
+  return `https://soundcloud.com/search/sounds?q=${query}`;
+}
+
 export { spotifyClientId, spotifyClientSecret };

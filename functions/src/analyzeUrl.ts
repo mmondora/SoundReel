@@ -2,8 +2,8 @@ import { onRequest } from 'firebase-functions/v2/https';
 import { extractContent, detectPlatform, setLogger as setContentExtractorLogger } from './services/contentExtractor';
 import { recognizeAudio, auddApiKey } from './services/audioRecognition';
 import { analyzeWithAi, geminiApiKey, AiAnalysisResponse } from './services/aiAnalysis';
-import { searchTrack, addToPlaylist, generateYoutubeSearchUrl, spotifyClientId, spotifyClientSecret } from './services/spotify';
-import { searchFilm, generateImdbUrl, tmdbApiKey } from './services/filmSearch';
+import { searchTrack, addToPlaylist, generateYoutubeSearchUrl, generateSoundcloudSearchUrl, spotifyClientId, spotifyClientSecret } from './services/spotify';
+import { searchFilm, generateImdbUrl, generateStreamingUrls, tmdbApiKey } from './services/filmSearch';
 import { mergeResults } from './services/resultMerger';
 import { downloadMedia } from './services/mediaDownloader';
 import { transcribeAudio } from './services/transcribeAudio';
@@ -301,6 +301,7 @@ export const analyzeUrl = onRequest(
           spotifyUri: spotifyResult?.uri || null,
           spotifyUrl: spotifyResult?.url || null,
           youtubeUrl: generateYoutubeSearchUrl(songData.title, songData.artist),
+          soundcloudUrl: generateSoundcloudSearchUrl(songData.title, songData.artist),
           addedToPlaylist
         });
       }
@@ -321,7 +322,8 @@ export const analyzeUrl = onRequest(
           director: filmData.director,
           year: filmData.year || tmdbResult?.releaseDate?.split('-')[0] || null,
           imdbUrl: tmdbResult?.imdbId ? generateImdbUrl(tmdbResult.imdbId) : null,
-          posterUrl: tmdbResult?.posterPath || null
+          posterUrl: tmdbResult?.posterPath || null,
+          streamingUrls: generateStreamingUrls(filmData.title)
         });
       }
 

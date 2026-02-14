@@ -27,6 +27,16 @@ export function FilmItem({ film }: FilmItemProps) {
             IMDb
           </a>
         )}
+        {film.streamingUrls && (
+          <>
+            <a href={film.streamingUrls.netflix} target="_blank" rel="noopener noreferrer" className="action-link netflix" title={t.searchOnNetflix}>N</a>
+            <a href={film.streamingUrls.primeVideo} target="_blank" rel="noopener noreferrer" className="action-link prime" title={t.searchOnPrimeVideo}>P</a>
+            <a href={film.streamingUrls.raiPlay} target="_blank" rel="noopener noreferrer" className="action-link raiplay" title={t.searchOnRaiPlay}>Rai</a>
+            <a href={film.streamingUrls.now} target="_blank" rel="noopener noreferrer" className="action-link now" title={t.searchOnNow}>NOW</a>
+            <a href={film.streamingUrls.disneyPlus} target="_blank" rel="noopener noreferrer" className="action-link disney" title={t.searchOnDisneyPlus}>D+</a>
+            <a href={film.streamingUrls.appleTv} target="_blank" rel="noopener noreferrer" className="action-link appletv" title={t.searchOnAppleTv}>TV</a>
+          </>
+        )}
       </div>
     </div>
   );

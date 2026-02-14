@@ -38,6 +38,17 @@ export function SongItem({ song }: SongItemProps) {
             <span className="icon">Y</span>
           </a>
         )}
+        {song.soundcloudUrl && (
+          <a
+            href={song.soundcloudUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="action-link soundcloud"
+            title={t.searchOnSoundcloud}
+          >
+            <span className="icon">SC</span>
+          </a>
+        )}
         {song.addedToPlaylist && (
           <span className="playlist-badge" title={t.addedToPlaylist}>
             +

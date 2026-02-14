@@ -1,6 +1,6 @@
 import { defineSecret } from 'firebase-functions/params';
 import { logInfo, logWarning, logError } from '../utils/logger';
-import type { TmdbSearchResult } from '../types';
+import type { TmdbSearchResult, StreamingUrls } from '../types';
 
 const tmdbApiKey = defineSecret('TMDB_API_KEY');
 
@@ -90,6 +90,18 @@ async function getImdbId(tmdbId: number, apiKey: string): Promise<string | null>
 
 export function generateImdbUrl(imdbId: string): string {
   return `https://www.imdb.com/title/${imdbId}/`;
+}
+
+export function generateStreamingUrls(title: string): StreamingUrls {
+  const q = encodeURIComponent(title);
+  return {
+    netflix: `https://www.netflix.com/search?q=${q}`,
+    primeVideo: `https://www.primevideo.com/search?phrase=${q}`,
+    raiPlay: `https://www.raiplay.it/ricerca.html?q=${q}`,
+    now: `https://www.nowtv.it/cerca?q=${q}`,
+    disneyPlus: `https://www.disneyplus.com/search/${q}`,
+    appleTv: `https://tv.apple.com/search?term=${q}`,
+  };
 }
 
 export { tmdbApiKey };

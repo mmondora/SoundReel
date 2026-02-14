@@ -111,6 +111,7 @@ export function createEmptySong(): Song {
     spotifyUri: null,
     spotifyUrl: null,
     youtubeUrl: null,
+    soundcloudUrl: null,
     addedToPlaylist: false
   };
 }
@@ -121,6 +122,7 @@ export function createEmptyFilm(): Film {
     director: null,
     year: null,
     imdbUrl: null,
-    posterUrl: null
+    posterUrl: null,
+    streamingUrls: null
   };
 }

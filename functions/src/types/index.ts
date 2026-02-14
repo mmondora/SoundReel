@@ -6,7 +6,17 @@ export interface Song {
   spotifyUri: string | null;
   spotifyUrl: string | null;
   youtubeUrl: string | null;
+  soundcloudUrl: string | null;
   addedToPlaylist: boolean;
+}
+
+export interface StreamingUrls {
+  netflix: string;
+  primeVideo: string;
+  raiPlay: string;
+  now: string;
+  disneyPlus: string;
+  appleTv: string;
 }
 
 export interface Film {
@@ -15,6 +25,7 @@ export interface Film {
   year: string | null;
   imdbUrl: string | null;
   posterUrl: string | null;
+  streamingUrls: StreamingUrls | null;
 }
 
 export interface ActionLogItem {

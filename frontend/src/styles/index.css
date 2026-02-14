@@ -27,6 +27,12 @@
   --spotify: #1db954;
   --youtube: #ff0000;
   --imdb: #f5c518;
+  --netflix: #e50914;
+  --prime: #00a8e1;
+  --raiplay: #003fa5;
+  --now: #26d07c;
+  --disney: #113ccf;
+  --appletv: #000000;
 
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
@@ -1111,6 +1117,16 @@ body {
   color: white;
 }
 
+.action-link.soundcloud {
+  background: rgba(255, 85, 0, 0.1);
+  color: #ff5500;
+}
+
+.action-link.soundcloud:hover {
+  background: #ff5500;
+  color: white;
+}
+
 .action-link.imdb {
   background: rgba(245, 197, 24, 0.15);
   color: #996600;
@@ -1122,6 +1138,104 @@ body {
 .action-link.imdb:hover {
   background: var(--imdb);
   color: #000;
+}
+
+.action-link.netflix {
+  background: rgba(229, 9, 20, 0.1);
+  color: var(--netflix);
+}
+
+.action-link.netflix:hover {
+  background: var(--netflix);
+  color: white;
+}
+
+.action-link.prime {
+  background: rgba(0, 168, 225, 0.1);
+  color: var(--prime);
+}
+
+.action-link.prime:hover {
+  background: var(--prime);
+  color: white;
+}
+
+.action-link.raiplay {
+  background: rgba(0, 63, 165, 0.1);
+  color: var(--raiplay);
+  width: auto;
+  padding: 0 0.5rem;
+  font-size: 0.65rem;
+}
+
+.action-link.raiplay:hover {
+  background: var(--raiplay);
+  color: white;
+}
+
+.action-link.now {
+  background: rgba(38, 208, 124, 0.1);
+  color: #1a9058;
+  width: auto;
+  padding: 0 0.5rem;
+  font-size: 0.6rem;
+}
+
+.action-link.now:hover {
+  background: var(--now);
+  color: white;
+}
+
+.action-link.disney {
+  background: rgba(17, 60, 207, 0.1);
+  color: var(--disney);
+  width: auto;
+  padding: 0 0.5rem;
+  font-size: 0.65rem;
+}
+
+.action-link.disney:hover {
+  background: var(--disney);
+  color: white;
+}
+
+.action-link.appletv {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--appletv);
+  width: auto;
+  padding: 0 0.5rem;
+  font-size: 0.65rem;
+}
+
+.action-link.appletv:hover {
+  background: var(--appletv);
+  color: white;
+}
+
+.action-link.amazon {
+  background: rgba(255, 153, 0, 0.1);
+  color: #c77c00;
+  width: auto;
+  padding: 0 0.5rem;
+  font-size: 0.6rem;
+}
+
+.action-link.amazon:hover {
+  background: #ff9900;
+  color: white;
+}
+
+.action-link.gbooks {
+  background: rgba(66, 133, 244, 0.1);
+  color: #4285f4;
+  width: auto;
+  padding: 0 0.5rem;
+  font-size: 0.6rem;
+}
+
+.action-link.gbooks:hover {
+  background: #4285f4;
+  color: white;
 }
 
 .playlist-badge {
@@ -1218,6 +1332,13 @@ body {
   flex: 1;
   font-size: 0.9rem;
   color: var(--text-primary);
+}
+
+.note-book-links {
+  display: inline-flex;
+  gap: 0.375rem;
+  margin-left: 0.5rem;
+  flex-shrink: 0;
 }
 
 .note-category {

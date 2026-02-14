@@ -268,7 +268,15 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
                   <span className="inspector-note-category">{catInfo.icon} {t[catInfo.key]}</span>
                   <ul className="inspector-note-list">
                     {notes.map((note, i) => (
-                      <li key={i} className="inspector-note-item">{note.text}</li>
+                      <li key={i} className="inspector-note-item">
+                        {note.text}
+                        {note.category === 'book' && (
+                          <span className="note-book-links">
+                            <a href={`https://www.amazon.it/s?k=${encodeURIComponent(note.text)}`} target="_blank" rel="noopener noreferrer" className="action-link amazon" title={t.buyOnAmazon}>AMZ</a>
+                            <a href={`https://www.google.com/search?tbm=bks&q=${encodeURIComponent(note.text)}`} target="_blank" rel="noopener noreferrer" className="action-link gbooks" title={t.searchOnGoogleBooks}>GB</a>
+                          </span>
+                        )}
+                      </li>
                     ))}
                   </ul>
                 </div>

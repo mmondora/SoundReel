@@ -58,7 +58,16 @@ export interface Translations {
   addedToPlaylist: string;
   openOnSpotify: string;
   searchOnYoutube: string;
+  searchOnSoundcloud: string;
   openOnIMDb: string;
+  searchOnNetflix: string;
+  searchOnPrimeVideo: string;
+  searchOnRaiPlay: string;
+  searchOnNow: string;
+  searchOnDisneyPlus: string;
+  searchOnAppleTv: string;
+  buyOnAmazon: string;
+  searchOnGoogleBooks: string;
   by: string;
   director: string;
   year: string;
@@ -274,7 +283,16 @@ export const translations: Record<Language, Translations> = {
     addedToPlaylist: 'Aggiunta alla playlist',
     openOnSpotify: 'Apri su Spotify',
     searchOnYoutube: 'Cerca su YouTube',
+    searchOnSoundcloud: 'Cerca su SoundCloud',
     openOnIMDb: 'Apri su IMDb',
+    searchOnNetflix: 'Cerca su Netflix',
+    searchOnPrimeVideo: 'Cerca su Prime Video',
+    searchOnRaiPlay: 'Cerca su RaiPlay',
+    searchOnNow: 'Cerca su NOW',
+    searchOnDisneyPlus: 'Cerca su Disney+',
+    searchOnAppleTv: 'Cerca su Apple TV',
+    buyOnAmazon: 'Cerca su Amazon',
+    searchOnGoogleBooks: 'Cerca su Google Books',
     by: 'di',
     director: 'Regista',
     year: 'Anno',
@@ -489,7 +507,16 @@ export const translations: Record<Language, Translations> = {
     addedToPlaylist: 'Added to playlist',
     openOnSpotify: 'Open on Spotify',
     searchOnYoutube: 'Search on YouTube',
+    searchOnSoundcloud: 'Search on SoundCloud',
     openOnIMDb: 'Open on IMDb',
+    searchOnNetflix: 'Search on Netflix',
+    searchOnPrimeVideo: 'Search on Prime Video',
+    searchOnRaiPlay: 'Search on RaiPlay',
+    searchOnNow: 'Search on NOW',
+    searchOnDisneyPlus: 'Search on Disney+',
+    searchOnAppleTv: 'Search on Apple TV',
+    buyOnAmazon: 'Search on Amazon',
+    searchOnGoogleBooks: 'Search on Google Books',
     by: 'by',
     director: 'Director',
     year: 'Year',

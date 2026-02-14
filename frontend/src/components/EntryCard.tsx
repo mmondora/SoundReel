@@ -462,6 +462,12 @@ export function EntryCard({ entry }: EntryCardProps) {
                 <li key={index} className="note-item">
                   <span className="note-icon">{cat.icon}</span>
                   <span className="note-text">{note.text}</span>
+                  {note.category === 'book' && (
+                    <span className="note-book-links">
+                      <a href={`https://www.amazon.it/s?k=${encodeURIComponent(note.text)}`} target="_blank" rel="noopener noreferrer" className="action-link amazon" title={t.buyOnAmazon}>AMZ</a>
+                      <a href={`https://www.google.com/search?tbm=bks&q=${encodeURIComponent(note.text)}`} target="_blank" rel="noopener noreferrer" className="action-link gbooks" title={t.searchOnGoogleBooks}>GB</a>
+                    </span>
+                  )}
                   <span className="note-category">{t[cat.key]}</span>
                 </li>
               );
