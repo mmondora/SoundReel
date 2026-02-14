@@ -44,6 +44,7 @@ export function Header({ stats }: HeaderProps) {
           <span className="stat">{stats.totalEntries} {t.entries}</span>
           <span className="stat">{stats.totalSongs} {t.songs}</span>
           <span className="stat">{stats.totalFilms} {t.films}</span>
+          <span className="stat">{stats.totalNotes} {t.notes}</span>
           {stats.totalEntries > 0 && (
             <button
               className="delete-all-btn"

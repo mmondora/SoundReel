@@ -8,7 +8,7 @@ import { mergeResults } from './services/resultMerger';
 import { findEntryByUrl, createEntry, updateEntry, appendActionLog, getFeaturesConfig } from './utils/firestore';
 import { createActionLog } from './utils/logger';
 import { Logger } from './services/debugLogger';
-import type { Entry, Song, Film } from './types';
+import type { Entry, Song, Film, Note, ExtractedLink } from './types';
 
 interface AnalyzeRequest {
   url: string;
@@ -76,7 +76,7 @@ export const analyzeUrl = onRequest(
         caption: null,
         thumbnailUrl: null,
         status: 'processing',
-        results: { songs: [], films: [] },
+        results: { songs: [], films: [], notes: [], links: [], tags: [] },
         actionLog: [createActionLog('url_received', { channel, platform })],
         createdAt: ''
       };
@@ -139,7 +139,10 @@ export const analyzeUrl = onRequest(
       await appendActionLog(entryId, createActionLog('ai_analyzed', {
         provider: 'gemini',
         songs: aiResult.songs.length,
-        films: aiResult.films.length
+        films: aiResult.films.length,
+        notes: aiResult.notes.length,
+        links: aiResult.links.length,
+        tags: aiResult.tags.length
       }));
 
       // Step 6: Merge risultati
@@ -193,22 +196,33 @@ export const analyzeUrl = onRequest(
         });
       }
 
-      // Step 9: Aggiorna entry con risultati finali
+      // Step 9: Prepara notes, links, tags
+      const notes: Note[] = merged.notes;
+      const links: ExtractedLink[] = merged.links;
+      const tags: string[] = merged.tags;
+
+      // Step 10: Aggiorna entry con risultati finali
       await updateEntry(entryId, {
         status: 'completed',
-        results: { songs, films }
+        results: { songs, films, notes, links, tags }
       });
 
       await appendActionLog(entryId, createActionLog('completed', {
         totalSongs: songs.length,
         totalFilms: films.length,
+        totalNotes: notes.length,
+        totalLinks: links.length,
+        totalTags: tags.length,
         addedToPlaylist: songs.filter(s => s.addedToPlaylist).length
       }));
 
       log.info('Analisi completata', {
         entryId,
         songs: songs.length,
-        films: films.length
+        films: films.length,
+        notes: notes.length,
+        links: links.length,
+        tags: tags.length
       });
 
       res.json({
@@ -222,7 +236,7 @@ export const analyzeUrl = onRequest(
           caption: content.caption,
           thumbnailUrl: content.thumbnailUrl,
           status: 'completed',
-          results: { songs, films }
+          results: { songs, films, notes, links, tags }
         }
       });
     } catch (error) {

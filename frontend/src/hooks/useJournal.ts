@@ -11,7 +11,8 @@ export function useJournal(maxEntries = 50) {
   const stats: JournalStats = {
     totalEntries: entries.length,
     totalSongs: entries.reduce((acc, e) => acc + e.results.songs.length, 0),
-    totalFilms: entries.reduce((acc, e) => acc + e.results.films.length, 0)
+    totalFilms: entries.reduce((acc, e) => acc + e.results.films.length, 0),
+    totalNotes: entries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0)
   };
 
   useEffect(() => {

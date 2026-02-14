@@ -5,6 +5,7 @@ export interface Translations {
   entries: string;
   songs: string;
   films: string;
+  notes: string;
   deleteAll: string;
   deleting: string;
   console: string;
@@ -34,6 +35,19 @@ export interface Translations {
   deleteError: string;
   showLog: string;
   hideLog: string;
+
+  // Notes, Links, Tags
+  notesSection: string;
+  linksSection: string;
+  tagsSection: string;
+  notePlace: string;
+  noteEvent: string;
+  noteBrand: string;
+  noteBook: string;
+  noteProduct: string;
+  noteQuote: string;
+  notePerson: string;
+  noteOther: string;
 
   // Song/Film Items
   addedToPlaylist: string;
@@ -129,6 +143,7 @@ export const translations: Record<Language, Translations> = {
     entries: 'entries',
     songs: 'canzoni',
     films: 'film',
+    notes: 'note',
     deleteAll: 'Cancella tutto',
     deleting: 'Eliminazione...',
     console: 'Console',
@@ -158,6 +173,19 @@ export const translations: Record<Language, Translations> = {
     deleteError: 'Errore durante l\'eliminazione',
     showLog: 'Mostra log',
     hideLog: 'Nascondi log',
+
+    // Notes, Links, Tags
+    notesSection: 'Note',
+    linksSection: 'Link',
+    tagsSection: 'Tag',
+    notePlace: 'Luogo',
+    noteEvent: 'Evento',
+    noteBrand: 'Brand',
+    noteBook: 'Libro',
+    noteProduct: 'Prodotto',
+    noteQuote: 'Citazione',
+    notePerson: 'Persona',
+    noteOther: 'Altro',
 
     // Song/Film Items
     addedToPlaylist: 'Aggiunta alla playlist',
@@ -252,6 +280,7 @@ export const translations: Record<Language, Translations> = {
     entries: 'entries',
     songs: 'songs',
     films: 'films',
+    notes: 'notes',
     deleteAll: 'Delete all',
     deleting: 'Deleting...',
     console: 'Console',
@@ -281,6 +310,19 @@ export const translations: Record<Language, Translations> = {
     deleteError: 'Error deleting entry',
     showLog: 'Show log',
     hideLog: 'Hide log',
+
+    // Notes, Links, Tags
+    notesSection: 'Notes',
+    linksSection: 'Links',
+    tagsSection: 'Tags',
+    notePlace: 'Place',
+    noteEvent: 'Event',
+    noteBrand: 'Brand',
+    noteBook: 'Book',
+    noteProduct: 'Product',
+    noteQuote: 'Quote',
+    notePerson: 'Person',
+    noteOther: 'Other',
 
     // Song/Film Items
     addedToPlaylist: 'Added to playlist',

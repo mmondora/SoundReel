@@ -95,21 +95,30 @@ interface AnalyzeResult {
     results: {
       songs: Array<{ title: string; artist: string; album: string | null; addedToPlaylist: boolean }>;
       films: Array<{ title: string; year: string | null; director: string | null }>;
+      notes: Array<{ text: string; category: string }>;
+      links: Array<{ url: string; label: string | null }>;
+      tags: string[];
     };
   };
   error?: string;
 }
 
 async function formatTelegramResponse(result: AnalyzeResult, entryId: string): Promise<string> {
-  const { songs, films } = result.entry?.results || { songs: [], films: [] };
+  const { songs, films, notes, links, tags } = result.entry?.results || { songs: [], films: [], notes: [], links: [], tags: [] };
 
   try {
     const promptConfig = await getPrompt('telegramResponse');
     const response = renderTemplate(promptConfig.template, {
       songs,
       films,
+      notes,
+      links,
+      tags,
       hasSongs: songs.length > 0,
       hasFilms: films.length > 0,
+      hasNotes: notes.length > 0,
+      hasLinks: links.length > 0,
+      hasTags: tags.length > 0,
       frontendUrl: `https://soundreel-776c1.web.app/#${entryId}`
     });
 

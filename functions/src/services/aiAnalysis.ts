@@ -10,7 +10,7 @@ export async function analyzeWithAi(
   caption: string | null,
   thumbnailUrl: string | null
 ): Promise<AiAnalysisResult> {
-  const emptyResult: AiAnalysisResult = { songs: [], films: [] };
+  const emptyResult: AiAnalysisResult = { songs: [], films: [], notes: [], links: [], tags: [] };
 
   if (!caption && !thumbnailUrl) {
     logInfo('Nessun contenuto da analizzare con AI');
@@ -76,12 +76,18 @@ export async function analyzeWithAi(
 
     logInfo('AI analisi completata', {
       songs: parsed.songs?.length || 0,
-      films: parsed.films?.length || 0
+      films: parsed.films?.length || 0,
+      notes: parsed.notes?.length || 0,
+      links: parsed.links?.length || 0,
+      tags: parsed.tags?.length || 0
     });
 
     return {
       songs: parsed.songs || [],
-      films: parsed.films || []
+      films: parsed.films || [],
+      notes: parsed.notes || [],
+      links: parsed.links || [],
+      tags: parsed.tags || []
     };
   } catch (error) {
     logError('Errore analisi AI', error);

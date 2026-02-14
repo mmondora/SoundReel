@@ -23,9 +23,22 @@ export interface ActionLogItem {
   timestamp: string;
 }
 
+export interface Note {
+  text: string;
+  category: 'place' | 'event' | 'brand' | 'book' | 'product' | 'quote' | 'person' | 'other';
+}
+
+export interface ExtractedLink {
+  url: string;
+  label: string | null;
+}
+
 export interface EntryResults {
   songs: Song[];
   films: Film[];
+  notes: Note[];
+  links: ExtractedLink[];
+  tags: string[];
 }
 
 export type SocialPlatform =
@@ -77,6 +90,9 @@ export interface AiAnalysisResult {
     director: string | null;
     year: string | null;
   }>;
+  notes: Note[];
+  links: ExtractedLink[];
+  tags: string[];
 }
 
 export interface AudioRecognitionResult {

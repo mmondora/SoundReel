@@ -1,4 +1,4 @@
-import type { Song, Film, AudioRecognitionResult, AiAnalysisResult } from '../types';
+import type { Song, Film, Note, ExtractedLink, AudioRecognitionResult, AiAnalysisResult } from '../types';
 import { logInfo } from '../utils/logger';
 
 interface MergedResults {
@@ -13,6 +13,9 @@ interface MergedResults {
     director: string | null;
     year: string | null;
   }>;
+  notes: Note[];
+  links: ExtractedLink[];
+  tags: string[];
 }
 
 function normalizeSongKey(title: string, artist: string): string {
@@ -82,12 +85,18 @@ export function mergeResults(
     totalFilms: mergedFilms.length,
     audioOnly: mergedSongs.filter(s => s.source === 'audio_fingerprint').length,
     aiOnly: mergedSongs.filter(s => s.source === 'ai_analysis').length,
-    both: mergedSongs.filter(s => s.source === 'both').length
+    both: mergedSongs.filter(s => s.source === 'both').length,
+    notes: aiResult.notes.length,
+    links: aiResult.links.length,
+    tags: aiResult.tags.length
   });
 
   return {
     songs: mergedSongs,
-    films: mergedFilms
+    films: mergedFilms,
+    notes: aiResult.notes,
+    links: aiResult.links,
+    tags: aiResult.tags
   };
 }
 

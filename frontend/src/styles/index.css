@@ -555,6 +555,107 @@ body {
   font-size: 1.1rem;
 }
 
+/* ==================== TAGS ==================== */
+.entry-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.tag-badge {
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.25rem 0.625rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 20px;
+}
+
+/* ==================== LINKS ==================== */
+.links-list {
+  list-style: none;
+}
+
+.link-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.link-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.link-item:first-child {
+  padding-top: 0;
+}
+
+.link-icon {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.link-url {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-url:hover {
+  text-decoration: underline;
+}
+
+/* ==================== NOTES ==================== */
+.notes-list {
+  list-style: none;
+}
+
+.note-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.note-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.note-item:first-child {
+  padding-top: 0;
+}
+
+.note-icon {
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.note-text {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.note-category {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  background: var(--bg-primary);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
 .no-results {
   color: var(--text-muted);
   font-size: 0.9rem;

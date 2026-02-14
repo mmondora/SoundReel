@@ -19,7 +19,7 @@ const DEFAULT_PROMPTS: PromptsConfig = {
   contentAnalysis: {
     name: 'Analisi contenuto (Gemini)',
     description: 'Prompt per estrarre canzoni e film da caption e thumbnail',
-    template: `Analizza questo contenuto proveniente da un post social e identifica tutte le menzioni di canzoni, artisti musicali e film/serie TV.
+    template: `Analizza questo contenuto proveniente da un post social ed estrai TUTTE le informazioni utili.
 
 Per le CANZONI cerca:
 - Titoli di canzoni specifiche
@@ -31,6 +31,20 @@ Per i FILM/SERIE cerca:
 - Titoli di film o serie TV
 - Scene o citazioni riconoscibili
 - Registi o attori menzionati
+
+Per le NOTE estrai osservazioni utili come:
+- Luoghi menzionati (category: "place")
+- Eventi (category: "event")
+- Brand o aziende (category: "brand")
+- Libri (category: "book")
+- Prodotti (category: "product")
+- Citazioni testuali (category: "quote")
+- Persone menzionate che non sono artisti/registi (category: "person")
+- Altro di rilevante (category: "other")
+
+Per i LINK estrai tutti gli URL presenti nel testo con una breve descrizione.
+
+Per i TAG estrai tutti gli hashtag (#esempio) e le menzioni (@utente).
 
 Caption del post:
 "{{caption}}"
@@ -46,10 +60,17 @@ Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti, senza a
   ],
   "films": [
     { "title": "titolo", "director": "regista o null", "year": "anno o null" }
-  ]
+  ],
+  "notes": [
+    { "text": "descrizione", "category": "place|event|brand|book|product|quote|person|other" }
+  ],
+  "links": [
+    { "url": "https://...", "label": "descrizione del link o null" }
+  ],
+  "tags": ["#hashtag", "@utente"]
 }
 
-Se non trovi nulla, rispondi: { "songs": [], "films": [] }`,
+Se non trovi nulla, rispondi: { "songs": [], "films": [], "notes": [], "links": [], "tags": [] }`,
     variables: ['caption', 'hasImage'],
     updatedAt: new Date().toISOString()
   },
@@ -72,10 +93,28 @@ Se non trovi nulla, rispondi: { "songs": [], "films": [] }`,
 {{/each}}
 {{/if}}
 
-{{#unless hasSongs}}{{#unless hasFilms}}
-❌ Nessuna canzone o film identificato.
-{{/unless}}{{/unless}}`,
-    variables: ['songs', 'films', 'hasSongs', 'hasFilms', 'frontendUrl'],
+{{#if hasNotes}}
+📝 Note:
+{{#each notes}}
+• {{text}}
+{{/each}}
+{{/if}}
+
+{{#if hasLinks}}
+🔗 Link:
+{{#each links}}
+• {{#if label}}{{label}}: {{/if}}{{url}}
+{{/each}}
+{{/if}}
+
+{{#if hasTags}}
+🏷 {{#each tags}}{{this}} {{/each}}
+{{/if}}
+
+{{#unless hasSongs}}{{#unless hasFilms}}{{#unless hasNotes}}{{#unless hasLinks}}{{#unless hasTags}}
+❌ Nessun contenuto identificato.
+{{/unless}}{{/unless}}{{/unless}}{{/unless}}{{/unless}}`,
+    variables: ['songs', 'films', 'notes', 'links', 'tags', 'hasSongs', 'hasFilms', 'hasNotes', 'hasLinks', 'hasTags', 'frontendUrl'],
     updatedAt: new Date().toISOString()
   }
 };

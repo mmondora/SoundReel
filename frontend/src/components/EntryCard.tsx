@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Entry } from '../types';
+import type { Entry, Note } from '../types';
 import { SongItem } from './SongItem';
 import { FilmItem } from './FilmItem';
 import { ActionLog } from './ActionLog';
@@ -87,12 +87,26 @@ function parseFirestoreDate(timestamp: unknown): Date | null {
   return null;
 }
 
+const NOTE_CATEGORY_LABELS: Record<Note['category'], { icon: string; key: keyof typeof import('../i18n/translations').translations.it }> = {
+  place: { icon: '📍', key: 'notePlace' },
+  event: { icon: '📅', key: 'noteEvent' },
+  brand: { icon: '🏢', key: 'noteBrand' },
+  book: { icon: '📖', key: 'noteBook' },
+  product: { icon: '📦', key: 'noteProduct' },
+  quote: { icon: '💬', key: 'noteQuote' },
+  person: { icon: '👤', key: 'notePerson' },
+  other: { icon: '📝', key: 'noteOther' }
+};
+
 export function EntryCard({ entry }: EntryCardProps) {
   const [deleting, setDeleting] = useState(false);
   const { t, language } = useLanguage();
   const hasSongs = entry.results.songs.length > 0;
   const hasFilms = entry.results.films.length > 0;
-  const hasContent = hasSongs || hasFilms;
+  const hasNotes = (entry.results.notes?.length || 0) > 0;
+  const hasLinks = (entry.results.links?.length || 0) > 0;
+  const hasTags = (entry.results.tags?.length || 0) > 0;
+  const hasContent = hasSongs || hasFilms || hasNotes || hasLinks || hasTags;
   const isCompact = !hasContent && entry.status === 'completed';
 
   const parsedDate = parseFirestoreDate(entry.createdAt);
@@ -172,6 +186,48 @@ export function EntryCard({ entry }: EntryCardProps) {
           {entry.results.films.map((film, index) => (
             <FilmItem key={index} film={film} />
           ))}
+        </section>
+      )}
+
+      {hasTags && (
+        <div className="entry-tags">
+          {entry.results.tags.map((tag, index) => (
+            <span key={index} className="tag-badge">{tag}</span>
+          ))}
+        </div>
+      )}
+
+      {hasLinks && (
+        <section className="entry-section links">
+          <h3 className="section-title">{t.linksSection}</h3>
+          <ul className="links-list">
+            {entry.results.links.map((link, index) => (
+              <li key={index} className="link-item">
+                <span className="link-icon">🔗</span>
+                <a href={link.url} target="_blank" rel="noopener noreferrer" className="link-url">
+                  {link.label || link.url}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {hasNotes && (
+        <section className="entry-section notes">
+          <h3 className="section-title">{t.notesSection}</h3>
+          <ul className="notes-list">
+            {entry.results.notes.map((note, index) => {
+              const cat = NOTE_CATEGORY_LABELS[note.category] || NOTE_CATEGORY_LABELS.other;
+              return (
+                <li key={index} className="note-item">
+                  <span className="note-icon">{cat.icon}</span>
+                  <span className="note-text">{note.text}</span>
+                  <span className="note-category">{t[cat.key]}</span>
+                </li>
+              );
+            })}
+          </ul>
         </section>
       )}
 
