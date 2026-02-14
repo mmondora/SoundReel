@@ -85,7 +85,7 @@ interface OEmbedResponse {
 /**
  * Try oEmbed API for metadata (works with multiple platforms)
  */
-async function extractWithOEmbed(url: string, oEmbedEndpoint: string, platformName: string): Promise<{
+async function extractWithOEmbed(url: string, oEmbedEndpoint: string, platformName: string, cookies?: InstagramCookies): Promise<{
   caption: string | null;
   thumbnailUrl: string | null;
   authorName: string | null;
@@ -93,10 +93,15 @@ async function extractWithOEmbed(url: string, oEmbedEndpoint: string, platformNa
 }> {
   const startTime = Date.now();
   const requestUrl = `${oEmbedEndpoint}?url=${encodeURIComponent(url)}&format=json&omitscript=true`;
-  const requestHeaders = {
+  const requestHeaders: Record<string, string> = {
     'Accept': 'application/json',
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
   };
+
+  if (cookies) {
+    requestHeaders['Cookie'] = `sessionid=${cookies.sessionId}; csrftoken=${cookies.csrfToken}; ds_user_id=${cookies.dsUserId}`;
+    log.info('oEmbed con cookie Instagram', { hasCookies: true });
+  }
 
   log.debug(`Tentativo oEmbed ${platformName}`, {
     requestUrl,
@@ -579,7 +584,10 @@ export async function extractContent(url: string, options: ExtractContentOptions
   // Step 1: Try oEmbed if platform supports it (best source for metadata)
   if (platformConfig?.oEmbedUrl) {
     log.debug(`Step 1: Tentativo oEmbed (${platform})`);
-    const oembedResult = await extractWithOEmbed(url, platformConfig.oEmbedUrl, platform);
+    const oembedResult = await extractWithOEmbed(
+      url, platformConfig.oEmbedUrl, platform,
+      platform === 'instagram' ? instagramCookies : undefined
+    );
 
     if (oembedResult.success) {
       caption = oembedResult.caption;
