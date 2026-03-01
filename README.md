@@ -2,7 +2,7 @@
 
 **SoundReel** is a personal web application that analyzes social media content (Instagram Reels, TikTok videos, YouTube clips, and more) to extract songs and movies mentioned in posts. Identified songs are automatically added to a Spotify playlist, and everything is logged in a real-time chronological journal.
 
-![Version](https://img.shields.io/badge/version-1.4.13-blue)
+![Version](https://img.shields.io/badge/version-1.4.14-blue)
 ![Firebase](https://img.shields.io/badge/Firebase-Cloud%20Functions-orange)
 ![React](https://img.shields.io/badge/React-18-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue)

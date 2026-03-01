@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Entry } from '../types';
 import type { Translations } from '../i18n/translations';
 import { useLanguage, interpolate } from '../i18n';
@@ -49,6 +50,7 @@ function getPlatformLabel(platform: string): string {
 }
 
 export function CompactCard({ entry, selected, onSelect }: CompactCardProps) {
+  const [imgError, setImgError] = useState(false);
   const { t } = useLanguage();
   const parsedDate = parseFirestoreDate(entry.createdAt);
   const songCount = entry.results.songs.length;
@@ -65,15 +67,15 @@ export function CompactCard({ entry, selected, onSelect }: CompactCardProps) {
       className={`compact-card ${selected ? 'selected' : ''} ${entry.status}`}
       onClick={() => onSelect(entry)}
     >
-      {entry.thumbnailUrl && (
+      {entry.thumbnailUrl && !imgError ? (
         <img
           src={entry.thumbnailUrl}
           alt=""
           className="compact-thumb"
           loading="lazy"
+          onError={() => setImgError(true)}
         />
-      )}
-      {!entry.thumbnailUrl && (
+      ) : (
         <div className="compact-thumb-placeholder">
           {getPlatformLabel(entry.sourcePlatform)}
         </div>
