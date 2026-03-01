@@ -9,3 +9,4 @@ export { enrichEntry } from './enrichEntry';
 export { getOpenAI, updateOpenAI } from './openaiConfig';
 export { readEntries, testReadConnection } from './soundreelRead';
 export { getApiKeys, updateApiKeys } from './apiKeysConfig';
+export { instagramHealthCheck } from './instagramHealthCheck';

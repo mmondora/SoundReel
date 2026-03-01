@@ -43,6 +43,7 @@ set_secret "SPOTIFY_CLIENT_SECRET" "SPOTIFY_CLIENT_SECRET"
 set_secret "AUDD_API_KEY" "AUDD_API_KEY"
 set_secret "TMDB_API_KEY" "TMDB_API_KEY"
 set_secret "GEMINI_API_KEY" "GEMINI_API_KEY"
+set_secret "TELEGRAM_CHAT_ID" "TELEGRAM_CHAT_ID"
 
 echo ""
 echo "✅ Secrets configurati!"

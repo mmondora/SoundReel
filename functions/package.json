@@ -1,6 +1,6 @@
 {
   "name": "soundreel-functions",
-  "version": "1.4.14",
+  "version": "1.4.17",
   "main": "lib/index.js",
   "scripts": {
     "build": "tsc",
