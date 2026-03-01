@@ -1,24 +1,89 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { UrlInput } from '../components/UrlInput';
 import { CompactCard } from '../components/CompactCard';
 import { EntryInspector } from '../components/EntryInspector';
+import { Pagination } from '../components/Pagination';
 import { useJournal } from '../hooks/useJournal';
 import { useAnalyze } from '../hooks/useAnalyze';
 import { useLanguage } from '../i18n';
 import type { Entry } from '../types';
 
+function parseFirestoreDate(timestamp: unknown): Date | null {
+  if (!timestamp) return null;
+  if (typeof timestamp === 'object' && timestamp !== null) {
+    const ts = timestamp as Record<string, unknown>;
+    const seconds = ts._seconds ?? ts.seconds;
+    if (typeof seconds === 'number') return new Date(seconds * 1000);
+  }
+  if (typeof timestamp === 'string') {
+    const date = new Date(timestamp);
+    if (!isNaN(date.getTime())) return date;
+  }
+  return null;
+}
+
+function getMonthKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}`;
+}
+
+interface DateGroup {
+  key: string;
+  label: string;
+  entries: Entry[];
+}
+
+const RECENT_COUNT = 5;
+
+function groupByMonth(entries: Entry[], lang: string): DateGroup[] {
+  const groups: DateGroup[] = [];
+  let lastMonthKey = '';
+  const locale = lang === 'it' ? 'it-IT' : 'en-US';
+
+  for (const entry of entries) {
+    const date = parseFirestoreDate(entry.createdAt);
+    if (!date) {
+      if (groups.length === 0) groups.push({ key: 'unknown', label: '', entries: [] });
+      groups[groups.length - 1].entries.push(entry);
+      continue;
+    }
+
+    const monthKey = getMonthKey(date);
+
+    if (monthKey !== lastMonthKey) {
+      const label = date.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+      groups.push({ key: monthKey, label, entries: [] });
+      lastMonthKey = monthKey;
+    }
+
+    groups[groups.length - 1].entries.push(entry);
+  }
+
+  return groups;
+}
+
 export function Home() {
-  const { entries, stats, loading: journalLoading } = useJournal();
+  const {
+    entries, stats, loading: journalLoading,
+    currentPage, totalPages, nextPage, prevPage,
+  } = useJournal();
   const { analyze, loading: analyzeLoading, error, successStatus, clearError } = useAnalyze();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const [searchParams] = useSearchParams();
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [mobileInspector, setMobileInspector] = useState(false);
 
-  // Find the selected entry from entries (keeps it fresh with real-time updates)
+  // Auto-select from query param ?entry=id
+  useEffect(() => {
+    const entryParam = searchParams.get('entry');
+    if (entryParam) {
+      setSelectedEntryId(entryParam);
+    }
+  }, [searchParams]);
+
   const selectedEntry = entries.find(e => e.id === selectedEntryId) || null;
 
-  // Auto-select new entry when analysis starts
   const handleSubmit = async (url: string) => {
     clearError();
     const entryId = await analyze(url);
@@ -27,17 +92,18 @@ export function Home() {
     }
   };
 
-  // When entries update and selected entry was deleted, clear selection
   useEffect(() => {
     if (selectedEntryId && !entries.find(e => e.id === selectedEntryId)) {
-      setSelectedEntryId(null);
-      setMobileInspector(false);
+      // Don't clear if it's from a query param — entry might be on another page
+      if (!searchParams.get('entry')) {
+        setSelectedEntryId(null);
+        setMobileInspector(false);
+      }
     }
-  }, [entries, selectedEntryId]);
+  }, [entries, selectedEntryId, searchParams]);
 
   const handleSelect = useCallback((entry: Entry) => {
     setSelectedEntryId(entry.id);
-    // On mobile, switch to inspector view
     if (window.innerWidth < 768) {
       setMobileInspector(true);
     }
@@ -46,6 +112,13 @@ export function Home() {
   const handleMobileBack = useCallback(() => {
     setMobileInspector(false);
   }, []);
+
+  const recentEntries = useMemo(() => entries.slice(0, RECENT_COUNT), [entries]);
+  const archiveEntries = useMemo(() => entries.slice(RECENT_COUNT), [entries]);
+  const archiveGroups = useMemo(
+    () => groupByMonth(archiveEntries, language),
+    [archiveEntries, language]
+  );
 
   return (
     <div className="home">
@@ -60,8 +133,7 @@ export function Home() {
         />
       </div>
 
-      <main className="master-detail">
-        {/* Journal panel (left) - hidden on mobile when inspector is open */}
+      <main className={`master-detail ${!selectedEntry ? 'no-selection' : ''}`}>
         <div className={`journal-panel ${mobileInspector ? 'mobile-hidden' : ''}`}>
           {journalLoading ? (
             <div className="journal-loading">
@@ -74,20 +146,45 @@ export function Home() {
               <p>{t.noEntriesHint}</p>
             </div>
           ) : (
-            <div className="journal-list">
-              {entries.map(entry => (
-                <CompactCard
-                  key={entry.id}
-                  entry={entry}
-                  selected={entry.id === selectedEntryId}
-                  onSelect={handleSelect}
-                />
-              ))}
-            </div>
+            <>
+              <div className="journal-list">
+                {recentEntries.length > 0 && (
+                  <div>
+                    <div className="date-group-header">{t.recentEntries}</div>
+                    {recentEntries.map(entry => (
+                      <CompactCard
+                        key={entry.id}
+                        entry={entry}
+                        selected={entry.id === selectedEntryId}
+                        onSelect={handleSelect}
+                      />
+                    ))}
+                  </div>
+                )}
+                {archiveGroups.map(group => (
+                  <div key={group.key}>
+                    <div className="date-group-header">{group.label}</div>
+                    {group.entries.map(entry => (
+                      <CompactCard
+                        key={entry.id}
+                        entry={entry}
+                        selected={entry.id === selectedEntryId}
+                        onSelect={handleSelect}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPrev={prevPage}
+                onNext={nextPage}
+              />
+            </>
           )}
         </div>
 
-        {/* Inspector panel (right) */}
         <div className={`inspector-panel ${mobileInspector ? 'mobile-visible' : ''} ${!selectedEntry ? 'empty' : ''}`}>
           {selectedEntry ? (
             <EntryInspector

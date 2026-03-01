@@ -222,6 +222,24 @@ export interface Translations {
   // Confirmations
   confirmDeleteAll: string;
   deleted: string;
+
+  // Recent section
+  recentEntries: string;
+
+  // Pagination & List Pages
+  previousPage: string;
+  nextPage: string;
+  pageOf: string;
+  allEntries: string;
+  allSongs: string;
+  allFilms: string;
+  allNotes: string;
+  viewReel: string;
+  openEntry: string;
+  today: string;
+  noSongsYet: string;
+  noFilmsYet: string;
+  noNotesYet: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -447,6 +465,24 @@ export const translations: Record<Language, Translations> = {
     // Confirmations
     confirmDeleteAll: 'Sei sicuro di voler eliminare tutte le {count} entry? Questa azione non può essere annullata.',
     deleted: 'Eliminate {count} entry',
+
+    // Recent section
+    recentEntries: 'Recenti',
+
+    // Pagination & List Pages
+    previousPage: '← Precedente',
+    nextPage: 'Successiva →',
+    pageOf: 'Pagina {page} di {total}',
+    allEntries: 'Tutte le entries',
+    allSongs: 'Tutte le canzoni',
+    allFilms: 'Tutti i film',
+    allNotes: 'Tutte le note',
+    viewReel: 'Vedi reel →',
+    openEntry: 'Apri →',
+    today: 'Oggi',
+    noSongsYet: 'Nessuna canzone trovata',
+    noFilmsYet: 'Nessun film trovato',
+    noNotesYet: 'Nessuna nota trovata',
   },
 
   en: {
@@ -671,6 +707,24 @@ export const translations: Record<Language, Translations> = {
     // Confirmations
     confirmDeleteAll: 'Are you sure you want to delete all {count} entries? This action cannot be undone.',
     deleted: 'Deleted {count} entries',
+
+    // Recent section
+    recentEntries: 'Recent',
+
+    // Pagination & List Pages
+    previousPage: '← Previous',
+    nextPage: 'Next →',
+    pageOf: 'Page {page} of {total}',
+    allEntries: 'All entries',
+    allSongs: 'All songs',
+    allFilms: 'All films',
+    allNotes: 'All notes',
+    viewReel: 'View reel →',
+    openEntry: 'Open →',
+    today: 'Today',
+    noSongsYet: 'No songs found',
+    noFilmsYet: 'No films found',
+    noNotesYet: 'No notes found',
   }
 };
 

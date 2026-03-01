@@ -198,6 +198,16 @@ body {
   flex-shrink: 0;
 }
 
+.master-detail.no-selection .journal-panel {
+  width: 100%;
+  max-width: none;
+  border-right: none;
+}
+
+.master-detail.no-selection .inspector-panel {
+  display: none;
+}
+
 .journal-list {
   display: flex;
   flex-direction: column;
@@ -2559,5 +2569,329 @@ body {
     order: 10;
     margin-top: 0.5rem;
     white-space: normal;
+  }
+}
+
+/* ==================== STAT LINKS ==================== */
+.stat-link {
+  text-decoration: none;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.stat-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* ==================== DATE GROUP HEADERS ==================== */
+.date-group-header {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.75rem 1rem 0.4rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-light);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+/* ==================== PAGINATION BAR ==================== */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-card);
+}
+
+.pagination-btn {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  color: var(--text-muted);
+}
+
+.pagination-info {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* ==================== LIST PAGES ==================== */
+.list-page {
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+.list-page-content {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.list-page-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.list-page-header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.list-page-back {
+  font-size: 0.875rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.list-page-back:hover {
+  text-decoration: underline;
+}
+
+.list-page-empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+/* ==================== LIST ITEM ROW ==================== */
+.list-item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-light);
+  transition: background 0.15s;
+}
+
+.list-item-row:first-child {
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.list-item-row:last-child {
+  border-radius: 0 0 var(--radius) var(--radius);
+  border-bottom: none;
+}
+
+.list-item-row:hover {
+  background: var(--bg-hover);
+}
+
+.list-item-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.list-item-thumb-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.list-item-poster {
+  width: 40px;
+  height: 56px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.list-item-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.list-item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.list-item-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.list-item-platform {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.list-item-date {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.list-item-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-item-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.list-item-muted {
+  color: var(--text-muted);
+}
+
+.list-item-summary {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-item-meta {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.list-item-count {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.list-item-badges {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.15rem;
+}
+
+.list-item-action {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.list-item-action:hover {
+  text-decoration: underline;
+}
+
+/* Badges */
+.source-badge {
+  font-size: 0.65rem;
+  font-weight: 500;
+  padding: 0.1rem 0.4rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+
+.badge-link {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  text-decoration: none;
+  color: white;
+}
+
+.badge-link.spotify { background: var(--spotify); }
+.badge-link.youtube { background: var(--youtube); }
+.badge-link.imdb { background: var(--imdb); color: #000; }
+.badge-link.netflix { background: var(--netflix); }
+.badge-link.prime { background: var(--prime); }
+.badge-link.disney { background: var(--disney); }
+
+.badge-playlist {
+  font-size: 0.65rem;
+  font-weight: 500;
+  padding: 0.1rem 0.4rem;
+  background: var(--success-soft);
+  color: var(--success);
+  border-radius: 4px;
+}
+
+.category-badge {
+  font-size: 0.65rem;
+  font-weight: 500;
+  padding: 0.1rem 0.4rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 4px;
+}
+
+/* ==================== LIST PAGES RESPONSIVE ==================== */
+@media (max-width: 768px) {
+  .list-page-content {
+    padding: 1rem;
+  }
+
+  .list-page-header h1 {
+    font-size: 1.2rem;
+  }
+
+  .list-item-row {
+    flex-wrap: wrap;
+  }
+
+  .list-item-action {
+    width: 100%;
+    text-align: right;
+    margin-top: 0.25rem;
   }
 }

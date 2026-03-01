@@ -21,10 +21,10 @@ export function Header({ stats }: HeaderProps) {
           <span className="version-badge">v{APP_VERSION}</span>
         </div>
         <div className="stats">
-          <span className="stat">{stats.totalEntries} {t.entries}</span>
-          <span className="stat">{stats.totalSongs} {t.songs}</span>
-          <span className="stat">{stats.totalFilms} {t.films}</span>
-          <span className="stat">{stats.totalNotes} {t.notes}</span>
+          <Link to="/entries" className="stat stat-link">{stats.totalEntries} {t.entries}</Link>
+          <Link to="/songs" className="stat stat-link">{stats.totalSongs} {t.songs}</Link>
+          <Link to="/films" className="stat stat-link">{stats.totalFilms} {t.films}</Link>
+          <Link to="/notes" className="stat stat-link">{stats.totalNotes} {t.notes}</Link>
         </div>
         <nav className="nav">
           <Link to="/console" className="nav-link">{t.console}</Link>

@@ -5,6 +5,20 @@ import type { AiAnalysisResult, MediaAiAnalysisResult, DownloadedMedia, GeminiUs
 
 type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
 
+const SUPPORTED_MEDIA_TYPES = new Set([
+  'audio/aac', 'audio/flac', 'audio/mp3', 'audio/m4a', 'audio/mpeg',
+  'audio/mpga', 'audio/mp4', 'audio/opus', 'audio/pcm', 'audio/wav', 'audio/webm',
+  'video/mp4', 'video/mpeg', 'video/mov', 'video/avi', 'video/x-flv',
+  'video/mpg', 'video/webm', 'video/wmv', 'video/3gpp'
+]);
+
+function normalizeMediaMimeType(mimeType: string): string {
+  const base = mimeType.split(';')[0].trim().toLowerCase();
+  if (SUPPORTED_MEDIA_TYPES.has(base)) return base;
+  logWarning('AI Analysis: mimeType non supportato, fallback audio/mpeg', { originalMimeType: mimeType });
+  return 'audio/mpeg';
+}
+
 export interface AiAnalysisResponse {
   result: AiAnalysisResult | MediaAiAnalysisResult;
   usageMetadata: GeminiUsageMetadata | null;
@@ -66,13 +80,15 @@ export async function analyzeWithAi(
     // Add media (audio/video) if available
     if (media) {
       const base64Media = media.buffer.toString('base64');
+      // Normalize mimeType: cobalt tunnel URLs may return application/octet-stream
+      const mediaMimeType = normalizeMediaMimeType(media.mimeType);
       parts.push({
         inlineData: {
-          mimeType: media.mimeType,
+          mimeType: mediaMimeType,
           data: base64Media
         }
       });
-      logInfo('Media aggiunto al prompt AI', { mimeType: media.mimeType, sizeBytes: media.sizeBytes });
+      logInfo('Media aggiunto al prompt AI', { originalMimeType: media.mimeType, mimeType: mediaMimeType, sizeBytes: media.sizeBytes });
     }
 
     const response = await generateContent(parts, useVertexAi);
