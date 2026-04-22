@@ -127,7 +127,7 @@ async function formatTelegramResponse(result: AnalyzeResult, entryId: string): P
       hasTags: tags.length > 0,
       hasTranscript: !!transcript,
       transcript,
-      frontendUrl: `https://soundreel-776c1.web.app/#${entryId}`
+      frontendUrl: `https://soundreel-776c1.web.app/?entry=${entryId}`
     });
 
     return response.replace(/\n{3,}/g, '\n\n').trim();
@@ -154,8 +154,10 @@ async function formatTelegramResponse(result: AnalyzeResult, entryId: string): P
     }
 
     if (songs.length === 0 && films.length === 0) {
-      response = 'Ho analizzato il link ma non ho trovato canzoni o film. 🤷';
+      response = 'Ho analizzato il link ma non ho trovato canzoni o film. 🤷\n\n';
     }
+
+    response += `\n🌐 <a href="https://soundreel-776c1.web.app/?entry=${entryId}">Vedi su SoundReel</a>`;
 
     return response;
   }

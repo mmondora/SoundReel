@@ -182,9 +182,18 @@ body {
 }
 
 /* ==================== MASTER-DETAIL LAYOUT ==================== */
+.home {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
 .master-detail {
   display: flex;
-  height: calc(100vh - 140px);
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -2430,10 +2439,17 @@ body {
   }
 
   /* Master-detail mobile */
+  .home {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
   .master-detail {
     display: block;
     height: auto;
-    min-height: calc(100vh - 140px);
+    min-height: 0;
   }
 
   .journal-panel {

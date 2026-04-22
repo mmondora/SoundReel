@@ -29,35 +29,61 @@ export async function analyzeWithAi(
   thumbnailUrl: string | null,
   media?: DownloadedMedia | null,
   transcript?: string | null,
-  useVertexAi: boolean = true
+  useVertexAi: boolean = true,
+  carouselUrls: string[] = []
 ): Promise<AiAnalysisResponse> {
   const emptyResult: AiAnalysisResult = { songs: [], films: [], notes: [], links: [], tags: [], summary: null };
 
-  if (!caption && !thumbnailUrl && !media) {
+  if (!caption && !thumbnailUrl && !media && !transcript && carouselUrls.length === 0) {
     logInfo('Nessun contenuto da analizzare con AI');
     return { result: emptyResult, usageMetadata: null };
   }
 
   try {
+    const hasCarousel = carouselUrls.length > 0;
     const useMediaPrompt = !!media;
-    logInfo('Analisi AI con Gemini', { hasCaption: !!caption, hasThumbnail: !!thumbnailUrl, hasMedia: !!media, useMediaPrompt, useVertexAi });
+    logInfo('Analisi AI con Gemini', { hasCaption: !!caption, hasThumbnail: !!thumbnailUrl, hasMedia: !!media, hasCarousel, carouselSlides: carouselUrls.length, useMediaPrompt, useVertexAi });
 
     // Choose prompt based on media availability
     const promptId = useMediaPrompt ? 'mediaAnalysis' : 'contentAnalysis';
     const promptConfig = await getPrompt(promptId);
     const prompt = renderTemplate(promptConfig.template, {
       caption: caption || '[nessuna caption]',
-      hasImage: !!thumbnailUrl,
+      hasImage: !!thumbnailUrl || hasCarousel,
       transcript: transcript || null,
-      hasTranscript: !!transcript
+      hasTranscript: !!transcript,
+      isCarousel: hasCarousel,
+      carouselCount: carouselUrls.length
     });
 
     const parts: GeminiPart[] = [
       { text: prompt }
     ];
 
-    // Add thumbnail image
-    if (thumbnailUrl) {
+    // Add carousel images (all slides) or single thumbnail
+    if (hasCarousel) {
+      let loadedCount = 0;
+      for (const slideUrl of carouselUrls) {
+        try {
+          const imageResponse = await fetch(slideUrl);
+          if (imageResponse.ok) {
+            const imageBuffer = await imageResponse.arrayBuffer();
+            const base64 = Buffer.from(imageBuffer).toString('base64');
+            const mimeType = imageResponse.headers.get('content-type') || 'image/jpeg';
+            parts.push({
+              inlineData: {
+                mimeType,
+                data: base64
+              }
+            });
+            loadedCount++;
+          }
+        } catch (imgError) {
+          logWarning('Impossibile caricare slide carousel', { error: imgError });
+        }
+      }
+      logInfo(`Carousel: ${loadedCount}/${carouselUrls.length} immagini caricate per AI`);
+    } else if (thumbnailUrl) {
       try {
         const imageResponse = await fetch(thumbnailUrl);
         if (imageResponse.ok) {
