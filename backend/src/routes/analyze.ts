@@ -120,7 +120,11 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       });
 
       if (isInstagram) {
+        const dlError = (content as { __downloadError?: string | null }).__downloadError;
+        const downloadFailed = !!dlError;
         await appendActionLog(entryId, createActionLog('instaloader_download', {
+          status: downloadFailed ? 'error' : 'ok',
+          error: dlError || null,
           hasCaption: content.hasCaption,
           hasVideo: !!content.localPaths?.videoPath,
           hasAudio: !!content.localPaths?.audioPath,
@@ -129,6 +133,17 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           frames: content.localPaths?.framePaths.length ?? 0,
           hasMusicInfo: !!content.musicInfo,
         }));
+        if (downloadFailed) {
+          await updateEntry(entryId, { status: 'error' });
+          await appendActionLog(entryId, createActionLog('completed', {
+            status: 'error',
+            reason: 'instaloader_download_failed',
+            error: dlError,
+          }));
+          const entryErr = await getEntry(entryId);
+          reply.send({ success: false, entryId, entry: entryErr, error: dlError });
+          return;
+        }
       } else {
         await appendActionLog(entryId, createActionLog('content_extracted', {
           hasAudio: content.hasAudio,

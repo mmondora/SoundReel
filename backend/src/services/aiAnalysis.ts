@@ -1,4 +1,3 @@
-import { promises as fs } from 'fs';
 import { generateText, OllamaImage } from './ollamaClient';
 import { logInfo, logWarning, logError } from '../utils/logger';
 import { getPrompt, renderTemplate } from './promptLoader';
@@ -28,18 +27,6 @@ const EMPTY_RESULT: AiAnalysisResult = {
   tags: [],
   summary: null,
 };
-
-async function pathToOllamaImage(filePath: string): Promise<OllamaImage | null> {
-  try {
-    const buf = await fs.readFile(filePath);
-    const ext = filePath.toLowerCase().split('.').pop() || 'jpg';
-    const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-    return { mimeType, base64: buf.toString('base64') };
-  } catch (err) {
-    logWarning('Impossibile leggere immagine per AI', { filePath, error: String(err) });
-    return null;
-  }
-}
 
 export async function analyzeWithAi(input: AiAnalysisInput): Promise<AiAnalysisResponse> {
   const hasAnyInput =
@@ -88,19 +75,11 @@ export async function analyzeWithAi(input: AiAnalysisInput): Promise<AiAnalysisR
       // Legacy compat: older prompts may still reference hasImage
     });
 
-    // Image selection:
-    // - Carousel: pass all slides (vision will OCR/describe them)
-    // - Else: thumbnail only (if any). visualContext already has video summary.
+    // Text-only analysis: OCR already captured slide text, visualContext already
+    // describes video frames. No need to pass images to the final LLM — the text
+    // model (qwen2.5:3b) handles structured JSON better than the vision model
+    // (moondream), which tends to echo the template placeholders.
     const images: OllamaImage[] = [];
-    if (isCarousel) {
-      for (const p of input.slidePaths) {
-        const img = await pathToOllamaImage(p);
-        if (img) images.push(img);
-      }
-    } else if (input.thumbnailPath) {
-      const img = await pathToOllamaImage(input.thumbnailPath);
-      if (img) images.push(img);
-    }
 
     const response = await generateText(prompt, images);
     const text = response.text;

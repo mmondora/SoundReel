@@ -329,6 +329,146 @@ export async function updateApiKeysConfig(updates: Partial<ApiKeysConfig>): Prom
   await mergeConfig('apiKeys', updates, DEFAULT_API_KEYS);
 }
 
+// Retention
+
+export interface RetentionConfig {
+  retentionDays: number | null; // null = disabled (keep forever)
+  orphanTtlDays: number;        // delete orphan media dirs after N days
+}
+
+const DEFAULT_RETENTION: RetentionConfig = {
+  retentionDays: null,
+  orphanTtlDays: 7,
+};
+
+export async function getRetentionConfig(): Promise<RetentionConfig> {
+  return { ...DEFAULT_RETENTION, ...(await getConfig<Partial<RetentionConfig>>('retention', {})) };
+}
+
+export async function updateRetentionConfig(updates: Partial<RetentionConfig>): Promise<void> {
+  await mergeConfig('retention', updates, DEFAULT_RETENTION);
+}
+
+// Admin: storage stats
+
+export interface PlatformCount { platform: string; count: number }
+export interface StatusCount { status: string; count: number }
+export interface AgeBucket { label: string; count: number }
+export interface EntrySummary {
+  id: string;
+  sourceUrl: string;
+  sourcePlatform: string;
+  createdAt: string;
+  status: string;
+}
+
+export async function countsByPlatform(): Promise<PlatformCount[]> {
+  const rows = await query<{ source_platform: string; count: string }>(
+    `SELECT source_platform, COUNT(*)::text AS count FROM entries GROUP BY source_platform ORDER BY 2 DESC`,
+  );
+  return rows.map((r) => ({ platform: r.source_platform, count: Number(r.count) }));
+}
+
+export async function countsByStatus(): Promise<StatusCount[]> {
+  const rows = await query<{ status: string; count: string }>(
+    `SELECT status, COUNT(*)::text AS count FROM entries GROUP BY status ORDER BY 2 DESC`,
+  );
+  return rows.map((r) => ({ status: r.status, count: Number(r.count) }));
+}
+
+export async function ageBuckets(): Promise<AgeBucket[]> {
+  const rows = await query<{ label: string; count: string }>(
+    `SELECT label, COUNT(*)::text AS count FROM (
+       SELECT CASE
+         WHEN created_at >= NOW() - INTERVAL '1 day' THEN '<1d'
+         WHEN created_at >= NOW() - INTERVAL '7 days' THEN '<7d'
+         WHEN created_at >= NOW() - INTERVAL '30 days' THEN '<30d'
+         WHEN created_at >= NOW() - INTERVAL '90 days' THEN '<90d'
+         ELSE 'older'
+       END AS label
+       FROM entries
+     ) t
+     GROUP BY label
+     ORDER BY CASE label WHEN '<1d' THEN 0 WHEN '<7d' THEN 1 WHEN '<30d' THEN 2 WHEN '<90d' THEN 3 ELSE 4 END`,
+  );
+  return rows.map((r) => ({ label: r.label, count: Number(r.count) }));
+}
+
+export async function allEntryIds(): Promise<string[]> {
+  const rows = await query<{ id: string }>(`SELECT id FROM entries`);
+  return rows.map((r) => r.id);
+}
+
+export async function entriesOlderThan(days: number): Promise<EntrySummary[]> {
+  const rows = await query<{
+    id: string; source_url: string; source_platform: string;
+    created_at: Date; status: string;
+  }>(
+    `SELECT id, source_url, source_platform, created_at, status
+     FROM entries
+     WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')
+     ORDER BY created_at ASC`,
+    [days],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    sourceUrl: r.source_url,
+    sourcePlatform: r.source_platform,
+    createdAt: r.created_at.toISOString(),
+    status: r.status,
+  }));
+}
+
+export async function findEntriesByFilter(filter: {
+  platform?: string | null;
+  status?: string | null;
+  olderThanDays?: number | null;
+  emptyResultsOnly?: boolean;
+}): Promise<EntrySummary[]> {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  let idx = 1;
+  if (filter.platform) {
+    where.push(`source_platform = $${idx++}`);
+    params.push(filter.platform);
+  }
+  if (filter.status) {
+    where.push(`status = $${idx++}`);
+    params.push(filter.status);
+  }
+  if (typeof filter.olderThanDays === 'number' && filter.olderThanDays >= 0) {
+    where.push(`created_at < NOW() - ($${idx++}::int * INTERVAL '1 day')`);
+    params.push(filter.olderThanDays);
+  }
+  if (filter.emptyResultsOnly) {
+    // empty results = no songs and no films
+    where.push(
+      `(COALESCE(jsonb_array_length(results->'songs'), 0) = 0
+        AND COALESCE(jsonb_array_length(results->'films'), 0) = 0)`,
+    );
+  }
+  const sql = `SELECT id, source_url, source_platform, created_at, status FROM entries
+               ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+               ORDER BY created_at ASC`;
+  const rows = await query<{
+    id: string; source_url: string; source_platform: string;
+    created_at: Date; status: string;
+  }>(sql, params);
+  return rows.map((r) => ({
+    id: r.id,
+    sourceUrl: r.source_url,
+    sourcePlatform: r.source_platform,
+    createdAt: r.created_at.toISOString(),
+    status: r.status,
+  }));
+}
+
+export async function deleteEntriesByIds(ids: string[]): Promise<number> {
+  if (!ids.length) return 0;
+  const result = await pool.query('DELETE FROM entries WHERE id = ANY($1::text[])', [ids]);
+  return result.rowCount ?? 0;
+}
+
 // Prompts
 
 export async function getPromptsConfig(): Promise<Record<string, string>> {

@@ -31,7 +31,7 @@ export interface ExtractContentOptions extends LegacyExtractOptions {
  * Instagram local path: delegates to Instaloader sidecar for full local download
  * (video, audio, carousel slides, frames, thumbnail). No oEmbed / OG / cobalt / cookie API.
  */
-async function extractInstagramLocal(url: string, entryId: string): Promise<ExtractedContent> {
+async function extractInstagramLocal(url: string, entryId: string): Promise<ExtractedContent & { __downloadError?: string | null }> {
   log.info('IG local path: Instaloader /download', { url, entryId });
   const dl = await downloadWithInstaloader(url, entryId);
 
@@ -55,6 +55,7 @@ async function extractInstagramLocal(url: string, entryId: string): Promise<Extr
       slidePaths: dl.slidePaths,
       framePaths: dl.framePaths,
     },
+    __downloadError: dl.success ? null : dl.error || 'unknown',
   };
 }
 

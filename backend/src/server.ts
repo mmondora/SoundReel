@@ -13,6 +13,7 @@ import { registerHubStatusRoute } from './routes/hubStatus';
 import { registerLogsRoutes } from './routes/logs';
 import { registerPromptsRoutes } from './routes/prompts';
 import { registerMediaRoute } from './routes/media';
+import { registerAdminRoutes, runCleanup } from './routes/admin';
 
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8080);
@@ -35,6 +36,7 @@ async function bootstrap(): Promise<void> {
   registerLogsRoutes(app);
   registerPromptsRoutes(app);
   registerMediaRoute(app);
+  registerAdminRoutes(app);
 
   // Serve static frontend (after routes so /api/* wins)
   const publicDir = path.resolve(__dirname, 'public');
@@ -56,6 +58,20 @@ async function bootstrap(): Promise<void> {
 
   await query('SELECT 1');
   app.log.info('Postgres connection verified');
+
+  // Startup cleanup + daily schedule (orphan + retention purge)
+  const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+  const kickCleanup = async (): Promise<void> => {
+    try {
+      const result = await runCleanup();
+      app.log.info({ msg: 'cleanup cycle done', ...result });
+    } catch (err) {
+      app.log.error({ err }, 'cleanup cycle failed');
+    }
+  };
+  // Run after 60s boot grace, then every 24h
+  setTimeout(() => void kickCleanup(), 60_000);
+  setInterval(() => void kickCleanup(), CLEANUP_INTERVAL_MS);
 
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info(`Received ${signal}, shutting down`);

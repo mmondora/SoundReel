@@ -24,7 +24,7 @@ services:
       FRONTEND_URL: https://soundreel.casamon.dev
       SPOTIFY_REDIRECT_URI: https://soundreel.casamon.dev/spotify/callback
     volumes:
-      - soundreel_media:/data/media:ro
+      - soundreel_media:/data/media
     depends_on:
       soundreel-db:
         condition: service_healthy

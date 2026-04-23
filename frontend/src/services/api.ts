@@ -199,3 +199,100 @@ export async function getLogs(filters: LogsFilters = {}): Promise<Array<Record<s
 export async function clearLogs(): Promise<void> {
   await fetch(url('/api/logs'), { method: 'DELETE' });
 }
+
+// --- Admin ---
+
+export interface StoragePlatformCount { platform: string; count: number }
+export interface StorageStatusCount { status: string; count: number }
+export interface StorageAgeBucket { label: string; count: number }
+export interface StorageEntryDirStat {
+  entryId: string;
+  bytes: number;
+  files: number;
+  mtime: string;
+  orphan: boolean;
+}
+export interface StorageStats {
+  mediaRoot: string;
+  totals: { entries: number; mediaDirs: number; mediaFiles: number; mediaBytes: number };
+  orphans: { count: number; bytes: number };
+  byPlatform: StoragePlatformCount[];
+  byStatus: StorageStatusCount[];
+  byAge: StorageAgeBucket[];
+  topLargest: StorageEntryDirStat[];
+}
+
+export async function getAdminStorage(): Promise<StorageStats> {
+  const res = await fetch(url('/api/admin/storage'));
+  const j = await json<{ success: boolean } & StorageStats>(res);
+  return j;
+}
+
+export interface PurgeFilter {
+  platform?: string | null;
+  status?: string | null;
+  olderThanDays?: number | null;
+  emptyResultsOnly?: boolean;
+  dryRun?: boolean;
+  confirm?: string;
+}
+
+export interface PurgeDryRunResponse {
+  success: true;
+  dryRun: true;
+  wouldDelete: number;
+  sampleBytesFreedFromFirst500: number;
+  sample: Array<{ id: string; sourceUrl: string; sourcePlatform: string; createdAt: string; status: string }>;
+}
+
+export interface PurgeExecuteResponse {
+  success: true;
+  dryRun: false;
+  entriesDeleted: number;
+  dirsDeleted: number;
+  bytesFreed: number;
+}
+
+export async function adminPurge(filter: PurgeFilter): Promise<PurgeDryRunResponse | PurgeExecuteResponse> {
+  const res = await fetch(url('/api/admin/purge'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(filter),
+  });
+  return json<PurgeDryRunResponse | PurgeExecuteResponse>(res);
+}
+
+export interface RetentionConfig {
+  retentionDays: number | null;
+  orphanTtlDays: number;
+}
+
+export async function getRetention(): Promise<RetentionConfig> {
+  const res = await fetch(url('/api/admin/retention'));
+  const j = await json<{ success: boolean; config: RetentionConfig }>(res);
+  return j.config;
+}
+
+export async function updateRetention(updates: Partial<RetentionConfig>): Promise<RetentionConfig> {
+  const res = await fetch(url('/api/admin/retention'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  const j = await json<{ success: boolean; config: RetentionConfig }>(res);
+  return j.config;
+}
+
+export interface CleanupResult {
+  orphanDirsDeleted: number;
+  orphanBytesFreed: number;
+  retentionEntriesDeleted: number;
+  retentionDirsDeleted: number;
+  retentionBytesFreed: number;
+}
+
+export async function cleanupOrphans(): Promise<CleanupResult> {
+  const res = await fetch(url('/api/admin/cleanup-orphans'), { method: 'POST' });
+  const j = await json<{ success: boolean; result: CleanupResult }>(res);
+  return j.result;
+}
