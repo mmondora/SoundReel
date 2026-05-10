@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import { detectPlatform } from '../services/contentExtractor';
 import { getPrompt, renderTemplate } from '../services/promptLoader';
 import { Logger } from '../services/debugLogger';
 import { countEntries, listEntries } from '../utils/db';
@@ -67,12 +66,15 @@ interface AnalyzeResult {
   success: boolean;
   entryId?: string;
   entry?: {
+    caption?: string | null;
+    sourceUrl?: string;
     results: {
       songs: Array<{ title: string; artist: string; album: string | null; addedToPlaylist: boolean }>;
       films: Array<{ title: string; year: string | null; director: string | null }>;
       notes: Array<{ text: string; category: string }>;
       links: Array<{ url: string; label: string | null }>;
       tags: string[];
+      summary?: string | null;
       transcript?: string | null;
     };
   };
@@ -85,52 +87,60 @@ function frontendUrl(entryId: string): string {
 }
 
 async function formatTelegramResponse(result: AnalyzeResult, entryId: string): Promise<string> {
-  const results = result.entry?.results || { songs: [], films: [], notes: [], links: [], tags: [] };
-  const { songs, films, notes, links, tags } = results;
-  const rawTranscript = (results as { transcript?: string | null }).transcript;
-  const transcript = rawTranscript
-    ? rawTranscript.length > 500 ? rawTranscript.substring(0, 500) + '...' : rawTranscript
-    : null;
+  const results = result.entry?.results || { songs: [], films: [], notes: [], links: [], tags: [], summary: null };
+  const { songs, films, links } = results;
+  const summaryRaw = (results as { summary?: string | null }).summary;
+  const summary = summaryRaw ? truncateForTelegram(summaryRaw, 280) : null;
+  const title = pickTitle(result, summary);
+
+  const linksCount = links.length;
+  const songsCount = songs.length;
+  const filmsCount = films.length;
+  const hasCounts = linksCount > 0 || songsCount > 0 || filmsCount > 0;
 
   try {
     const promptConfig = await getPrompt('telegramResponse');
     const response = renderTemplate(promptConfig.template, {
-      songs, films, notes, links, tags,
-      hasSongs: songs.length > 0,
-      hasFilms: films.length > 0,
-      hasNotes: notes.length > 0,
-      hasLinks: links.length > 0,
-      hasTags: tags.length > 0,
-      hasTranscript: !!transcript,
-      transcript,
+      title: escapeHtml(title),
+      summary: summary ? escapeHtml(summary) : '',
+      hasSummary: !!summary,
+      linksCount, songsCount, filmsCount, hasCounts,
       frontendUrl: frontendUrl(entryId),
     });
     return response.replace(/\n{3,}/g, '\n\n').trim();
   } catch {
-    let response = '🎵 <b>SoundReel ha analizzato il tuo link!</b>\n\n';
-    if (songs.length > 0) {
-      response += '🎶 <b>Canzoni trovate:</b>\n';
-      for (const song of songs) {
-        const albumPart = song.album ? ` (${song.album})` : '';
-        const playlistPart = song.addedToPlaylist ? ' ✓' : '';
-        response += `• ${song.title} — ${song.artist}${albumPart}${playlistPart}\n`;
-      }
-      response += '\n';
-    }
-    if (films.length > 0) {
-      response += '🎬 <b>Film trovati:</b>\n';
-      for (const film of films) {
-        const yearPart = film.year ? ` (${film.year})` : '';
-        const directorPart = film.director ? ` — ${film.director}` : '';
-        response += `• ${film.title}${yearPart}${directorPart}\n`;
-      }
-    }
-    if (songs.length === 0 && films.length === 0) {
-      response = 'Ho analizzato il link ma non ho trovato canzoni o film. 🤷\n\n';
-    }
-    response += `\n🌐 <a href="${frontendUrl(entryId)}">Vedi su SoundReel</a>`;
-    return response;
+    const safeTitle = escapeHtml(title);
+    const lines = [`<b>${safeTitle}</b>`];
+    if (summary) lines.push(escapeHtml(summary));
+    lines.push('');
+    if (hasCounts) lines.push(`🔗 ${linksCount} · 🎵 ${songsCount} · 🎬 ${filmsCount}`);
+    lines.push(`🌐 <a href="${frontendUrl(entryId)}">Apri su SoundReel</a>`);
+    return lines.join('\n');
   }
+}
+
+function pickTitle(result: AnalyzeResult, summary: string | null): string {
+  const r = result.entry as { caption?: string | null; sourceUrl?: string } | undefined;
+  const caption = r?.caption?.split(/\r?\n/)[0]?.trim();
+  if (caption && caption.length > 0) return caption.slice(0, 90);
+  if (summary) return summary.slice(0, 80);
+  if (r?.sourceUrl) {
+    try { return new URL(r.sourceUrl).hostname.replace(/^www\./, ''); }
+    catch { return 'SoundReel' }
+  }
+  return 'SoundReel';
+}
+
+function truncateForTelegram(s: string, max: number): string {
+  const t = s.trim().replace(/\s+/g, ' ');
+  return t.length <= max ? t : t.slice(0, max - 1).trimEnd() + '…';
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 export function registerTelegramRoute(app: FastifyInstance): void {
@@ -208,18 +218,6 @@ export function registerTelegramRoute(app: FastifyInstance): void {
         return;
       }
 
-      const platform = detectPlatform(url);
-      const platformLabels: Record<string, string> = {
-        instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube',
-        facebook: 'Facebook', twitter: 'X/Twitter', threads: 'Threads',
-        spotify: 'Spotify', reddit: 'Reddit', linkedin: 'LinkedIn',
-        pinterest: 'Pinterest', vimeo: 'Vimeo', twitch: 'Twitch',
-        snapchat: 'Snapchat', soundcloud: 'SoundCloud', other: 'Web',
-      };
-      const platformLabel = platformLabels[platform] || platform;
-
-      await sendTelegramMessage(chatId, `✅ Ricevuto! Link da <b>${platformLabel}</b>\n🔗 ${url}\n\n⏳ Analisi in corso...`, token);
-
       // Respond webhook fast, process in background
       reply.code(200).send('OK');
 
@@ -242,7 +240,7 @@ export function registerTelegramRoute(app: FastifyInstance): void {
           await sendTelegramMessage(chatId, response, token);
         } catch (err) {
           log.error('Pipeline analyze via telegram fallita', err instanceof Error ? err : new Error(String(err)));
-          await sendTelegramMessage(chatId, '❌ Si è verificato un errore durante l\'analisi. Riprova più tardi.', token);
+          await sendTelegramMessage(chatId, `❌ Analisi fallita.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`, token);
         }
       })().catch(() => {});
 
@@ -251,7 +249,7 @@ export function registerTelegramRoute(app: FastifyInstance): void {
     } catch (error) {
       log.error('Webhook fallito', error instanceof Error ? error : new Error(String(error)));
       try {
-        await sendTelegramMessage(chatId, '❌ Si è verificato un errore durante l\'analisi. Riprova più tardi.', token);
+        await sendTelegramMessage(chatId, `❌ Analisi fallita.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`, token);
       } catch {}
       reply.code(200).send('OK');
       return;
