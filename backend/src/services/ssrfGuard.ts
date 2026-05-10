@@ -60,10 +60,11 @@ export async function assertPublicHttpUrl(rawUrl: string): Promise<URL> {
     throw new SsrfBlockedError(host, 'localhost');
   }
 
-  let ip = host;
-  if (isIP(host) === 0) {
+  const stripped = host.replace(/^\[|\]$/g, '');
+  let ip = stripped;
+  if (isIP(stripped) === 0) {
     try {
-      const res = await lookup(host);
+      const res = await lookup(stripped);
       ip = res.address;
     } catch {
       throw new SsrfBlockedError(host, 'dns_failed');
