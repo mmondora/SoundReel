@@ -440,14 +440,25 @@ export function EntryCard({ entry }: EntryCardProps) {
         <section className="entry-section links">
           <h3 className="section-title">{t.linksSection}</h3>
           <ul className="links-list">
-            {entry.results.links.map((link, index) => (
-              <li key={index} className="link-item">
-                <span className="link-icon">🔗</span>
-                <a href={link.url} target="_blank" rel="noopener noreferrer" className="link-url">
-                  {link.label || link.url}
-                </a>
-              </li>
-            ))}
+            {entry.results.links.map((link, index) => {
+              const domain = link.domain
+                || (() => { try { return new URL(link.url).hostname.replace(/^www\./, ''); } catch { return null; } })();
+              const favicon = link.faviconUrl
+                || (domain ? `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(domain)}` : null);
+              const labelText = link.label || link.title || link.url;
+              return (
+                <li key={index} className={`link-item${link.category ? ` link-cat-${link.category}` : ''}`}>
+                  {favicon
+                    ? <img src={favicon} alt="" className="link-favicon" width={16} height={16} loading="lazy" />
+                    : <span className="link-icon">🔗</span>}
+                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="link-url">
+                    {labelText}
+                  </a>
+                  {domain && <span className="link-domain">{domain}</span>}
+                  {link.category && <span className="link-category">{link.category}</span>}
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

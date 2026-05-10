@@ -113,6 +113,7 @@ export interface ExtractedContent {
   hasAudio: boolean;
   hasCaption: boolean;
   musicInfo: MusicMetadata | null;
+  carouselUrls: string[];
 }
 
 export interface AiAnalysisResult {

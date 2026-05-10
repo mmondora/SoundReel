@@ -1,59 +1,60 @@
-const FUNCTIONS_BASE_URL = import.meta.env.VITE_FUNCTIONS_URL || '';
+import type { Entry } from '../types';
 
-// Debug: log the base URL on load
-console.log('[SoundReel API] FUNCTIONS_BASE_URL:', FUNCTIONS_BASE_URL || '(empty - will use relative URLs)');
+// When served from the same origin as the backend, relative paths work.
+// For local dev against a backend on :8080, set VITE_API_BASE_URL in .env.local.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '';
+
+function url(path: string): string {
+  return `${API_BASE}${path}`;
+}
+
+async function json<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+  return (await res.json()) as T;
+}
+
+// --- Analyze ---
 
 export interface AnalyzeResponse {
   success: boolean;
   entryId: string;
   existing?: boolean;
+  entry?: Entry;
   error?: string;
 }
 
-export async function analyzeUrl(url: string): Promise<AnalyzeResponse> {
-  const endpoint = `${FUNCTIONS_BASE_URL}/analyzeUrl`;
-  console.log('[SoundReel API] Calling analyzeUrl:', endpoint);
+export async function analyzeUrl(sourceUrl: string): Promise<AnalyzeResponse> {
+  const res = await fetch(url('/api/analyze'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: sourceUrl }),
+  });
+  return json<AnalyzeResponse>(res);
+}
 
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ url })
-    });
+// --- Entries ---
 
-    console.log('[SoundReel API] Response status:', response.status);
+export async function listEntries(limit = 200): Promise<Entry[]> {
+  const res = await fetch(url(`/api/entries?limit=${limit}`));
+  return json<Entry[]>(res);
+}
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('[SoundReel API] Error response:', error);
-      throw new Error(error || 'Errore durante l\'analisi');
-    }
-
-    const data = await response.json();
-    console.log('[SoundReel API] Success:', data);
-    return data;
-  } catch (err) {
-    console.error('[SoundReel API] Fetch error:', err);
-    throw err;
-  }
+export async function getEntry(id: string): Promise<Entry> {
+  const res = await fetch(url(`/api/entries/${encodeURIComponent(id)}`));
+  return json<Entry>(res);
 }
 
 export async function deleteEntry(entryId: string): Promise<{ success: boolean }> {
-  const response = await fetch(`${FUNCTIONS_BASE_URL}/deleteEntry`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ entryId })
-  });
+  const res = await fetch(url(`/api/entries/${encodeURIComponent(entryId)}`), { method: 'DELETE' });
+  return json<{ success: boolean }>(res);
+}
 
-  if (!response.ok) {
-    throw new Error('Errore durante l\'eliminazione');
-  }
-
-  return response.json();
+export async function deleteAllEntries(): Promise<{ success: boolean; deleted: number }> {
+  const res = await fetch(url('/api/entries'), { method: 'DELETE' });
+  return json<{ success: boolean; deleted: number }>(res);
 }
 
 export async function retryEntry(entryId: string, sourceUrl: string): Promise<AnalyzeResponse> {
@@ -62,36 +63,31 @@ export async function retryEntry(entryId: string, sourceUrl: string): Promise<An
 }
 
 export async function enrichEntry(entryId: string): Promise<{ success: boolean; enrichments: unknown[] }> {
-  const response = await fetch(`${FUNCTIONS_BASE_URL}/enrichEntry`, {
+  const res = await fetch(url('/api/entries/enrich'), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ entryId })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entryId }),
   });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(error || 'Errore durante l\'enrichment');
-  }
-
-  return response.json();
+  return json<{ success: boolean; enrichments: unknown[] }>(res);
 }
 
-export async function deleteAllEntries(): Promise<{ success: boolean; deleted: number }> {
-  const response = await fetch(`${FUNCTIONS_BASE_URL}/deleteAllEntries`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    }
+// --- SSE stream (real-time updates) ---
+
+export type EntryStreamEvent = { op: 'INSERT' | 'UPDATE' | 'DELETE'; id: string };
+
+export function openEntryStream(onEvent: (event: EntryStreamEvent) => void, onError?: (err: Event) => void): () => void {
+  const es = new EventSource(url('/api/entries/stream'));
+  es.addEventListener('entry_changed', (ev) => {
+    try {
+      const data = JSON.parse((ev as MessageEvent).data) as EntryStreamEvent;
+      onEvent(data);
+    } catch {}
   });
-
-  if (!response.ok) {
-    throw new Error('Errore durante l\'eliminazione');
-  }
-
-  return response.json();
+  es.addEventListener('error', (ev) => onError?.(ev));
+  return () => es.close();
 }
+
+// --- Config ---
 
 export interface FeaturesConfig {
   cobaltEnabled: boolean;
@@ -104,29 +100,18 @@ export interface FeaturesConfig {
 }
 
 export async function getFeatures(): Promise<FeaturesConfig> {
-  const response = await fetch(`${FUNCTIONS_BASE_URL}/getFeatures`);
-
-  if (!response.ok) {
-    throw new Error('Errore durante il caricamento delle impostazioni');
-  }
-
-  return response.json();
+  const res = await fetch(url('/api/config/features'));
+  return json<FeaturesConfig>(res);
 }
 
 export async function updateFeatures(updates: Partial<FeaturesConfig>): Promise<{ success: boolean; config: FeaturesConfig }> {
-  const response = await fetch(`${FUNCTIONS_BASE_URL}/updateFeatures`, {
+  const res = await fetch(url('/api/config/features'), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(updates)
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
   });
-
-  if (!response.ok) {
-    throw new Error('Errore durante l\'aggiornamento delle impostazioni');
-  }
-
-  return response.json();
+  const config = await json<FeaturesConfig>(res);
+  return { success: true, config };
 }
 
 export interface InstagramConfigResponse {
@@ -138,13 +123,20 @@ export interface InstagramConfigResponse {
 }
 
 export async function getInstagramConfig(): Promise<InstagramConfigResponse> {
-  const response = await fetch(`${FUNCTIONS_BASE_URL}/getInstagramCookies`);
+  const res = await fetch(url('/api/config/instagram'));
+  const raw = await json<Omit<InstagramConfigResponse, 'hasCredentials'>>(res);
+  return { ...raw, hasCredentials: !!(raw.sessionId && raw.csrfToken && raw.dsUserId) };
+}
 
-  if (!response.ok) {
-    throw new Error('Errore durante il caricamento della configurazione Instagram');
-  }
-
-  return response.json();
+export async function updateInstagramConfig(updates: Partial<InstagramConfigResponse>): Promise<{ success: boolean; config: InstagramConfigResponse }> {
+  const res = await fetch(url('/api/config/instagram'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  const raw = await json<Omit<InstagramConfigResponse, 'hasCredentials'>>(res);
+  const config = { ...raw, hasCredentials: !!(raw.sessionId && raw.csrfToken && raw.dsUserId) };
+  return { success: true, config };
 }
 
 export interface OpenAIConfigResponse {
@@ -154,51 +146,153 @@ export interface OpenAIConfigResponse {
 }
 
 export async function getOpenAIConfig(): Promise<OpenAIConfigResponse> {
-  const response = await fetch(`${FUNCTIONS_BASE_URL}/getOpenAI`);
-
-  if (!response.ok) {
-    throw new Error('Errore durante il caricamento della configurazione OpenAI');
-  }
-
-  return response.json();
+  const res = await fetch(url('/api/config/openai'));
+  const raw = await json<Omit<OpenAIConfigResponse, 'hasKey'>>(res);
+  return { ...raw, hasKey: !!raw.apiKey };
 }
 
-export async function updateOpenAIConfig(updates: {
-  apiKey?: string;
-  enabled?: boolean;
-}): Promise<{ success: boolean; config: OpenAIConfigResponse }> {
-  const response = await fetch(`${FUNCTIONS_BASE_URL}/updateOpenAI`, {
+export async function updateOpenAIConfig(updates: { apiKey?: string; enabled?: boolean }): Promise<{ success: boolean; config: OpenAIConfigResponse }> {
+  const res = await fetch(url('/api/config/openai'), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(updates)
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
   });
-
-  if (!response.ok) {
-    throw new Error('Errore durante l\'aggiornamento della configurazione OpenAI');
-  }
-
-  return response.json();
+  const raw = await json<Omit<OpenAIConfigResponse, 'hasKey'>>(res);
+  const config = { ...raw, hasKey: !!raw.apiKey };
+  return { success: true, config };
 }
 
-export async function updateInstagramConfig(updates: {
-  sessionId?: string;
-  csrfToken?: string;
-  dsUserId?: string;
-  enabled?: boolean;
-}): Promise<{ success: boolean; config: InstagramConfigResponse }> {
-  const response = await fetch(`${FUNCTIONS_BASE_URL}/updateInstagramCookies`, {
+// --- Spotify ---
+
+export interface SpotifyStatus {
+  connected: boolean;
+  playlistId: string | null;
+}
+
+export async function getSpotifyStatus(): Promise<SpotifyStatus> {
+  const res = await fetch(url('/api/spotify/status'));
+  return json<SpotifyStatus>(res);
+}
+
+export function spotifyAuthorizeUrl(): string {
+  return url('/api/spotify/authorize');
+}
+
+// --- Logs ---
+
+export interface LogsFilters {
+  level?: string;
+  entryId?: string;
+  limit?: number;
+}
+
+export async function getLogs(filters: LogsFilters = {}): Promise<Array<Record<string, unknown>>> {
+  const params = new URLSearchParams();
+  if (filters.level && filters.level !== 'all') params.set('level', filters.level);
+  if (filters.entryId) params.set('entryId', filters.entryId);
+  if (filters.limit) params.set('limit', String(filters.limit));
+  const qs = params.toString();
+  const res = await fetch(url(`/api/logs${qs ? `?${qs}` : ''}`));
+  return json<Array<Record<string, unknown>>>(res);
+}
+
+export async function clearLogs(): Promise<void> {
+  await fetch(url('/api/logs'), { method: 'DELETE' });
+}
+
+// --- Admin ---
+
+export interface StoragePlatformCount { platform: string; count: number }
+export interface StorageStatusCount { status: string; count: number }
+export interface StorageAgeBucket { label: string; count: number }
+export interface StorageEntryDirStat {
+  entryId: string;
+  bytes: number;
+  files: number;
+  mtime: string;
+  orphan: boolean;
+}
+export interface StorageStats {
+  mediaRoot: string;
+  totals: { entries: number; mediaDirs: number; mediaFiles: number; mediaBytes: number };
+  orphans: { count: number; bytes: number };
+  byPlatform: StoragePlatformCount[];
+  byStatus: StorageStatusCount[];
+  byAge: StorageAgeBucket[];
+  topLargest: StorageEntryDirStat[];
+}
+
+export async function getAdminStorage(): Promise<StorageStats> {
+  const res = await fetch(url('/api/admin/storage'));
+  const j = await json<{ success: boolean } & StorageStats>(res);
+  return j;
+}
+
+export interface PurgeFilter {
+  platform?: string | null;
+  status?: string | null;
+  olderThanDays?: number | null;
+  emptyResultsOnly?: boolean;
+  dryRun?: boolean;
+  confirm?: string;
+}
+
+export interface PurgeDryRunResponse {
+  success: true;
+  dryRun: true;
+  wouldDelete: number;
+  sampleBytesFreedFromFirst500: number;
+  sample: Array<{ id: string; sourceUrl: string; sourcePlatform: string; createdAt: string; status: string }>;
+}
+
+export interface PurgeExecuteResponse {
+  success: true;
+  dryRun: false;
+  entriesDeleted: number;
+  dirsDeleted: number;
+  bytesFreed: number;
+}
+
+export async function adminPurge(filter: PurgeFilter): Promise<PurgeDryRunResponse | PurgeExecuteResponse> {
+  const res = await fetch(url('/api/admin/purge'), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(updates)
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(filter),
   });
+  return json<PurgeDryRunResponse | PurgeExecuteResponse>(res);
+}
 
-  if (!response.ok) {
-    throw new Error('Errore durante l\'aggiornamento della configurazione Instagram');
-  }
+export interface RetentionConfig {
+  retentionDays: number | null;
+  orphanTtlDays: number;
+}
 
-  return response.json();
+export async function getRetention(): Promise<RetentionConfig> {
+  const res = await fetch(url('/api/admin/retention'));
+  const j = await json<{ success: boolean; config: RetentionConfig }>(res);
+  return j.config;
+}
+
+export async function updateRetention(updates: Partial<RetentionConfig>): Promise<RetentionConfig> {
+  const res = await fetch(url('/api/admin/retention'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  const j = await json<{ success: boolean; config: RetentionConfig }>(res);
+  return j.config;
+}
+
+export interface CleanupResult {
+  orphanDirsDeleted: number;
+  orphanBytesFreed: number;
+  retentionEntriesDeleted: number;
+  retentionDirsDeleted: number;
+  retentionBytesFreed: number;
+}
+
+export async function cleanupOrphans(): Promise<CleanupResult> {
+  const res = await fetch(url('/api/admin/cleanup-orphans'), { method: 'POST' });
+  const j = await json<{ success: boolean; result: CleanupResult }>(res);
+  return j.result;
 }

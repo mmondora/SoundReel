@@ -469,6 +469,7 @@ interface InstagramApiResult {
   thumbnailUrl: string | null;
   videoUrl: string | null;
   musicInfo: { title: string; artist: string } | null;
+  carouselUrls: string[];
   success: boolean;
 }
 
@@ -476,7 +477,7 @@ async function fetchInstagramApi(url: string, cookies: InstagramCookies): Promis
   const shortcode = extractShortcode(url);
   if (!shortcode) {
     log.warn('Instagram: impossibile estrarre shortcode dall\'URL', { url });
-    return { caption: null, thumbnailUrl: null, videoUrl: null, musicInfo: null, success: false };
+    return { caption: null, thumbnailUrl: null, videoUrl: null, musicInfo: null, carouselUrls: [], success: false };
   }
 
   const mediaId = shortcodeToMediaId(shortcode);
@@ -504,7 +505,7 @@ async function fetchInstagramApi(url: string, cookies: InstagramCookies): Promis
         durationMs,
         shortcode
       });
-      return { caption: null, thumbnailUrl: null, videoUrl: null, musicInfo: null, success: false };
+      return { caption: null, thumbnailUrl: null, videoUrl: null, musicInfo: null, carouselUrls: [], success: false };
     }
 
     const data = await response.json();
@@ -512,7 +513,7 @@ async function fetchInstagramApi(url: string, cookies: InstagramCookies): Promis
 
     if (!item) {
       log.warn('Instagram API: nessun item trovato', { shortcode, mediaId });
-      return { caption: null, thumbnailUrl: null, videoUrl: null, musicInfo: null, success: false };
+      return { caption: null, thumbnailUrl: null, videoUrl: null, musicInfo: null, carouselUrls: [], success: false };
     }
 
     // Extract caption
@@ -526,6 +527,21 @@ async function fetchInstagramApi(url: string, cookies: InstagramCookies): Promis
 
     // Extract thumbnail
     const thumbnailUrl = item.image_versions2?.candidates?.[0]?.url || null;
+
+    // Extract carousel images (Instagram posts with multiple slides)
+    const carouselUrls: string[] = [];
+    if (item.carousel_media && Array.isArray(item.carousel_media)) {
+      for (const slide of item.carousel_media) {
+        const slideUrl = slide.image_versions2?.candidates?.[0]?.url;
+        if (slideUrl) {
+          carouselUrls.push(slideUrl);
+        }
+      }
+      log.info('Instagram carousel trovato', {
+        slideCount: item.carousel_media.length,
+        imagesExtracted: carouselUrls.length
+      });
+    }
 
     // Extract music metadata from reel clips_metadata
     let musicInfo: { title: string; artist: string } | null = null;
@@ -564,10 +580,11 @@ async function fetchInstagramApi(url: string, cookies: InstagramCookies): Promis
       musicTitle: musicInfo?.title,
       musicArtist: musicInfo?.artist,
       mediaType: item.media_type,
-      hasAudio: item.has_audio
+      hasAudio: item.has_audio,
+      carouselSlides: carouselUrls.length || undefined
     });
 
-    return { caption, thumbnailUrl, videoUrl, musicInfo, success: true };
+    return { caption, thumbnailUrl, videoUrl, musicInfo, carouselUrls, success: true };
 
   } catch (error) {
     const durationMs = Date.now() - startTime;
@@ -575,7 +592,7 @@ async function fetchInstagramApi(url: string, cookies: InstagramCookies): Promis
       apiUrl,
       durationMs
     });
-    return { caption: null, thumbnailUrl: null, videoUrl: null, musicInfo: null, success: false };
+    return { caption: null, thumbnailUrl: null, videoUrl: null, musicInfo: null, carouselUrls: [], success: false };
   }
 }
 
@@ -721,6 +738,7 @@ export async function extractContent(url: string, options: ExtractContentOptions
   let videoUrl: string | null = null;
   let authorName: string | null = null;
   let musicInfo: { title: string; artist: string } | null = null;
+  let carouselUrls: string[] = [];
 
   // Step 1: For Instagram with cookies, use the private API (works from datacenter IPs)
   if (platform === 'instagram' && instagramCookies) {
@@ -730,6 +748,7 @@ export async function extractContent(url: string, options: ExtractContentOptions
     if (igResult.success) {
       caption = igResult.caption;
       thumbnailUrl = igResult.thumbnailUrl;
+      carouselUrls = igResult.carouselUrls;
       audioUrl = igResult.videoUrl;
       videoUrl = igResult.videoUrl;
       musicInfo = igResult.musicInfo;
@@ -817,7 +836,8 @@ export async function extractContent(url: string, options: ExtractContentOptions
     videoUrl,
     hasAudio: !!audioUrl,
     hasCaption: !!caption,
-    musicInfo
+    musicInfo,
+    carouselUrls
   };
 
   log.info('Estrazione completata', {
@@ -826,6 +846,7 @@ export async function extractContent(url: string, options: ExtractContentOptions
     hasThumbnail: !!thumbnailUrl,
     hasAudio: !!audioUrl,
     hasVideo: !!videoUrl,
+    carouselSlides: carouselUrls.length || undefined,
     authorName,
     platform,
     summary: {

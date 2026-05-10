@@ -5,6 +5,7 @@ node_modules/
 # Build outputs
 frontend/dist/
 functions/lib/
+backend/dist/
 
 # Environment and secrets
 .env
@@ -35,3 +36,12 @@ coverage/
 # Temporary files
 tmp/
 temp/
+migration/service-account.json
+migration/
+
+# Claude Code local workspace
+.claude/
+tasks/
+prompts/ignore/
+backend/tsconfig.tsbuildinfo
+frontend/tsconfig.tsbuildinfo

@@ -1,0 +1,112 @@
+services:
+  soundreel:
+    build:
+      context: .
+      args:
+        GIT_REVISION: ${GIT_REVISION:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-}
+    image: soundreel:local
+    container_name: soundreel
+    env_file: [.env]
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8080
+      DB_HOST: soundreel-db
+      DB_PORT: 5432
+      DB_NAME: soundreel
+      DB_USER: soundreel
+      OLLAMA_URL: http://ollama:11434
+      INSTALOADER_URL: http://soundreel-instaloader:5000
+      WHISPER_URL: http://soundreel-whisper:9000
+      OCR_URL: http://soundreel-ocr:5001
+      MEDIA_ROOT: /data/media
+      FRONTEND_URL: https://soundreel.casamon.dev
+      SPOTIFY_REDIRECT_URI: https://soundreel.casamon.dev/spotify/callback
+    volumes:
+      - soundreel_media:/data/media
+    depends_on:
+      soundreel-db:
+        condition: service_healthy
+      soundreel-instaloader:
+        condition: service_started
+      soundreel-whisper:
+        condition: service_started
+      soundreel-ocr:
+        condition: service_started
+    networks:
+      - default
+      - web
+    restart: unless-stopped
+
+  soundreel-db:
+    image: postgres:17-alpine
+    container_name: soundreel-db
+    environment:
+      POSTGRES_DB: soundreel
+      POSTGRES_USER: soundreel
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - soundreel_pgdata:/var/lib/postgresql/data
+      - ./backend/src/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U soundreel -d soundreel"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [default]
+    restart: unless-stopped
+
+  soundreel-instaloader:
+    build:
+      context: ./instaloader
+      args:
+        GIT_REVISION: ${GIT_REVISION:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-}
+    image: soundreel-instaloader:local
+    container_name: soundreel-instaloader
+    environment:
+      INSTALOADER_USERNAME: ${INSTALOADER_USERNAME:-}
+      MEDIA_ROOT: /data/media
+      FRAME_INTERVAL_SECONDS: "2"
+      MAX_FRAMES: "15"
+    volumes:
+      - soundreel_instaloader_session:/root/.config/instaloader
+      - soundreel_media:/data/media
+    networks: [default]
+    restart: unless-stopped
+
+  soundreel-whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: soundreel-whisper
+    environment:
+      ASR_MODEL: ${WHISPER_MODEL:-small}
+      ASR_ENGINE: faster_whisper
+    volumes:
+      - soundreel_media:/data/media:ro
+      - soundreel_whisper_models:/root/.cache/whisper
+    networks: [default]
+    restart: unless-stopped
+
+  soundreel-ocr:
+    build:
+      context: ./ocr
+      args:
+        GIT_REVISION: ${GIT_REVISION:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-}
+    image: soundreel-ocr:local
+    container_name: soundreel-ocr
+    volumes:
+      - soundreel_media:/data/media:ro
+    networks: [default]
+    restart: unless-stopped
+
+networks:
+  web:
+    external: true
+
+volumes:
+  soundreel_pgdata:
+  soundreel_instaloader_session:
+  soundreel_media:
+  soundreel_whisper_models:

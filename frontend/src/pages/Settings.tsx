@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
-import { initiateSpotifyAuth, exchangeCodeForTokens } from '../services/spotify';
-import { getFeatures, updateFeatures, FeaturesConfig, getInstagramConfig, updateInstagramConfig, InstagramConfigResponse, getOpenAIConfig, updateOpenAIConfig, OpenAIConfigResponse, deleteAllEntries } from '../services/api';
+import { initiateSpotifyAuth } from '../services/spotify';
+import { getFeatures, updateFeatures, FeaturesConfig, getInstagramConfig, updateInstagramConfig, InstagramConfigResponse, getOpenAIConfig, updateOpenAIConfig, OpenAIConfigResponse, deleteAllEntries, getSpotifyStatus } from '../services/api';
 import { useLanguage, Language, interpolate } from '../i18n';
 import type { SpotifyConfig } from '../types';
 
@@ -26,7 +24,7 @@ export function Settings() {
   const [showIgHowTo, setShowIgHowTo] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [connecting, setConnecting] = useState(false);
+  const [connecting] = useState(false);
   const [savingFeatures, setSavingFeatures] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { t, language, setLanguage } = useLanguage();
@@ -36,27 +34,35 @@ export function Settings() {
   }, []);
 
   useEffect(() => {
-    const code = searchParams.get('code');
-    if (code) {
-      handleSpotifyCallback(code);
+    // Spotify OAuth callback is now handled server-side at /spotify/callback.
+    // If the user was redirected back here with ?spotify=connected, just refresh status.
+    if (searchParams.get('spotify')) {
+      void loadConfigs();
     }
   }, [searchParams]);
 
   async function loadConfigs() {
     try {
-      // Load Spotify config
-      const docRef = doc(db, 'config', 'spotify');
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        setSpotifyConfig(docSnap.data() as SpotifyConfig);
-      } else {
+      // Load Spotify status from backend
+      try {
+        const status = await getSpotifyStatus();
+        setSpotifyConfig({
+          accessToken: null,
+          refreshToken: null,
+          expiresAt: null,
+          playlistId: status.playlistId,
+          playlistName: status.playlistId ? 'SoundReel' : null,
+          connected: status.connected,
+        });
+      } catch (err) {
+        console.error('Error loading Spotify status:', err);
         setSpotifyConfig({
           accessToken: null,
           refreshToken: null,
           expiresAt: null,
           playlistId: null,
           playlistName: null,
-          connected: false
+          connected: false,
         });
       }
 
@@ -231,33 +237,6 @@ export function Settings() {
       alert(t.errorDelete);
     } finally {
       setDeleting(false);
-    }
-  }
-
-  async function handleSpotifyCallback(code: string) {
-    setConnecting(true);
-    setError(null);
-    try {
-      const tokens = await exchangeCodeForTokens(code);
-      const expiresAt = Date.now() + tokens.expiresIn * 1000;
-
-      const config: SpotifyConfig = {
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-        expiresAt,
-        playlistId: null,
-        playlistName: 'SoundReel',
-        connected: true
-      };
-
-      await setDoc(doc(db, 'config', 'spotify'), config);
-      setSpotifyConfig(config);
-
-      window.history.replaceState({}, '', '/settings');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t.errorGeneric);
-    } finally {
-      setConnecting(false);
     }
   }
 

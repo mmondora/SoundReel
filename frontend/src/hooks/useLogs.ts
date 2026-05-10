@@ -1,113 +1,98 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  collection,
-  query,
-  orderBy,
-  limit,
-  onSnapshot,
-  where,
-  QueryConstraint
-} from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { getLogs, clearLogs as apiClearLogs } from '../services/api';
 import type { LogEntry, LogFilters, LogLevel } from '../types';
 
 const LOGS_LIMIT = 200;
+const POLL_INTERVAL_MS = 3000;
+
+interface LogRecord {
+  id: number;
+  ts: string;
+  level: LogLevel;
+  category?: string | null;
+  entryId?: string | null;
+  message: string;
+  data?: {
+    function?: string;
+    durationMs?: number | null;
+    data?: Record<string, unknown> | null;
+    error?: string | null;
+  } | null;
+}
+
+function adapt(r: LogRecord): LogEntry {
+  return {
+    id: String(r.id),
+    timestamp: r.ts,
+    level: r.level,
+    function: r.data?.function || r.category || 'unknown',
+    message: r.message,
+    data: r.data?.data || null,
+    entryId: r.entryId || null,
+    durationMs: r.data?.durationMs ?? null,
+    error: r.data?.error ?? null,
+  };
+}
 
 export function useLogs(filters: LogFilters) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [availableFunctions, setAvailableFunctions] = useState<string[]>([]);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     setLoading(true);
-    setError(null);
 
-    const constraints: QueryConstraint[] = [];
+    const fetchOnce = async (): Promise<void> => {
+      try {
+        const raw = (await getLogs({
+          level: filters.level !== 'all' ? filters.level : undefined,
+          entryId: filters.entryId || undefined,
+          limit: LOGS_LIMIT,
+        })) as unknown as LogRecord[];
+        if (!mountedRef.current) return;
 
-    // Apply level filter
-    if (filters.level !== 'all') {
-      constraints.push(where('level', '==', filters.level));
-    }
+        let items = raw.map(adapt);
+        const functionsSet = new Set<string>(items.map((l) => l.function));
 
-    // Apply function filter
-    if (filters.function !== 'all') {
-      constraints.push(where('function', '==', filters.function));
-    }
-
-    // Apply entryId filter
-    if (filters.entryId) {
-      constraints.push(where('entryId', '==', filters.entryId));
-    }
-
-    // Always order by timestamp descending and limit
-    constraints.push(orderBy('createdAt', 'desc'));
-    constraints.push(limit(LOGS_LIMIT));
-
-    const logsQuery = query(collection(db, 'logs'), ...constraints);
-
-    const unsubscribe = onSnapshot(
-      logsQuery,
-      (snapshot) => {
-        const logsData: LogEntry[] = [];
-        const functionsSet = new Set<string>();
-
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          logsData.push({
-            id: doc.id,
-            timestamp: data.timestamp,
-            level: data.level as LogLevel,
-            function: data.function,
-            message: data.message,
-            data: data.data,
-            entryId: data.entryId,
-            durationMs: data.durationMs,
-            error: data.error
-          });
-          functionsSet.add(data.function);
-        });
-
-        // Apply client-side search filter
-        let filteredLogs = logsData;
+        if (filters.function !== 'all') {
+          items = items.filter((l) => l.function === filters.function);
+        }
         if (filters.search) {
-          const searchLower = filters.search.toLowerCase();
-          filteredLogs = logsData.filter(
+          const s = filters.search.toLowerCase();
+          items = items.filter(
             (log) =>
-              log.message.toLowerCase().includes(searchLower) ||
-              log.function.toLowerCase().includes(searchLower) ||
-              (log.error && log.error.toLowerCase().includes(searchLower)) ||
-              (log.data && JSON.stringify(log.data).toLowerCase().includes(searchLower))
+              log.message.toLowerCase().includes(s) ||
+              log.function.toLowerCase().includes(s) ||
+              (log.error && log.error.toLowerCase().includes(s)) ||
+              (log.data && JSON.stringify(log.data).toLowerCase().includes(s))
           );
         }
 
-        setLogs(filteredLogs);
+        setLogs(items);
         setAvailableFunctions(Array.from(functionsSet).sort());
         setLoading(false);
-      },
-      (err) => {
+        setError(null);
+      } catch (err) {
+        if (!mountedRef.current) return;
         console.error('Error fetching logs:', err);
         setError('Errore nel caricamento dei log');
         setLoading(false);
       }
-    );
+    };
 
-    return () => unsubscribe();
+    void fetchOnce();
+    const timer = window.setInterval(fetchOnce, POLL_INTERVAL_MS);
+    return () => {
+      mountedRef.current = false;
+      window.clearInterval(timer);
+    };
   }, [filters.level, filters.function, filters.entryId, filters.search]);
 
   const clearLogs = useCallback(async () => {
-    try {
-      const functionsUrl = import.meta.env.VITE_FUNCTIONS_URL;
-      const response = await fetch(`${functionsUrl}/clearAllLogs`, {
-        method: 'POST'
-      });
-      if (!response.ok) {
-        throw new Error('Failed to clear logs');
-      }
-    } catch (err) {
-      console.error('Error clearing logs:', err);
-      throw err;
-    }
+    await apiClearLogs();
   }, []);
 
   return { logs, loading, error, availableFunctions, clearLogs };

@@ -2,6 +2,17 @@
 
 Tutte le modifiche rilevanti a SoundReel sono documentate in questo file.
 
+## [Unreleased]
+
+- Added: page-extraction pipeline for non-Instagram URLs (Readability + link harvesting + representative image, no media download).
+- Added: `pageExtractionEnabled` feature flag (default on).
+- Added: `domain`, `faviconUrl`, `title`, `category` fields on `ExtractedLink` (optional, retro-compatible).
+- Changed: Telegram bot now sends a single message per submitted link (AI summary + counts + SoundReel link). The "Ricevuto!" ack message has been removed.
+- Changed: URL normalization (lowercase host, strip tracking params) before idempotency lookup.
+- Security: SSRF guard on outbound page fetches (rejects loopback/private/link-local hosts and non-http(s) schemes).
+
+---
+
 ## [1.3.0] - 2026-01-31
 
 ### Novità

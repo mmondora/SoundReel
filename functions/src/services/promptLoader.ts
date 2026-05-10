@@ -56,9 +56,10 @@ Trascrizione audio del video:
 "{{transcript}}"
 {{/if}}
 
-{{#if hasImage}}[Thumbnail del post allegata come immagine]{{/if}}
+{{#if isCarousel}}[Post carousel con {{carouselCount}} immagini allegate — LEGGI ATTENTAMENTE il testo presente in OGNI immagine/slide e includilo nell'analisi]{{else}}{{#if hasImage}}[Thumbnail del post allegata come immagine]{{/if}}{{/if}}
 
 IMPORTANTE: Se trovi artisti musicali menzionati (anche solo negli hashtag), includili come canzoni usando la loro hit più famosa.
+IMPORTANTE: Se le immagini contengono testo sovrapposto (overlay text), leggilo e analizzalo come parte del contenuto.
 
 Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti, senza altro testo:
 {
@@ -79,7 +80,7 @@ Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti, senza a
 }
 
 Se non trovi nulla, rispondi: { "songs": [], "films": [], "notes": [], "links": [], "tags": [], "summary": null }`,
-    variables: ['caption', 'hasImage', 'transcript', 'hasTranscript'],
+    variables: ['caption', 'hasImage', 'transcript', 'hasTranscript', 'isCarousel', 'carouselCount'],
     updatedAt: new Date().toISOString()
   },
   enrichment: {
@@ -225,7 +226,9 @@ Se non trovi nulla per un campo, usa un array vuoto [] o null.`,
 
 {{#unless hasSongs}}{{#unless hasFilms}}{{#unless hasNotes}}{{#unless hasLinks}}{{#unless hasTags}}
 ❌ Nessun contenuto identificato.
-{{/unless}}{{/unless}}{{/unless}}{{/unless}}{{/unless}}`,
+{{/unless}}{{/unless}}{{/unless}}{{/unless}}{{/unless}}
+
+🌐 <a href="{{frontendUrl}}">Vedi su SoundReel</a>`,
     variables: ['songs', 'films', 'notes', 'links', 'tags', 'hasSongs', 'hasFilms', 'hasNotes', 'hasLinks', 'hasTags', 'hasTranscript', 'transcript', 'frontendUrl'],
     updatedAt: new Date().toISOString()
   }

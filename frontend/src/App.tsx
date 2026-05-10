@@ -4,6 +4,7 @@ import { Home } from './pages/Home';
 import { Settings } from './pages/Settings';
 import { Prompts } from './pages/Prompts';
 import { Console } from './pages/Console';
+import { Admin } from './pages/Admin';
 import { EntriesPage } from './pages/EntriesPage';
 import { SongsPage } from './pages/SongsPage';
 import { FilmsPage } from './pages/FilmsPage';
@@ -23,6 +24,7 @@ export function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/prompts" element={<Prompts />} />
           <Route path="/console" element={<Console />} />
+          <Route path="/admin" element={<Admin />} />
         </Routes>
       </BrowserRouter>
     </LanguageProvider>

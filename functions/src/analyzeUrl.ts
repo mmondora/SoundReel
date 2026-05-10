@@ -223,7 +223,7 @@ export const analyzeUrl = onRequest(
       const [auddResult, aiResponse] = await Promise.all([
         content.audioUrl ? recognizeAudio(content.audioUrl) : Promise.resolve(null),
         featuresConfig.aiAnalysisEnabled
-          ? analyzeWithAi(content.caption, content.thumbnailUrl, media, transcript, featuresConfig.useVertexAi)
+          ? analyzeWithAi(content.caption, content.thumbnailUrl, media, transcript, featuresConfig.useVertexAi, content.carouselUrls)
           : Promise.resolve(emptyAiResponse)
       ]);
       const aiResult = aiResponse.result;
