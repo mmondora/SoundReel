@@ -7,6 +7,15 @@ import { ocrImages } from '../services/ocrClient';
 import { pickKeyFrames } from '../services/frameSelector';
 import { describeFramesWithVision } from '../services/ollamaClient';
 import { saveThumbnailLocal } from '../services/thumbnailSaver';
+import {
+  extractPage,
+  PageFetchError,
+  UnsupportedContentTypeError,
+  setLogger as setPageExtractorLogger,
+} from '../services/pageExtractor';
+import { analyzeWebPage } from '../services/aiAnalysisWebPage';
+import { normalizeUrl } from '../services/urlNormalize';
+import { SsrfBlockedError } from '../services/ssrfGuard';
 import { searchTrack, addToPlaylist, generateYoutubeSearchUrl, generateSoundcloudSearchUrl } from '../services/spotify';
 import { searchFilm, generateImdbUrl, generateStreamingUrls } from '../services/filmSearch';
 import { mergeResults } from '../services/resultMerger';
@@ -54,9 +63,11 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       return;
     }
 
+    const normalizedUrl = normalizeUrl(url);
+
     try {
       log.startTimer();
-      log.info('Inizio analisi URL', { url, channel });
+      log.info('Inizio analisi URL', { url: normalizedUrl, channel });
 
       const featuresConfig = await getFeaturesConfig();
       log.info('Features config', {
@@ -65,10 +76,11 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         mediaAnalysisEnabled: featuresConfig.mediaAnalysisEnabled,
         transcriptionEnabled: featuresConfig.transcriptionEnabled,
         aiAnalysisEnabled: featuresConfig.aiAnalysisEnabled,
+        pageExtractionEnabled: featuresConfig.pageExtractionEnabled,
       });
 
       if (!featuresConfig.allowDuplicateUrls) {
-        const existingEntry = await findEntryByUrl(url);
+        const existingEntry = await findEntryByUrl(normalizedUrl);
         if (existingEntry) {
           log.info('URL già processato', { entryId: existingEntry.id });
           reply.send({ success: true, entryId: existingEntry.id, existing: true, entry: existingEntry });
@@ -76,11 +88,13 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         }
       }
 
-      const platform = detectPlatform(url);
+      const platform = detectPlatform(normalizedUrl);
       const isInstagram = platform === 'instagram';
+      const isPage =
+        !isInstagram && platform === 'other' && featuresConfig.pageExtractionEnabled;
 
       const initialEntry: Omit<Entry, 'id' | 'createdAt'> = {
-        sourceUrl: url,
+        sourceUrl: normalizedUrl,
         sourcePlatform: platform,
         inputChannel: channel,
         caption: null,
@@ -93,114 +107,203 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
       const entryId = await createEntry(initialEntry);
       log.setEntryId(entryId);
-      log.info('Entry creata', { entryId, path: isInstagram ? 'ig-local' : 'legacy' });
+      log.info('Entry creata', {
+        entryId,
+        path: isInstagram ? 'ig-local' : isPage ? 'page' : 'legacy',
+      });
       setContentExtractorLogger(log);
 
       // ---------------------------------------------------------------------
-      // Extraction
-      // ---------------------------------------------------------------------
-      log.info('Inizio estrazione contenuto');
-      const extractOptions: {
-        cobaltEnabled: boolean;
-        instagramCookies?: { sessionId: string; csrfToken: string; dsUserId: string };
-        entryId?: string;
-      } = { cobaltEnabled: featuresConfig.cobaltEnabled };
-
-      if (isInstagram) {
-        extractOptions.entryId = entryId;
-      }
-
-      const content = await extractContent(url, extractOptions);
-      log.info('Estrazione contenuto completata', {
-        hasCaption: content.hasCaption,
-        hasAudio: content.hasAudio,
-        hasThumbnail: !!content.thumbnailUrl || !!content.localPaths?.thumbnailPath,
-        slides: content.localPaths?.slidePaths.length ?? content.carouselUrls.length,
-        frames: content.localPaths?.framePaths.length ?? 0,
-      });
-
-      if (isInstagram) {
-        const dlError = (content as { __downloadError?: string | null }).__downloadError;
-        const downloadFailed = !!dlError;
-        await appendActionLog(entryId, createActionLog('instaloader_download', {
-          status: downloadFailed ? 'error' : 'ok',
-          error: dlError || null,
-          hasCaption: content.hasCaption,
-          hasVideo: !!content.localPaths?.videoPath,
-          hasAudio: !!content.localPaths?.audioPath,
-          hasThumbnail: !!content.localPaths?.thumbnailPath,
-          slides: content.localPaths?.slidePaths.length ?? 0,
-          frames: content.localPaths?.framePaths.length ?? 0,
-          hasMusicInfo: !!content.musicInfo,
-        }));
-        if (downloadFailed) {
-          await updateEntry(entryId, { status: 'error' });
-          await appendActionLog(entryId, createActionLog('completed', {
-            status: 'error',
-            reason: 'instaloader_download_failed',
-            error: dlError,
-          }));
-          const entryErr = await getEntry(entryId);
-          reply.send({ success: false, entryId, entry: entryErr, error: dlError });
-          return;
-        }
-      } else {
-        await appendActionLog(entryId, createActionLog('content_extracted', {
-          hasAudio: content.hasAudio,
-          hasCaption: content.hasCaption,
-          hasThumbnail: !!content.thumbnailUrl,
-        }));
-      }
-
-      // ---------------------------------------------------------------------
-      // Thumbnail persistence (both IG and legacy): download/copy to local
-      // ---------------------------------------------------------------------
-      let persistentThumb: string | null = null;
-
-      if (isInstagram && content.localPaths?.thumbnailPath) {
-        // Already local — just resize in place via saveThumbnailLocal reading from disk
-        const saved = await saveThumbnailLocal(content.localPaths.thumbnailPath, entryId);
-        if (saved) {
-          persistentThumb = saved.relativeUrl;
-          await appendActionLog(entryId, createActionLog('thumbnail_saved', {
-            source: 'local',
-            relativeUrl: saved.relativeUrl,
-            sizeBytes: saved.sizeBytes,
-          }));
-        }
-      } else if (!isInstagram && content.thumbnailUrl) {
-        const saved = await saveThumbnailLocal(content.thumbnailUrl, entryId);
-        if (saved) {
-          persistentThumb = saved.relativeUrl;
-          await appendActionLog(entryId, createActionLog('thumbnail_saved', {
-            source: 'remote',
-            relativeUrl: saved.relativeUrl,
-            sizeBytes: saved.sizeBytes,
-          }));
-        } else {
-          // Fallback: keep original URL
-          persistentThumb = content.thumbnailUrl;
-          await appendActionLog(entryId, createActionLog('thumbnail_save_failed', {
-            sourceUrl: content.thumbnailUrl,
-          }));
-        }
-      }
-
-      await updateEntry(entryId, {
-        caption: content.caption,
-        thumbnailUrl: persistentThumb,
-        mediaUrl: content.videoUrl || content.audioUrl || null,
-      });
-
-      // ---------------------------------------------------------------------
-      // Branch: IG local pipeline vs legacy pipeline
+      // Shared pipeline state (populated by one of: page / IG / legacy branch)
       // ---------------------------------------------------------------------
       let audioResult: AudioRecognitionResult | null = null;
       let aiResponse: AiAnalysisResponse;
       let transcript: string | null = null;
       let transcriptLanguage: string | null = null;
+      // Caption used by auto-enrichment at the end.
+      let captionForEnrich: string | null = null;
 
-      if (isInstagram) {
+      if (isPage) {
+        // ===================================================================
+        // PAGE PIPELINE (no media download / no AudD / no Instaloader / no
+        // Whisper / no OCR / no vision)
+        // ===================================================================
+        setPageExtractorLogger(log);
+        log.info('Page pipeline');
+        try {
+          const page = await extractPage(normalizedUrl);
+          await appendActionLog(entryId, createActionLog('page_fetched', {
+            httpStatus: page.httpStatus,
+            finalUrl: page.finalUrl,
+            contentType: page.contentType,
+          }));
+          await appendActionLog(entryId, createActionLog('page_parsed', {
+            hasMainText: !!page.mainText,
+            mainTextChars: page.mainText?.length || 0,
+            linksCount: page.rawLinks.length,
+            hasImage: !!page.representativeImageUrl,
+          }));
+
+          let persistentThumb: string | null = null;
+          if (page.representativeImageUrl) {
+            const saved = await saveThumbnailLocal(page.representativeImageUrl, entryId);
+            if (saved) {
+              persistentThumb = saved.relativeUrl;
+              await appendActionLog(entryId, createActionLog('thumbnail_saved', {
+                source: 'page_image',
+                relativeUrl: saved.relativeUrl,
+                sizeBytes: saved.sizeBytes,
+              }));
+            } else {
+              persistentThumb = page.representativeImageUrl;
+              await appendActionLog(entryId, createActionLog('thumbnail_save_failed', {
+                sourceUrl: page.representativeImageUrl,
+              }));
+            }
+          }
+
+          captionForEnrich = page.description || page.title || null;
+
+          await updateEntry(entryId, {
+            caption: captionForEnrich,
+            thumbnailUrl: persistentThumb,
+            mediaUrl: null,
+          });
+
+          if (featuresConfig.aiAnalysisEnabled) {
+            aiResponse = await analyzeWebPage(page);
+          } else {
+            aiResponse = { result: emptyMedia(), usageMetadata: null };
+          }
+        } catch (e) {
+          if (e instanceof SsrfBlockedError) {
+            await appendActionLog(entryId, createActionLog('page_ssrf_blocked', {
+              hostname: e.hostname,
+              reason: e.reason,
+            }));
+          } else if (e instanceof UnsupportedContentTypeError) {
+            await appendActionLog(entryId, createActionLog('page_unsupported_content_type', {
+              contentType: e.contentType,
+            }));
+          } else if (e instanceof PageFetchError) {
+            await appendActionLog(entryId, createActionLog('page_fetch_failed', {
+              httpStatus: e.httpStatus,
+              cause: e.cause,
+            }));
+          } else {
+            await appendActionLog(entryId, createActionLog('page_fetch_failed', {
+              cause: String(e),
+            }));
+          }
+          await updateEntry(entryId, { status: 'error' });
+          await appendActionLog(entryId, createActionLog('completed', {
+            status: 'error',
+            reason: 'page_pipeline_failed',
+          }));
+          const errEntry = await getEntry(entryId);
+          reply.send({ success: false, entryId, entry: errEntry, error: String(e) });
+          return;
+        }
+      } else {
+        // ===================================================================
+        // EXISTING IG + LEGACY PIPELINES
+        // ===================================================================
+        log.info('Inizio estrazione contenuto');
+        const extractOptions: {
+          cobaltEnabled: boolean;
+          instagramCookies?: { sessionId: string; csrfToken: string; dsUserId: string };
+          entryId?: string;
+        } = { cobaltEnabled: featuresConfig.cobaltEnabled };
+
+        if (isInstagram) {
+          extractOptions.entryId = entryId;
+        }
+
+        const content = await extractContent(normalizedUrl, extractOptions);
+        log.info('Estrazione contenuto completata', {
+          hasCaption: content.hasCaption,
+          hasAudio: content.hasAudio,
+          hasThumbnail: !!content.thumbnailUrl || !!content.localPaths?.thumbnailPath,
+          slides: content.localPaths?.slidePaths.length ?? content.carouselUrls.length,
+          frames: content.localPaths?.framePaths.length ?? 0,
+        });
+
+        if (isInstagram) {
+          const dlError = (content as { __downloadError?: string | null }).__downloadError;
+          const downloadFailed = !!dlError;
+          await appendActionLog(entryId, createActionLog('instaloader_download', {
+            status: downloadFailed ? 'error' : 'ok',
+            error: dlError || null,
+            hasCaption: content.hasCaption,
+            hasVideo: !!content.localPaths?.videoPath,
+            hasAudio: !!content.localPaths?.audioPath,
+            hasThumbnail: !!content.localPaths?.thumbnailPath,
+            slides: content.localPaths?.slidePaths.length ?? 0,
+            frames: content.localPaths?.framePaths.length ?? 0,
+            hasMusicInfo: !!content.musicInfo,
+          }));
+          if (downloadFailed) {
+            await updateEntry(entryId, { status: 'error' });
+            await appendActionLog(entryId, createActionLog('completed', {
+              status: 'error',
+              reason: 'instaloader_download_failed',
+              error: dlError,
+            }));
+            const entryErr = await getEntry(entryId);
+            reply.send({ success: false, entryId, entry: entryErr, error: dlError });
+            return;
+          }
+        } else {
+          await appendActionLog(entryId, createActionLog('content_extracted', {
+            hasAudio: content.hasAudio,
+            hasCaption: content.hasCaption,
+            hasThumbnail: !!content.thumbnailUrl,
+          }));
+        }
+
+        // -------------------------------------------------------------------
+        // Thumbnail persistence (both IG and legacy): download/copy to local
+        // -------------------------------------------------------------------
+        let persistentThumb: string | null = null;
+
+        if (isInstagram && content.localPaths?.thumbnailPath) {
+          // Already local — just resize in place via saveThumbnailLocal reading from disk
+          const saved = await saveThumbnailLocal(content.localPaths.thumbnailPath, entryId);
+          if (saved) {
+            persistentThumb = saved.relativeUrl;
+            await appendActionLog(entryId, createActionLog('thumbnail_saved', {
+              source: 'local',
+              relativeUrl: saved.relativeUrl,
+              sizeBytes: saved.sizeBytes,
+            }));
+          }
+        } else if (!isInstagram && content.thumbnailUrl) {
+          const saved = await saveThumbnailLocal(content.thumbnailUrl, entryId);
+          if (saved) {
+            persistentThumb = saved.relativeUrl;
+            await appendActionLog(entryId, createActionLog('thumbnail_saved', {
+              source: 'remote',
+              relativeUrl: saved.relativeUrl,
+              sizeBytes: saved.sizeBytes,
+            }));
+          } else {
+            // Fallback: keep original URL
+            persistentThumb = content.thumbnailUrl;
+            await appendActionLog(entryId, createActionLog('thumbnail_save_failed', {
+              sourceUrl: content.thumbnailUrl,
+            }));
+          }
+        }
+
+        captionForEnrich = content.caption;
+
+        await updateEntry(entryId, {
+          caption: content.caption,
+          thumbnailUrl: persistentThumb,
+          mediaUrl: content.videoUrl || content.audioUrl || null,
+        });
+
+        if (isInstagram) {
         // ======= IG LOCAL PIPELINE =======
         const localPaths = content.localPaths;
 
@@ -362,6 +465,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         } else if (content.audioUrl) {
           await appendActionLog(entryId, createActionLog('audio_analyzed', { provider: 'audd', found: false }));
         }
+        }
       }
 
       // ---------------------------------------------------------------------
@@ -428,7 +532,21 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       }
 
       const notes: Note[] = merged.notes;
-      const links: ExtractedLink[] = merged.links;
+      const links: ExtractedLink[] = merged.links.map((l) => {
+        let domain: string | null = null;
+        try {
+          domain = new URL(l.url).hostname.replace(/^www\./, '');
+        } catch {
+          domain = null;
+        }
+        return {
+          ...l,
+          domain,
+          faviconUrl: domain
+            ? `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(domain)}`
+            : null,
+        };
+      });
       const tags: string[] = merged.tags;
       const summary: string | null = merged.summary;
 
@@ -470,7 +588,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           const openaiConfig = await getOpenAIConfig();
           if (openaiConfig.enabled && openaiConfig.apiKey) {
             const entryResults = { songs, films, notes, links, tags, summary: summary ?? null };
-            const enrichments = await enrichWithOpenAI(entryResults, content.caption);
+            const enrichments = await enrichWithOpenAI(entryResults, captionForEnrich);
             if (enrichments.length > 0) {
               await updateEntry(entryId, { 'results.enrichments': enrichments });
               await appendActionLog(entryId, createActionLog('auto_enriched', {
