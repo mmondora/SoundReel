@@ -1,0 +1,8 @@
+// SoundReel iOS project — shared build settings
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
+SWIFT_VERSION = 5.9
+CURRENT_PROJECT_VERSION = 1
+MARKETING_VERSION = 1.0.0
+APP_BUNDLE_ID = com.mmondora.soundreel
+SHARE_BUNDLE_ID = com.mmondora.soundreel.share
+APP_GROUP_ID = group.com.mmondora.soundreel
