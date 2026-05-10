@@ -304,167 +304,167 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         });
 
         if (isInstagram) {
-        // ======= IG LOCAL PIPELINE =======
-        const localPaths = content.localPaths;
+          // ======= IG LOCAL PIPELINE =======
+          const localPaths = content.localPaths;
 
-        // Whisper ASR on local audio
-        if (featuresConfig.transcriptionEnabled && localPaths?.audioPath) {
-          const asr = await transcribeLocal(localPaths.audioPath);
-          transcript = asr.text;
-          transcriptLanguage = asr.language;
-          await appendActionLog(entryId, createActionLog('whisper_asr', {
-            status: asr.status,
-            reason: asr.reason || null,
-            language: asr.language,
-            chars: asr.text?.length || 0,
-            durationMs: asr.durationMs,
-          }));
-          if (transcript) await updateEntry(entryId, { 'results.transcript': transcript });
-        } else {
-          await appendActionLog(entryId, createActionLog('whisper_asr', {
-            status: 'skipped',
-            reason: !featuresConfig.transcriptionEnabled ? 'disabled in settings' : 'no audio path',
-          }));
-        }
-
-        // OCR on frames + slides
-        const ocrPaths = [
-          ...(localPaths?.framePaths ?? []),
-          ...(localPaths?.slidePaths ?? []),
-        ];
-        const ocr = await ocrImages(ocrPaths);
-        await appendActionLog(entryId, createActionLog('ocr_extract', {
-          status: ocr.status,
-          reason: ocr.reason || null,
-          imagesSent: ocrPaths.length,
-          withText: ocr.perImage.filter((r) => r.text).length,
-          mergedChars: ocr.merged.length,
-        }));
-
-        // Vision describe on key frames (only if mediaAnalysisEnabled + frames present)
-        let visualContext: string | null = null;
-        if (featuresConfig.mediaAnalysisEnabled && localPaths?.framePaths.length) {
-          const keyFrames = pickKeyFrames(localPaths.framePaths, KEY_FRAMES_COUNT);
-          visualContext = await describeFramesWithVision(keyFrames);
-          await appendActionLog(entryId, createActionLog('vision_describe', {
-            frames: keyFrames.length,
-            chars: visualContext?.length || 0,
-            provider: 'ollama-moondream',
-          }));
-        } else {
-          await appendActionLog(entryId, createActionLog('vision_describe', {
-            status: 'skipped',
-            reason: !featuresConfig.mediaAnalysisEnabled ? 'disabled in settings' : 'no frames',
-          }));
-        }
-
-        // Multimodal LLM analysis
-        if (featuresConfig.aiAnalysisEnabled) {
-          aiResponse = await analyzeWithAi({
-            caption: content.caption,
-            musicInfo: content.musicInfo,
-            transcript,
-            transcriptLanguage,
-            ocrText: ocr.merged || null,
-            visualContext,
-            slidePaths: localPaths?.slidePaths ?? [],
-            thumbnailPath: localPaths?.thumbnailPath ?? null,
-          });
-        } else {
-          aiResponse = { result: emptyMedia(), usageMetadata: null };
-        }
-
-        // Music: musicInfo Instagram only (authoritative, no AudD)
-        if (content.musicInfo) {
-          audioResult = {
-            title: content.musicInfo.title,
-            artist: content.musicInfo.artist,
-            album: null,
-          };
-          await appendActionLog(entryId, createActionLog('audio_analyzed', {
-            provider: 'instagram_metadata',
-            found: true,
-            title: content.musicInfo.title,
-            artist: content.musicInfo.artist,
-          }));
-        } else {
-          await appendActionLog(entryId, createActionLog('audio_analyzed', {
-            provider: 'instagram_metadata',
-            found: false,
-            reason: 'no music_info in IG metadata',
-          }));
-        }
-      } else {
-        // ======= LEGACY PIPELINE (non-IG) =======
-        let media = null;
-        if (featuresConfig.mediaAnalysisEnabled && content.audioUrl) {
-          log.info('Download media remoto (legacy)');
-          try {
-            media = await downloadMedia(content.audioUrl);
-            if (media) {
-              await appendActionLog(entryId, createActionLog('media_downloaded', {
-                mimeType: media.mimeType,
-                sizeBytes: media.sizeBytes,
-              }));
-            } else {
-              await appendActionLog(entryId, createActionLog('media_download_skipped', {
-                reason: 'too_large_or_failed',
-              }));
-            }
-          } catch (dlError) {
-            log.warn('Errore download media', { error: String(dlError) });
-            await appendActionLog(entryId, createActionLog('media_download_failed', { error: String(dlError) }));
-          }
-        }
-
-        if (featuresConfig.transcriptionEnabled) {
-          try {
-            const tr = await transcribeAudioLegacyStub(media, content.audioUrl || content.videoUrl);
-            transcript = tr.transcript;
-            await appendActionLog(entryId, createActionLog('transcribe', {
-              status: tr.status,
-              reason: tr.reason || null,
-              transcriptLength: transcript?.length || 0,
-              durationMs: tr.durationMs,
+          // Whisper ASR on local audio
+          if (featuresConfig.transcriptionEnabled && localPaths?.audioPath) {
+            const asr = await transcribeLocal(localPaths.audioPath);
+            transcript = asr.text;
+            transcriptLanguage = asr.language;
+            await appendActionLog(entryId, createActionLog('whisper_asr', {
+              status: asr.status,
+              reason: asr.reason || null,
+              language: asr.language,
+              chars: asr.text?.length || 0,
+              durationMs: asr.durationMs,
             }));
             if (transcript) await updateEntry(entryId, { 'results.transcript': transcript });
-          } catch (e) {
-            await appendActionLog(entryId, createActionLog('transcribe', { status: 'error', error: String(e) }));
+          } else {
+            await appendActionLog(entryId, createActionLog('whisper_asr', {
+              status: 'skipped',
+              reason: !featuresConfig.transcriptionEnabled ? 'disabled in settings' : 'no audio path',
+            }));
+          }
+
+          // OCR on frames + slides
+          const ocrPaths = [
+            ...(localPaths?.framePaths ?? []),
+            ...(localPaths?.slidePaths ?? []),
+          ];
+          const ocr = await ocrImages(ocrPaths);
+          await appendActionLog(entryId, createActionLog('ocr_extract', {
+            status: ocr.status,
+            reason: ocr.reason || null,
+            imagesSent: ocrPaths.length,
+            withText: ocr.perImage.filter((r) => r.text).length,
+            mergedChars: ocr.merged.length,
+          }));
+
+          // Vision describe on key frames (only if mediaAnalysisEnabled + frames present)
+          let visualContext: string | null = null;
+          if (featuresConfig.mediaAnalysisEnabled && localPaths?.framePaths.length) {
+            const keyFrames = pickKeyFrames(localPaths.framePaths, KEY_FRAMES_COUNT);
+            visualContext = await describeFramesWithVision(keyFrames);
+            await appendActionLog(entryId, createActionLog('vision_describe', {
+              frames: keyFrames.length,
+              chars: visualContext?.length || 0,
+              provider: 'ollama-moondream',
+            }));
+          } else {
+            await appendActionLog(entryId, createActionLog('vision_describe', {
+              status: 'skipped',
+              reason: !featuresConfig.mediaAnalysisEnabled ? 'disabled in settings' : 'no frames',
+            }));
+          }
+
+          // Multimodal LLM analysis
+          if (featuresConfig.aiAnalysisEnabled) {
+            aiResponse = await analyzeWithAi({
+              caption: content.caption,
+              musicInfo: content.musicInfo,
+              transcript,
+              transcriptLanguage,
+              ocrText: ocr.merged || null,
+              visualContext,
+              slidePaths: localPaths?.slidePaths ?? [],
+              thumbnailPath: localPaths?.thumbnailPath ?? null,
+            });
+          } else {
+            aiResponse = { result: emptyMedia(), usageMetadata: null };
+          }
+
+          // Music: musicInfo Instagram only (authoritative, no AudD)
+          if (content.musicInfo) {
+            audioResult = {
+              title: content.musicInfo.title,
+              artist: content.musicInfo.artist,
+              album: null,
+            };
+            await appendActionLog(entryId, createActionLog('audio_analyzed', {
+              provider: 'instagram_metadata',
+              found: true,
+              title: content.musicInfo.title,
+              artist: content.musicInfo.artist,
+            }));
+          } else {
+            await appendActionLog(entryId, createActionLog('audio_analyzed', {
+              provider: 'instagram_metadata',
+              found: false,
+              reason: 'no music_info in IG metadata',
+            }));
           }
         } else {
-          await appendActionLog(entryId, createActionLog('transcribe', { status: 'skipped', reason: 'disabled in settings' }));
-        }
+          // ======= LEGACY PIPELINE (non-IG) =======
+          let media = null;
+          if (featuresConfig.mediaAnalysisEnabled && content.audioUrl) {
+            log.info('Download media remoto (legacy)');
+            try {
+              media = await downloadMedia(content.audioUrl);
+              if (media) {
+                await appendActionLog(entryId, createActionLog('media_downloaded', {
+                  mimeType: media.mimeType,
+                  sizeBytes: media.sizeBytes,
+                }));
+              } else {
+                await appendActionLog(entryId, createActionLog('media_download_skipped', {
+                  reason: 'too_large_or_failed',
+                }));
+              }
+            } catch (dlError) {
+              log.warn('Errore download media', { error: String(dlError) });
+              await appendActionLog(entryId, createActionLog('media_download_failed', { error: String(dlError) }));
+            }
+          }
 
-        // Legacy: AudD cloud + AI multimodal (without local OCR/vision)
-        const [auddResult, aiRes] = await Promise.all([
-          content.audioUrl ? recognizeAudio(content.audioUrl) : Promise.resolve(null),
-          featuresConfig.aiAnalysisEnabled
-            ? analyzeWithAi({
-                caption: content.caption,
-                musicInfo: null,
-                transcript,
-                transcriptLanguage: null,
-                ocrText: null,
-                visualContext: null,
-                slidePaths: [],
-                thumbnailPath: null,
-              })
-            : Promise.resolve({ result: emptyMedia(), usageMetadata: null }),
-        ]);
+          if (featuresConfig.transcriptionEnabled) {
+            try {
+              const tr = await transcribeAudioLegacyStub(media, content.audioUrl || content.videoUrl);
+              transcript = tr.transcript;
+              await appendActionLog(entryId, createActionLog('transcribe', {
+                status: tr.status,
+                reason: tr.reason || null,
+                transcriptLength: transcript?.length || 0,
+                durationMs: tr.durationMs,
+              }));
+              if (transcript) await updateEntry(entryId, { 'results.transcript': transcript });
+            } catch (e) {
+              await appendActionLog(entryId, createActionLog('transcribe', { status: 'error', error: String(e) }));
+            }
+          } else {
+            await appendActionLog(entryId, createActionLog('transcribe', { status: 'skipped', reason: 'disabled in settings' }));
+          }
 
-        aiResponse = aiRes;
+          // Legacy: AudD cloud + AI multimodal (without local OCR/vision)
+          const [auddResult, aiRes] = await Promise.all([
+            content.audioUrl ? recognizeAudio(content.audioUrl) : Promise.resolve(null),
+            featuresConfig.aiAnalysisEnabled
+              ? analyzeWithAi({
+                  caption: content.caption,
+                  musicInfo: null,
+                  transcript,
+                  transcriptLanguage: null,
+                  ocrText: null,
+                  visualContext: null,
+                  slidePaths: [],
+                  thumbnailPath: null,
+                })
+              : Promise.resolve({ result: emptyMedia(), usageMetadata: null }),
+          ]);
 
-        if (auddResult) {
-          audioResult = auddResult;
-          await appendActionLog(entryId, createActionLog('audio_analyzed', {
-            provider: 'audd',
-            found: true,
-            title: auddResult.title,
-            artist: auddResult.artist,
-          }));
-        } else if (content.audioUrl) {
-          await appendActionLog(entryId, createActionLog('audio_analyzed', { provider: 'audd', found: false }));
-        }
+          aiResponse = aiRes;
+
+          if (auddResult) {
+            audioResult = auddResult;
+            await appendActionLog(entryId, createActionLog('audio_analyzed', {
+              provider: 'audd',
+              found: true,
+              title: auddResult.title,
+              artist: auddResult.artist,
+            }));
+          } else if (content.audioUrl) {
+            await appendActionLog(entryId, createActionLog('audio_analyzed', { provider: 'audd', found: false }));
+          }
         }
       }
 
