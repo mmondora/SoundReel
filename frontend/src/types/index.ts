@@ -39,9 +39,21 @@ export interface Note {
   category: 'place' | 'event' | 'brand' | 'book' | 'product' | 'quote' | 'person' | 'other';
 }
 
+export type ExtractedLinkCategory =
+  | 'referenced'
+  | 'sponsor'
+  | 'navigation'
+  | 'related'
+  | 'social'
+  | 'other';
+
 export interface ExtractedLink {
   url: string;
   label: string | null;
+  domain?: string | null;
+  faviconUrl?: string | null;
+  title?: string | null;
+  category?: ExtractedLinkCategory | null;
 }
 
 export interface EnrichmentLink {
