@@ -146,20 +146,12 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
           let persistentThumb: string | null = null;
           if (page.representativeImageUrl) {
-            const saved = await saveThumbnailLocal(page.representativeImageUrl, entryId);
-            if (saved) {
-              persistentThumb = saved.relativeUrl;
-              await appendActionLog(entryId, createActionLog('thumbnail_saved', {
-                source: 'page_image',
-                relativeUrl: saved.relativeUrl,
-                sizeBytes: saved.sizeBytes,
-              }));
-            } else {
-              persistentThumb = page.representativeImageUrl;
-              await appendActionLog(entryId, createActionLog('thumbnail_save_failed', {
-                sourceUrl: page.representativeImageUrl,
-              }));
-            }
+            persistentThumb = await persistThumbnail({
+              source: 'page_image',
+              entryId,
+              pathOrUrl: page.representativeImageUrl,
+              fallbackToSource: true,
+            });
           }
 
           captionForEnrich = page.description || page.title || null;
@@ -268,31 +260,19 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
         if (isInstagram && content.localPaths?.thumbnailPath) {
           // Already local — just resize in place via saveThumbnailLocal reading from disk
-          const saved = await saveThumbnailLocal(content.localPaths.thumbnailPath, entryId);
-          if (saved) {
-            persistentThumb = saved.relativeUrl;
-            await appendActionLog(entryId, createActionLog('thumbnail_saved', {
-              source: 'local',
-              relativeUrl: saved.relativeUrl,
-              sizeBytes: saved.sizeBytes,
-            }));
-          }
+          persistentThumb = await persistThumbnail({
+            source: 'local',
+            entryId,
+            pathOrUrl: content.localPaths.thumbnailPath,
+            fallbackToSource: false,
+          });
         } else if (!isInstagram && content.thumbnailUrl) {
-          const saved = await saveThumbnailLocal(content.thumbnailUrl, entryId);
-          if (saved) {
-            persistentThumb = saved.relativeUrl;
-            await appendActionLog(entryId, createActionLog('thumbnail_saved', {
-              source: 'remote',
-              relativeUrl: saved.relativeUrl,
-              sizeBytes: saved.sizeBytes,
-            }));
-          } else {
-            // Fallback: keep original URL
-            persistentThumb = content.thumbnailUrl;
-            await appendActionLog(entryId, createActionLog('thumbnail_save_failed', {
-              sourceUrl: content.thumbnailUrl,
-            }));
-          }
+          persistentThumb = await persistThumbnail({
+            source: 'remote',
+            entryId,
+            pathOrUrl: content.thumbnailUrl,
+            fallbackToSource: true,
+          });
         }
 
         captionForEnrich = content.caption;
@@ -626,6 +606,30 @@ function emptyMedia(): MediaAiAnalysisResult {
     visualContext: null,
     overlayText: null,
   };
+}
+
+async function persistThumbnail(opts: {
+  source: 'local' | 'remote' | 'page_image';
+  entryId: string;
+  pathOrUrl: string;
+  fallbackToSource: boolean;
+}): Promise<string | null> {
+  const saved = await saveThumbnailLocal(opts.pathOrUrl, opts.entryId);
+  if (saved) {
+    await appendActionLog(opts.entryId, createActionLog('thumbnail_saved', {
+      source: opts.source,
+      relativeUrl: saved.relativeUrl,
+      sizeBytes: saved.sizeBytes,
+    }));
+    return saved.relativeUrl;
+  }
+  if (opts.fallbackToSource) {
+    await appendActionLog(opts.entryId, createActionLog('thumbnail_save_failed', {
+      sourceUrl: opts.pathOrUrl,
+    }));
+    return opts.pathOrUrl;
+  }
+  return null;
 }
 
 // Suppress unused-import warning; getInstagramConfig was used for cookie fallback (legacy only)
