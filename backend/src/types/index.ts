@@ -102,7 +102,7 @@ export interface Entry {
   id: string;
   sourceUrl: string;
   sourcePlatform: SocialPlatform;
-  inputChannel: 'telegram' | 'web';
+  inputChannel: 'telegram' | 'web' | 'ios';
   caption: string | null;
   thumbnailUrl: string | null;
   mediaUrl: string | null;
