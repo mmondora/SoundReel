@@ -15,6 +15,7 @@ export interface PromptsConfig {
   telegramResponse: PromptTemplate;
   enrichment: PromptTemplate;
   mediaAnalysis: PromptTemplate;
+  webPageAnalysis: PromptTemplate;
 }
 
 const DEFAULT_PROMPTS: PromptsConfig = {
@@ -202,54 +203,69 @@ Se non trovi nulla per un campo, usa un array vuoto [] o null.`,
     variables: ['caption', 'hasImage'],
     updatedAt: new Date().toISOString()
   },
+  webPageAnalysis: {
+    name: 'Analisi pagina web',
+    description: 'Prompt per analizzare una pagina web (articolo, blog, post) e produrre sintesi + link categorizzati',
+    template: `Analizza questa pagina web ed estrai informazioni strutturate.
+
+Fonti:
+- Titolo: "{{title}}"
+{{#if description}}- Descrizione: "{{description}}"{{/if}}
+{{#if siteName}}- Sito: {{siteName}}{{/if}}
+{{#if lang}}- Lingua dichiarata: {{lang}}{{/if}}
+
+{{#if hasMainText}}
+Testo principale (estratto via Readability):
+"""
+{{mainText}}
+"""
+{{else}}
+[Testo principale non estraibile — analizza usando solo titolo + descrizione]
+{{/if}}
+
+Link presenti nella pagina (massimo 100, già dedotti):
+{{#each rawLinks}}
+- {{url}}{{#if anchorText}} — "{{anchorText}}"{{/if}}
+{{/each}}
+
+Compiti:
+1) SUMMARY: Sintesi in italiano, max 280 caratteri, una sola frase o due brevi. Cattura il punto della pagina.
+2) LINKS: Seleziona dai link forniti quelli più utili (max 30). Per ognuno:
+   - "url": **deve esistere ESATTAMENTE in rawLinks**, non inventare
+   - "label": breve etichetta in italiano (anchor text pulito o derivato dal contesto)
+   - "category": una di "referenced" | "sponsor" | "navigation" | "related" | "social" | "other"
+3) TAGS: Hashtag o keyword tematiche (max 8).
+4) NOTES: Luoghi, eventi, brand, libri, prodotti, citazioni, persone menzionati.
+5) SONGS: Solo se la pagina cita esplicitamente canzoni (titolo + artista).
+6) FILMS: Solo se la pagina cita film/serie (titolo + regista? + anno?).
+
+Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
+{
+  "summary": "... (max 280 char)",
+  "links": [ { "url": "https://...", "label": "...", "category": "referenced" } ],
+  "tags": ["..."],
+  "notes": [ { "text": "...", "category": "place|event|brand|book|product|quote|person|other" } ],
+  "songs": [ { "title": "...", "artist": "...", "album": "... o null" } ],
+  "films": [ { "title": "...", "director": "... o null", "year": "... o null" } ]
+}
+
+Se non trovi nulla rispondi con summary "..." e gli altri campi come array vuoti.`,
+    variables: ['title', 'description', 'siteName', 'lang', 'mainText', 'hasMainText', 'rawLinks'],
+    updatedAt: new Date().toISOString(),
+  },
   telegramResponse: {
     name: 'Risposta Telegram',
     description: 'Template per la risposta del bot dopo l\'analisi',
-    template: `🎵 SoundReel ha analizzato il tuo link!
+    template: `<b>{{title}}</b>
+{{#if hasSummary}}{{summary}}{{/if}}
 
-{{#if hasSongs}}
-🎶 Canzoni trovate:
-{{#each songs}}
-• {{title}} — {{artist}}{{#if album}} ({{album}}){{/if}}{{#if addedToPlaylist}} ✓{{/if}}
-{{/each}}
-{{/if}}
-
-{{#if hasFilms}}
-🎬 Film trovati:
-{{#each films}}
-• {{title}}{{#if year}} ({{year}}){{/if}}{{#if director}} — {{director}}{{/if}}
-{{/each}}
-{{/if}}
-
-{{#if hasNotes}}
-📝 Note:
-{{#each notes}}
-• {{text}}
-{{/each}}
-{{/if}}
-
-{{#if hasLinks}}
-🔗 Link:
-{{#each links}}
-• {{#if label}}{{label}}: {{/if}}{{url}}
-{{/each}}
-{{/if}}
-
-{{#if hasTags}}
-🏷 {{#each tags}}{{this}} {{/each}}
-{{/if}}
-
-{{#if hasTranscript}}
-💬 Trascrizione:
-{{transcript}}
-{{/if}}
-
-{{#unless hasSongs}}{{#unless hasFilms}}{{#unless hasNotes}}{{#unless hasLinks}}{{#unless hasTags}}
-❌ Nessun contenuto identificato.
-{{/unless}}{{/unless}}{{/unless}}{{/unless}}{{/unless}}
-
-🌐 <a href="{{frontendUrl}}">Vedi su SoundReel</a>`,
-    variables: ['songs', 'films', 'notes', 'links', 'tags', 'hasSongs', 'hasFilms', 'hasNotes', 'hasLinks', 'hasTags', 'hasTranscript', 'transcript', 'frontendUrl'],
+{{#if hasCounts}}🔗 {{linksCount}} · 🎵 {{songsCount}} · 🎬 {{filmsCount}}{{/if}}
+🌐 <a href="{{frontendUrl}}">Apri su SoundReel</a>`,
+    variables: [
+      'title', 'summary', 'hasSummary',
+      'linksCount', 'songsCount', 'filmsCount', 'hasCounts',
+      'frontendUrl',
+    ],
     updatedAt: new Date().toISOString()
   }
 };
@@ -280,7 +296,8 @@ export async function getPrompts(): Promise<PromptsConfig> {
       contentAnalysis: data.contentAnalysis || DEFAULT_PROMPTS.contentAnalysis,
       telegramResponse: data.telegramResponse || DEFAULT_PROMPTS.telegramResponse,
       enrichment: data.enrichment || DEFAULT_PROMPTS.enrichment,
-      mediaAnalysis: data.mediaAnalysis || DEFAULT_PROMPTS.mediaAnalysis
+      mediaAnalysis: data.mediaAnalysis || DEFAULT_PROMPTS.mediaAnalysis,
+      webPageAnalysis: data.webPageAnalysis || DEFAULT_PROMPTS.webPageAnalysis,
     };
     cacheTimestamp = now;
 
