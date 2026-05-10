@@ -56,11 +56,13 @@ export function CompactCard({ entry, selected, onSelect }: CompactCardProps) {
   const songCount = entry.results.songs.length;
   const filmCount = entry.results.films.length;
   const noteCount = entry.results.notes?.length || 0;
+  const linksCount = entry.results.links?.length || 0;
   const hasTranscript = !!(entry.results.transcript || entry.results.transcription);
 
-  const summary = entry.results.summary
-    || entry.caption?.substring(0, 80)
-    || entry.sourceUrl;
+  const summaryRaw = entry.results.summary?.trim();
+  const previewText = summaryRaw
+    ? (summaryRaw.length > 100 ? summaryRaw.slice(0, 100).trimEnd() + '…' : summaryRaw)
+    : (entry.caption?.substring(0, 80) || entry.sourceUrl);
 
   return (
     <div
@@ -87,9 +89,10 @@ export function CompactCard({ entry, selected, onSelect }: CompactCardProps) {
             <span className="compact-time">{getRelativeTime(parsedDate, t)}</span>
           )}
         </div>
-        <p className="compact-summary">{summary}</p>
+        <p className="compact-summary">{previewText}</p>
         <div className="compact-bottom">
           <div className="compact-counts">
+            {linksCount > 0 && <span className="compact-count">🔗 {linksCount}</span>}
             {songCount > 0 && <span className="compact-count">🎵 {songCount}</span>}
             {filmCount > 0 && <span className="compact-count">🎬 {filmCount}</span>}
             {noteCount > 0 && <span className="compact-count">📝 {noteCount}</span>}
