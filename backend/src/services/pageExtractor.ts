@@ -56,45 +56,62 @@ export async function extractPage(rawUrl: string): Promise<PageExtractResult> {
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-  let res;
+  let html: string;
+  let httpStatusCode: number;
+  let contentTypeHeader: string;
   try {
-    res = await request(parsed.toString(), {
-      method: 'GET',
-      headers: {
-        'user-agent': USER_AGENT,
-        accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'accept-language': 'it,en;q=0.8',
-      },
-      maxRedirections: 5,
-      signal: ctrl.signal,
-    });
-  } catch (e) {
-    clearTimeout(timer);
-    throw new PageFetchError(null, `network:${(e as Error).message}`);
-  }
-  clearTimeout(timer);
-
-  const httpStatus = res.statusCode;
-  if (httpStatus < 200 || httpStatus >= 400) {
-    throw new PageFetchError(httpStatus, `http_${httpStatus}`);
-  }
-
-  const contentType = String(res.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
-  if (!contentType.startsWith('text/html') && !contentType.startsWith('application/xhtml')) {
-    throw new UnsupportedContentTypeError(contentType || 'unknown');
-  }
-
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of res.body) {
-    const buf = chunk as Buffer;
-    total += buf.length;
-    if (total > MAX_HTML_BYTES) {
-      throw new PageFetchError(httpStatus, 'html_too_large');
+    let res;
+    try {
+      res = await request(parsed.toString(), {
+        method: 'GET',
+        headers: {
+          'user-agent': USER_AGENT,
+          accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'accept-language': 'it,en;q=0.8',
+        },
+        maxRedirections: 5,
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      throw new PageFetchError(null, `network:${e instanceof Error ? e.message : String(e)}`);
     }
-    chunks.push(buf);
+
+    httpStatusCode = res.statusCode;
+    if (httpStatusCode < 200 || httpStatusCode >= 400) {
+      // Drain so the connection is released.
+      try { for await (const _ of res.body) { void _; } } catch { /* ignore */ }
+      throw new PageFetchError(httpStatusCode, `http_${httpStatusCode}`);
+    }
+
+    contentTypeHeader = String(res.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+    if (!contentTypeHeader.startsWith('text/html') && !contentTypeHeader.startsWith('application/xhtml')) {
+      try { for await (const _ of res.body) { void _; } } catch { /* ignore */ }
+      throw new UnsupportedContentTypeError(contentTypeHeader || 'unknown');
+    }
+
+    const chunks: Buffer[] = [];
+    let total = 0;
+    try {
+      for await (const chunk of res.body) {
+        const buf = chunk as Buffer;
+        total += buf.length;
+        if (total > MAX_HTML_BYTES) {
+          ctrl.abort();
+          throw new PageFetchError(httpStatusCode, 'html_too_large');
+        }
+        chunks.push(buf);
+      }
+    } catch (e) {
+      if (e instanceof PageFetchError) throw e;
+      if (ctrl.signal.aborted) {
+        throw new PageFetchError(httpStatusCode, 'timeout');
+      }
+      throw new PageFetchError(httpStatusCode, `body_read:${e instanceof Error ? e.message : String(e)}`);
+    }
+    html = Buffer.concat(chunks).toString('utf8');
+  } finally {
+    clearTimeout(timer);
   }
-  const html = Buffer.concat(chunks).toString('utf8');
   const finalUrl = parsed.toString();
 
   const dom = new JSDOM(html, { url: finalUrl });
@@ -135,8 +152,8 @@ export async function extractPage(rawUrl: string): Promise<PageExtractResult> {
 
   return {
     finalUrl,
-    httpStatus,
-    contentType,
+    httpStatus: httpStatusCode,
+    contentType: contentTypeHeader,
     title,
     description,
     mainText,
