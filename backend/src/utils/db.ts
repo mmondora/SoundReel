@@ -252,6 +252,7 @@ export interface FeaturesConfig {
   useVertexAi: boolean;
   transcriptionEnabled: boolean;
   aiAnalysisEnabled: boolean;
+  pageExtractionEnabled: boolean;
 }
 
 const DEFAULT_FEATURES: FeaturesConfig = {
@@ -262,6 +263,7 @@ const DEFAULT_FEATURES: FeaturesConfig = {
   useVertexAi: false,
   transcriptionEnabled: true,
   aiAnalysisEnabled: true,
+  pageExtractionEnabled: true,
 };
 
 export async function getFeaturesConfig(): Promise<FeaturesConfig> {
