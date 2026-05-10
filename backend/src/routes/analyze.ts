@@ -201,7 +201,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             reason: 'page_pipeline_failed',
           }));
           const errEntry = await getEntry(entryId);
-          reply.send({ success: false, entryId, entry: errEntry, error: String(e) });
+          reply.send({ success: false, entryId, entry: errEntry, error: 'page_pipeline_failed' });
           return;
         }
       } else {
