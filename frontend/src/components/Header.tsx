@@ -3,6 +3,7 @@ import type { JournalStats } from '../types';
 import { useLanguage } from '../i18n';
 
 const APP_VERSION = __APP_VERSION__;
+const GIT_REVISION = __GIT_REVISION__;
 
 interface HeaderProps {
   stats: JournalStats;
@@ -18,7 +19,7 @@ export function Header({ stats }: HeaderProps) {
           <Link to="/" className="logo">
             SoundReel
           </Link>
-          <span className="version-badge">v{APP_VERSION}</span>
+          <span className="version-badge" title={`build ${GIT_REVISION}`}>v{APP_VERSION}</span>
         </div>
         <div className="stats">
           <Link to="/entries" className="stat stat-link">{stats.totalEntries} {t.entries}</Link>

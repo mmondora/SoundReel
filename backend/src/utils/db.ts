@@ -249,7 +249,6 @@ export interface FeaturesConfig {
   allowDuplicateUrls: boolean;
   autoEnrichEnabled: boolean;
   mediaAnalysisEnabled: boolean;
-  useVertexAi: boolean;
   transcriptionEnabled: boolean;
   aiAnalysisEnabled: boolean;
   pageExtractionEnabled: boolean;
@@ -260,7 +259,6 @@ const DEFAULT_FEATURES: FeaturesConfig = {
   allowDuplicateUrls: false,
   autoEnrichEnabled: false,
   mediaAnalysisEnabled: false,
-  useVertexAi: false,
   transcriptionEnabled: true,
   aiAnalysisEnabled: true,
   pageExtractionEnabled: true,

@@ -4,12 +4,23 @@ Tutte le modifiche rilevanti a SoundReel sono documentate in questo file.
 
 ## [Unreleased]
 
+---
+
+## [1.5.0] - 2026-05-14
+
 - Added: page-extraction pipeline for non-Instagram URLs (Readability + link harvesting + representative image, no media download).
 - Added: `pageExtractionEnabled` feature flag (default on).
 - Added: `domain`, `faviconUrl`, `title`, `category` fields on `ExtractedLink` (optional, retro-compatible).
 - Changed: Telegram bot now sends a single message per submitted link (AI summary + counts + SoundReel link). The "Ricevuto!" ack message has been removed.
 - Changed: URL normalization (lowercase host, strip tracking params) before idempotency lookup.
 - Security: SSRF guard on outbound page fetches (rejects loopback/private/link-local hosts and non-http(s) schemes).
+- Added: `pageExtractionEnabled` toggle in Settings.
+- Added: iOS Share Extension scaffold (sources for Xcode wiring on macOS).
+- Added: Git SHA in Header version badge tooltip.
+- Changed: bumped frontend version to 1.5.0.
+- Removed: "Use Vertex AI" toggle from Settings UI and `useVertexAi` from `FeaturesConfig` (no code consumer).
+- Removed: Instagram Cookies UI from Settings (backend endpoint and DB schema preserved).
+- Removed: unused i18n keys for the deleted sections.
 
 ---
 

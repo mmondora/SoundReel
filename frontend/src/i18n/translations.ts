@@ -151,17 +151,6 @@ export interface Translations {
   openaiSaveError: string;
   openaiHowTo: string;
 
-  // Instagram
-  instagramCookies: string;
-  instagramCookiesDescription: string;
-  instagramSessionId: string;
-  instagramCsrfToken: string;
-  instagramDsUserId: string;
-  instagramSaveSuccess: string;
-  instagramSaveError: string;
-  instagramHowTo: string;
-  instagramHowToSteps: string;
-
   // Retry & Enrich
   retryEntry: string;
   retrying: string;
@@ -181,12 +170,9 @@ export interface Translations {
   mediaAnalysisDescription: string;
   mediaAnalysisPrompt: string;
   pipelineFeatures: string;
+  pageExtractionTitle: string;
+  pageExtractionDescription: string;
 
-  // Gemini Provider
-  geminiProvider: string;
-  useVertexAi: string;
-  useVertexAiDescription: string;
-  vertexAiWarning: string;
   aiAnalysisToggle: string;
   aiAnalysisToggleDescription: string;
   transcriptionToggle: string;
@@ -394,17 +380,6 @@ export const translations: Record<Language, Translations> = {
     openaiSaveError: 'Errore nel salvataggio della configurazione OpenAI',
     openaiHowTo: 'Vai su platform.openai.com/api-keys per generare una chiave.',
 
-    // Instagram
-    instagramCookies: 'Cookie Instagram',
-    instagramCookiesDescription: 'Inserisci i cookie di sessione Instagram per accedere ai contenuti protetti. Senza questi cookie, Instagram blocca l\'accesso programmatico.',
-    instagramSessionId: 'Session ID',
-    instagramCsrfToken: 'CSRF Token',
-    instagramDsUserId: 'User ID (ds_user_id)',
-    instagramSaveSuccess: 'Cookie Instagram salvati!',
-    instagramSaveError: 'Errore nel salvataggio dei cookie',
-    instagramHowTo: 'Come ottenere i cookie',
-    instagramHowToSteps: '1. Apri Instagram nel browser e fai login\n2. Apri DevTools (F12) → Application → Cookies → instagram.com\n3. Copia i valori di: sessionid, csrftoken, ds_user_id',
-
     // Retry & Enrich
     retryEntry: 'Rianalizza',
     retrying: 'Rianalisi...',
@@ -424,12 +399,9 @@ export const translations: Record<Language, Translations> = {
     mediaAnalysisDescription: 'Scarica audio/video e li analizza con Gemini per trascrizione, riconoscimento scene e testo sovrapposto.',
     mediaAnalysisPrompt: 'Analisi Media',
     pipelineFeatures: 'Pipeline',
+    pageExtractionTitle: 'Estrazione pagine web',
+    pageExtractionDescription: 'Per URL non Instagram (articoli, blog, social), estrae sintesi e link senza scaricare media.',
 
-    // Gemini Provider
-    geminiProvider: 'Gemini Provider',
-    useVertexAi: 'Usa Vertex AI',
-    useVertexAiDescription: 'Utilizza Vertex AI (GCP) invece di Google AI Studio. Vertex AI fattura sul progetto GCP.',
-    vertexAiWarning: 'Google AI Studio potrebbe avere quota esaurita. Vertex AI usa la fatturazione GCP.',
     aiAnalysisToggle: 'Analisi AI',
     aiAnalysisToggleDescription: 'Analizza il contenuto con Gemini per estrarre canzoni, film, note e tag.',
     transcriptionToggle: 'Trascrizione audio',
@@ -636,17 +608,6 @@ export const translations: Record<Language, Translations> = {
     openaiSaveError: 'Error saving OpenAI config',
     openaiHowTo: 'Go to platform.openai.com/api-keys to generate a key.',
 
-    // Instagram
-    instagramCookies: 'Instagram Cookies',
-    instagramCookiesDescription: 'Enter your Instagram session cookies to access protected content. Without these cookies, Instagram blocks programmatic access.',
-    instagramSessionId: 'Session ID',
-    instagramCsrfToken: 'CSRF Token',
-    instagramDsUserId: 'User ID (ds_user_id)',
-    instagramSaveSuccess: 'Instagram cookies saved!',
-    instagramSaveError: 'Error saving cookies',
-    instagramHowTo: 'How to get cookies',
-    instagramHowToSteps: '1. Open Instagram in your browser and log in\n2. Open DevTools (F12) → Application → Cookies → instagram.com\n3. Copy the values of: sessionid, csrftoken, ds_user_id',
-
     // Retry & Enrich
     retryEntry: 'Re-analyze',
     retrying: 'Re-analyzing...',
@@ -666,12 +627,9 @@ export const translations: Record<Language, Translations> = {
     mediaAnalysisDescription: 'Downloads audio/video and analyzes them with Gemini for transcription, scene recognition, and overlay text.',
     mediaAnalysisPrompt: 'Media Analysis',
     pipelineFeatures: 'Pipeline',
+    pageExtractionTitle: 'Web page extraction',
+    pageExtractionDescription: 'For non-Instagram URLs (articles, blogs, social), extracts summary and links without downloading media.',
 
-    // Gemini Provider
-    geminiProvider: 'Gemini Provider',
-    useVertexAi: 'Use Vertex AI',
-    useVertexAiDescription: 'Use Vertex AI (GCP) instead of Google AI Studio. Vertex AI bills to the GCP project.',
-    vertexAiWarning: 'Google AI Studio quota may be exhausted. Vertex AI uses GCP billing.',
     aiAnalysisToggle: 'AI Analysis',
     aiAnalysisToggleDescription: 'Analyze content with Gemini to extract songs, films, notes, and tags.',
     transcriptionToggle: 'Audio transcription',
