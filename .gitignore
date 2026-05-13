@@ -29,6 +29,10 @@ ui-debug.log
 # Logs
 *.log
 npm-debug.log*
+.rebuild-log
+
+# One-shot data migration dumps
+firestore-migration.sql
 
 # Test coverage
 coverage/
