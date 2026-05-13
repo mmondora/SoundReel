@@ -29,3 +29,16 @@ export function registerHubStatusRoute(app: FastifyInstance): void {
     return payload;
   });
 }
+
+export function registerHubAboutRoute(app: FastifyInstance): void {
+  app.get('/hub/about', async () => ({
+    name: 'soundreel',
+    version: VERSION,
+    revision: GIT_REVISION,
+    built_at: process.env.BUILD_DATE || null,
+    source: 'https://github.com/mmondora/soundreel',
+    changelog_url: 'https://github.com/mmondora/soundreel/blob/main/CHANGELOG.md',
+    developer: 'mike (mmondora@mondora.com)',
+    stack: 'fastify + postgres',
+  }));
+}
