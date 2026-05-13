@@ -9,7 +9,7 @@ import { registerTelegramRoute } from './routes/telegram';
 import { registerEntriesRoutes } from './routes/entries';
 import { registerConfigRoutes } from './routes/config';
 import { registerSpotifyRoutes } from './routes/spotify';
-import { registerHubStatusRoute } from './routes/hubStatus';
+import { registerHubStatusRoute, registerHubAboutRoute } from './routes/hubStatus';
 import { registerLogsRoutes } from './routes/logs';
 import { registerPromptsRoutes } from './routes/prompts';
 import { registerMediaRoute } from './routes/media';
@@ -33,6 +33,7 @@ async function bootstrap(): Promise<void> {
   registerConfigRoutes(app);
   registerSpotifyRoutes(app);
   registerHubStatusRoute(app);
+  registerHubAboutRoute(app);
   registerLogsRoutes(app);
   registerPromptsRoutes(app);
   registerMediaRoute(app);

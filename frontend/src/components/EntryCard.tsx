@@ -110,7 +110,9 @@ function getPlatformLabel(platform: string): string {
 }
 
 function getChannelIcon(channel: string): string {
-  return channel === 'telegram' ? 'BOT' : 'WEB';
+  if (channel === 'telegram') return 'BOT';
+  if (channel === 'ios') return 'iOS';
+  return 'WEB';
 }
 
 /**

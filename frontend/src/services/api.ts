@@ -94,9 +94,9 @@ export interface FeaturesConfig {
   allowDuplicateUrls: boolean;
   autoEnrichEnabled: boolean;
   mediaAnalysisEnabled: boolean;
-  useVertexAi: boolean;
   transcriptionEnabled: boolean;
   aiAnalysisEnabled: boolean;
+  pageExtractionEnabled: boolean;
 }
 
 export async function getFeatures(): Promise<FeaturesConfig> {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { initiateSpotifyAuth } from '../services/spotify';
-import { getFeatures, updateFeatures, FeaturesConfig, getInstagramConfig, updateInstagramConfig, InstagramConfigResponse, getOpenAIConfig, updateOpenAIConfig, OpenAIConfigResponse, deleteAllEntries, getSpotifyStatus } from '../services/api';
+import { getFeatures, updateFeatures, FeaturesConfig, getOpenAIConfig, updateOpenAIConfig, OpenAIConfigResponse, deleteAllEntries, getSpotifyStatus } from '../services/api';
 import { useLanguage, Language, interpolate } from '../i18n';
 import type { SpotifyConfig } from '../types';
 
@@ -14,14 +14,6 @@ export function Settings() {
   const [pplxEnabled, setPplxEnabled] = useState(false);
   const [savingPplx, setSavingPplx] = useState(false);
   const [pplxMessage, setPplxMessage] = useState<string | null>(null);
-  const [igConfig, setIgConfig] = useState<InstagramConfigResponse | null>(null);
-  const [igSessionId, setIgSessionId] = useState('');
-  const [igCsrfToken, setIgCsrfToken] = useState('');
-  const [igDsUserId, setIgDsUserId] = useState('');
-  const [igEnabled, setIgEnabled] = useState(false);
-  const [savingIg, setSavingIg] = useState(false);
-  const [igMessage, setIgMessage] = useState<string | null>(null);
-  const [showIgHowTo, setShowIgHowTo] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [connecting] = useState(false);
@@ -72,7 +64,7 @@ export function Settings() {
         setFeaturesConfig(features);
       } catch (err) {
         console.error('Error loading features:', err);
-        setFeaturesConfig({ cobaltEnabled: false, allowDuplicateUrls: false, autoEnrichEnabled: false, mediaAnalysisEnabled: false, useVertexAi: true, transcriptionEnabled: true, aiAnalysisEnabled: true });
+        setFeaturesConfig({ cobaltEnabled: false, allowDuplicateUrls: false, autoEnrichEnabled: false, mediaAnalysisEnabled: false, transcriptionEnabled: true, aiAnalysisEnabled: true, pageExtractionEnabled: true });
       }
 
       // Load OpenAI config
@@ -82,16 +74,6 @@ export function Settings() {
         setPplxEnabled(pplx.enabled);
       } catch (err) {
         console.error('Error loading OpenAI config:', err);
-      }
-
-      // Load Instagram config
-      try {
-        const ig = await getInstagramConfig();
-        setIgConfig(ig);
-        setIgDsUserId(ig.dsUserId || '');
-        setIgEnabled(ig.enabled);
-      } catch (err) {
-        console.error('Error loading Instagram config:', err);
       }
     } catch (err) {
       console.error('Error loading config:', err);
@@ -197,30 +179,6 @@ export function Settings() {
       setPplxMessage(t.openaiSaveError);
     } finally {
       setSavingPplx(false);
-    }
-  }
-
-  async function handleSaveInstagram() {
-    setSavingIg(true);
-    setIgMessage(null);
-    try {
-      const updates: Record<string, string | boolean> = { enabled: igEnabled };
-      if (igSessionId) updates.sessionId = igSessionId;
-      if (igCsrfToken) updates.csrfToken = igCsrfToken;
-      if (igDsUserId) updates.dsUserId = igDsUserId;
-
-      const result = await updateInstagramConfig(updates);
-      setIgConfig(result.config);
-      setIgSessionId('');
-      setIgCsrfToken('');
-      setIgDsUserId(result.config.dsUserId || '');
-      setIgEnabled(result.config.enabled);
-      setIgMessage(t.instagramSaveSuccess);
-    } catch (err) {
-      console.error('Error saving Instagram config:', err);
-      setIgMessage(t.instagramSaveError);
-    } finally {
-      setSavingIg(false);
     }
   }
 
@@ -363,6 +321,22 @@ export function Settings() {
 
           <div className="feature-toggle">
             <div className="feature-info">
+              <h3>{t.pageExtractionTitle}</h3>
+              <p className="feature-description">{t.pageExtractionDescription}</p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={featuresConfig?.pageExtractionEnabled ?? true}
+                onChange={() => handleToggleFeature('pageExtractionEnabled')}
+                disabled={savingFeatures}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div className="feature-toggle" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
+            <div className="feature-info">
               <h3>{t.mediaAnalysis}</h3>
               <p className="feature-description">{t.mediaAnalysisDescription}</p>
             </div>
@@ -426,29 +400,6 @@ export function Settings() {
           </div>
         </section>
 
-        {/* Gemini Provider Section */}
-        <section className="settings-section">
-          <h2>{t.geminiProvider}</h2>
-          <div className="feature-toggle">
-            <div className="feature-info">
-              <h3>{t.useVertexAi}</h3>
-              <p className="feature-description">{t.useVertexAiDescription}</p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={featuresConfig?.useVertexAi ?? true}
-                onChange={() => handleToggleFeature('useVertexAi')}
-                disabled={savingFeatures}
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          </div>
-          {!featuresConfig?.useVertexAi && (
-            <p className="feature-warning">{t.vertexAiWarning}</p>
-          )}
-        </section>
-
         {/* OpenAI Section */}
         <section className="settings-section">
           <h2>{t.openaiSection}</h2>
@@ -508,108 +459,6 @@ export function Settings() {
               {pplxConfig.enabled ? '●' : '○'} API Key: {pplxConfig.apiKey}
             </p>
           )}
-        </section>
-
-        {/* Instagram Cookies Section */}
-        <section className="settings-section">
-          <h2>{t.instagramCookies}</h2>
-          <p className="feature-description">{t.instagramCookiesDescription}</p>
-
-          <div className="feature-toggle" style={{ marginTop: '1rem' }}>
-            <div className="feature-info">
-              <h3>{t.instagramCookies}</h3>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={igEnabled}
-                onChange={(e) => setIgEnabled(e.target.checked)}
-                disabled={savingIg}
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          </div>
-
-          <div className="instagram-fields" style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <div>
-              <label className="field-label" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                {t.instagramSessionId}
-              </label>
-              <input
-                type="password"
-                value={igSessionId}
-                onChange={(e) => setIgSessionId(e.target.value)}
-                placeholder={igConfig?.sessionId || ''}
-                className="settings-input"
-                style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-light)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-                disabled={savingIg}
-              />
-            </div>
-            <div>
-              <label className="field-label" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                {t.instagramCsrfToken}
-              </label>
-              <input
-                type="password"
-                value={igCsrfToken}
-                onChange={(e) => setIgCsrfToken(e.target.value)}
-                placeholder={igConfig?.csrfToken || ''}
-                className="settings-input"
-                style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-light)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-                disabled={savingIg}
-              />
-            </div>
-            <div>
-              <label className="field-label" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                {t.instagramDsUserId}
-              </label>
-              <input
-                type="text"
-                value={igDsUserId}
-                onChange={(e) => setIgDsUserId(e.target.value)}
-                placeholder={igConfig?.dsUserId || ''}
-                className="settings-input"
-                style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-light)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-                disabled={savingIg}
-              />
-            </div>
-          </div>
-
-          <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <button
-              onClick={handleSaveInstagram}
-              disabled={savingIg}
-              className="connect-btn"
-            >
-              {savingIg ? t.saving : t.save}
-            </button>
-            {igMessage && (
-              <span style={{ fontSize: '0.85rem', color: igMessage === t.instagramSaveSuccess ? 'var(--success)' : 'var(--error)' }}>
-                {igMessage}
-              </span>
-            )}
-          </div>
-
-          {igConfig?.hasCredentials && (
-            <p style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--success)' }}>
-              {igConfig.enabled ? '● ' : '○ '}
-              {t.instagramSessionId}: {igConfig.sessionId}
-            </p>
-          )}
-
-          <div style={{ marginTop: '1rem' }}>
-            <button
-              onClick={() => setShowIgHowTo(!showIgHowTo)}
-              style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline', padding: 0 }}
-            >
-              {t.instagramHowTo}
-            </button>
-            {showIgHowTo && (
-              <pre style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                {t.instagramHowToSteps}
-              </pre>
-            )}
-          </div>
         </section>
 
         {/* Danger Zone */}

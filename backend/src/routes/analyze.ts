@@ -46,7 +46,7 @@ import type {
 
 interface AnalyzeRequestBody {
   url?: string;
-  channel?: 'web' | 'telegram';
+  channel?: 'web' | 'telegram' | 'ios';
 }
 
 const KEY_FRAMES_COUNT = Number(process.env.KEY_FRAMES_COUNT || 5);
