@@ -59,6 +59,11 @@ export interface Translations {
   openOnSpotify: string;
   searchOnYoutube: string;
   searchOnSoundcloud: string;
+  searchOnSpotify: string;
+  addToPlaylistBtn: string;
+  addingToPlaylist: string;
+  noSpotifyResults: string;
+  spotifyNotConnected: string;
   openOnIMDb: string;
   searchOnNetflix: string;
   searchOnPrimeVideo: string;
@@ -288,6 +293,11 @@ export const translations: Record<Language, Translations> = {
     openOnSpotify: 'Apri su Spotify',
     searchOnYoutube: 'Cerca su YouTube',
     searchOnSoundcloud: 'Cerca su SoundCloud',
+    searchOnSpotify: 'Cerca su Spotify',
+    addToPlaylistBtn: 'Aggiungi alla playlist',
+    addingToPlaylist: 'Aggiunta...',
+    noSpotifyResults: 'Nessun risultato su Spotify',
+    spotifyNotConnected: 'Connetti Spotify nelle impostazioni',
     openOnIMDb: 'Apri su IMDb',
     searchOnNetflix: 'Cerca su Netflix',
     searchOnPrimeVideo: 'Cerca su Prime Video',
@@ -516,6 +526,11 @@ export const translations: Record<Language, Translations> = {
     openOnSpotify: 'Open on Spotify',
     searchOnYoutube: 'Search on YouTube',
     searchOnSoundcloud: 'Search on SoundCloud',
+    searchOnSpotify: 'Search on Spotify',
+    addToPlaylistBtn: 'Add to playlist',
+    addingToPlaylist: 'Adding...',
+    noSpotifyResults: 'No results on Spotify',
+    spotifyNotConnected: 'Connect Spotify in settings',
     openOnIMDb: 'Open on IMDb',
     searchOnNetflix: 'Search on Netflix',
     searchOnPrimeVideo: 'Search on Prime Video',
