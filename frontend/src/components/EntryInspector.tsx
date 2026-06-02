@@ -235,7 +235,7 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
         <section className="inspector-section">
           <h3 className="inspector-section-title">{t.songsSection}</h3>
           {entry.results.songs.map((song, i) => (
-            <SongItem key={i} song={song} />
+            <SongItem key={i} song={song} entryId={entry.id} songIndex={i} />
           ))}
         </section>
       )}
