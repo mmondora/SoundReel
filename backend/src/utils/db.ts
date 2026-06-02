@@ -252,6 +252,10 @@ export interface FeaturesConfig {
   transcriptionEnabled: boolean;
   aiAnalysisEnabled: boolean;
   pageExtractionEnabled: boolean;
+  shazamEnabled: boolean;
+  multiSongScanEnabled: boolean;
+  youtubeDirect: boolean;
+  carouselStructuredExtraction: boolean;
 }
 
 const DEFAULT_FEATURES: FeaturesConfig = {
@@ -262,6 +266,10 @@ const DEFAULT_FEATURES: FeaturesConfig = {
   transcriptionEnabled: true,
   aiAnalysisEnabled: true,
   pageExtractionEnabled: true,
+  shazamEnabled: true,
+  multiSongScanEnabled: true,
+  youtubeDirect: true,
+  carouselStructuredExtraction: true,
 };
 
 export async function getFeaturesConfig(): Promise<FeaturesConfig> {

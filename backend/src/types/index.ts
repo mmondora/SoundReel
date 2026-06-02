@@ -8,6 +8,7 @@ export interface Song {
   youtubeUrl: string | null;
   soundcloudUrl: string | null;
   addedToPlaylist: boolean;
+  sourceSlide?: number;
 }
 
 export interface StreamingUrls {
@@ -26,6 +27,7 @@ export interface Film {
   imdbUrl: string | null;
   posterUrl: string | null;
   streamingUrls: StreamingUrls | null;
+  sourceSlide?: number;
 }
 
 export interface ActionLogItem {
