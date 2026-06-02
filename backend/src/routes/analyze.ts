@@ -397,9 +397,13 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             }));
           }
           // Shazam multi-song scan on local audio
-          if (featuresConfig.shazamEnabled && localPaths?.audioPath) {
+          // Skip when musicInfo already present and multi-song scan not enabled
+          // (Shazam on actual audio would find a different song than the IG music sticker)
+          const shazamNeeded = featuresConfig.shazamEnabled && localPaths?.audioPath &&
+            (!content.musicInfo || featuresConfig.multiSongScanEnabled);
+          if (shazamNeeded) {
             try {
-              shazamTracks = await scanFullAudio(localPaths.audioPath);
+              shazamTracks = await scanFullAudio(localPaths.audioPath!);
               await appendActionLog(entryId, createActionLog('shazam_scan', {
                 status: 'ok',
                 found: shazamTracks.length,

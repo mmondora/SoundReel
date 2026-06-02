@@ -113,35 +113,27 @@ export async function searchTrack(
     const accessToken = await refreshAccessToken();
     if (!accessToken) return null;
 
-    const q = encodeURIComponent(`track:${title} artist:${artist}`);
-    const url = `https://api.spotify.com/v1/search?q=${q}&type=track&limit=1`;
-
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-
-    if (!response.ok) {
-      logWarning('Spotify search fallita', { status: response.status });
-      return null;
-    }
-
-    const data = (await response.json()) as {
-      tracks: {
-        items: Array<{
-          uri: string;
-          external_urls: { spotify: string };
-          name: string;
-          artists: Array<{ name: string }>;
-        }>;
+    const fetchSearch = async (q: string) => {
+      const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=1`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!res.ok) return null;
+      const data = (await res.json()) as {
+        tracks: { items: Array<{ uri: string; external_urls: { spotify: string }; name: string; artists: Array<{ name: string }> }> };
       };
+      return data.tracks.items[0] ?? null;
     };
 
-    if (!data.tracks.items.length) {
+    // Try strict field filter first, fall back to plain keyword search
+    let track = await fetchSearch(`track:${title} artist:${artist}`);
+    if (!track) {
+      track = await fetchSearch(`${title} ${artist}`);
+    }
+
+    if (!track) {
       logInfo('Nessun risultato Spotify', { title, artist });
       return null;
     }
 
-    const track = data.tracks.items[0];
     logInfo('Track Spotify trovata', { name: track.name });
 
     return {

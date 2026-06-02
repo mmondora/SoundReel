@@ -683,11 +683,11 @@ def yt_url():
     log.info("yt/url query=%s", q)
     try:
         result = subprocess.run(
-            ["yt-dlp", "--get-url", "--no-playlist", f"ytsearch1:{q}"],
+            ["yt-dlp", "--print", "webpage_url", "--no-playlist", f"ytsearch1:{q}"],
             capture_output=True, text=True, timeout=15,
         )
         url = result.stdout.strip().splitlines()[0] if result.stdout.strip() else None
-        if url and url.startswith("http"):
+        if url and "youtube.com/watch" in url:
             log.info("yt/url found url=%s", url[:80])
             return jsonify({"url": url})
     except subprocess.TimeoutExpired:
