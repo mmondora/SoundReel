@@ -401,8 +401,15 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             try {
               shazamTracks = await scanFullAudio(localPaths.audioPath);
               await appendActionLog(entryId, createActionLog('shazam_scan', {
+                status: 'ok',
                 found: shazamTracks.length,
-                audioPath: localPaths.audioPath,
+                tracks: shazamTracks.map((t) => ({
+                  title: t.title,
+                  artist: t.artist,
+                  spotifyUrl: t.spotifyUrl,
+                  youtubeUrl: t.youtubeUrl,
+                  timestampMs: t.timestampMs,
+                })),
               }));
               // If no musicInfo, use first Shazam track as primary audioResult
               if (!audioResult && shazamTracks[0]) {
@@ -417,6 +424,11 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
                 status: 'error', error: String(e),
               }));
             }
+          } else {
+            await appendActionLog(entryId, createActionLog('shazam_scan', {
+              status: 'skipped',
+              reason: !featuresConfig.shazamEnabled ? 'disabled' : 'no audioPath',
+            }));
           }
         } else {
           // ======= LEGACY PIPELINE (non-IG) =======
@@ -521,12 +533,20 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         let addedToPlaylist = false;
         if (spotifyResult) {
           addedToPlaylist = await addToPlaylist(spotifyResult.uri);
-          if (addedToPlaylist) {
-            await appendActionLog(entryId, createActionLog('spotify_added', {
-              track: spotifyResult.name,
-              artist: spotifyResult.artist,
-            }));
-          }
+          await appendActionLog(entryId, createActionLog('spotify_search', {
+            query: `${songData.title} — ${songData.artist}`,
+            found: true,
+            track: spotifyResult.name,
+            artist: spotifyResult.artist,
+            uri: spotifyResult.uri,
+            url: spotifyResult.url,
+            addedToPlaylist,
+          }));
+        } else {
+          await appendActionLog(entryId, createActionLog('spotify_search', {
+            query: `${songData.title} — ${songData.artist}`,
+            found: false,
+          }));
         }
         songs.push({
           title: songData.title,
@@ -552,6 +572,23 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         let addedToPlaylist = false;
         if (spotifyResult) {
           addedToPlaylist = await addToPlaylist(spotifyResult.uri);
+          await appendActionLog(entryId, createActionLog('spotify_search', {
+            query: `${slideSong.title} — ${slideSong.artist ?? ''}`,
+            source: 'carousel_slide',
+            sourceSlide: slideSong.sourceSlide,
+            found: true,
+            track: spotifyResult.name,
+            uri: spotifyResult.uri,
+            url: spotifyResult.url,
+            addedToPlaylist,
+          }));
+        } else {
+          await appendActionLog(entryId, createActionLog('spotify_search', {
+            query: `${slideSong.title} — ${slideSong.artist ?? ''}`,
+            source: 'carousel_slide',
+            sourceSlide: slideSong.sourceSlide,
+            found: false,
+          }));
         }
         const ytUrl = featuresConfig.youtubeDirect
           ? await resolveYoutubeUrl(slideSong.artist ?? '', slideSong.title)
@@ -576,6 +613,11 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           songs.map(async (song, i) => {
             if (!song.youtubeUrl) {
               const url = await resolveYoutubeUrl(song.artist, song.title);
+              await appendActionLog(entryId, createActionLog('youtube_resolve', {
+                query: `${song.artist} ${song.title}`,
+                found: !!url,
+                url: url ?? null,
+              }));
               if (url) songs[i] = { ...song, youtubeUrl: url };
             }
           })
