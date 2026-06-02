@@ -560,6 +560,115 @@ def shazam_recognize():
     return jsonify(track)
 
 
+def _normalize_track_key(title: str, artist: str) -> str:
+    """Normalize title+artist for deduplication."""
+    return re.sub(r"[^a-z0-9]", "", f"{title}{artist}".lower())
+
+
+def _detect_song_boundaries(audio_path: str, min_segment_sec: float = 15.0) -> list[tuple[float, float]]:
+    """Use librosa to find likely song-change boundaries in an audio file.
+
+    Returns list of (start_sec, end_sec) tuples for segments >= min_segment_sec.
+    Falls back to [(0, duration)] if librosa fails.
+    """
+    import librosa  # imported here to avoid slow startup when not needed
+    import numpy as np
+
+    try:
+        y, sr = librosa.load(audio_path, sr=22050, mono=True)
+        duration = librosa.get_duration(y=y, sr=sr)
+
+        if duration < 90.0:
+            return [(0.0, duration)]
+
+        hop = int(0.5 * sr)
+        rms = librosa.feature.rms(y=y, frame_length=hop * 2, hop_length=hop)[0]
+        onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop)
+
+        rms_max = rms.max() or 1e-8
+        onset_max = onset_env.max() or 1e-8
+        rms_n = rms / rms_max
+        onset_n = onset_env / onset_max
+
+        boundaries: list[float] = [0.0]
+        n = min(len(rms_n), len(onset_n))
+        for i in range(1, n):
+            rms_drop = float(rms_n[i - 1]) - float(rms_n[i])
+            onset_spike = float(onset_n[i]) > 0.5
+            if rms_drop > 0.4 and onset_spike:
+                t = float(librosa.frames_to_time(i, sr=sr, hop_length=hop))
+                if t - boundaries[-1] >= min_segment_sec:
+                    boundaries.append(t)
+
+        segments: list[tuple[float, float]] = []
+        for i, start in enumerate(boundaries):
+            end = boundaries[i + 1] if i + 1 < len(boundaries) else duration
+            if end - start >= min_segment_sec:
+                segments.append((start, end))
+
+        return segments or [(0.0, duration)]
+    except Exception as exc:
+        log.warning("librosa boundary detection failed: %s", exc)
+        return [(0.0, -1.0)]  # signal: recognize full file
+
+
+def _extract_segment_wav(src: str, start: float, end: float, dst: str) -> bool:
+    """Extract audio segment using ffmpeg."""
+    cmd = ["ffmpeg", "-y", "-ss", str(start), "-i", src, "-t", str(end - start),
+           "-acodec", "pcm_s16le", "-ar", "44100", dst]
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=60)
+        return r.returncode == 0 and Path(dst).exists()
+    except Exception:
+        return False
+
+
+@app.route("/shazam/scan-full", methods=["POST"])
+def shazam_scan_full():
+    """Scan an audio file for multiple songs using librosa segmentation + Shazam.
+
+    Request JSON: {"audioPath": "/data/media/<entryId>/audio.wav"}
+    Response: JSON array of track objects (may be empty []).
+    """
+    data = request.get_json(silent=True) or {}
+    audio_path = data.get("audioPath")
+    if not audio_path or not Path(audio_path).is_file():
+        return jsonify({"error": "audioPath missing or not found"}), 400
+
+    log.info("shazam/scan-full path=%s", audio_path)
+    segments = _detect_song_boundaries(audio_path)
+    log.info("detected %d segment(s)", len(segments))
+
+    seen: set[str] = set()
+    tracks: list[dict] = []
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        for idx, (start, end) in enumerate(segments):
+            if end < 0:
+                # Fallback: recognize full file
+                seg_path = audio_path
+            else:
+                seg_path = str(Path(tmp_dir) / f"seg_{idx:03d}.wav")
+                if not _extract_segment_wav(audio_path, start, end, seg_path):
+                    log.warning("segment extract failed idx=%d start=%.1f end=%.1f", idx, start, end)
+                    continue
+
+            track = _shazam_recognize(seg_path)
+            if not track or not track.get("title"):
+                continue
+
+            key = _normalize_track_key(track["title"], track.get("artist", ""))
+            if key in seen:
+                continue
+            seen.add(key)
+
+            track["timestampMs"] = int(start * 1000)
+            tracks.append(track)
+            log.info("shazam found title=%s artist=%s at %.1fs", track["title"], track["artist"], start)
+
+    return jsonify(tracks)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     host = os.environ.get("HOST", "0.0.0.0")
