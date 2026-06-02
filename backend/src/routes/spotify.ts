@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { createHash, randomBytes } from 'node:crypto';
-import { exchangeAuthCode, getRedirectUri } from '../services/spotify';
+import { exchangeAuthCode, getRedirectUri, searchTracks, SpotifyTrackResult } from '../services/spotify';
 import { getSpotifyConfig } from '../utils/db';
 
 const authState = new Map<string, { codeVerifier: string; createdAt: number }>();
@@ -77,5 +77,24 @@ export function registerSpotifyRoutes(app: FastifyInstance): void {
     reply.type('text/html').send(
       '<html><body><h1>Spotify collegato ✓</h1><p>Puoi chiudere questa finestra e tornare a SoundReel.</p><script>setTimeout(()=>window.close(),1500)</script></body></html>'
     );
+  });
+
+  app.get<{ Querystring: { q?: string; limit?: string } }>('/api/spotify/search', async (req, reply) => {
+    const q = (req.query.q ?? '').trim();
+    const limit = Math.min(10, Math.max(1, Number(req.query.limit ?? 5)));
+
+    if (!q) {
+      reply.code(400).send({ error: 'q parameter required' });
+      return;
+    }
+
+    const config = await getSpotifyConfig();
+    if (!config) {
+      reply.code(503).send({ error: 'spotify_not_connected' });
+      return;
+    }
+
+    const tracks: SpotifyTrackResult[] = await searchTracks(q, limit);
+    reply.send(tracks);
   });
 }
