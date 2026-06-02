@@ -34,6 +34,8 @@ import {
 } from '../utils/db';
 import { createActionLog } from '../utils/logger';
 import { Logger } from '../services/debugLogger';
+import { scanFullAudio, resolveYoutubeUrl } from '../services/shazamClient';
+import type { ShazamTrack } from '../services/shazamClient';
 import type {
   Entry,
   Song,
@@ -117,6 +119,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       // Shared pipeline state (populated by one of: page / IG / legacy branch)
       // ---------------------------------------------------------------------
       let audioResult: AudioRecognitionResult | null = null;
+      let shazamTracks: ShazamTrack[] = [];
       let aiResponse: AiAnalysisResponse;
       let transcript: string | null = null;
       let transcriptLanguage: string | null = null;
@@ -374,6 +377,28 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
               reason: 'no music_info in IG metadata',
             }));
           }
+          // Shazam multi-song scan on local audio
+          if (featuresConfig.shazamEnabled && localPaths?.audioPath) {
+            try {
+              shazamTracks = await scanFullAudio(localPaths.audioPath);
+              await appendActionLog(entryId, createActionLog('shazam_scan', {
+                found: shazamTracks.length,
+                audioPath: localPaths.audioPath,
+              }));
+              // If no musicInfo, use first Shazam track as primary audioResult
+              if (!audioResult && shazamTracks[0]) {
+                audioResult = {
+                  title: shazamTracks[0].title,
+                  artist: shazamTracks[0].artist,
+                  album: null,
+                };
+              }
+            } catch (e) {
+              await appendActionLog(entryId, createActionLog('shazam_scan', {
+                status: 'error', error: String(e),
+              }));
+            }
+          }
         } else {
           // ======= LEGACY PIPELINE (non-IG) =======
           let media = null;
@@ -487,9 +512,34 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           source: songData.source,
           spotifyUri: spotifyResult?.uri || null,
           spotifyUrl: spotifyResult?.url || null,
-          youtubeUrl: generateYoutubeSearchUrl(songData.title, songData.artist),
+          youtubeUrl: (() => {
+            const shazam = shazamTracks.find(
+              (t) => t.title.toLowerCase() === songData.title.toLowerCase() &&
+                     t.artist.toLowerCase() === songData.artist.toLowerCase()
+            );
+            return shazam?.youtubeUrl ?? null;
+          })(),
           soundcloudUrl: generateSoundcloudSearchUrl(songData.title, songData.artist),
           addedToPlaylist,
+        });
+      }
+
+      // Resolve direct YouTube URLs for songs missing one
+      if (featuresConfig.youtubeDirect) {
+        await Promise.allSettled(
+          songs.map(async (song, i) => {
+            if (!song.youtubeUrl) {
+              const url = await resolveYoutubeUrl(song.artist, song.title);
+              if (url) songs[i] = { ...song, youtubeUrl: url };
+            }
+          })
+        );
+      } else {
+        // Fallback to search URL when youtubeDirect disabled
+        songs.forEach((song, i) => {
+          if (!song.youtubeUrl) {
+            songs[i] = { ...song, youtubeUrl: generateYoutubeSearchUrl(song.title, song.artist) };
+          }
         });
       }
 
