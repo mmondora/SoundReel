@@ -169,6 +169,15 @@ export interface SpotifyStatus {
   playlistId: string | null;
 }
 
+export interface SpotifyTrack {
+  uri: string;
+  url: string;
+  name: string;
+  artist: string;
+  albumName: string | null;
+  albumImageUrl: string | null;
+}
+
 export async function getSpotifyStatus(): Promise<SpotifyStatus> {
   const res = await fetch(url('/api/spotify/status'));
   return json<SpotifyStatus>(res);
@@ -176,6 +185,32 @@ export async function getSpotifyStatus(): Promise<SpotifyStatus> {
 
 export function spotifyAuthorizeUrl(): string {
   return url('/api/spotify/authorize');
+}
+
+export async function searchSpotifyTracks(q: string, limit = 5): Promise<SpotifyTrack[]> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  const res = await fetch(url(`/api/spotify/search?${params}`));
+  if (res.status === 503) return [];   // Spotify not connected — surface as empty results
+  return json<SpotifyTrack[]>(res);
+}
+
+export async function addSongToSpotify(
+  entryId: string,
+  songIndex: number,
+  track: SpotifyTrack
+): Promise<Entry> {
+  const res = await fetch(url(`/api/entries/${encodeURIComponent(entryId)}/songs/spotify`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      songIndex,
+      spotifyUri: track.uri,
+      spotifyUrl: track.url,
+      name: track.name,
+      artist: track.artist,
+    }),
+  });
+  return json<Entry>(res);
 }
 
 // --- Logs ---
