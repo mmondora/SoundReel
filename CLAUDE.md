@@ -6,15 +6,17 @@ SoundReel è una web app personale (single user) che analizza contenuti social (
 
 ## Stack tecnologico
 
-- **Frontend**: React + Vite + TypeScript, deployato come SPA statica su Firebase Hosting
-- **Backend**: Firebase Cloud Functions 2nd gen (Node.js 20, TypeScript)
-- **Database**: Cloud Firestore (una collection `entries`, documenti JSON)
+- **Frontend**: React + Vite + TypeScript, SPA statica servita da Fastify
+- **Backend**: Node.js 20 + Fastify + TypeScript, in `backend/`
+- **Database**: PostgreSQL 17 (container Docker `soundreel-db`)
 - **AI**: Gemini Flash via Google AI Studio (`@google/generative-ai` SDK)
-- **Music Recognition**: AudD API (audio fingerprinting)
+- **Music Recognition**: AudD API + Whisper (audio fingerprinting e trascrizione)
 - **Film DB**: TMDb API
 - **Spotify**: Spotify Web API con OAuth 2.0 PKCE
-- **Telegram**: Bot API con webhook su Cloud Function
-- **Video extraction**: cobalt.tools API con fallback su OG meta scraping
+- **Telegram**: Bot API con webhook su endpoint Fastify
+- **Video extraction**: cobalt.tools API + Instaloader (container dedicato) con fallback su OG meta scraping
+- **OCR**: servizio OCR dedicato (container `soundreel-ocr`)
+- **Deploy**: Docker Compose su GEEKOM A8 Max, `soundreel.casamon.dev`
 
 ## Struttura progetto
 
@@ -22,102 +24,76 @@ SoundReel è una web app personale (single user) che analizza contenuti social (
 soundreel/
 ├── CLAUDE.md
 ├── README.md
-├── firebase.json
-├── firestore.rules
-├── firestore.indexes.json
-├── .firebaserc
-├── .env.example
+├── Dockerfile               # multi-stage: frontend-build + backend-build + runtime
+├── docker-compose.yml       # soundreel, soundreel-db, instaloader, whisper, ocr
+├── .env                     # secrets (non committare)
 ├── scripts/
-│   ├── setup.sh              # setup iniziale progetto Firebase
-│   ├── deploy.sh             # deploy completo (functions + hosting)
-│   ├── deploy-functions.sh   # deploy solo functions
-│   ├── deploy-hosting.sh     # deploy solo hosting
-│   └── set-secrets.sh        # configura secrets in Firebase
+│   ├── build.sh             # docker compose build con GIT_REVISION e BUILD_DATE
+│   ├── bump-version.sh      # incrementa patch version in package.json
+│   └── telegram-set-webhook.sh
+├── backend/
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── src/
+│       ├── server.ts        # entry point Fastify
+│       ├── db/
+│       │   └── init.sql
+│       ├── routes/
+│       ├── services/
+│       └── types/
 ├── frontend/
 │   ├── package.json
-│   ├── vite.config.ts
+│   ├── vite.config.js
 │   ├── tsconfig.json
-│   ├── index.html
-│   ├── public/
 │   └── src/
 │       ├── main.tsx
 │       ├── App.tsx
 │       ├── components/
-│       │   ├── Header.tsx
-│       │   ├── UrlInput.tsx
-│       │   ├── Journal.tsx
-│       │   ├── EntryCard.tsx
-│       │   ├── SongItem.tsx
-│       │   ├── FilmItem.tsx
-│       │   └── ActionLog.tsx
 │       ├── pages/
-│       │   ├── Home.tsx
-│       │   └── Settings.tsx
 │       ├── services/
-│       │   ├── firebase.ts
 │       │   ├── api.ts
 │       │   └── spotify.ts
 │       ├── hooks/
-│       │   ├── useJournal.ts
-│       │   └── useAnalyze.ts
 │       ├── types/
-│       │   └── index.ts
 │       └── styles/
-│           └── index.css
-├── functions/
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── src/
-│       ├── index.ts
-│       ├── analyzeUrl.ts
-│       ├── telegramWebhook.ts
-│       ├── services/
-│       │   ├── contentExtractor.ts
-│       │   ├── audioRecognition.ts
-│       │   ├── aiAnalysis.ts
-│       │   ├── spotify.ts
-│       │   ├── filmSearch.ts
-│       │   └── resultMerger.ts
-│       ├── utils/
-│       │   ├── firestore.ts
-│       │   └── logger.ts
-│       └── types/
-│           └── index.ts
+├── instaloader/             # servizio Python per Instagram
+│   └── Dockerfile
+└── ocr/                     # servizio OCR
+    └── Dockerfile
 ```
 
 ## Convenzioni di sviluppo
 
 ### Linguaggio e stile
-- TypeScript strict mode ovunque (frontend e functions)
+- TypeScript strict mode ovunque (frontend e backend)
 - Nessun `any` — definire sempre i tipi in `types/index.ts`
 - Preferire `async/await` su `.then()` chains
 - Gestire SEMPRE gli errori: ogni step della pipeline è indipendente, se uno fallisce gli altri continuano
-- Loggare ogni azione nell'`actionLog` dell'entry Firestore
+- Loggare ogni azione nell'`actionLog` dell'entry in Postgres
 
-### Firestore
-- UNA sola collection: `entries`
-- Ogni documento è un'entry processata con `results` (songs + films) e `actionLog` embedded
-- Un documento `config/spotify` per i token OAuth Spotify
-- MAI creare collection aggiuntive. Se serve un nuovo dato, è un campo nel documento entry o un documento in `config/`
-- Usare `serverTimestamp()` per i timestamp nelle Cloud Functions
+### Database (PostgreSQL)
+- Schema definito in `backend/src/db/init.sql`
+- MAI usare ORM — query SQL dirette con `pg`
+- Secrets DB via env vars (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`)
 
-### Cloud Functions
-- Tutte 2nd gen (`onRequest` da `firebase-functions/v2/https`)
-- Timeout configurato a 120s per `analyzeUrl`
-- Region: `europe-west1` (più vicino all'Italia)
-- I secrets vengono letti da Firebase Secret Manager, MAI hardcodati
-- L'endpoint `analyzeUrl` è chiamato sia dal frontend che dal bot Telegram — deve essere un'unica implementazione
+### Backend (Fastify)
+- Entry point: `backend/src/server.ts`
+- Secrets letti da env vars, MAI hardcodati
+- L'endpoint `analyzeUrl` è chiamato sia dal frontend che dal bot Telegram — unica implementazione
+- Timeout pipeline: 120s
 
 ### Frontend React
 - Componenti funzionali con hooks
-- Stato globale minimo: usare hooks custom (`useJournal`, `useAnalyze`)
-- Firestore `onSnapshot` per aggiornamenti real-time del journal
-- React Router per navigazione (`/` e `/settings`)
-- CSS semplice o Tailwind utility classes — no component library
+- Stato globale minimo: usare hooks custom
+- Polling o WebSocket per aggiornamenti real-time (no Firestore)
+- React Router per navigazione
+- CSS semplice — no component library
 - Dark mode come default e unico tema
 
 ### API esterne
-- **AudD**: POST a `https://api.audd.io/` con file audio o URL
+- **Whisper**: HTTP verso `soundreel-whisper:9000`
+- **Instaloader**: HTTP verso `soundreel-instaloader:5000`
+- **OCR**: HTTP verso `soundreel-ocr:5001`
 - **Gemini**: usare `@google/generative-ai` SDK, modello `gemini-2.0-flash`
 - **Spotify**: OAuth PKCE, token refresh automatico prima di ogni operazione
 - **TMDb**: GET a `https://api.themoviedb.org/3/search/movie`
@@ -127,8 +103,8 @@ soundreel/
 ### Resilienza della pipeline
 La pipeline è progettata per essere resiliente:
 1. Se cobalt fallisce → usa OG meta scraping (solo caption + thumbnail)
-2. Se AudD non trova nulla → si usa solo il risultato Gemini
-3. Se Gemini fallisce → si usa solo il risultato AudD
+2. Se AudD/Whisper non trova nulla → si usa solo il risultato Gemini
+3. Se Gemini fallisce → si usa solo il risultato AudD/Whisper
 4. Se Spotify non trova la canzone → logga nel journal, non bloccare
 5. Se TMDb non trova il film → logga titolo/regista senza link IMDb
 6. OGNI fallimento va loggato nell'actionLog con dettagli dell'errore
@@ -138,54 +114,47 @@ NON usare YouTube Data API. Generare link di ricerca:
 `https://youtube.com/results?search_query=${encodeURIComponent(artist + " " + title)}`
 
 ### Idempotenza
-Prima di processare un URL, cercare `sourceUrl` in Firestore. Se esiste, restituire i risultati esistenti senza riprocessare.
+Prima di processare un URL, cercare `sourceUrl` in Postgres. Se esiste, restituire i risultati esistenti senza riprocessare.
+
+## Deploy
+
+Deploy su GEEKOM via file sentinel (sistema `deploy-watcher`):
+
+```bash
+# Trigger rebuild + redeploy
+touch /home/mike/works/Soundreel/.rebuild
+
+# Verifica risultato (dopo ~60s)
+cat /home/mike/works/Soundreel/.rebuild-log
+
+# Oppure via API
+curl -X POST https://console.casamon.dev/rebuild/soundreel
+curl https://console.casamon.dev/deploy-status/soundreel
+```
 
 ## Comandi utili
 
 ```bash
-# Setup iniziale
-./scripts/setup.sh
-
-# Deploy completo
-./scripts/deploy.sh
-
-# Deploy solo functions
-./scripts/deploy-functions.sh
-
-# Deploy solo frontend
-./scripts/deploy-hosting.sh
-
-# Configurare secrets
-./scripts/set-secrets.sh
+# Build Docker locale
+./scripts/build.sh
 
 # Dev locale frontend
 cd frontend && npm run dev
 
-# Dev locale functions (emulatore)
-firebase emulators:start --only functions,firestore
+# Dev locale backend
+cd backend && npm run dev
 
-# Build frontend
-cd frontend && npm run build
+# Logs container in produzione
+docker compose logs -f soundreel
 
-# Build functions
-cd functions && npm run build
+# Restart container
+docker compose restart soundreel
 ```
-
-## Fase di implementazione
-
-Seguire questo ordine:
-
-1. **Setup**: progetto Firebase, struttura cartelle, configurazione base
-2. **Pipeline core**: Cloud Function `analyzeUrl` con tutti gli step
-3. **Integrazioni**: Spotify OAuth + playlist, TMDb, YouTube links
-4. **Telegram**: webhook bot con comandi
-5. **Frontend**: journal con real-time updates, settings page
-6. **Polish**: error handling, retry logic, UI responsive
 
 ## Cose da NON fare
 
-- NON creare collection Firestore aggiuntive
-- NON usare Next.js, Express, o altri framework backend — solo Cloud Functions
+- NON usare Firebase, Firestore, o Firebase Cloud Functions
+- NON usare Next.js o altri framework backend — solo Fastify
 - NON usare YouTube Data API
 - NON hardcodare API keys o secrets nel codice
 - NON creare un sistema di autenticazione multi-utente — è un'app personale

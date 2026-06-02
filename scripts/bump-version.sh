@@ -24,7 +24,7 @@ npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version > /dev/null
 
 # Update README badge if present
 if [ -f "$PROJECT_DIR/README.md" ]; then
-  sed -i '' "s/version-[0-9]*\.[0-9]*\.[0-9]*/version-$NEW_VERSION/" "$PROJECT_DIR/README.md"
+  sed -i "s/version-[0-9]*\.[0-9]*\.[0-9]*/version-$NEW_VERSION/" "$PROJECT_DIR/README.md"
 fi
 
 echo "$NEW_VERSION"
