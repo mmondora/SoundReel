@@ -26,7 +26,11 @@ from typing import Any, Optional
 
 import instaloader
 import requests
+import asyncio
+import tempfile
+
 from flask import Flask, jsonify, request
+from shazamio import Shazam
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("instaloader-sidecar")
@@ -487,6 +491,73 @@ def download() -> Any:
         bool(result.get("musicInfo")),
     )
     return jsonify(result)
+
+
+# ---------------------------------------------------------------------------
+# Shazam helpers
+# ---------------------------------------------------------------------------
+
+def _shazam_recognize(audio_path: str) -> dict | None:
+    """Run Shazam fingerprint on a local audio file. Returns track dict or None."""
+    async def _run():
+        shazam = Shazam()
+        return await shazam.recognize(audio_path)
+
+    try:
+        result = asyncio.run(_run())
+    except Exception as exc:
+        log.warning("shazam recognize error: %s", exc)
+        return None
+
+    track = result.get("track")
+    if not track:
+        return None
+
+    title = track.get("title", "")
+    artist = track.get("subtitle", "")  # Shazam uses 'subtitle' for artist
+
+    # Extract Spotify URI from hub providers
+    spotify_url: str | None = None
+    hub = track.get("hub", {})
+    for provider in hub.get("providers", []):
+        caption = (provider.get("caption") or "").lower()
+        if "spotify" in caption:
+            for action in provider.get("actions", []):
+                uri = action.get("uri", "")
+                if uri.startswith("spotify:track:"):
+                    spotify_url = f"https://open.spotify.com/track/{uri.split(':')[-1]}"
+                    break
+        if spotify_url:
+            break
+
+    return {
+        "title": title,
+        "artist": artist,
+        "spotifyUrl": spotify_url,
+        "youtubeUrl": None,  # resolved separately via /yt/url
+    }
+
+
+@app.route("/shazam/recognize", methods=["POST"])
+def shazam_recognize():
+    """Fingerprint a single local audio file with Shazam.
+
+    Request JSON: {"audioPath": "/data/media/<entryId>/audio.wav"}
+    Response: {"title": ..., "artist": ..., "spotifyUrl": ..., "youtubeUrl": null}
+              or null body with 204 if not recognized.
+    """
+    data = request.get_json(silent=True) or {}
+    audio_path = data.get("audioPath")
+    if not audio_path or not Path(audio_path).is_file():
+        return jsonify({"error": "audioPath missing or not found"}), 400
+
+    log.info("shazam/recognize path=%s", audio_path)
+    track = _shazam_recognize(audio_path)
+    if not track:
+        return "", 204
+
+    log.info("shazam recognized title=%s artist=%s", track["title"], track["artist"])
+    return jsonify(track)
 
 
 if __name__ == "__main__":
