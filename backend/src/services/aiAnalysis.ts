@@ -126,3 +126,63 @@ export async function analyzeWithAi(input: AiAnalysisInput): Promise<AiAnalysisR
     return { result: EMPTY_RESULT, usageMetadata: null };
   }
 }
+
+export interface SlideItem {
+  type: 'song' | 'film' | 'book' | 'album' | 'text';
+  title: string;
+  artist?: string | null;
+  director?: string | null;
+  year?: number | null;
+  notes?: string | null;
+  sourceSlide: number;
+}
+
+export async function extractFromSlides(
+  slideOcrTexts: Array<{ slideIndex: number; text: string }>
+): Promise<SlideItem[]> {
+  if (slideOcrTexts.length === 0) return [];
+
+  const total = slideOcrTexts.length;
+  const results: SlideItem[] = [];
+
+  for (const { slideIndex, text } of slideOcrTexts) {
+    if (!text.trim()) continue;
+
+    const prompt = `Questa è la slide ${slideIndex + 1} di ${total} di un carosello Instagram.
+
+Testo OCR estratto:
+${text}
+
+Estrai tutti gli oggetti culturali menzionati in formato JSON array.
+Per ogni oggetto usa questo schema:
+{"type":"song"|"film"|"book"|"album"|"text","title":"...","artist":null,"director":null,"year":null,"notes":null}
+Usa null per campi sconosciuti. Se non c'è nulla di estraibile, ritorna [].
+Rispondi SOLO con il JSON array, senza testo aggiuntivo.`;
+
+    try {
+      const response = await generateText(prompt, []);
+      const text_resp = response.text;
+      const jsonMatch = text_resp.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) continue;
+
+      const parsed = JSON.parse(jsonMatch[0]) as Array<Partial<SlideItem>>;
+      for (const item of parsed) {
+        if (!item.title) continue;
+        results.push({
+          type: (item.type as SlideItem['type']) || 'text',
+          title: item.title,
+          artist: item.artist ?? null,
+          director: item.director ?? null,
+          year: item.year ?? null,
+          notes: item.notes ?? null,
+          sourceSlide: slideIndex,
+        });
+      }
+    } catch (e) {
+      logWarning(`extractFromSlides slide ${slideIndex} failed`, { error: String(e) });
+    }
+  }
+
+  logInfo('extractFromSlides', { slides: total, items: results.length });
+  return results;
+}

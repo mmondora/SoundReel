@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { extractContent, detectPlatform, setLogger as setContentExtractorLogger } from '../services/contentExtractor';
 import { recognizeAudio } from '../services/_legacy/audioRecognition';
-import { analyzeWithAi, AiAnalysisResponse } from '../services/aiAnalysis';
+import { analyzeWithAi, extractFromSlides, AiAnalysisResponse } from '../services/aiAnalysis';
+import type { SlideItem } from '../services/aiAnalysis';
 import { transcribeLocal } from '../services/whisperClient';
 import { ocrImages } from '../services/ocrClient';
 import { pickKeyFrames } from '../services/frameSelector';
@@ -125,6 +126,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       let transcriptLanguage: string | null = null;
       // Caption used by auto-enrichment at the end.
       let captionForEnrich: string | null = null;
+      let slideItems: SlideItem[] = [];
 
       if (isPage) {
         // ===================================================================
@@ -324,6 +326,23 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             mergedChars: ocr.merged.length,
           }));
 
+          // Per-slide structured extraction for carousels
+          if (featuresConfig.carouselStructuredExtraction && (localPaths?.slidePaths?.length ?? 0) > 0) {
+            const frameCount = localPaths?.framePaths?.length ?? 0;
+            const slideOcrTexts = ocr.perImage
+              .slice(frameCount)
+              .map((r, i) => ({ slideIndex: i, text: r.text ?? '' }))
+              .filter((s) => s.text.trim().length > 0);
+
+            const extracted = await extractFromSlides(slideOcrTexts);
+            slideItems.push(...extracted);
+
+            await appendActionLog(entryId, createActionLog('carousel_extraction', {
+              slides: localPaths?.slidePaths?.length ?? 0,
+              itemsFound: extracted.length,
+            }));
+          }
+
           // Vision describe on key frames (only if mediaAnalysisEnabled + frames present)
           let visualContext: string | null = null;
           if (featuresConfig.mediaAnalysisEnabled && localPaths?.framePaths.length) {
@@ -492,6 +511,10 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
       const merged = mergeResults(audioResult, aiResult);
 
+      // Merge carousel slide songs into the result set
+      const slideSongs = slideItems.filter((i) => i.type === 'song' || i.type === 'album');
+      const slideFilms = slideItems.filter((i) => i.type === 'film');
+
       const songs: Song[] = [];
       for (const songData of merged.songs) {
         const spotifyResult = await searchTrack(songData.title, songData.artist);
@@ -521,6 +544,29 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           })(),
           soundcloudUrl: generateSoundcloudSearchUrl(songData.title, songData.artist),
           addedToPlaylist,
+        });
+      }
+
+      for (const slideSong of slideSongs) {
+        const spotifyResult = await searchTrack(slideSong.title, slideSong.artist ?? '');
+        let addedToPlaylist = false;
+        if (spotifyResult) {
+          addedToPlaylist = await addToPlaylist(spotifyResult.uri);
+        }
+        const ytUrl = featuresConfig.youtubeDirect
+          ? await resolveYoutubeUrl(slideSong.artist ?? '', slideSong.title)
+          : generateYoutubeSearchUrl(slideSong.title, slideSong.artist ?? '');
+        songs.push({
+          title: slideSong.title,
+          artist: slideSong.artist ?? '',
+          album: null,
+          source: 'ai_analysis',
+          spotifyUri: spotifyResult?.uri ?? null,
+          spotifyUrl: spotifyResult?.url ?? null,
+          youtubeUrl: ytUrl,
+          soundcloudUrl: generateSoundcloudSearchUrl(slideSong.title, slideSong.artist ?? ''),
+          addedToPlaylist,
+          sourceSlide: slideSong.sourceSlide,
         });
       }
 
@@ -558,6 +604,19 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           imdbUrl: tmdbResult?.imdbId ? generateImdbUrl(tmdbResult.imdbId) : null,
           posterUrl: tmdbResult?.posterPath || null,
           streamingUrls: generateStreamingUrls(filmData.title),
+        });
+      }
+
+      for (const slideFilm of slideFilms) {
+        const tmdbResult = await searchFilm(slideFilm.title, slideFilm.year?.toString() ?? null);
+        films.push({
+          title: slideFilm.title,
+          director: slideFilm.director ?? null,
+          year: slideFilm.year?.toString() ?? tmdbResult?.releaseDate?.split('-')[0] ?? null,
+          imdbUrl: tmdbResult?.imdbId ? generateImdbUrl(tmdbResult.imdbId) : null,
+          posterUrl: tmdbResult?.posterPath ?? null,
+          streamingUrls: generateStreamingUrls(slideFilm.title),
+          sourceSlide: slideFilm.sourceSlide,
         });
       }
 
