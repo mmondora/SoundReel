@@ -2,3 +2,7 @@ instaloader==4.13.1
 flask==3.0.3
 gunicorn==22.0.0
 requests==2.32.3
+shazamio>=0.4.0
+librosa>=0.10.0
+numpy>=1.24.0
+yt-dlp>=2024.1.0
