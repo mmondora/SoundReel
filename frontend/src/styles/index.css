@@ -1620,6 +1620,112 @@ body {
   color: var(--text-secondary);
 }
 
+.action-log-item {
+  flex-direction: column;
+  cursor: default;
+}
+
+.action-log-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  cursor: pointer;
+  padding: 0.25rem 0;
+}
+
+.action-log-item-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.action-expand {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.log-status-ok .action-name  { color: #4ade80; }
+.log-status-error .action-name { color: #f87171; }
+.log-status-skipped .action-name { color: var(--text-muted); }
+.log-status-warn .action-name { color: #fb923c; }
+
+.log-details {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.log-detail-row {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  align-items: flex-start;
+}
+
+.log-detail-key {
+  color: var(--text-muted);
+  font-family: 'SF Mono', Monaco, monospace;
+  min-width: 110px;
+  flex-shrink: 0;
+}
+
+.log-detail-val {
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.detail-true  { color: #4ade80; }
+.detail-false { color: #fb923c; }
+
+.log-detail-url {
+  color: var(--accent);
+  text-decoration: none;
+  word-break: break-all;
+  font-size: 0.75rem;
+}
+
+.log-detail-url:hover { text-decoration: underline; }
+
+.log-detail-tracks {
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.log-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.25rem;
+}
+
+.log-track-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--bg-card);
+  border-radius: 4px;
+}
+
+.log-track-title { color: var(--text-primary); font-weight: 500; }
+.log-track-artist { color: var(--text-muted); }
+.log-track-ts { color: var(--text-muted); font-family: monospace; margin-left: auto; }
+.log-track-link {
+  color: #1db954;
+  text-decoration: none;
+  font-size: 0.7rem;
+  border: 1px solid #1db954;
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.log-track-link:hover { background: #1db95420; }
+
 /* ==================== SETTINGS PAGE ==================== */
 .settings {
   min-height: 100vh;
