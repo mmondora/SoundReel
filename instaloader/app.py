@@ -669,6 +669,35 @@ def shazam_scan_full():
     return jsonify(tracks)
 
 
+@app.route("/yt/url")
+def yt_url():
+    """Resolve a direct YouTube video URL via yt-dlp search.
+
+    Query param: q=artist+title
+    Response: {"url": "https://www.youtube.com/watch?v=..."} or {"url": null}
+    """
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify({"error": "q param required"}), 400
+
+    log.info("yt/url query=%s", q)
+    try:
+        result = subprocess.run(
+            ["yt-dlp", "--get-url", "--no-playlist", f"ytsearch1:{q}"],
+            capture_output=True, text=True, timeout=15,
+        )
+        url = result.stdout.strip().splitlines()[0] if result.stdout.strip() else None
+        if url and url.startswith("http"):
+            log.info("yt/url found url=%s", url[:80])
+            return jsonify({"url": url})
+    except subprocess.TimeoutExpired:
+        log.warning("yt/url timeout query=%s", q)
+    except Exception as exc:
+        log.warning("yt/url error: %s", exc)
+
+    return jsonify({"url": None})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     host = os.environ.get("HOST", "0.0.0.0")
