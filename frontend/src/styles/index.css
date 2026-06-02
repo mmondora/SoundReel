@@ -1054,6 +1054,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
   padding: 0.875rem 0;
   border-bottom: 1px solid var(--border-light);
 }
@@ -1261,6 +1262,114 @@ body {
   color: var(--success);
   font-weight: 700;
   font-size: 1.1rem;
+}
+
+/* Action button (button element matching action-link style) */
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-btn:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.action-btn.spotify-search-btn {
+  background: rgba(29, 185, 84, 0.1);
+  color: var(--spotify);
+}
+
+.action-btn.spotify-search-btn:hover {
+  background: var(--spotify);
+  color: white;
+}
+
+/* Spotify inline search results */
+.spotify-results {
+  width: 100%;
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--border-light);
+  padding-top: 0.5rem;
+}
+
+.spotify-results-query {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.spotify-results-input {
+  flex: 1;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.spotify-result-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.spotify-result-row:last-child {
+  border-bottom: none;
+}
+
+.spotify-result-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.spotify-result-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.spotify-result-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spotify-result-artist {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.spotify-no-results {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: 0.3rem 0;
 }
 
 /* ==================== TAGS ==================== */
