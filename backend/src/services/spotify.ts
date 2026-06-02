@@ -156,6 +156,62 @@ export async function searchTrack(
   }
 }
 
+export interface SpotifyTrackResult {
+  uri: string;
+  url: string;
+  name: string;
+  artist: string;
+  albumName: string | null;
+  albumImageUrl: string | null;
+}
+
+export async function searchTracks(
+  q: string,
+  limit: number = 5
+): Promise<SpotifyTrackResult[]> {
+  try {
+    const accessToken = await refreshAccessToken();
+    if (!accessToken) return [];
+
+    const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=${limit}`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) {
+      logWarning('Spotify multi-search fallita', { status: response.status });
+      return [];
+    }
+
+    const data = (await response.json()) as {
+      tracks: {
+        items: Array<{
+          uri: string;
+          external_urls: { spotify: string };
+          name: string;
+          artists: Array<{ name: string }>;
+          album: { name: string; images: Array<{ url: string; height: number }> };
+        }>;
+      };
+    };
+
+    return data.tracks.items.map((item) => ({
+      uri: item.uri,
+      url: item.external_urls.spotify,
+      name: item.name,
+      artist: item.artists[0]?.name ?? '',
+      albumName: item.album.name || null,
+      albumImageUrl:
+        item.album.images.find((i) => i.height <= 300)?.url ??
+        item.album.images[0]?.url ??
+        null,
+    }));
+  } catch (error) {
+    logError('Errore searchTracks', error);
+    return [];
+  }
+}
+
 export async function addToPlaylist(trackUri: string): Promise<boolean> {
   try {
     const accessToken = await refreshAccessToken();
