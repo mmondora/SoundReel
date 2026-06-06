@@ -16,7 +16,7 @@ services:
       DB_PORT: 5432
       DB_NAME: soundreel
       DB_USER: soundreel
-      OLLAMA_URL: http://ollama:11434
+      OLLAMA_URL: http://gpu-router:9000
       INSTALOADER_URL: http://soundreel-instaloader:5000
       WHISPER_URL: http://soundreel-whisper:9000
       OCR_URL: http://soundreel-ocr:5001

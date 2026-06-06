@@ -9,11 +9,12 @@ SoundReel è una web app personale (single user) che analizza contenuti social (
 - **Frontend**: React + Vite + TypeScript, SPA statica servita da Fastify
 - **Backend**: Node.js 20 + Fastify + TypeScript, in `backend/`
 - **Database**: PostgreSQL 17 (container Docker `soundreel-db`)
-- **AI**: Gemini Flash via Google AI Studio (`@google/generative-ai` SDK)
-- **Music Recognition**: AudD API + Whisper (audio fingerprinting e trascrizione)
+- **AI**: Ollama self-hosted — `qwen2.5:3b` (testo/analisi), `moondream:latest` (vision/frame video) via `ollamaClient.ts`
+- **Music Recognition**: AudD API + Shazam (`shazamClient.ts` → instaloader) + Whisper (trascrizione)
 - **Film DB**: TMDb API
 - **Spotify**: Spotify Web API con OAuth 2.0 PKCE
-- **Telegram**: Bot API con webhook su endpoint Fastify
+- **Telegram**: Bot API con webhook su endpoint Fastify — link Spotify inviati a Spooty (`http://spooty:3000/api/playlist`)
+- **Spooty**: servizio Docker (`raiper34/spooty`) per download MP3 da Spotify via yt-dlp, su rete `web`
 - **Video extraction**: cobalt.tools API + Instaloader (container dedicato) con fallback su OG meta scraping
 - **OCR**: servizio OCR dedicato (container `soundreel-ocr`)
 - **Deploy**: Docker Compose su GEEKOM A8 Max, `soundreel.casamon.dev`
@@ -25,7 +26,7 @@ soundreel/
 ├── CLAUDE.md
 ├── README.md
 ├── Dockerfile               # multi-stage: frontend-build + backend-build + runtime
-├── docker-compose.yml       # soundreel, soundreel-db, instaloader, whisper, ocr
+├── docker-compose.yml       # soundreel, soundreel-db, instaloader, whisper, ocr (ollama via gpu-router su rete web esterna)
 ├── .env                     # secrets (non committare)
 ├── scripts/
 │   ├── build.sh             # docker compose build con GIT_REVISION e BUILD_DATE
@@ -92,9 +93,10 @@ soundreel/
 
 ### API esterne
 - **Whisper**: HTTP verso `soundreel-whisper:9000`
-- **Instaloader**: HTTP verso `soundreel-instaloader:5000`
+- **Instaloader**: HTTP verso `soundreel-instaloader:5000` (include endpoint `/shazam/recognize`, `/shazam/scan-full`, `/yt/url`)
 - **OCR**: HTTP verso `soundreel-ocr:5001`
-- **Gemini**: usare `@google/generative-ai` SDK, modello `gemini-2.0-flash`
+- **Ollama**: HTTP verso `gpu-router:9000` (env `OLLAMA_URL`) — gpu-router fa load balancing tra archi-PC (`192.168.178.23:11434`) e ollama locale GEEKOM. Modelli: `OLLAMA_TEXT_MODEL` (default `qwen2.5:3b`), `OLLAMA_VISION_MODEL` (default `moondream:latest`)
+- **Spooty**: HTTP verso `spooty:3000/api/playlist` per aggiungere link Spotify (env `SPOOTY_URL`, default `http://spooty:3000`; env `SPOOTY_FRONTEND_URL`, default `https://spooty.casamon.dev`)
 - **Spotify**: OAuth PKCE, token refresh automatico prima di ogni operazione
 - **TMDb**: GET a `https://api.themoviedb.org/3/search/movie`
 - **Telegram**: webhook, risposta inline nel messaggio
@@ -103,8 +105,8 @@ soundreel/
 ### Resilienza della pipeline
 La pipeline è progettata per essere resiliente:
 1. Se cobalt fallisce → usa OG meta scraping (solo caption + thumbnail)
-2. Se AudD/Whisper non trova nulla → si usa solo il risultato Gemini
-3. Se Gemini fallisce → si usa solo il risultato AudD/Whisper
+2. Se AudD/Shazam/Whisper non trovano nulla → si usa solo il risultato AI (Ollama)
+3. Se Ollama fallisce → si usa solo il risultato AudD/Shazam/Whisper
 4. Se Spotify non trova la canzone → logga nel journal, non bloccare
 5. Se TMDb non trova il film → logga titolo/regista senza link IMDb
 6. OGNI fallimento va loggato nell'actionLog con dettagli dell'errore
