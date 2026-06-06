@@ -64,7 +64,7 @@ export function Settings() {
         setFeaturesConfig(features);
       } catch (err) {
         console.error('Error loading features:', err);
-        setFeaturesConfig({ cobaltEnabled: false, allowDuplicateUrls: false, autoEnrichEnabled: false, mediaAnalysisEnabled: false, transcriptionEnabled: true, aiAnalysisEnabled: true, pageExtractionEnabled: true });
+        setFeaturesConfig({ cobaltEnabled: false, allowDuplicateUrls: false, autoEnrichEnabled: false, mediaAnalysisEnabled: false, transcriptionEnabled: true, aiAnalysisEnabled: true, pageExtractionEnabled: true, shazamEnabled: true, multiSongScanEnabled: true, youtubeDirect: true, carouselStructuredExtraction: true });
       }
 
       // Load OpenAI config
@@ -79,22 +79,6 @@ export function Settings() {
       console.error('Error loading config:', err);
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleToggleCobalt() {
-    if (!featuresConfig) return;
-
-    setSavingFeatures(true);
-    try {
-      const newValue = !featuresConfig.cobaltEnabled;
-      const result = await updateFeatures({ cobaltEnabled: newValue });
-      setFeaturesConfig(result.config);
-    } catch (err) {
-      console.error('Error updating features:', err);
-      setError(t.errorSettings);
-    } finally {
-      setSavingFeatures(false);
     }
   }
 
@@ -276,31 +260,11 @@ export function Settings() {
           )}
         </section>
 
-        {/* Audio Extraction Section */}
+        {/* General Section */}
         <section className="settings-section">
-          <h2>{t.audioExtraction}</h2>
+          <h2>{t.allowDuplicates}</h2>
           <div className="feature-toggle">
             <div className="feature-info">
-              <h3>{t.cobaltTitle}</h3>
-              <p className="feature-description">{t.cobaltDescription}</p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={featuresConfig?.cobaltEnabled ?? false}
-                onChange={handleToggleCobalt}
-                disabled={savingFeatures}
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          </div>
-          {featuresConfig?.cobaltEnabled && (
-            <p className="feature-warning">{t.cobaltWarning}</p>
-          )}
-
-          <div className="feature-toggle" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
-            <div className="feature-info">
-              <h3>{t.allowDuplicates}</h3>
               <p className="feature-description">{t.allowDuplicatesDescription}</p>
             </div>
             <label className="toggle-switch">
@@ -393,6 +357,70 @@ export function Settings() {
                 type="checkbox"
                 checked={featuresConfig?.autoEnrichEnabled ?? false}
                 onChange={handleToggleAutoEnrich}
+                disabled={savingFeatures}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div className="feature-toggle" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
+            <div className="feature-info">
+              <h3>{t.shazamTitle}</h3>
+              <p className="feature-description">{t.shazamDescription}</p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={featuresConfig?.shazamEnabled ?? true}
+                onChange={() => handleToggleFeature('shazamEnabled')}
+                disabled={savingFeatures}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div className="feature-toggle" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
+            <div className="feature-info">
+              <h3>{t.multiSongTitle}</h3>
+              <p className="feature-description">{t.multiSongDescription}</p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={featuresConfig?.multiSongScanEnabled ?? true}
+                onChange={() => handleToggleFeature('multiSongScanEnabled')}
+                disabled={savingFeatures}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div className="feature-toggle" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
+            <div className="feature-info">
+              <h3>{t.youtubeDirectTitle}</h3>
+              <p className="feature-description">{t.youtubeDirectDescription}</p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={featuresConfig?.youtubeDirect ?? true}
+                onChange={() => handleToggleFeature('youtubeDirect')}
+                disabled={savingFeatures}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div className="feature-toggle" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
+            <div className="feature-info">
+              <h3>{t.carouselExtractionTitle}</h3>
+              <p className="feature-description">{t.carouselExtractionDescription}</p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={featuresConfig?.carouselStructuredExtraction ?? true}
+                onChange={() => handleToggleFeature('carouselStructuredExtraction')}
                 disabled={savingFeatures}
               />
               <span className="toggle-slider"></span>

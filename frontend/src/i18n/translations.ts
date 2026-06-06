@@ -89,12 +89,16 @@ export interface Translations {
   playlist: string;
 
   // Features
-  audioExtraction: string;
-  cobaltTitle: string;
-  cobaltDescription: string;
-  cobaltWarning: string;
   allowDuplicates: string;
   allowDuplicatesDescription: string;
+  shazamTitle: string;
+  shazamDescription: string;
+  multiSongTitle: string;
+  multiSongDescription: string;
+  youtubeDirectTitle: string;
+  youtubeDirectDescription: string;
+  carouselExtractionTitle: string;
+  carouselExtractionDescription: string;
 
   // Language
   language: string;
@@ -323,12 +327,16 @@ export const translations: Record<Language, Translations> = {
     playlist: 'Playlist',
 
     // Features
-    audioExtraction: 'Estrazione Audio',
-    cobaltTitle: 'Cobalt.tools',
-    cobaltDescription: 'Estrae l\'audio dai video usando l\'istanza privata di Cobalt su Cloud Run per il riconoscimento musicale tramite AudD.',
-    cobaltWarning: 'Usa l\'istanza self-hosted su GCP (europe-west1). Nessuna API key richiesta.',
     allowDuplicates: 'Ammetti URL duplicati',
     allowDuplicatesDescription: 'Disabilita il controllo di idempotenza. Permette di analizzare lo stesso URL più volte (utile per test).',
+    shazamTitle: 'Riconoscimento Shazam',
+    shazamDescription: 'Usa Shazam per riconoscere la musica nell\'audio estratto dai video.',
+    multiSongTitle: 'Scan multi-canzone',
+    multiSongDescription: 'Segmenta l\'audio con librosa per trovare più canzoni in un singolo video. Richiede Shazam attivo.',
+    youtubeDirectTitle: 'Link YouTube diretto',
+    youtubeDirectDescription: 'Risolve link YouTube diretti via yt-dlp invece di generare URL di ricerca generici.',
+    carouselExtractionTitle: 'Estrazione carosello',
+    carouselExtractionDescription: 'Estrae canzoni e film da ogni slide dei caroselli Instagram con analisi AI per slide.',
 
     // Language
     language: 'Lingua',
@@ -556,12 +564,16 @@ export const translations: Record<Language, Translations> = {
     playlist: 'Playlist',
 
     // Features
-    audioExtraction: 'Audio Extraction',
-    cobaltTitle: 'Cobalt.tools',
-    cobaltDescription: 'Extracts audio from videos using the private Cobalt instance on Cloud Run for music recognition via AudD.',
-    cobaltWarning: 'Uses the self-hosted instance on GCP (europe-west1). No API key required.',
     allowDuplicates: 'Allow duplicate URLs',
     allowDuplicatesDescription: 'Disable idempotency check. Allows analyzing the same URL multiple times (useful for testing).',
+    shazamTitle: 'Shazam Recognition',
+    shazamDescription: 'Use Shazam to recognize music in audio extracted from videos.',
+    multiSongTitle: 'Multi-song scan',
+    multiSongDescription: 'Segments audio with librosa to find multiple songs in a single video. Requires Shazam enabled.',
+    youtubeDirectTitle: 'Direct YouTube link',
+    youtubeDirectDescription: 'Resolves direct YouTube links via yt-dlp instead of generating generic search URLs.',
+    carouselExtractionTitle: 'Carousel extraction',
+    carouselExtractionDescription: 'Extracts songs and films from each slide of Instagram carousels with per-slide AI analysis.',
 
     // Language
     language: 'Language',

@@ -97,6 +97,10 @@ export interface FeaturesConfig {
   transcriptionEnabled: boolean;
   aiAnalysisEnabled: boolean;
   pageExtractionEnabled: boolean;
+  shazamEnabled: boolean;
+  multiSongScanEnabled: boolean;
+  youtubeDirect: boolean;
+  carouselStructuredExtraction: boolean;
 }
 
 export async function getFeatures(): Promise<FeaturesConfig> {
