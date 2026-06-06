@@ -16,6 +16,23 @@ interface TelegramUpdate {
   message?: TelegramMessage;
 }
 
+function isSpotifyUrl(url: string): boolean {
+  return /https?:\/\/open\.spotify\.com\/(track|playlist|album)\//.test(url);
+}
+
+async function sendToSpooty(spotifyUrl: string): Promise<void> {
+  const spootyBase = process.env.SPOOTY_URL || 'http://spooty:3000';
+  const res = await fetch(`${spootyBase}/playlist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ spotifyUrl }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Spooty HTTP ${res.status}: ${body.slice(0, 200)}`);
+  }
+}
+
 function extractUrl(message: TelegramMessage): string | null {
   if (!message.text) return null;
   if (message.entities) {
@@ -215,6 +232,25 @@ export function registerTelegramRoute(app: FastifyInstance): void {
           token
         );
         reply.code(200).send('OK');
+        return;
+      }
+
+      if (isSpotifyUrl(url)) {
+        reply.code(200).send('OK');
+        (async () => {
+          try {
+            await sendToSpooty(url);
+            const spootyFrontend = process.env.SPOOTY_FRONTEND_URL || 'https://spooty.casamon.dev';
+            await sendTelegramMessage(
+              chatId,
+              `✅ Ho aggiunto il tuo link a Spooty!\n🎵 <a href="${url}">${url}</a>\n\n🌐 <a href="${spootyFrontend}">Apri Spooty</a>`,
+              token
+            );
+          } catch (err) {
+            log.error('Spooty add failed', err instanceof Error ? err : new Error(String(err)));
+            await sendTelegramMessage(chatId, `❌ Errore Spooty: ${err instanceof Error ? err.message : String(err)}`, token);
+          }
+        })().catch(() => {});
         return;
       }
 
