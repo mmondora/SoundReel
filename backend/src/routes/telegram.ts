@@ -22,7 +22,7 @@ function isSpotifyUrl(url: string): boolean {
 
 async function sendToSpooty(spotifyUrl: string): Promise<void> {
   const spootyBase = process.env.SPOOTY_URL || 'http://spooty:3000';
-  const res = await fetch(`${spootyBase}/playlist`, {
+  const res = await fetch(`${spootyBase}/api/playlist`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ spotifyUrl }),
