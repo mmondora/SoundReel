@@ -15,7 +15,7 @@ const ACTION_LABELS: Record<string, { it: string; en: string }> = {
   media_download_failed: { it: 'Download media', en: 'Media download' },
   transcribe: { it: 'Trascrizione audio', en: 'Audio transcription' },
   audio_analyzed: { it: 'Audio fingerprint', en: 'Audio fingerprint' },
-  ai_analyzed: { it: 'Analisi AI (Gemini)', en: 'AI Analysis (Gemini)' },
+  ai_analyzed: { it: 'Analisi AI', en: 'AI Analysis' },
   media_analysis_complete: { it: 'Analisi media', en: 'Media analysis' },
   spotify_added: { it: 'Spotify lookup', en: 'Spotify lookup' },
   film_found: { it: 'TMDb lookup', en: 'TMDb lookup' },

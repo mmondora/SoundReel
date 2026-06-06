@@ -406,16 +406,16 @@ export const translations: Record<Language, Translations> = {
     autoEnrich: 'Auto-enrichment',
     autoEnrichDescription: 'Arricchisce automaticamente i risultati con link verificati dal web (OpenAI) al termine di ogni analisi.',
     mediaAnalysis: 'Analisi media avanzata',
-    mediaAnalysisDescription: 'Scarica audio/video e li analizza con Gemini per trascrizione, riconoscimento scene e testo sovrapposto.',
+    mediaAnalysisDescription: 'Scarica audio/video e li analizza con AI per trascrizione, riconoscimento scene e testo sovrapposto.',
     mediaAnalysisPrompt: 'Analisi Media',
     pipelineFeatures: 'Pipeline',
     pageExtractionTitle: 'Estrazione pagine web',
     pageExtractionDescription: 'Per URL non Instagram (articoli, blog, social), estrae sintesi e link senza scaricare media.',
 
     aiAnalysisToggle: 'Analisi AI',
-    aiAnalysisToggleDescription: 'Analizza il contenuto con Gemini per estrarre canzoni, film, note e tag.',
+    aiAnalysisToggleDescription: 'Analizza il contenuto con AI per estrarre canzoni, film, note e tag.',
     transcriptionToggle: 'Trascrizione audio',
-    transcriptionToggleDescription: 'Trascrive il parlato dall\'audio usando Gemini.',
+    transcriptionToggleDescription: 'Trascrive il parlato dall\'audio usando AI.',
 
     // Inspector
     selectEntry: 'Seleziona un\'entry per esplorare i dettagli',
@@ -639,16 +639,16 @@ export const translations: Record<Language, Translations> = {
     autoEnrich: 'Auto-enrichment',
     autoEnrichDescription: 'Automatically enrich results with verified web links (OpenAI) after each analysis.',
     mediaAnalysis: 'Advanced media analysis',
-    mediaAnalysisDescription: 'Downloads audio/video and analyzes them with Gemini for transcription, scene recognition, and overlay text.',
+    mediaAnalysisDescription: 'Downloads audio/video and analyzes them with AI for transcription, scene recognition, and overlay text.',
     mediaAnalysisPrompt: 'Media Analysis',
     pipelineFeatures: 'Pipeline',
     pageExtractionTitle: 'Web page extraction',
     pageExtractionDescription: 'For non-Instagram URLs (articles, blogs, social), extracts summary and links without downloading media.',
 
     aiAnalysisToggle: 'AI Analysis',
-    aiAnalysisToggleDescription: 'Analyze content with Gemini to extract songs, films, notes, and tags.',
+    aiAnalysisToggleDescription: 'Analyze content with AI to extract songs, films, notes, and tags.',
     transcriptionToggle: 'Audio transcription',
-    transcriptionToggleDescription: 'Transcribes speech from audio using Gemini.',
+    transcriptionToggleDescription: 'Transcribes speech from audio using AI.',
 
     // Inspector
     selectEntry: 'Select an entry to explore details',
