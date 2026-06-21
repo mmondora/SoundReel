@@ -30,9 +30,16 @@ LABEL org.opencontainers.image.source="https://github.com/mmondora/soundreel"
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=8080 \
-    GIT_REVISION=$GIT_REVISION
+    GIT_REVISION=$GIT_REVISION \
+    CHROMIUM_PATH=/usr/bin/chromium \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 WORKDIR /app
+
+# Chromium for Playwright JS-rendering fallback
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+  && rm -rf /var/lib/apt/lists/*
 
 # Install prod deps only
 COPY backend/package.json backend/package-lock.json* ./

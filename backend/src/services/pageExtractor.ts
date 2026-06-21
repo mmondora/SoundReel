@@ -5,6 +5,7 @@ import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import { Logger } from './debugLogger';
 import { assertPublicHttpUrl } from './ssrfGuard';
+import type { Browser } from 'playwright-core';
 
 export class PageFetchError extends Error {
   constructor(public readonly httpStatus: number | null, public readonly cause: string) {
@@ -43,10 +44,61 @@ const MAX_HTML_BYTES = 5_000_000;          // 5 MB
 const MAX_RAW_LINKS = 100;
 const USER_AGENT =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 SoundReelBot/2';
+// Playwright fallback triggers when Readability returns fewer chars than this
+const PW_TEXT_THRESHOLD = 300;
 
 let log = new Logger('pageExtractor');
 export function setLogger(logger: Logger): void {
   log = logger;
+}
+
+// ── Playwright singleton ────────────────────────────────────────────────────
+
+let _browser: Browser | null = null;
+
+async function getBrowser(): Promise<Browser | null> {
+  if (process.env.PLAYWRIGHT_ENABLED === 'false') return null;
+  if (_browser?.isConnected()) return _browser;
+  try {
+    const { chromium } = await import('playwright-core');
+    _browser = await chromium.launch({
+      executablePath: process.env.CHROMIUM_PATH ?? '/usr/bin/chromium',
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--mute-audio',
+      ],
+    });
+    _browser.on('disconnected', () => { _browser = null; });
+    log.info('Playwright browser avviato');
+    return _browser;
+  } catch (e) {
+    log.warn('Playwright launch fallito (Chromium non disponibile?)', { error: String(e) });
+    return null;
+  }
+}
+
+async function fetchHtmlWithPlaywright(url: string): Promise<string | null> {
+  const browser = await getBrowser();
+  if (!browser) return null;
+  let page;
+  try {
+    page = await browser.newPage();
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'it,en;q=0.8', 'User-Agent': USER_AGENT });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 });
+    // Give JS a moment to render content
+    await page.waitForTimeout(1_500);
+    return await page.content();
+  } catch (e) {
+    log.warn('Playwright page fetch fallito', { url, error: String(e) });
+    return null;
+  } finally {
+    await page?.close().catch(() => {});
+  }
 }
 
 export async function extractPage(rawUrl: string): Promise<PageExtractResult> {
@@ -123,15 +175,15 @@ export async function extractPage(rawUrl: string): Promise<PageExtractResult> {
     return v && v.trim() ? v.trim() : null;
   };
 
-  const title =
+  let title: string | null =
     meta('meta[property="og:title"]') ||
     meta('meta[name="twitter:title"]') ||
     (doc.querySelector('title')?.textContent?.trim() || null);
 
-  const description =
+  let description: string | null =
     meta('meta[property="og:description"]') ||
     meta('meta[name="twitter:description"]') ||
-    meta('meta[name="description"]');
+    meta('meta[name="description"]') || null;
 
   const siteName = meta('meta[property="og:site_name"]') || dom.window.location.hostname || null;
   const lang = doc.documentElement.getAttribute('lang') || null;
@@ -148,6 +200,47 @@ export async function extractPage(rawUrl: string): Promise<PageExtractResult> {
   } catch (e) {
     log.warn('Readability fail', { error: String(e) });
     mainText = null;
+  }
+
+  // ── Playwright fallback: JS-rendered pages (Twitter, LinkedIn, etc.) ──────
+  if (!mainText || mainText.length < PW_TEXT_THRESHOLD) {
+    log.info('Contenuto scarso, provo Playwright', { chars: mainText?.length ?? 0 });
+    const pwHtml = await fetchHtmlWithPlaywright(finalUrl);
+    if (pwHtml) {
+      try {
+        const pwDom = new JSDOM(pwHtml, { url: finalUrl });
+        const pwDoc = pwDom.window.document;
+
+        // Re-run Readability on rendered HTML
+        const pwReader = new Readability(pwDoc.cloneNode(true) as Document);
+        const pwArticle = pwReader.parse();
+        const pwText = pwArticle?.textContent?.trim() || null;
+
+        if (pwText && pwText.length > (mainText?.length ?? 0)) {
+          mainText = pwText;
+          log.info('Playwright migliorato contenuto', { chars: pwText.length });
+        }
+
+        // Fill missing metadata from rendered DOM
+        const pwMeta = (sel: string): string | null => {
+          const el = pwDoc.querySelector(sel) as HTMLMetaElement | null;
+          const v = el?.getAttribute('content') ?? null;
+          return v?.trim() || null;
+        };
+        if (!title) {
+          title = pwMeta('meta[property="og:title"]') ||
+                  pwMeta('meta[name="twitter:title"]') ||
+                  pwDoc.querySelector('title')?.textContent?.trim() || null;
+        }
+        if (!description) {
+          description = pwMeta('meta[property="og:description"]') ||
+                        pwMeta('meta[name="twitter:description"]') ||
+                        pwMeta('meta[name="description"]') || null;
+        }
+      } catch (e) {
+        log.warn('Playwright HTML parse fallito', { error: String(e) });
+      }
+    }
   }
 
   return {

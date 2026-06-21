@@ -21,6 +21,7 @@
     "handlebars": "^4.7.8",
     "jsdom": "^29.1.1",
     "pg": "^8.13.0",
+    "playwright-core": "^1.61.0",
     "sharp": "^0.34.5",
     "undici": "^6.21.0"
   },
