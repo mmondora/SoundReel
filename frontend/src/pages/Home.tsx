@@ -10,6 +10,30 @@ import { useAnalyze } from '../hooks/useAnalyze';
 import { useLanguage } from '../i18n';
 import type { Entry } from '../types';
 
+const PLATFORM_LABEL: Record<string, string> = {
+  instagram: 'IG',
+  youtube: 'YT',
+  tiktok: 'TT',
+  twitter: 'X',
+  facebook: 'FB',
+  threads: 'TH',
+  reddit: 'RD',
+  vimeo: 'VM',
+  soundcloud: 'SC',
+  twitch: 'TV',
+  spotify: 'SP',
+  linkedin: 'LI',
+  pinterest: 'PIN',
+  snapchat: 'SNAP',
+  other: 'WEB',
+};
+
+const CHANNEL_LABEL: Record<string, string> = {
+  telegram: 'TG',
+  web: 'Web',
+  ios: 'iOS',
+};
+
 function parseFirestoreDate(timestamp: unknown): Date | null {
   if (!timestamp) return null;
   if (typeof timestamp === 'object' && timestamp !== null) {
@@ -64,15 +88,24 @@ function groupByMonth(entries: Entry[], lang: string): DateGroup[] {
 }
 
 export function Home() {
+  const [filterPlatform, setFilterPlatform] = useState<string | null>(null);
+  const [filterChannel, setFilterChannel] = useState<string | null>(null);
+
   const {
     entries, stats, loading: journalLoading,
     currentPage, totalPages, nextPage, prevPage,
-  } = useJournal();
+    availablePlatforms, availableChannels, filteredCount,
+  } = useJournal(20, { platform: filterPlatform, channel: filterChannel });
   const { analyze, loading: analyzeLoading, error, successStatus, clearError } = useAnalyze();
   const { t, language } = useLanguage();
   const [searchParams] = useSearchParams();
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [mobileInspector, setMobileInspector] = useState(false);
+
+  const hasFilter = !!(filterPlatform || filterChannel);
+  const clearFilters = useCallback(() => { setFilterPlatform(null); setFilterChannel(null); }, []);
+  const togglePlatform = useCallback((p: string) => setFilterPlatform(prev => prev === p ? null : p), []);
+  const toggleChannel = useCallback((ch: string) => setFilterChannel(prev => prev === ch ? null : ch), []);
 
   // Auto-select from query param ?entry=id
   useEffect(() => {
@@ -132,6 +165,46 @@ export function Home() {
           successStatus={successStatus}
         />
       </div>
+
+      {(availablePlatforms.length > 1 || availableChannels.length > 1) && (
+        <div className="journal-filter-bar">
+          <button
+            className={`filter-chip ${!hasFilter ? 'active' : ''}`}
+            onClick={clearFilters}
+          >
+            Tutti
+          </button>
+          {availablePlatforms.map(({ platform, count }) => (
+            <button
+              key={platform}
+              className={`filter-chip ${filterPlatform === platform ? 'active' : ''}`}
+              onClick={() => togglePlatform(platform)}
+              title={platform}
+            >
+              {PLATFORM_LABEL[platform] ?? platform}
+              <span className="filter-chip-count"> {count}</span>
+            </button>
+          ))}
+          {availableChannels.length > 1 && (
+            <>
+              <span className="filter-divider" />
+              {availableChannels.map(({ channel, count }) => (
+                <button
+                  key={channel}
+                  className={`filter-chip ${filterChannel === channel ? 'active' : ''}`}
+                  onClick={() => toggleChannel(channel)}
+                >
+                  {CHANNEL_LABEL[channel] ?? channel}
+                  <span className="filter-chip-count"> {count}</span>
+                </button>
+              ))}
+            </>
+          )}
+          {hasFilter && (
+            <span className="filter-result-count">{filteredCount}</span>
+          )}
+        </div>
+      )}
 
       <main className={`master-detail ${!selectedEntry ? 'no-selection' : ''}`}>
         <div className={`journal-panel ${mobileInspector ? 'mobile-hidden' : ''}`}>

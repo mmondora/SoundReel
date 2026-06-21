@@ -68,6 +68,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
     const normalizedUrl = normalizeUrl(url);
 
+    let entryId: string | null = null;
     try {
       log.startTimer();
       log.info('Inizio analisi URL', { url: normalizedUrl, channel });
@@ -93,8 +94,11 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
       const platform = detectPlatform(normalizedUrl);
       const isInstagram = platform === 'instagram';
-      const isPage =
-        !isInstagram && platform === 'other' && featuresConfig.pageExtractionEnabled;
+      // Page pipeline for all non-IG, non-media-streaming platforms when enabled.
+      // Media platforms (youtube/tiktok/vimeo/soundcloud/twitch) keep the legacy
+      // pipeline so oEmbed + audio extraction still run.
+      const MEDIA_PLATFORMS = new Set(['youtube', 'tiktok', 'vimeo', 'soundcloud', 'twitch']);
+      const isPage = !isInstagram && !MEDIA_PLATFORMS.has(platform) && featuresConfig.pageExtractionEnabled;
 
       const initialEntry: Omit<Entry, 'id' | 'createdAt'> = {
         sourceUrl: normalizedUrl,
@@ -108,7 +112,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         actionLog: [createActionLog('url_received', { channel, platform })],
       };
 
-      const entryId = await createEntry(initialEntry);
+      entryId = await createEntry(initialEntry);
       log.setEntryId(entryId);
       log.info('Entry creata', {
         entryId,
@@ -617,7 +621,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           songs.map(async (song, i) => {
             if (!song.youtubeUrl) {
               const url = await resolveYoutubeUrl(song.artist, song.title);
-              await appendActionLog(entryId, createActionLog('youtube_resolve', {
+              await appendActionLog(entryId!, createActionLog('youtube_resolve', {
                 query: `${song.artist} ${song.title}`,
                 found: !!url,
                 url: url ?? null,
@@ -744,6 +748,16 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       reply.send({ success: true, entryId, entry });
     } catch (error) {
       log.error('Errore durante analisi', error instanceof Error ? error : new Error(String(error)));
+      if (entryId) {
+        try {
+          await updateEntry(entryId, { status: 'error' });
+          await appendActionLog(entryId, createActionLog('completed', {
+            status: 'error',
+            reason: 'unhandled_pipeline_error',
+            error: error instanceof Error ? error.message : String(error),
+          }));
+        } catch { /* ignore cleanup errors */ }
+      }
       reply.code(500).send({ success: false, error: error instanceof Error ? error.message : 'Errore interno' });
     }
   });

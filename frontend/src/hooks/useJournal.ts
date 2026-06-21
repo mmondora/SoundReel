@@ -1,16 +1,21 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { listEntries, openEntryStream } from '../services/api';
 import type { Entry, JournalStats } from '../types';
 
 const DEFAULT_PAGE_SIZE = 20;
-const FETCH_LIMIT = 1000; // keep a local cache of the most recent N entries
+const FETCH_LIMIT = 1000;
 
 function paginate<T>(items: T[], page: number, pageSize: number): T[] {
   const start = (page - 1) * pageSize;
   return items.slice(start, start + pageSize);
 }
 
-export function useJournal(pageSize = DEFAULT_PAGE_SIZE) {
+export interface JournalFilter {
+  platform?: string | null;
+  channel?: string | null;
+}
+
+export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter) {
   const [allEntries, setAllEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,12 +49,43 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE) {
     };
   }, [reload]);
 
-  const totalCount = allEntries.length;
+  const filterPlatform = filter?.platform ?? null;
+  const filterChannel = filter?.channel ?? null;
+
+  // Reset to page 1 when filter changes
+  useEffect(() => { setCurrentPage(1); }, [filterPlatform, filterChannel]);
+
+  const filteredEntries = useMemo(() => {
+    let result = allEntries;
+    if (filterPlatform) result = result.filter(e => e.sourcePlatform === filterPlatform);
+    if (filterChannel) result = result.filter(e => e.inputChannel === filterChannel);
+    return result;
+  }, [allEntries, filterPlatform, filterChannel]);
+
+  const availablePlatforms = useMemo(() => {
+    const seen = new Map<string, number>();
+    for (const e of allEntries) {
+      seen.set(e.sourcePlatform, (seen.get(e.sourcePlatform) ?? 0) + 1);
+    }
+    return Array.from(seen.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([p, count]) => ({ platform: p, count }));
+  }, [allEntries]);
+
+  const availableChannels = useMemo(() => {
+    const seen = new Map<string, number>();
+    for (const e of allEntries) {
+      seen.set(e.inputChannel, (seen.get(e.inputChannel) ?? 0) + 1);
+    }
+    return Array.from(seen.entries()).map(([ch, count]) => ({ channel: ch, count }));
+  }, [allEntries]);
+
+  const totalCount = filteredEntries.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const entries = paginate(allEntries, currentPage, pageSize);
+  const entries = paginate(filteredEntries, currentPage, pageSize);
 
   const stats: JournalStats = {
-    totalEntries: totalCount,
+    totalEntries: allEntries.length,
     totalSongs: allEntries.reduce((acc, e) => acc + e.results.songs.length, 0),
     totalFilms: allEntries.reduce((acc, e) => acc + e.results.films.length, 0),
     totalNotes: allEntries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0),
@@ -73,6 +109,9 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE) {
     hasPrev: currentPage > 1,
     nextPage,
     prevPage,
+    availablePlatforms,
+    availableChannels,
+    filteredCount: totalCount,
   };
 }
 
