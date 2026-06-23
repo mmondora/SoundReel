@@ -1,4 +1,4 @@
-import type { Entry } from '../types';
+import type { Entry, SearchResponse } from '../types';
 
 // When served from the same origin as the backend, relative paths work.
 // For local dev against a backend on :8080, set VITE_API_BASE_URL in .env.local.
@@ -334,4 +334,12 @@ export async function cleanupOrphans(): Promise<CleanupResult> {
   const res = await fetch(url('/api/admin/cleanup-orphans'), { method: 'POST' });
   const j = await json<{ success: boolean; result: CleanupResult }>(res);
   return j.result;
+}
+
+// --- Search ---
+
+export async function searchEntries(q: string, limit = 20): Promise<SearchResponse> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  const res = await fetch(url(`/api/search?${params.toString()}`));
+  return json<SearchResponse>(res);
 }

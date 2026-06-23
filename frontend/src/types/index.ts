@@ -170,3 +170,26 @@ export interface LogFilters {
   entryId: string | null;
   search: string;
 }
+
+export interface SearchResult {
+  id: string;
+  sourceUrl: string;
+  sourcePlatform: string;
+  caption: string | null;
+  thumbnailUrl: string | null;
+  results: {
+    songs: Array<{ title: string; artist: string }>;
+    films: Array<{ title: string }>;
+    notes: Array<{ text: string }>;
+    tags: string[];
+    summary: string | null;
+  };
+  createdAt: string;
+  rank: number;
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
+  expandedTerms: string[];
+  total: number;
+}
