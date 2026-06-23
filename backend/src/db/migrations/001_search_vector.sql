@@ -50,7 +50,7 @@ BEGIN
     setweight(to_tsvector('simple', COALESCE(p_results->>'overlayText', '')), 'C') ||
     setweight(to_tsvector('simple', COALESCE(links_text, '')), 'C');
 END;
-$$ LANGUAGE plpgsql IMMUTABLE;
+$$ LANGUAGE plpgsql STABLE;
 
 CREATE OR REPLACE FUNCTION entries_search_vector_trigger() RETURNS trigger AS $$
 BEGIN
