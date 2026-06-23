@@ -20,13 +20,18 @@ Example output: ["GPU", "home server", "NVIDIA", "inferenza locale", "edge AI"]`
 }
 
 export async function expandQuery(q: string): Promise<string[]> {
-  const timeout = new Promise<string[]>((resolve) =>
-    setTimeout(() => resolve([]), EXPAND_TIMEOUT_MS)
-  );
+  let timerId: ReturnType<typeof setTimeout> | undefined;
+
+  const timeout = new Promise<string[]>((resolve) => {
+    timerId = setTimeout(() => resolve([]), EXPAND_TIMEOUT_MS);
+  });
 
   try {
-    return await Promise.race([doExpand(q), timeout]);
+    const result = await Promise.race([doExpand(q), timeout]);
+    clearTimeout(timerId);
+    return result;
   } catch (err) {
+    clearTimeout(timerId);
     logWarning('Query expansion failed, using original query only', { err: String(err) });
     return [];
   }

@@ -20,7 +20,7 @@ function ResultRow({ result, onClose }: { result: SearchResult; onClose: () => v
 
   const handleClick = () => {
     onClose();
-    navigate(`/entries/${result.id}`);
+    navigate(`/?entry=${result.id}`);
   };
 
   const label = PLATFORM_LABELS[result.sourcePlatform] ?? 'WEB';
