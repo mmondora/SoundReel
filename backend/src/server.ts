@@ -14,6 +14,7 @@ import { registerLogsRoutes } from './routes/logs';
 import { registerPromptsRoutes } from './routes/prompts';
 import { registerMediaRoute } from './routes/media';
 import { registerAdminRoutes, runCleanup } from './routes/admin';
+import { registerSearchRoute } from './routes/search';
 
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8080);
@@ -38,6 +39,7 @@ async function bootstrap(): Promise<void> {
   registerPromptsRoutes(app);
   registerMediaRoute(app);
   registerAdminRoutes(app);
+  registerSearchRoute(app);
 
   // Serve static frontend (after routes so /api/* wins)
   const publicDir = path.resolve(__dirname, 'public');
