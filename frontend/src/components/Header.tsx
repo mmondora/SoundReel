@@ -1,8 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { JournalStats } from '../types';
 import { useLanguage } from '../i18n';
-import { SearchOverlay } from './SearchOverlay';
 
 const APP_VERSION = __APP_VERSION__;
 const GIT_REVISION = __GIT_REVISION__;
@@ -13,29 +11,31 @@ interface HeaderProps {
 
 export function Header({ stats }: HeaderProps) {
   const { t } = useLanguage();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-
-  const handleClose = () => {
-    setSearchOpen(false);
-    setSearchQuery('');
-  };
-
-  // Click-outside on the wrapper div (covers both input + overlay)
-  useEffect(() => {
-    const handleMouseDown = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setSearchOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleMouseDown);
-    return () => document.removeEventListener('mousedown', handleMouseDown);
-  }, []);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const q = searchParams.get('q') ?? '';
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    setSearchOpen(e.target.value.trim().length >= 2);
+    const value = e.target.value;
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        if (value) n.set('q', value);
+        else n.delete('q');
+        return n;
+      },
+      { replace: true }
+    );
+  };
+
+  const handleClear = () => {
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.delete('q');
+        return n;
+      },
+      { replace: true }
+    );
   };
 
   return (
@@ -53,20 +53,19 @@ export function Header({ stats }: HeaderProps) {
           <Link to="/films" className="stat stat-link">{stats.totalFilms} {t.films}</Link>
           <Link to="/notes" className="stat stat-link">{stats.totalNotes} {t.notes}</Link>
         </div>
-        <div className="search-wrapper" ref={wrapperRef}>
+        <div className="search-wrapper">
           <input
             className="search-input"
             type="search"
             placeholder="Cerca…"
-            value={searchQuery}
+            value={q}
             onChange={handleSearchChange}
-            onFocus={() => {
-              if (searchQuery.trim().length >= 2) setSearchOpen(true);
-            }}
             aria-label="Cerca tra i link salvati"
           />
-          {searchOpen && (
-            <SearchOverlay query={searchQuery} onClose={handleClose} />
+          {q && (
+            <button className="search-clear-btn" onClick={handleClear} aria-label="Cancella ricerca">
+              ×
+            </button>
           )}
         </div>
         <nav className="nav">

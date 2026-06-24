@@ -6,9 +6,10 @@ import { CompactCard } from '../components/CompactCard';
 import { EntryInspector } from '../components/EntryInspector';
 import { Pagination } from '../components/Pagination';
 import { useJournal } from '../hooks/useJournal';
+import { useSearch } from '../hooks/useSearch';
 import { useAnalyze } from '../hooks/useAnalyze';
 import { useLanguage } from '../i18n';
-import type { Entry } from '../types';
+import type { Entry, SearchResult } from '../types';
 
 const PLATFORM_LABEL: Record<string, string> = {
   instagram: 'IG',
@@ -87,6 +88,59 @@ function groupByMonth(entries: Entry[], lang: string): DateGroup[] {
   return groups;
 }
 
+function truncate(s: string | null, max: number): string {
+  if (!s) return '';
+  return s.length <= max ? s : `${s.slice(0, max)}…`;
+}
+
+interface SearchResultRowProps {
+  result: SearchResult;
+  selected: boolean;
+  onSelect: (id: string) => void;
+}
+
+function SearchResultRow({ result, selected, onSelect }: SearchResultRowProps) {
+  const label = PLATFORM_LABEL[result.sourcePlatform] ?? 'WEB';
+  const summary = result.results.summary ?? result.caption;
+  const songCount = result.results.songs.length;
+  const filmCount = result.results.films.length;
+  const noteCount = result.results.notes.length;
+  const parsedDate = parseFirestoreDate(result.createdAt);
+
+  return (
+    <div
+      className={`compact-card ${selected ? 'selected' : ''} completed`}
+      onClick={() => onSelect(result.id)}
+    >
+      {result.thumbnailUrl ? (
+        <img src={result.thumbnailUrl} alt="" className="compact-thumb" loading="lazy" />
+      ) : (
+        <div className="compact-thumb-placeholder">{label}</div>
+      )}
+      <div className="compact-content">
+        <div className="compact-top">
+          <span className="compact-platform">{label}</span>
+          {parsedDate && (
+            <span className="compact-time">{parsedDate.toLocaleDateString()}</span>
+          )}
+        </div>
+        <p className="compact-summary">{truncate(summary ?? result.sourceUrl, 100)}</p>
+        <div className="compact-bottom">
+          <div className="compact-counts">
+            {songCount > 0 && <span className="compact-count">🎵 {songCount}</span>}
+            {filmCount > 0 && <span className="compact-count">🎬 {filmCount}</span>}
+            {noteCount > 0 && <span className="compact-count">📝 {noteCount}</span>}
+            {result.results.tags.slice(0, 3).map((tag) => (
+              <span key={tag} className="compact-count">{tag}</span>
+            ))}
+          </div>
+          <span className="compact-status completed">●</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Home() {
   const [filterPlatform, setFilterPlatform] = useState<string | null>(null);
   const [filterChannel, setFilterChannel] = useState<string | null>(null);
@@ -101,6 +155,11 @@ export function Home() {
   const [searchParams] = useSearchParams();
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [mobileInspector, setMobileInspector] = useState(false);
+
+  const q = searchParams.get('q') ?? '';
+  const isSearchMode = q.trim().length >= 2;
+
+  const { results: searchResults, expandedTerms, loading: searchLoading } = useSearch(q);
 
   const hasFilter = !!(filterPlatform || filterChannel);
   const clearFilters = useCallback(() => { setFilterPlatform(null); setFilterChannel(null); }, []);
@@ -142,6 +201,13 @@ export function Home() {
     }
   }, []);
 
+  const handleSearchSelect = useCallback((id: string) => {
+    setSelectedEntryId(id);
+    if (window.innerWidth < 768) {
+      setMobileInspector(true);
+    }
+  }, []);
+
   const handleMobileBack = useCallback(() => {
     setMobileInspector(false);
   }, []);
@@ -166,7 +232,7 @@ export function Home() {
         />
       </div>
 
-      {(availablePlatforms.length > 1 || availableChannels.length > 1) && (
+      {!isSearchMode && (availablePlatforms.length > 1 || availableChannels.length > 1) && (
         <div className="journal-filter-bar">
           <button
             className={`filter-chip ${!hasFilter ? 'active' : ''}`}
@@ -208,7 +274,35 @@ export function Home() {
 
       <main className={`master-detail ${!selectedEntry ? 'no-selection' : ''}`}>
         <div className={`journal-panel ${mobileInspector ? 'mobile-hidden' : ''}`}>
-          {journalLoading ? (
+          {isSearchMode ? (
+            <div className="journal-list">
+              <div className="search-status">
+                {searchLoading ? (
+                  <span>Ricerca in corso…</span>
+                ) : (
+                  <span>{searchResults.length} risultati per &ldquo;{q}&rdquo;</span>
+                )}
+                {expandedTerms.length > 0 && (
+                  <span className="search-expanded-terms">
+                    Cercato anche: {expandedTerms.join(', ')}
+                  </span>
+                )}
+              </div>
+              {!searchLoading && searchResults.length === 0 && (
+                <div className="journal-empty">
+                  <p>Nessun risultato per &ldquo;{q}&rdquo;</p>
+                </div>
+              )}
+              {searchResults.map((result) => (
+                <SearchResultRow
+                  key={result.id}
+                  result={result}
+                  selected={result.id === selectedEntryId}
+                  onSelect={handleSearchSelect}
+                />
+              ))}
+            </div>
+          ) : journalLoading ? (
             <div className="journal-loading">
               <span className="spinner" />
               <p>{t.loading}</p>
