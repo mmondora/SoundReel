@@ -161,7 +161,7 @@ docker compose restart soundreel
 - NON hardcodare API keys o secrets nel codice
 - NON creare un sistema di autenticazione multi-utente — è un'app personale
 - NON aggiungere dipendenze frontend pesanti (Material UI, Chakra, etc.)
-- NON creare test automatici a meno che non venga richiesto esplicitamente
+- Test automatici: unit test e integration test con mock sono benvenuti. NON usare chiamate reali a sorgenti esterne nei test (Instagram, TikTok, YouTube, Spotify, Ollama, cobalt, instaloader) — usare sempre mock/stub per evitare ban/rate-limit degli account. Stack test consigliato: Vitest (frontend), Node test runner o Vitest (backend).
 
 <!-- claude-skills:begin -->
 ## Installed Skills
