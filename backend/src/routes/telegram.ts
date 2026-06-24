@@ -3,7 +3,7 @@ import { getPrompt, renderTemplate } from '../services/promptLoader';
 import { Logger } from '../services/debugLogger';
 import { countEntries, listEntries } from '../utils/db';
 
-interface TelegramMessage {
+export interface TelegramMessage {
   message_id: number;
   from?: { username?: string; first_name?: string };
   chat: { id: number };
@@ -16,7 +16,7 @@ interface TelegramUpdate {
   message?: TelegramMessage;
 }
 
-function isSpotifyUrl(url: string): boolean {
+export function isSpotifyUrl(url: string): boolean {
   return /https?:\/\/open\.spotify\.com\/(track|playlist|album)\//.test(url);
 }
 
@@ -33,7 +33,7 @@ async function sendToSpooty(spotifyUrl: string): Promise<void> {
   }
 }
 
-function extractUrl(message: TelegramMessage): string | null {
+export function extractUrl(message: TelegramMessage): string | null {
   if (!message.text) return null;
   if (message.entities) {
     for (const entity of message.entities) {
@@ -79,7 +79,7 @@ async function getLastEntry(): Promise<string> {
   return `Ultima entry:\n${e.sourceUrl}\n${songs} canzoni, ${films} film`;
 }
 
-interface AnalyzeResult {
+export interface AnalyzeResult {
   success: boolean;
   entryId?: string;
   entry?: {
@@ -136,7 +136,7 @@ async function formatTelegramResponse(result: AnalyzeResult, entryId: string): P
   }
 }
 
-function pickTitle(result: AnalyzeResult, summary: string | null): string {
+export function pickTitle(result: AnalyzeResult, summary: string | null): string {
   const r = result.entry as { caption?: string | null; sourceUrl?: string } | undefined;
   const caption = r?.caption?.split(/\r?\n/)[0]?.trim();
   if (caption && caption.length > 0) return caption.slice(0, 90);
@@ -148,12 +148,12 @@ function pickTitle(result: AnalyzeResult, summary: string | null): string {
   return 'SoundReel';
 }
 
-function truncateForTelegram(s: string, max: number): string {
+export function truncateForTelegram(s: string, max: number): string {
   const t = s.trim().replace(/\s+/g, ' ');
   return t.length <= max ? t : t.slice(0, max - 1).trimEnd() + '…';
 }
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
