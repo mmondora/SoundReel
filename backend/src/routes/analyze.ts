@@ -16,6 +16,8 @@ import {
 } from '../services/pageExtractor';
 import { analyzeWebPage } from '../services/aiAnalysisWebPage';
 import { normalizeUrl } from '../services/urlNormalize';
+import { extractSongsFromUrl } from '../services/musicListExtractor';
+import { resolveSongs } from '../services/songResolver';
 import { SsrfBlockedError } from '../services/ssrfGuard';
 import { searchTrack, addToPlaylist, generateYoutubeSearchUrl, generateSoundcloudSearchUrl } from '../services/spotify';
 import { searchFilm, generateImdbUrl, generateStreamingUrls } from '../services/filmSearch';
@@ -743,6 +745,22 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           await appendActionLog(entryId, createActionLog('auto_enrich_failed', { error: String(enrichError) }));
         }
       }
+
+      // Fire-and-forget: detect and resolve music list in background
+      void (async () => {
+        try {
+          const extracted = await extractSongsFromUrl(normalizedUrl);
+          if (extracted.length) {
+            const resolved = await resolveSongs(extracted);
+            const spooty = resolved.filter((s) => s.sentToSpooty).length;
+            await appendActionLog(entryId!, createActionLog('music_list_auto', {
+              songsFound: extracted.length, sentToSpooty: spooty,
+            }));
+          }
+        } catch (_err) {
+          // non-blocking: inner functions log their own errors
+        }
+      })();
 
       const entry = await getEntry(entryId);
       reply.send({ success: true, entryId, entry });

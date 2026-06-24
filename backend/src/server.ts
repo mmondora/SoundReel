@@ -15,6 +15,7 @@ import { registerPromptsRoutes } from './routes/prompts';
 import { registerMediaRoute } from './routes/media';
 import { registerAdminRoutes, runCleanup } from './routes/admin';
 import { registerSearchRoute } from './routes/search';
+import { registerMusicListRoute } from './routes/musicList';
 
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8080);
@@ -40,6 +41,7 @@ async function bootstrap(): Promise<void> {
   registerMediaRoute(app);
   registerAdminRoutes(app);
   registerSearchRoute(app);
+  registerMusicListRoute(app);
 
   // Serve static frontend (after routes so /api/* wins)
   const publicDir = path.resolve(__dirname, 'public');

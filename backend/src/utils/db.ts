@@ -486,3 +486,6 @@ export async function getPromptsConfig(): Promise<Record<string, string>> {
 export async function setPromptsConfig(value: Record<string, string>): Promise<void> {
   await setConfig('prompts', value);
 }
+
+// Re-export createActionLog so routes can import it from a single place (../utils/db)
+export { createActionLog } from './logger';
