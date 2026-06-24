@@ -8,7 +8,10 @@
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "migrate": "node dist/scripts/import-dump.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "engines": {
     "node": "20"
@@ -29,7 +32,9 @@
     "@types/jsdom": "^28.0.1",
     "@types/node": "^20.10.5",
     "@types/pg": "^8.11.10",
+    "@vitest/coverage-v8": "^4.1.9",
     "tsx": "^4.19.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.9"
   }
 }
