@@ -4,7 +4,7 @@ vi.mock('./ollamaClient', () => ({ generateText: vi.fn() }));
 vi.mock('./pageExtractor', () => ({ extractPage: vi.fn() }));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn() }));
 
-import { detectMusicList, extractSongsFromText, extractSongsFromUrl } from './musicListExtractor';
+import { detectMusicList, extractSongsFromText, extractSongsFromUrl, extractSongsFromMainText } from './musicListExtractor';
 import { generateText } from './ollamaClient';
 import { extractPage } from './pageExtractor';
 
@@ -81,6 +81,31 @@ describe('extractSongsFromText', () => {
   it('returns [] when Ollama throws', async () => {
     vi.mocked(generateText).mockRejectedValue(new Error('fail'));
     expect(await extractSongsFromText('text')).toEqual([]);
+  });
+});
+
+describe('extractSongsFromMainText', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns songs when detectMusicList=true and extractSongsFromText returns songs', async () => {
+    vi.mocked(generateText)
+      .mockResolvedValueOnce({ text: 'yes', usageMetadata: null }) // detect
+      .mockResolvedValueOnce({ text: '[{"title":"Abbey Road","artist":"Beatles"}]', usageMetadata: null }); // extract
+    const songs = await extractSongsFromMainText('Top 10 albums text');
+    expect(songs).toEqual([{ title: 'Abbey Road', artist: 'Beatles' }]);
+  });
+
+  it('returns [] when detectMusicList=false and does NOT call extractSongsFromText', async () => {
+    vi.mocked(generateText).mockResolvedValueOnce({ text: 'no', usageMetadata: null }); // detect only
+    const songs = await extractSongsFromMainText('pasta recipe text');
+    expect(songs).toEqual([]);
+    expect(vi.mocked(generateText)).toHaveBeenCalledTimes(1); // detect only, no extract
+  });
+
+  it('returns [] when generateText throws', async () => {
+    vi.mocked(generateText).mockRejectedValue(new Error('Ollama down'));
+    const songs = await extractSongsFromMainText('some text');
+    expect(songs).toEqual([]);
   });
 });
 

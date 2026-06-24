@@ -16,7 +16,7 @@ import {
 } from '../services/pageExtractor';
 import { analyzeWebPage } from '../services/aiAnalysisWebPage';
 import { normalizeUrl } from '../services/urlNormalize';
-import { extractSongsFromUrl } from '../services/musicListExtractor';
+import { extractSongsFromMainText } from '../services/musicListExtractor';
 import { resolveSongs } from '../services/songResolver';
 import { SsrfBlockedError } from '../services/ssrfGuard';
 import { searchTrack, addToPlaylist, generateYoutubeSearchUrl, generateSoundcloudSearchUrl } from '../services/spotify';
@@ -133,6 +133,8 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       // Caption used by auto-enrichment at the end.
       let captionForEnrich: string | null = null;
       let slideItems: SlideItem[] = [];
+      // Hoisted so the fire-and-forget below can reuse mainText without re-fetching
+      let pageMainText: string | null = null;
 
       if (isPage) {
         // ===================================================================
@@ -143,6 +145,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         log.info('Page pipeline');
         try {
           const page = await extractPage(normalizedUrl);
+          pageMainText = page.mainText;
           await appendActionLog(entryId, createActionLog('page_fetched', {
             httpStatus: page.httpStatus,
             finalUrl: page.finalUrl,
@@ -746,21 +749,26 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         }
       }
 
-      // Fire-and-forget: detect and resolve music list in background
-      void (async () => {
-        try {
-          const extracted = await extractSongsFromUrl(normalizedUrl);
-          if (extracted.length) {
-            const resolved = await resolveSongs(extracted);
-            const spooty = resolved.filter((s) => s.sentToSpooty).length;
-            await appendActionLog(entryId!, createActionLog('music_list_auto', {
-              songsFound: extracted.length, sentToSpooty: spooty,
-            }));
+      // Fire-and-forget: detect and resolve music list in background.
+      // Only runs for the page pipeline (isPage=true) when mainText was successfully fetched,
+      // reusing the already-fetched page content to avoid a double extractPage call.
+      if (isPage && pageMainText) {
+        const _mainTextSnapshot = pageMainText;
+        void (async () => {
+          try {
+            const extracted = await extractSongsFromMainText(_mainTextSnapshot);
+            if (extracted.length) {
+              const resolved = await resolveSongs(extracted);
+              const spooty = resolved.filter((s) => s.sentToSpooty).length;
+              await appendActionLog(entryId!, createActionLog('music_list_auto', {
+                songsFound: extracted.length, sentToSpooty: spooty,
+              }));
+            }
+          } catch (_err) {
+            // non-blocking: inner functions log their own errors
           }
-        } catch (_err) {
-          // non-blocking: inner functions log their own errors
-        }
-      })();
+        })();
+      }
 
       const entry = await getEntry(entryId);
       reply.send({ success: true, entryId, entry });

@@ -36,6 +36,22 @@ export async function extractSongsFromText(text: string): Promise<ExtractedSong[
   }
 }
 
+export async function extractSongsFromMainText(mainText: string): Promise<ExtractedSong[]> {
+  try {
+    const isMusicList = await detectMusicList(mainText);
+    if (!isMusicList) {
+      logInfo('extractSongsFromMainText: not a music list');
+      return [];
+    }
+    const songs = await extractSongsFromText(mainText);
+    logInfo('extractSongsFromMainText: extracted songs', { count: songs.length });
+    return songs;
+  } catch (err) {
+    logError('extractSongsFromMainText failed', { err: String(err) });
+    return [];
+  }
+}
+
 export async function extractSongsFromUrl(url: string): Promise<ExtractedSong[]> {
   try {
     const page = await extractPage(url);
