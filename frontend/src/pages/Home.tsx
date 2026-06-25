@@ -9,6 +9,7 @@ import { useJournal } from '../hooks/useJournal';
 import { useSearch } from '../hooks/useSearch';
 import { useAnalyze } from '../hooks/useAnalyze';
 import { useLanguage } from '../i18n';
+import { getEntry } from '../services/api';
 import type { Entry, SearchResult } from '../types';
 
 const PLATFORM_LABEL: Record<string, string> = {
@@ -174,7 +175,19 @@ export function Home() {
     }
   }, [searchParams]);
 
-  const selectedEntry = entries.find(e => e.id === selectedEntryId) || null;
+  const [selectedSearchEntry, setSelectedSearchEntry] = useState<Entry | null>(null);
+
+  useEffect(() => {
+    if (isSearchMode && selectedEntryId) {
+      getEntry(selectedEntryId).then(setSelectedSearchEntry).catch(() => setSelectedSearchEntry(null));
+    } else {
+      setSelectedSearchEntry(null);
+    }
+  }, [isSearchMode, selectedEntryId]);
+
+  const selectedEntry = isSearchMode
+    ? selectedSearchEntry
+    : (entries.find(e => e.id === selectedEntryId) || null);
 
   const handleSubmit = async (url: string) => {
     clearError();
