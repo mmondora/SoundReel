@@ -105,6 +105,27 @@ function frontendUrl(entryId: string): string {
   return `${base.replace(/\/$/, '')}/?entry=${entryId}`;
 }
 
+function formatAnalysisError(result: AnalyzeResult): string {
+  const srl = process.env.FRONTEND_URL || 'https://soundreel.casamon.dev';
+  const link = `🌐 <a href="${srl}">Apri SoundReel</a>`;
+  const err = result.error ?? '';
+  const entryLink = result.entryId ? `\n🔗 <a href="${frontendUrl(result.entryId)}">Vedi entry</a>` : '';
+
+  if (err.includes('challenge_required')) {
+    return `⚠️ Instagram richiede una nuova autorizzazione.\nRinnova la sessione su Instaloader.${entryLink}\n${link}`;
+  }
+  if (err.includes('unable to extract shortcode') || err === 'instaloader_download_failed') {
+    return `⚠️ Estrattore Instagram non disponibile o URL non supportato.\nVerifica che il container Instaloader sia attivo e la sessione valida.${entryLink}\n${link}`;
+  }
+  if (err.includes('instaloader')) {
+    return `⚠️ Errore Instaloader: ${err.slice(0, 120)}\nVerifica la sessione Instagram.${entryLink}\n${link}`;
+  }
+  if (err === 'page_pipeline_failed') {
+    return `⚠️ Pagina non accessibile o contenuto insufficiente.${entryLink}\n${link}`;
+  }
+  return `❌ Analisi fallita${err ? `: ${err.slice(0, 120)}` : ''}.${entryLink}\n${link}`;
+}
+
 async function formatTelegramResponse(result: AnalyzeResult, entryId: string): Promise<string> {
   const results = result.entry?.results || { songs: [], films: [], notes: [], links: [], tags: [], summary: null };
   const { songs, films, links } = results;
@@ -316,10 +337,11 @@ export function registerTelegramRoute(app: FastifyInstance): void {
           }
           const result = (await analyzeResponse.json()) as AnalyzeResult;
           if (!result.success || !result.entry) {
-            throw new Error(result.error || 'Analisi fallita');
+            await sendTelegramMessage(chatId, formatAnalysisError(result), token);
+          } else {
+            const response = await formatTelegramResponse(result, result.entryId || '');
+            await sendTelegramMessage(chatId, response, token);
           }
-          const response = await formatTelegramResponse(result, result.entryId || '');
-          await sendTelegramMessage(chatId, response, token);
         } catch (err) {
           log.error('Pipeline analyze via telegram fallita', err instanceof Error ? err : new Error(String(err)));
           await sendTelegramMessage(chatId, `❌ Analisi fallita.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`, token);

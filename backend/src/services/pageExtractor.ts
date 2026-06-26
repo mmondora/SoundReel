@@ -101,7 +101,114 @@ async function fetchHtmlWithPlaywright(url: string): Promise<string | null> {
   }
 }
 
+function isRedditUrl(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.replace(/^www\./, '');
+    return h === 'reddit.com' || h === 'old.reddit.com' || h === 'redd.it';
+  } catch { return false; }
+}
+
+async function resolveRedirectUrl(rawUrl: string): Promise<string> {
+  // Use global fetch (Node 18+) — exposes response.url (final URL after redirects)
+  const res = await fetch(rawUrl, {
+    method: 'GET',
+    redirect: 'follow',
+    headers: { 'user-agent': USER_AGENT },
+    signal: AbortSignal.timeout(8000),
+  });
+  await res.body?.cancel(); // drain without reading
+  return res.url || rawUrl;
+}
+
+async function extractRedditRss(rawUrl: string): Promise<PageExtractResult | null> {
+  try {
+    await assertPublicHttpUrl(rawUrl);
+
+    // Short Reddit share links (/s/xxx) redirect to the canonical post URL.
+    // Follow the redirect first so we can build the correct .rss URL.
+    const canonical = await resolveRedirectUrl(rawUrl).catch(() => rawUrl);
+    const base = canonical.split('?')[0].replace(/\/$/, '');
+    const rssUrl = `${base}.rss`;
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+    let res: Awaited<ReturnType<typeof request>>;
+    try {
+      res = await request(rssUrl, {
+        method: 'GET',
+        headers: { 'user-agent': USER_AGENT, accept: 'application/atom+xml,text/xml,*/*' },
+        maxRedirections: 3,
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (res.statusCode < 200 || res.statusCode >= 400) {
+      for await (const _ of res.body) { void _; }
+      return null;
+    }
+
+    const xml = await res.body.text();
+    const xmlDom = new JSDOM(xml, { contentType: 'application/xml' });
+    const doc = xmlDom.window.document;
+
+    const entries = Array.from(doc.querySelectorAll('entry'));
+    if (!entries.length) return null;
+
+    const postEntry = entries[0];
+    const title = postEntry.querySelector('title')?.textContent?.trim() ?? null;
+    const postAuthor = postEntry.querySelector('author name')?.textContent?.trim() ?? '';
+    const thumbnailEl = postEntry.querySelector('thumbnail');
+    const thumbnail = thumbnailEl?.getAttribute('url') ?? null;
+    const postContentHtml = postEntry.querySelector('content')?.textContent ?? '';
+    const postText = new JSDOM(postContentHtml).window.document.body.textContent?.trim() ?? '';
+
+    const comments: string[] = [];
+    for (const entry of entries.slice(1, 16)) {
+      const html = entry.querySelector('content')?.textContent ?? '';
+      const text = new JSDOM(html).window.document.body.textContent?.trim() ?? '';
+      if (text && !text.includes('[deleted]') && !text.includes('[removed]')) comments.push(text);
+    }
+
+    const subreddit = doc.querySelector('category')?.getAttribute('label') ?? '';
+    const postLink = postEntry.querySelector('link')?.getAttribute('href') ?? base;
+
+    const parts = [
+      title ? `# ${title}` : '',
+      [subreddit ? `r/${subreddit}` : '', postAuthor].filter(Boolean).join(' | '),
+      postText,
+      comments.length ? `## Comments\n${comments.join('\n\n')}` : '',
+    ].filter(Boolean);
+
+    log.info('Reddit RSS estratto', { title, postTextChars: postText.length, comments: comments.length });
+
+    return {
+      finalUrl: postLink,
+      httpStatus: res.statusCode,
+      contentType: 'application/atom+xml',
+      title,
+      description: postText.slice(0, 300) || null,
+      mainText: parts.join('\n\n') || null,
+      representativeImageUrl: thumbnail,
+      rawLinks: [],
+      siteName: 'Reddit',
+      lang: null,
+    };
+  } catch (e) {
+    log.warn('Reddit RSS fallito', { error: String(e) });
+    return null;
+  }
+}
+
 export async function extractPage(rawUrl: string): Promise<PageExtractResult> {
+  // Reddit: use RSS feed for structured content (JSON API is blocked)
+  if (isRedditUrl(rawUrl)) {
+    const redditResult = await extractRedditRss(rawUrl);
+    if (redditResult) return redditResult;
+    log.warn('Reddit RSS fallback a HTML', { url: rawUrl });
+  }
+
   const parsed = await assertPublicHttpUrl(rawUrl);
 
   log.info('Fetch pagina', { url: parsed.toString() });
