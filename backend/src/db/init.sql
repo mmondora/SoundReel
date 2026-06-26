@@ -12,12 +12,17 @@ CREATE TABLE IF NOT EXISTS entries (
   status TEXT NOT NULL,
   results JSONB NOT NULL DEFAULT '{"songs":[],"films":[],"notes":[],"links":[],"tags":[],"summary":null}'::jsonb,
   action_log JSONB NOT NULL DEFAULT '[]'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  input_user TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_entries_created_at ON entries (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_entries_source_url ON entries (source_url);
 CREATE INDEX IF NOT EXISTS idx_entries_status ON entries (status);
+
+-- Migration: add input_user column (idempotent)
+ALTER TABLE entries ADD COLUMN IF NOT EXISTS input_user TEXT;
+CREATE INDEX IF NOT EXISTS idx_entries_input_user ON entries (input_user);
 
 -- Search vector for FTS
 ALTER TABLE entries ADD COLUMN IF NOT EXISTS search_vector tsvector;

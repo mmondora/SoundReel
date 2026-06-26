@@ -145,12 +145,13 @@ function SearchResultRow({ result, selected, onSelect }: SearchResultRowProps) {
 export function Home() {
   const [filterPlatform, setFilterPlatform] = useState<string | null>(null);
   const [filterChannel, setFilterChannel] = useState<string | null>(null);
+  const [filterUser, setFilterUser] = useState<string | null>(null);
 
   const {
     entries, stats, loading: journalLoading,
     currentPage, totalPages, nextPage, prevPage,
-    availablePlatforms, availableChannels, filteredCount,
-  } = useJournal(20, { platform: filterPlatform, channel: filterChannel });
+    availablePlatforms, availableChannels, availableUsers, filteredCount,
+  } = useJournal(20, { platform: filterPlatform, channel: filterChannel, user: filterUser });
   const { analyze, loading: analyzeLoading, error, successStatus, clearError } = useAnalyze();
   const { t, language } = useLanguage();
   const [searchParams] = useSearchParams();
@@ -162,10 +163,11 @@ export function Home() {
 
   const { results: searchResults, expandedTerms, loading: searchLoading } = useSearch(q);
 
-  const hasFilter = !!(filterPlatform || filterChannel);
-  const clearFilters = useCallback(() => { setFilterPlatform(null); setFilterChannel(null); }, []);
+  const hasFilter = !!(filterPlatform || filterChannel || filterUser);
+  const clearFilters = useCallback(() => { setFilterPlatform(null); setFilterChannel(null); setFilterUser(null); }, []);
   const togglePlatform = useCallback((p: string) => setFilterPlatform(prev => prev === p ? null : p), []);
   const toggleChannel = useCallback((ch: string) => setFilterChannel(prev => prev === ch ? null : ch), []);
+  const toggleUser = useCallback((u: string) => setFilterUser(prev => prev === u ? null : u), []);
 
   // Auto-select from query param ?entry=id
   useEffect(() => {
@@ -274,6 +276,21 @@ export function Home() {
                   onClick={() => toggleChannel(channel)}
                 >
                   {CHANNEL_LABEL[channel] ?? channel}
+                  <span className="filter-chip-count"> {count}</span>
+                </button>
+              ))}
+            </>
+          )}
+          {availableUsers.length > 1 && (
+            <>
+              <span className="filter-divider" />
+              {availableUsers.map(({ user, count }) => (
+                <button
+                  key={user}
+                  className={`filter-chip ${filterUser === user ? 'active' : ''}`}
+                  onClick={() => toggleUser(user)}
+                >
+                  {user}
                   <span className="filter-chip-count"> {count}</span>
                 </button>
               ))}

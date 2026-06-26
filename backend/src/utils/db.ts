@@ -42,6 +42,7 @@ interface EntryRow {
   source_url: string;
   source_platform: string;
   input_channel: string;
+  input_user: string | null;
   caption: string | null;
   thumbnail_url: string | null;
   media_url: string | null;
@@ -57,6 +58,7 @@ function rowToEntry(row: EntryRow): Entry {
     sourceUrl: row.source_url,
     sourcePlatform: row.source_platform as Entry['sourcePlatform'],
     inputChannel: row.input_channel as Entry['inputChannel'],
+    inputUser: row.input_user,
     caption: row.caption,
     thumbnailUrl: row.thumbnail_url,
     mediaUrl: row.media_url,
@@ -93,13 +95,14 @@ export async function listEntries(limit = 100): Promise<Entry[]> {
 export async function createEntry(entry: Omit<Entry, 'id' | 'createdAt'> & { createdAt?: string }): Promise<string> {
   const id = randomUUID();
   await query(
-    `INSERT INTO entries (id, source_url, source_platform, input_channel, caption, thumbnail_url, media_url, status, results, action_log)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    `INSERT INTO entries (id, source_url, source_platform, input_channel, input_user, caption, thumbnail_url, media_url, status, results, action_log)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [
       id,
       entry.sourceUrl,
       entry.sourcePlatform,
       entry.inputChannel,
+      entry.inputUser ?? null,
       entry.caption,
       entry.thumbnailUrl,
       entry.mediaUrl,
@@ -115,6 +118,7 @@ const ENTRY_COLUMN_MAP: Record<string, string> = {
   sourceUrl: 'source_url',
   sourcePlatform: 'source_platform',
   inputChannel: 'input_channel',
+  inputUser: 'input_user',
   caption: 'caption',
   thumbnailUrl: 'thumbnail_url',
   mediaUrl: 'media_url',

@@ -13,6 +13,7 @@ function paginate<T>(items: T[], page: number, pageSize: number): T[] {
 export interface JournalFilter {
   platform?: string | null;
   channel?: string | null;
+  user?: string | null;
 }
 
 export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter) {
@@ -51,16 +52,18 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter)
 
   const filterPlatform = filter?.platform ?? null;
   const filterChannel = filter?.channel ?? null;
+  const filterUser = filter?.user ?? null;
 
   // Reset to page 1 when filter changes
-  useEffect(() => { setCurrentPage(1); }, [filterPlatform, filterChannel]);
+  useEffect(() => { setCurrentPage(1); }, [filterPlatform, filterChannel, filterUser]);
 
   const filteredEntries = useMemo(() => {
     let result = allEntries;
     if (filterPlatform) result = result.filter(e => e.sourcePlatform === filterPlatform);
     if (filterChannel) result = result.filter(e => e.inputChannel === filterChannel);
+    if (filterUser) result = result.filter(e => e.inputUser === filterUser);
     return result;
-  }, [allEntries, filterPlatform, filterChannel]);
+  }, [allEntries, filterPlatform, filterChannel, filterUser]);
 
   const availablePlatforms = useMemo(() => {
     const seen = new Map<string, number>();
@@ -78,6 +81,16 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter)
       seen.set(e.inputChannel, (seen.get(e.inputChannel) ?? 0) + 1);
     }
     return Array.from(seen.entries()).map(([ch, count]) => ({ channel: ch, count }));
+  }, [allEntries]);
+
+  const availableUsers = useMemo(() => {
+    const seen = new Map<string, number>();
+    for (const e of allEntries) {
+      if (e.inputUser) seen.set(e.inputUser, (seen.get(e.inputUser) ?? 0) + 1);
+    }
+    return Array.from(seen.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([user, count]) => ({ user, count }));
   }, [allEntries]);
 
   const totalCount = filteredEntries.length;
@@ -111,6 +124,7 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter)
     prevPage,
     availablePlatforms,
     availableChannels,
+    availableUsers,
     filteredCount: totalCount,
   };
 }

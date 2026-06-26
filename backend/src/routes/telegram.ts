@@ -162,6 +162,12 @@ export function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;');
 }
 
+function telegramUser(msg: TelegramMessage): string | null {
+  if (msg.from?.username) return `@${msg.from.username}`;
+  if (msg.from?.first_name) return msg.from.first_name;
+  return null;
+}
+
 function platformFromUrl(url: string): SocialPlatform {
   try {
     const h = new URL(url).hostname.replace(/^www\./, '');
@@ -272,6 +278,7 @@ export function registerTelegramRoute(app: FastifyInstance): void {
 
       // Persist stub entry immediately so URL always appears in journal,
       // even if the background pipeline crashes or the server restarts.
+      const tgUser = telegramUser(message);
       try {
         const normalizedStubUrl = normalizeUrl(url);
         const existing = await findEntryByUrl(normalizedStubUrl);
@@ -280,12 +287,13 @@ export function registerTelegramRoute(app: FastifyInstance): void {
             sourceUrl: normalizedStubUrl,
             sourcePlatform: platformFromUrl(url),
             inputChannel: 'telegram',
+            inputUser: tgUser,
             caption: null,
             thumbnailUrl: null,
             mediaUrl: null,
             status: 'processing',
             results: { songs: [], films: [], notes: [], links: [], tags: [], summary: null },
-            actionLog: [createActionLog('url_received', { channel: 'telegram' })],
+            actionLog: [createActionLog('url_received', { channel: 'telegram', user: tgUser })],
           });
         }
       } catch (stubErr) {
@@ -301,7 +309,7 @@ export function registerTelegramRoute(app: FastifyInstance): void {
           const analyzeResponse = await fetch(internalUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, channel: 'telegram' }),
+            body: JSON.stringify({ url, channel: 'telegram', user: tgUser }),
           });
           if (!analyzeResponse.ok) {
             throw new Error(`analyze HTTP ${analyzeResponse.status}`);

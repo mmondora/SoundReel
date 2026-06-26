@@ -105,6 +105,7 @@ export interface Entry {
   sourceUrl: string;
   sourcePlatform: SocialPlatform;
   inputChannel: 'telegram' | 'web' | 'ios';
+  inputUser: string | null;
   caption: string | null;
   thumbnailUrl: string | null;
   mediaUrl: string | null;

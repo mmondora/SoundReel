@@ -52,6 +52,7 @@ import type {
 interface AnalyzeRequestBody {
   url?: string;
   channel?: 'web' | 'telegram' | 'ios';
+  user?: string | null;
 }
 
 const KEY_FRAMES_COUNT = Number(process.env.KEY_FRAMES_COUNT || 5);
@@ -62,6 +63,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
     const url = req.body?.url;
     const channel = req.body?.channel ?? 'web';
+    const user = req.body?.user ?? null;
 
     if (!url) {
       reply.code(400).send({ error: 'URL richiesto' });
@@ -111,19 +113,20 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         sourceUrl: normalizedUrl,
         sourcePlatform: platform,
         inputChannel: channel,
+        inputUser: user,
         caption: null,
         thumbnailUrl: null,
         mediaUrl: null,
         status: 'processing',
         results: { songs: [], films: [], notes: [], links: [], tags: [], summary: null },
-        actionLog: [createActionLog('url_received', { channel, platform })],
+        actionLog: [createActionLog('url_received', { channel, user, platform })],
       };
 
       if (!entryId) {
         entryId = await createEntry(initialEntry);
       } else {
-        await updateEntry(entryId, { status: 'processing' });
-        await appendActionLog(entryId, createActionLog('url_received', { channel, platform, retry: true }));
+        await updateEntry(entryId, { status: 'processing', inputUser: user });
+        await appendActionLog(entryId, createActionLog('url_received', { channel, user, platform, retry: true }));
       }
       log.setEntryId(entryId);
       log.info('Entry creata', {
