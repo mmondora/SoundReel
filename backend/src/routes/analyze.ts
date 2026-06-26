@@ -88,9 +88,14 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       if (!featuresConfig.allowDuplicateUrls) {
         const existingEntry = await findEntryByUrl(normalizedUrl);
         if (existingEntry) {
-          log.info('URL già processato', { entryId: existingEntry.id });
-          reply.send({ success: true, entryId: existingEntry.id, existing: true, entry: existingEntry });
-          return;
+          if (existingEntry.status === 'completed') {
+            log.info('URL già processato', { entryId: existingEntry.id });
+            reply.send({ success: true, entryId: existingEntry.id, existing: true, entry: existingEntry });
+            return;
+          }
+          // Not completed (processing/error) — reuse entryId and re-process
+          log.info('URL presente, riprocesso', { entryId: existingEntry.id, status: existingEntry.status });
+          entryId = existingEntry.id;
         }
       }
 
@@ -114,7 +119,12 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         actionLog: [createActionLog('url_received', { channel, platform })],
       };
 
-      entryId = await createEntry(initialEntry);
+      if (!entryId) {
+        entryId = await createEntry(initialEntry);
+      } else {
+        await updateEntry(entryId, { status: 'processing' });
+        await appendActionLog(entryId, createActionLog('url_received', { channel, platform, retry: true }));
+      }
       log.setEntryId(entryId);
       log.info('Entry creata', {
         entryId,

@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
+import type { SocialPlatform } from '../types';
 import { getPrompt, renderTemplate } from '../services/promptLoader';
 import { Logger } from '../services/debugLogger';
-import { countEntries, listEntries } from '../utils/db';
+import { countEntries, listEntries, createEntry, findEntryByUrl, createActionLog } from '../utils/db';
+import { normalizeUrl } from '../services/urlNormalize';
 
 export interface TelegramMessage {
   message_id: number;
@@ -160,6 +162,20 @@ export function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;');
 }
 
+function platformFromUrl(url: string): SocialPlatform {
+  try {
+    const h = new URL(url).hostname.replace(/^www\./, '');
+    if (h.includes('instagram.com')) return 'instagram';
+    if (h.includes('tiktok.com')) return 'tiktok';
+    if (h.includes('youtube.com') || h.includes('youtu.be')) return 'youtube';
+    if (h.includes('twitter.com') || h.includes('x.com')) return 'twitter';
+    if (h.includes('spotify.com')) return 'spotify';
+    if (h.includes('vimeo.com')) return 'vimeo';
+    if (h.includes('soundcloud.com')) return 'soundcloud';
+  } catch { /* invalid URL → 'other' */ }
+  return 'other';
+}
+
 export function registerTelegramRoute(app: FastifyInstance): void {
   // Count route
   app.get('/telegram/stats', async () => getStats());
@@ -252,6 +268,28 @@ export function registerTelegramRoute(app: FastifyInstance): void {
           }
         })().catch(() => {});
         return;
+      }
+
+      // Persist stub entry immediately so URL always appears in journal,
+      // even if the background pipeline crashes or the server restarts.
+      try {
+        const normalizedStubUrl = normalizeUrl(url);
+        const existing = await findEntryByUrl(normalizedStubUrl);
+        if (!existing) {
+          await createEntry({
+            sourceUrl: normalizedStubUrl,
+            sourcePlatform: platformFromUrl(url),
+            inputChannel: 'telegram',
+            caption: null,
+            thumbnailUrl: null,
+            mediaUrl: null,
+            status: 'processing',
+            results: { songs: [], films: [], notes: [], links: [], tags: [], summary: null },
+            actionLog: [createActionLog('url_received', { channel: 'telegram' })],
+          });
+        }
+      } catch (stubErr) {
+        log.error('Stub entry creation failed', stubErr instanceof Error ? stubErr : new Error(String(stubErr)));
       }
 
       // Respond webhook fast, process in background
