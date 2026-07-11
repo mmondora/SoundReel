@@ -507,6 +507,7 @@ with:
         log.error('Stub entry creation failed', stubErr instanceof Error ? stubErr : new Error(String(stubErr)));
       }
 
+      let enqueued = false;
       if (stubEntryId) {
         try {
           await enqueueJob({
@@ -516,9 +517,21 @@ with:
             chatId,
             inputUser: tgUser,
           });
+          enqueued = true;
         } catch (queueErr) {
           log.error('Job enqueue failed', queueErr instanceof Error ? queueErr : new Error(String(queueErr)));
         }
+      }
+
+      // If the stub entry write or the enqueue itself failed (e.g. a DB
+      // hiccup), the job never entered the queue — tell the user instead
+      // of silently replying 200 with no entry, no job, and no feedback.
+      if (!enqueued) {
+        await sendTelegramMessage(
+          chatId,
+          `❌ Analisi fallita.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`,
+          token
+        ).catch(() => {});
       }
 
       reply.code(200).send('OK');
