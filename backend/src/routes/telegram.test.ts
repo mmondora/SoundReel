@@ -4,6 +4,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../utils/db', () => ({
   countEntries: vi.fn().mockResolvedValue(0),
   listEntries: vi.fn().mockResolvedValue([]),
+  findEntryByUrl: vi.fn().mockResolvedValue(null),
+  createEntry: vi.fn().mockResolvedValue('new-entry-id'),
+  createActionLog: vi.fn().mockReturnValue({ action: 'test', details: {}, timestamp: '2026-01-01T00:00:00.000Z' }),
+}));
+
+vi.mock('../utils/jobQueue', () => ({
+  enqueueJob: vi.fn().mockResolvedValue(1),
+}));
+
+vi.mock('../services/urlNormalize', () => ({
+  normalizeUrl: (url: string) => url,
 }));
 
 vi.mock('../services/promptLoader', () => ({
@@ -12,14 +23,18 @@ vi.mock('../services/promptLoader', () => ({
 }));
 
 vi.mock('../services/debugLogger', () => ({
-  Logger: vi.fn().mockImplementation(() => ({
-    startTimer: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    endTimer: vi.fn(),
-  })),
+  // Must be a regular `function`, not an arrow function: the webhook handler
+  // does `new Logger(...)`, and arrow functions cannot be used as constructors.
+  Logger: vi.fn().mockImplementation(function () {
+    return {
+      startTimer: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      endTimer: vi.fn(),
+    };
+  }),
 }));
 
 import {
@@ -249,5 +264,98 @@ describe('pickTitle', () => {
   it('empty caption string → falls through to summary', () => {
     const result = makeAnalyzeResult({ caption: '' });
     expect(pickTitle(result, 'Fallback summary')).toBe('Fallback summary');
+  });
+});
+
+import Fastify from 'fastify';
+import { registerTelegramRoute } from './telegram';
+import { findEntryByUrl, createEntry } from '../utils/db';
+import { enqueueJob } from '../utils/jobQueue';
+
+function buildApp() {
+  const app = Fastify();
+  registerTelegramRoute(app);
+  return app;
+}
+
+function urlMessage(url: string, chatId = 555) {
+  return {
+    update_id: 1,
+    message: {
+      message_id: 1,
+      chat: { id: chatId },
+      from: { username: 'mike' },
+      text: url,
+    },
+  };
+}
+
+describe('POST /telegram/webhook — URL message enqueues a job', () => {
+  const OLD_ENV = process.env;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env = { ...OLD_ENV, TELEGRAM_BOT_TOKEN: 'test-token' };
+    delete process.env.TELEGRAM_WEBHOOK_SECRET;
+  });
+
+  it('Instagram URL → stub entry created + job enqueued with platform=instagram', async () => {
+    const app = buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/telegram/webhook',
+      payload: urlMessage('https://www.instagram.com/reel/abc123/'),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(createEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ sourcePlatform: 'instagram', inputChannel: 'telegram' })
+    );
+    expect(enqueueJob).toHaveBeenCalledWith({
+      entryId: 'new-entry-id',
+      sourceUrl: 'https://www.instagram.com/reel/abc123/',
+      platform: 'instagram',
+      chatId: 555,
+      inputUser: '@mike',
+    });
+  });
+
+  it('TikTok URL → job enqueued with platform=other', async () => {
+    const app = buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/telegram/webhook',
+      payload: urlMessage('https://www.tiktok.com/@x/video/1'),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(enqueueJob).toHaveBeenCalledWith(
+      expect.objectContaining({ platform: 'other' })
+    );
+  });
+
+  it('URL already has an entry → reuses existing entry id, does not create a new one', async () => {
+    vi.mocked(findEntryByUrl).mockResolvedValueOnce({ id: 'existing-id' } as never);
+    const app = buildApp();
+    await app.inject({
+      method: 'POST',
+      url: '/telegram/webhook',
+      payload: urlMessage('https://www.instagram.com/reel/dup/'),
+    });
+    expect(createEntry).not.toHaveBeenCalled();
+    expect(enqueueJob).toHaveBeenCalledWith(
+      expect.objectContaining({ entryId: 'existing-id' })
+    );
+  });
+
+  it('does not call fetch — webhook no longer calls /api/analyze directly', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    const app = buildApp();
+    await app.inject({
+      method: 'POST',
+      url: '/telegram/webhook',
+      payload: urlMessage('https://www.instagram.com/reel/nofetch/'),
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });
