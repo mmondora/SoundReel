@@ -16,6 +16,8 @@ import { registerMediaRoute } from './routes/media';
 import { registerAdminRoutes, runCleanup } from './routes/admin';
 import { registerSearchRoute } from './routes/search';
 import { registerMusicListRoute } from './routes/musicList';
+import { requeueStuckJobs } from './utils/jobQueue';
+import { startJobQueueWorker } from './services/jobQueueWorker';
 
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8080);
@@ -63,6 +65,13 @@ async function bootstrap(): Promise<void> {
 
   await query('SELECT 1');
   app.log.info('Postgres connection verified');
+
+  const requeuedCount = await requeueStuckJobs();
+  if (requeuedCount > 0) {
+    app.log.warn(`Requeued ${requeuedCount} job(s) stuck in 'processing' from a previous crash/restart`);
+  }
+  startJobQueueWorker();
+  app.log.info('Job queue worker started');
 
   // Startup cleanup + daily schedule (orphan + retention purge)
   const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
