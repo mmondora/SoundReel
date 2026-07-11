@@ -177,4 +177,42 @@ describe('tick', () => {
     // it does not need to observe a null to know it's full.
     expect(claimNextOtherJob).toHaveBeenCalledTimes(3);
   });
+
+  it('IG job succeeds but Telegram notify fails → job stays done, no retry/failure triggered', async () => {
+    vi.mocked(claimNextInstagramJob).mockResolvedValue(IG_JOB);
+    vi.mocked(claimNextOtherJob).mockResolvedValue(null);
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, entryId: 'e1', entry: { results: { songs: [], films: [], notes: [], links: [], tags: [], summary: null } } }),
+    } as never);
+    vi.mocked(sendTelegramMessage).mockRejectedValue(new Error('ETELEGRAM: network error'));
+
+    const state = createInitialWorkerState();
+    await tick(state);
+    await flush();
+    await flush();
+
+    expect(markJobDone).toHaveBeenCalledWith(1);
+    expect(scheduleJobRetry).not.toHaveBeenCalled();
+    expect(markJobFailed).not.toHaveBeenCalled();
+    expect(state.igBusy).toBe(false);
+  });
+
+  it('IG job fails and handleFailure itself throws (DB unreachable) → does not produce an unhandled rejection, onSettle still runs', async () => {
+    vi.mocked(claimNextInstagramJob).mockResolvedValue(IG_JOB);
+    vi.mocked(claimNextOtherJob).mockResolvedValue(null);
+    vi.mocked(fetch).mockRejectedValue(new Error('ECONNREFUSED'));
+    vi.mocked(scheduleJobRetry).mockRejectedValue(new Error('DB unreachable'));
+
+    const state = createInitialWorkerState();
+    await tick(state);
+    await flush();
+    await flush();
+
+    // If handleFailure's own throw escaped dispatch(), it would surface as an
+    // unhandled promise rejection and Vitest would fail this test automatically.
+    // Reaching these assertions with onSettle having run is sufficient evidence.
+    expect(scheduleJobRetry).toHaveBeenCalledWith(1, 1, expect.any(Date));
+    expect(state.igBusy).toBe(false);
+  });
 });
