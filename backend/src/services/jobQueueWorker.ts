@@ -103,7 +103,7 @@ export async function tick(state: WorkerState): Promise<void> {
     }
   }
 
-  while (state.otherInFlight <= OTHER_CONCURRENCY_CAP) {
+  while (state.otherInFlight < OTHER_CONCURRENCY_CAP) {
     // Same race guard as above: reserve the slot before awaiting the claim.
     state.otherInFlight++;
     const job = await claimNextOtherJob();
