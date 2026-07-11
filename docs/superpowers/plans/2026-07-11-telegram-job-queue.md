@@ -841,9 +841,28 @@ async function dispatch(job: JobQueueRow, onSettle: () => void): Promise<void> {
     if (!res.ok) throw new Error(`analyze HTTP ${res.status}`);
     const result = (await res.json()) as AnalyzeResult;
     await markJobDone(job.id);
-    await sendResultToTelegram(job, result);
+    // Isolated from the try/catch above it: a Telegram delivery failure here
+    // must not re-trigger handleFailure and undo an already-successful job.
+    try {
+      await sendResultToTelegram(job, result);
+    } catch (notifyErr) {
+      log.error(
+        `Job ${job.id} succeeded but Telegram notification failed`,
+        notifyErr instanceof Error ? notifyErr : new Error(String(notifyErr))
+      );
+    }
   } catch (err) {
-    await handleFailure(job, err, log);
+    // dispatch() is invoked fire-and-forget (`void dispatch(...)`), so if
+    // handleFailure itself throws (e.g. DB unreachable while recording the
+    // failure), that must not become an unhandled promise rejection.
+    try {
+      await handleFailure(job, err, log);
+    } catch (failureErr) {
+      log.error(
+        `Job ${job.id} failure handling itself failed`,
+        failureErr instanceof Error ? failureErr : new Error(String(failureErr))
+      );
+    }
   } finally {
     onSettle();
   }
