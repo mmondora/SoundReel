@@ -123,3 +123,22 @@ DROP TRIGGER IF EXISTS entries_notify ON entries;
 CREATE TRIGGER entries_notify
 AFTER INSERT OR UPDATE OR DELETE ON entries
 FOR EACH ROW EXECUTE FUNCTION notify_entry_changed();
+
+-- Job queue: durable intake queue for Telegram-sourced URLs.
+-- Instagram jobs are serialized one-at-a-time with jitter (ban avoidance);
+-- other-platform jobs are capped at N concurrent by the worker.
+CREATE TABLE IF NOT EXISTS job_queue (
+  id SERIAL PRIMARY KEY,
+  entry_id TEXT NOT NULL REFERENCES entries(id),
+  source_url TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  chat_id BIGINT NOT NULL,
+  input_user TEXT,
+  status TEXT NOT NULL DEFAULT 'queued',
+  attempts INT NOT NULL DEFAULT 0,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_queue_dispatch ON job_queue (status, platform, next_attempt_at);
