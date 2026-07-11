@@ -167,20 +167,33 @@ export async function enqueueJob(job: {
 
 async function claimNext(platformClause: string): Promise<JobQueueRow | null> {
   return withClient(async (client) => {
-    const { rows } = await client.query<JobQueueDbRow>(
-      `SELECT * FROM job_queue
-       WHERE status = 'queued' AND ${platformClause} AND next_attempt_at <= NOW()
-       ORDER BY created_at ASC
-       LIMIT 1
-       FOR UPDATE SKIP LOCKED`
-    );
-    const row = rows[0];
-    if (!row) return null;
-    await client.query(
-      `UPDATE job_queue SET status = 'processing', updated_at = NOW() WHERE id = $1`,
-      [row.id]
-    );
-    return rowToJob(row);
+    // withClient does not open a transaction — without an explicit BEGIN,
+    // Postgres autocommits the SELECT, releasing the SKIP LOCKED row lock
+    // before the UPDATE runs, letting two callers claim the same row.
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query<JobQueueDbRow>(
+        `SELECT * FROM job_queue
+         WHERE status = 'queued' AND ${platformClause} AND next_attempt_at <= NOW()
+         ORDER BY created_at ASC
+         LIMIT 1
+         FOR UPDATE SKIP LOCKED`
+      );
+      const row = rows[0];
+      if (!row) {
+        await client.query('COMMIT');
+        return null;
+      }
+      await client.query(
+        `UPDATE job_queue SET status = 'processing', updated_at = NOW() WHERE id = $1`,
+        [row.id]
+      );
+      await client.query('COMMIT');
+      return rowToJob(row);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    }
   });
 }
 
