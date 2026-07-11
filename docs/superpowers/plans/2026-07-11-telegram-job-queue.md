@@ -747,7 +747,10 @@ describe('tick', () => {
     await tick(state);
 
     expect(state.otherInFlight).toBe(3);
-    expect(claimNextOtherJob).toHaveBeenCalledTimes(4); // 3 successful claims + 1 empty to stop the loop
+    // The while condition is checked BEFORE each claim, so once otherInFlight
+    // reaches the cap the loop exits without an extra trailing claim call —
+    // it does not need to observe a null to know it's full.
+    expect(claimNextOtherJob).toHaveBeenCalledTimes(3);
   });
 });
 ```
