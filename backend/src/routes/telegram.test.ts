@@ -358,4 +358,49 @@ describe('POST /telegram/webhook — URL message enqueues a job', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
+
+  it('stub entry creation throws → sends fallback failure message, does not enqueue', async () => {
+    vi.mocked(createEntry).mockRejectedValueOnce(new Error('db hiccup'));
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const app = buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/telegram/webhook',
+      payload: urlMessage('https://www.instagram.com/reel/stubfail/'),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(enqueueJob).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [calledUrl, calledInit] = fetchSpy.mock.calls[0];
+    expect(String(calledUrl)).toContain('/sendMessage');
+    const body = JSON.parse((calledInit as { body: string }).body);
+    expect(body.text).toContain('Analisi fallita');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('enqueueJob throws → sends fallback failure message', async () => {
+    vi.mocked(enqueueJob).mockRejectedValueOnce(new Error('queue down'));
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const app = buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/telegram/webhook',
+      payload: urlMessage('https://www.instagram.com/reel/enqueuefail/'),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [calledUrl, calledInit] = fetchSpy.mock.calls[0];
+    expect(String(calledUrl)).toContain('/sendMessage');
+    const body = JSON.parse((calledInit as { body: string }).body);
+    expect(body.text).toContain('Analisi fallita');
+
+    vi.unstubAllGlobals();
+  });
 });
