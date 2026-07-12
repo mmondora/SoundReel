@@ -4,6 +4,7 @@ import { getPrompt, renderTemplate } from '../services/promptLoader';
 import { Logger } from '../services/debugLogger';
 import { countEntries, listEntries, createEntry, findEntryByUrl, createActionLog } from '../utils/db';
 import { normalizeUrl } from '../services/urlNormalize';
+import { enqueueJob, type JobPlatform } from '../utils/jobQueue';
 
 export interface TelegramMessage {
   message_id: number;
@@ -48,7 +49,7 @@ export function extractUrl(message: TelegramMessage): string | null {
   return urlMatch ? urlMatch[0] : null;
 }
 
-async function sendTelegramMessage(chatId: number, text: string, token: string): Promise<void> {
+export async function sendTelegramMessage(chatId: number, text: string, token: string): Promise<void> {
   await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -105,7 +106,7 @@ function frontendUrl(entryId: string): string {
   return `${base.replace(/\/$/, '')}/?entry=${entryId}`;
 }
 
-function formatAnalysisError(result: AnalyzeResult): string {
+export function formatAnalysisError(result: AnalyzeResult): string {
   const srl = process.env.FRONTEND_URL || 'https://soundreel.casamon.dev';
   const link = `🌐 <a href="${srl}">Apri SoundReel</a>`;
   const err = result.error ?? '';
@@ -126,7 +127,7 @@ function formatAnalysisError(result: AnalyzeResult): string {
   return `❌ Analisi fallita${err ? `: ${err.slice(0, 120)}` : ''}.${entryLink}\n${link}`;
 }
 
-async function formatTelegramResponse(result: AnalyzeResult, entryId: string): Promise<string> {
+export async function formatTelegramResponse(result: AnalyzeResult, entryId: string): Promise<string> {
   const results = result.entry?.results || { songs: [], films: [], notes: [], links: [], tags: [], summary: null };
   const { songs, films, links } = results;
   const summaryRaw = (results as { summary?: string | null }).summary;
@@ -298,15 +299,21 @@ export function registerTelegramRoute(app: FastifyInstance): void {
       }
 
       // Persist stub entry immediately so URL always appears in journal,
-      // even if the background pipeline crashes or the server restarts.
+      // even if the worker crashes or the server restarts.
       const tgUser = telegramUser(message);
+      const platform = platformFromUrl(url);
+      const jobPlatform: JobPlatform = platform === 'instagram' ? 'instagram' : 'other';
+
+      let stubEntryId: string | null = null;
       try {
         const normalizedStubUrl = normalizeUrl(url);
         const existing = await findEntryByUrl(normalizedStubUrl);
-        if (!existing) {
-          await createEntry({
+        if (existing) {
+          stubEntryId = existing.id;
+        } else {
+          stubEntryId = await createEntry({
             sourceUrl: normalizedStubUrl,
-            sourcePlatform: platformFromUrl(url),
+            sourcePlatform: platform,
             inputChannel: 'telegram',
             inputUser: tgUser,
             caption: null,
@@ -321,33 +328,34 @@ export function registerTelegramRoute(app: FastifyInstance): void {
         log.error('Stub entry creation failed', stubErr instanceof Error ? stubErr : new Error(String(stubErr)));
       }
 
-      // Respond webhook fast, process in background
-      reply.code(200).send('OK');
-
-      (async () => {
+      let enqueued = false;
+      if (stubEntryId) {
         try {
-          const internalUrl = `http://127.0.0.1:${process.env.PORT || 8080}/api/analyze`;
-          const analyzeResponse = await fetch(internalUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, channel: 'telegram', user: tgUser }),
+          await enqueueJob({
+            entryId: stubEntryId,
+            sourceUrl: url,
+            platform: jobPlatform,
+            chatId,
+            inputUser: tgUser,
           });
-          if (!analyzeResponse.ok) {
-            throw new Error(`analyze HTTP ${analyzeResponse.status}`);
-          }
-          const result = (await analyzeResponse.json()) as AnalyzeResult;
-          if (!result.success || !result.entry) {
-            await sendTelegramMessage(chatId, formatAnalysisError(result), token);
-          } else {
-            const response = await formatTelegramResponse(result, result.entryId || '');
-            await sendTelegramMessage(chatId, response, token);
-          }
-        } catch (err) {
-          log.error('Pipeline analyze via telegram fallita', err instanceof Error ? err : new Error(String(err)));
-          await sendTelegramMessage(chatId, `❌ Analisi fallita.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`, token);
+          enqueued = true;
+        } catch (queueErr) {
+          log.error('Job enqueue failed', queueErr instanceof Error ? queueErr : new Error(String(queueErr)));
         }
-      })().catch(() => {});
+      }
 
+      // If the stub entry write or the enqueue itself failed (e.g. a DB
+      // hiccup), the job never entered the queue — tell the user instead
+      // of silently replying 200 with no entry, no job, and no feedback.
+      if (!enqueued) {
+        await sendTelegramMessage(
+          chatId,
+          `❌ Analisi fallita.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`,
+          token
+        ).catch(() => {});
+      }
+
+      reply.code(200).send('OK');
       await countEntries().catch(() => 0);
       return;
     } catch (error) {

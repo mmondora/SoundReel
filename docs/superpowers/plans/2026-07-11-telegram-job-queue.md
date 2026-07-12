@@ -167,20 +167,33 @@ export async function enqueueJob(job: {
 
 async function claimNext(platformClause: string): Promise<JobQueueRow | null> {
   return withClient(async (client) => {
-    const { rows } = await client.query<JobQueueDbRow>(
-      `SELECT * FROM job_queue
-       WHERE status = 'queued' AND ${platformClause} AND next_attempt_at <= NOW()
-       ORDER BY created_at ASC
-       LIMIT 1
-       FOR UPDATE SKIP LOCKED`
-    );
-    const row = rows[0];
-    if (!row) return null;
-    await client.query(
-      `UPDATE job_queue SET status = 'processing', updated_at = NOW() WHERE id = $1`,
-      [row.id]
-    );
-    return rowToJob(row);
+    // withClient does not open a transaction — without an explicit BEGIN,
+    // Postgres autocommits the SELECT, releasing the SKIP LOCKED row lock
+    // before the UPDATE runs, letting two callers claim the same row.
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query<JobQueueDbRow>(
+        `SELECT * FROM job_queue
+         WHERE status = 'queued' AND ${platformClause} AND next_attempt_at <= NOW()
+         ORDER BY created_at ASC
+         LIMIT 1
+         FOR UPDATE SKIP LOCKED`
+      );
+      const row = rows[0];
+      if (!row) {
+        await client.query('COMMIT');
+        return null;
+      }
+      await client.query(
+        `UPDATE job_queue SET status = 'processing', updated_at = NOW() WHERE id = $1`,
+        [row.id]
+      );
+      await client.query('COMMIT');
+      return rowToJob(row);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    }
   });
 }
 
@@ -494,6 +507,7 @@ with:
         log.error('Stub entry creation failed', stubErr instanceof Error ? stubErr : new Error(String(stubErr)));
       }
 
+      let enqueued = false;
       if (stubEntryId) {
         try {
           await enqueueJob({
@@ -503,9 +517,21 @@ with:
             chatId,
             inputUser: tgUser,
           });
+          enqueued = true;
         } catch (queueErr) {
           log.error('Job enqueue failed', queueErr instanceof Error ? queueErr : new Error(String(queueErr)));
         }
+      }
+
+      // If the stub entry write or the enqueue itself failed (e.g. a DB
+      // hiccup), the job never entered the queue — tell the user instead
+      // of silently replying 200 with no entry, no job, and no feedback.
+      if (!enqueued) {
+        await sendTelegramMessage(
+          chatId,
+          `❌ Analisi fallita.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`,
+          token
+        ).catch(() => {});
       }
 
       reply.code(200).send('OK');
@@ -721,7 +747,10 @@ describe('tick', () => {
     await tick(state);
 
     expect(state.otherInFlight).toBe(3);
-    expect(claimNextOtherJob).toHaveBeenCalledTimes(4); // 3 successful claims + 1 empty to stop the loop
+    // The while condition is checked BEFORE each claim, so once otherInFlight
+    // reaches the cap the loop exits without an extra trailing claim call —
+    // it does not need to observe a null to know it's full.
+    expect(claimNextOtherJob).toHaveBeenCalledTimes(3);
   });
 });
 ```
@@ -812,9 +841,28 @@ async function dispatch(job: JobQueueRow, onSettle: () => void): Promise<void> {
     if (!res.ok) throw new Error(`analyze HTTP ${res.status}`);
     const result = (await res.json()) as AnalyzeResult;
     await markJobDone(job.id);
-    await sendResultToTelegram(job, result);
+    // Isolated from the try/catch above it: a Telegram delivery failure here
+    // must not re-trigger handleFailure and undo an already-successful job.
+    try {
+      await sendResultToTelegram(job, result);
+    } catch (notifyErr) {
+      log.error(
+        `Job ${job.id} succeeded but Telegram notification failed`,
+        notifyErr instanceof Error ? notifyErr : new Error(String(notifyErr))
+      );
+    }
   } catch (err) {
-    await handleFailure(job, err, log);
+    // dispatch() is invoked fire-and-forget (`void dispatch(...)`), so if
+    // handleFailure itself throws (e.g. DB unreachable while recording the
+    // failure), that must not become an unhandled promise rejection.
+    try {
+      await handleFailure(job, err, log);
+    } catch (failureErr) {
+      log.error(
+        `Job ${job.id} failure handling itself failed`,
+        failureErr instanceof Error ? failureErr : new Error(String(failureErr))
+      );
+    }
   } finally {
     onSettle();
   }
@@ -978,3 +1026,16 @@ Send two Instagram URLs back-to-back (same curl as Step 2, different URLs). Conf
 While a job is `processing`, kill the backend process (`Ctrl+C`) and restart it (`npm run dev`). Expected: the boot log shows `Requeued 1 job(s) stuck in 'processing'...`, and the `psql` query shows that job back to `status='queued'`, subsequently picked up again.
 
 This task has no commit — it's verification only. Once it passes, the feature is ready; production deploy (`touch .rebuild`) is a separate, explicit step for the user to trigger, not part of this plan.
+
+---
+
+## Post-implementation notes (final whole-branch review)
+
+**Task 6 was only partially run.** The local `soundreel-db` container's actual Postgres password has drifted from `backend/.env`'s `DB_PASSWORD` (pre-existing, unrelated to this feature — the container predates this work). The user didn't have the current password on hand, so the live boot → webhook → queue → worker → crash-recovery round trip was not executed. What was verified instead: the `job_queue` schema is intact via `docker exec` (bypasses app-level auth), and the full backend test suite (124/124) passes at the final commit. Recommended follow-up once the password drift is resolved: one boot smoke test covering the boot log's requeue line and one real webhook round trip.
+
+**Accepted limitation — IG retry does not engage for pipeline-level scrape failures.** `POST /api/analyze` returns HTTP 200 with `{ success: false, error }` for its own failures (`instaloader_download_failed`, `challenge_required`, etc. — see `backend/src/routes/analyze.ts`). Since `dispatch()` in `jobQueueWorker.ts` only treats a thrown `fetch`/non-2xx response as a failure, a `success:false` response is currently treated as a completed dispatch: the job is marked `done` and the user gets `formatAnalysisError`'s message immediately, with **no retry**. The 3-attempt `[60s,180s,420s]` backoff therefore only ever fires for transport-level failures (network errors, non-2xx `/api/analyze` responses), not for Instagram-specific scrape failures reported via `success:false` — which are the dominant real-world failure mode this feature was built to survive. This was raised explicitly during the final review and the user chose to keep the current behavior as-is rather than change `dispatch()` to also retry on `success:false`. Recorded here so it reads as a deliberate scope decision, not an oversight, if revisited later.
+
+**Other minor findings, accepted as low-risk / pre-existing-pattern, not changed:**
+- `markJobDone` itself throwing after a successful analyze isn't isolated the way the Telegram-notify failure now is — it still falls into `handleFailure` and could retry/fail an already-succeeded job. Low-risk because `/api/analyze` is idempotent by `sourceUrl` when `allowDuplicateUrls` is off (returns the cached completed entry); if that feature flag is enabled, a retry after this would trigger a full re-scrape. Not fixed — documented.
+- `igNextAllowedAt` resets to 0 on process restart, so a requeued IG job (via `requeueStuckJobs()`) dispatches immediately on boot rather than preserving the jitter window. Negligible for a single-user app that rarely restarts.
+- `enqueueJob` has no dedup against an already-queued job for the same `entry_id` — a duplicate Telegram delivery or repeated user paste could enqueue two rows for the same URL. Matches the old fire-and-forget code's existing duplication risk (not a regression); IG's serialization incidentally masks it there, other-platform jobs could still race on `findEntryByUrl` before either completes.
