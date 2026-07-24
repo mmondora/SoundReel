@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { pool } from '../utils/db';
-import { listEntries, getEntry, updateEntry, deleteEntry, deleteAllEntries } from '../utils/db';
+import { listEntries, getEntry, updateEntry, deleteEntry, deleteAllEntries, appendActionLog, createActionLog } from '../utils/db';
 import { addToPlaylist } from '../services/spotify';
+import { enrichWithOpenAI } from '../services/openaiEnrich';
+import { logError } from '../utils/logger';
 import type { Entry } from '../types';
 
 export function registerEntriesRoutes(app: FastifyInstance): void {
@@ -27,6 +29,35 @@ export function registerEntriesRoutes(app: FastifyInstance): void {
   app.delete('/api/entries', async () => {
     const deleted = await deleteAllEntries();
     return { success: true, deleted };
+  });
+
+  interface EnrichBody { entryId?: string; }
+
+  app.post<{ Body: EnrichBody }>('/api/entries/enrich', async (req, reply) => {
+    const { entryId } = req.body;
+    if (!entryId || typeof entryId !== 'string') {
+      return reply.code(400).send({ error: 'entryId is required' });
+    }
+
+    const entry = await getEntry(entryId);
+    if (!entry) {
+      return reply.code(404).send({ error: 'Not found' });
+    }
+
+    try {
+      const enrichment = await enrichWithOpenAI(entry.results, entry.caption);
+      await updateEntry(entryId, { 'results.enrichments': enrichment });
+      await appendActionLog(entryId, createActionLog('manual_enrich', {
+        category: enrichment.category,
+        items: enrichment.items.length,
+        hasVerdict: !!enrichment.verdict,
+      }));
+      return reply.send({ success: true, enrichment });
+    } catch (err) {
+      logError('manual enrich error', { entryId, err: String(err) });
+      await appendActionLog(entryId, createActionLog('manual_enrich_failed', { error: String(err) }));
+      return reply.code(500).send({ success: false, error: 'Enrichment failed' });
+    }
   });
 
   // SSE stream — broadcasts on Postgres NOTIFY
