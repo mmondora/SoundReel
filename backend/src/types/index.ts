@@ -58,6 +58,17 @@ export interface ExtractedLink {
   category?: ExtractedLinkCategory | null;
 }
 
+export type EnrichmentCategory = 'tech' | 'security' | 'claim' | 'generic';
+
+export type EnrichmentVerdictLabel =
+  | 'vero' | 'falso' | 'dubbio' | 'ai-generated' | 'phishing' | 'sicuro' | 'sospetto';
+
+export interface EnrichmentVerdict {
+  label: EnrichmentVerdictLabel;
+  confidence: number;
+  explanation: string;
+}
+
 export interface EnrichmentLink {
   url: string;
   title: string;
@@ -66,7 +77,14 @@ export interface EnrichmentLink {
 
 export interface EnrichmentItem {
   label: string;
+  explanation: string;
   links: EnrichmentLink[];
+}
+
+export interface EnrichmentResult {
+  category: EnrichmentCategory;
+  verdict?: EnrichmentVerdict;
+  items: EnrichmentItem[];
 }
 
 export interface EntryResults {
@@ -77,7 +95,7 @@ export interface EntryResults {
   tags: string[];
   summary: string | null;
   transcript?: string | null;
-  enrichments?: EnrichmentItem[];
+  enrichments?: EnrichmentResult;
   transcription?: string | null;
   visualContext?: string | null;
   overlayText?: string | null;

@@ -5,6 +5,7 @@ import { FilmItem } from './FilmItem';
 import { ActivityTimeline } from './ActivityTimeline';
 import { deleteEntry, retryEntry, enrichEntry } from '../services/api';
 import { useLanguage } from '../i18n';
+import { VERDICT_TONE } from '../utils/enrichmentVerdict';
 
 interface EntryInspectorProps {
   entry: Entry;
@@ -109,7 +110,7 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
   const hasNotes = (entry.results.notes?.length || 0) > 0;
   const hasLinks = (entry.results.links?.length || 0) > 0;
   const hasTags = (entry.results.tags?.length || 0) > 0;
-  const hasEnrichments = (entry.results.enrichments?.length || 0) > 0;
+  const hasEnrichments = !!entry.results.enrichments;
   const transcript = entry.results.transcript || entry.results.transcription || null;
   const hasTranscript = !!transcript;
 
@@ -317,9 +318,17 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
       {hasEnrichments && (
         <section className="inspector-section">
           <h3 className="inspector-section-title">{t.enrichmentsSection}</h3>
-          {entry.results.enrichments!.map((item, i) => (
+          {entry.results.enrichments!.verdict && (
+            <div className={`enrichment-verdict enrichment-verdict-${VERDICT_TONE[entry.results.enrichments!.verdict.label]}`}>
+              <span className="enrichment-verdict-label">{entry.results.enrichments!.verdict.label.toUpperCase()}</span>
+              <span className="enrichment-verdict-confidence">{entry.results.enrichments!.verdict.confidence}%</span>
+              <p className="enrichment-verdict-explanation">{entry.results.enrichments!.verdict.explanation}</p>
+            </div>
+          )}
+          {entry.results.enrichments!.items.map((item, i) => (
             <div key={i} className="enrichment-item">
               <span className="enrichment-label">{item.label}</span>
+              {item.explanation && <p className="enrichment-item-explanation">{item.explanation}</p>}
               <ul className="enrichment-links">
                 {item.links.map((link, li) => (
                   <li key={li} className="enrichment-link">

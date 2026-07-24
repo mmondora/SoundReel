@@ -745,15 +745,17 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           const openaiConfig = await getOpenAIConfig();
           if (openaiConfig.enabled && openaiConfig.apiKey) {
             const entryResults = { songs, films, notes, links, tags, summary: summary ?? null };
-            const enrichments = await enrichWithOpenAI(entryResults, captionForEnrich);
-            if (enrichments.length > 0) {
-              await updateEntry(entryId, { 'results.enrichments': enrichments });
+            const enrichment = await enrichWithOpenAI(entryResults, captionForEnrich);
+            if (enrichment.items.length > 0 || enrichment.verdict) {
+              await updateEntry(entryId, { 'results.enrichments': enrichment });
               await appendActionLog(entryId, createActionLog('auto_enriched', {
                 provider: 'openai',
-                items: enrichments.length,
-                links: enrichments.reduce((sum, i) => sum + i.links.length, 0),
+                category: enrichment.category,
+                items: enrichment.items.length,
+                links: enrichment.items.reduce((sum, i) => sum + i.links.length, 0),
+                hasVerdict: !!enrichment.verdict,
               }));
-              results.enrichments = enrichments;
+              results.enrichments = enrichment;
             }
           }
         } catch (enrichError) {

@@ -1,4 +1,4 @@
-import type { Entry, SearchResponse } from '../types';
+import type { Entry, SearchResponse, EnrichmentResult } from '../types';
 
 // When served from the same origin as the backend, relative paths work.
 // For local dev against a backend on :8080, set VITE_API_BASE_URL in .env.local.
@@ -62,13 +62,13 @@ export async function retryEntry(entryId: string, sourceUrl: string): Promise<An
   return analyzeUrl(sourceUrl);
 }
 
-export async function enrichEntry(entryId: string): Promise<{ success: boolean; enrichments: unknown[] }> {
+export async function enrichEntry(entryId: string): Promise<{ success: boolean; enrichment: EnrichmentResult }> {
   const res = await fetch(url('/api/entries/enrich'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ entryId }),
   });
-  return json<{ success: boolean; enrichments: unknown[] }>(res);
+  return json<{ success: boolean; enrichment: EnrichmentResult }>(res);
 }
 
 // --- SSE stream (real-time updates) ---

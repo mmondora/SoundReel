@@ -105,8 +105,8 @@ Se non trovi nulla, rispondi: { "songs": [], "films": [], "notes": [], "links": 
     updatedAt: new Date().toISOString()
   },
   enrichment: {
-    name: 'Enrichment (OpenAI Deep Search)',
-    description: 'Prompt per arricchire i risultati con link verificati dal web',
+    name: 'Enrichment contestuale (Arricchisci)',
+    description: 'Prompt che classifica il contenuto (tech/security/claim/generic) e produce arricchimento su misura, con verdict per sicurezza e fact-check',
     template: `Dato il seguente contenuto estratto da un post social:
 
 {{#each songs}}
@@ -118,6 +118,9 @@ Se non trovi nulla, rispondi: { "songs": [], "films": [], "notes": [], "links": 
 {{#each notes}}
 - {{category}}: {{text}}
 {{/each}}
+{{#each links}}
+- Link: {{url}}{{#if label}} ({{label}}){{/if}}
+{{/each}}
 {{#each tags}}
 - Tag: #{{this}}
 {{/each}}
@@ -125,26 +128,45 @@ Se non trovi nulla, rispondi: { "songs": [], "films": [], "notes": [], "links": 
 - Caption del post: "{{caption}}"
 {{/if}}
 
-Cerca nel web e trova link utili e verificati per ogni elemento rilevante (canzone, film, prodotto, brand, luogo, persona, evento menzionato).
-Per le canzoni: link ufficiali (video musicale, lyrics, pagina artista).
-Per i film: trailer, pagina Wikipedia o review.
-Per prodotti/brand: sito ufficiale, pagina prodotto.
-Per luoghi/eventi: sito ufficiale, mappa, info.
-Per persone: profilo ufficiale, Wikipedia.
+Prima di tutto CAPISCI di che tipo di contenuto si tratta, scegliendo UNA categoria tra:
 
-Rispondi SOLO con un JSON array valido, senza markdown, senza backtick, senza testo aggiuntivo.
+- "tech": il contenuto principale è un link a un repository GitHub, un progetto software, uno strumento per sviluppatori o documentazione tecnica.
+- "security": il contenuto riguarda un link, un dominio o un servizio la cui affidabilità/sicurezza è rilevante da valutare (link sospetti, shortener, offerte, richieste di credenziali, domini poco noti).
+- "claim": il contenuto afferma un fatto, una notizia, un evento straordinario o virale la cui veridicità va verificata (es. scoperte incredibili, notizie clamorose, leggende metropolitane).
+- "generic": nessuno dei casi sopra si applica — canzoni, film, prodotti, luoghi, persone menzionati senza bisogno di verifica di sicurezza o veridicità.
+
+Poi, IN BASE ALLA CATEGORIA scelta, produci il contenuto richiesto:
+
+- Se "tech": per ogni repository/progetto trovato, spiega cosa fa, con quali tecnologie è costruito, quanto è attivo/mantenuto, licenza se nota, e considerazioni tecniche utili. NON includere "verdict".
+- Se "security": valuta il/i link o domini coinvolti. Cerca segnali di phishing, scam, reputazione del dominio, età del dominio se determinabile. Includi "verdict" con "label" tra "sicuro" | "sospetto" | "phishing", "confidence" (0-100) e "explanation" chiara.
+- Se "claim": verifica l'affermazione cercando fonti attendibili sul web. Includi "verdict" con "label" tra "vero" | "falso" | "dubbio" | "ai-generated", "confidence" (0-100) e "explanation" che cita cosa hai trovato (o non trovato) a supporto.
+- Se "generic": cerca link utili e verificati per ogni elemento rilevante (canzone, film, prodotto, brand, luogo, persona, evento), come faresti oggi. NON includere "verdict".
+
+Per ogni elemento analizzato, in "items", includi sempre "label" (nome sintetico dell'elemento), "explanation" (2-3 frasi di considerazioni/dettagli), e "links" (URL verificati pertinenti, array vuoto se non applicabile).
+
+Rispondi SOLO con un JSON object valido, senza markdown, senza backtick, senza testo aggiuntivo.
 Formato:
-[
-  {
-    "label": "Nome dell'elemento",
-    "links": [
-      { "url": "https://...", "title": "Titolo del link", "snippet": "Breve descrizione" }
-    ]
-  }
-]
+{
+  "category": "tech" | "security" | "claim" | "generic",
+  "verdict": {
+    "label": "sicuro" | "sospetto" | "phishing" | "vero" | "falso" | "dubbio" | "ai-generated",
+    "confidence": 0-100,
+    "explanation": "..."
+  },
+  "items": [
+    {
+      "label": "Nome dell'elemento",
+      "explanation": "Considerazioni e dettagli",
+      "links": [
+        { "url": "https://...", "title": "Titolo del link", "snippet": "Breve descrizione" }
+      ]
+    }
+  ]
+}
 
-Se non trovi nulla di rilevante, rispondi con un array vuoto: []`,
-    variables: ['songs', 'films', 'notes', 'tags', 'caption'],
+Ometti completamente il campo "verdict" se la categoria è "tech" o "generic".
+Se non trovi nulla di rilevante, rispondi con: { "category": "generic", "items": [] }`,
+    variables: ['songs', 'films', 'notes', 'tags', 'links', 'caption'],
     updatedAt: new Date().toISOString()
   },
   mediaAnalysis: {
