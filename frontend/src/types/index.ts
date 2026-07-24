@@ -150,7 +150,6 @@ export interface SpotifyConfig {
 export interface FeaturesConfig {
   cobaltEnabled: boolean;
   allowDuplicateUrls: boolean;
-  autoEnrichEnabled: boolean;
   mediaAnalysisEnabled: boolean;
 }
 
