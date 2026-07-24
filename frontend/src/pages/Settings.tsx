@@ -64,7 +64,7 @@ export function Settings() {
         setFeaturesConfig(features);
       } catch (err) {
         console.error('Error loading features:', err);
-        setFeaturesConfig({ cobaltEnabled: false, allowDuplicateUrls: false, autoEnrichEnabled: false, mediaAnalysisEnabled: false, transcriptionEnabled: true, aiAnalysisEnabled: true, pageExtractionEnabled: true, shazamEnabled: true, multiSongScanEnabled: true, youtubeDirect: true, carouselStructuredExtraction: true });
+        setFeaturesConfig({ cobaltEnabled: false, allowDuplicateUrls: false, mediaAnalysisEnabled: false, transcriptionEnabled: true, aiAnalysisEnabled: true, pageExtractionEnabled: true, shazamEnabled: true, multiSongScanEnabled: true, youtubeDirect: true, carouselStructuredExtraction: true });
       }
 
       // Load OpenAI config
@@ -89,22 +89,6 @@ export function Settings() {
     try {
       const newValue = !featuresConfig.allowDuplicateUrls;
       const result = await updateFeatures({ allowDuplicateUrls: newValue });
-      setFeaturesConfig(result.config);
-    } catch (err) {
-      console.error('Error updating features:', err);
-      setError(t.errorSettings);
-    } finally {
-      setSavingFeatures(false);
-    }
-  }
-
-  async function handleToggleAutoEnrich() {
-    if (!featuresConfig) return;
-
-    setSavingFeatures(true);
-    try {
-      const newValue = !featuresConfig.autoEnrichEnabled;
-      const result = await updateFeatures({ autoEnrichEnabled: newValue });
       setFeaturesConfig(result.config);
     } catch (err) {
       console.error('Error updating features:', err);
@@ -341,22 +325,6 @@ export function Settings() {
                 type="checkbox"
                 checked={featuresConfig?.transcriptionEnabled ?? true}
                 onChange={() => handleToggleFeature('transcriptionEnabled')}
-                disabled={savingFeatures}
-              />
-              <span className="toggle-slider"></span>
-            </label>
-          </div>
-
-          <div className="feature-toggle" style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
-            <div className="feature-info">
-              <h3>{t.autoEnrich}</h3>
-              <p className="feature-description">{t.autoEnrichDescription}</p>
-            </div>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={featuresConfig?.autoEnrichEnabled ?? false}
-                onChange={handleToggleAutoEnrich}
                 disabled={savingFeatures}
               />
               <span className="toggle-slider"></span>

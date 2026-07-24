@@ -251,7 +251,6 @@ export async function updateSpotifyConfig(updates: Partial<SpotifyConfig>): Prom
 export interface FeaturesConfig {
   cobaltEnabled: boolean;
   allowDuplicateUrls: boolean;
-  autoEnrichEnabled: boolean;
   mediaAnalysisEnabled: boolean;
   transcriptionEnabled: boolean;
   aiAnalysisEnabled: boolean;
@@ -265,7 +264,6 @@ export interface FeaturesConfig {
 const DEFAULT_FEATURES: FeaturesConfig = {
   cobaltEnabled: false,
   allowDuplicateUrls: false,
-  autoEnrichEnabled: false,
   mediaAnalysisEnabled: false,
   transcriptionEnabled: true,
   aiAnalysisEnabled: true,

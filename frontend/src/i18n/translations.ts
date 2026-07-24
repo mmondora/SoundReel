@@ -173,8 +173,6 @@ export interface Translations {
   transcription: string;
   visualContext: string;
   overlayText: string;
-  autoEnrich: string;
-  autoEnrichDescription: string;
   mediaAnalysis: string;
   mediaAnalysisDescription: string;
   mediaAnalysisPrompt: string;
@@ -411,8 +409,6 @@ export const translations: Record<Language, Translations> = {
     transcription: 'Trascrizione',
     visualContext: 'Contesto visivo',
     overlayText: 'Testo nel video',
-    autoEnrich: 'Auto-enrichment',
-    autoEnrichDescription: 'Arricchisce automaticamente i risultati con link verificati dal web (OpenAI) al termine di ogni analisi.',
     mediaAnalysis: 'Analisi media avanzata',
     mediaAnalysisDescription: 'Scarica audio/video e li analizza con AI per trascrizione, riconoscimento scene e testo sovrapposto.',
     mediaAnalysisPrompt: 'Analisi Media',
@@ -648,8 +644,6 @@ export const translations: Record<Language, Translations> = {
     transcription: 'Transcription',
     visualContext: 'Visual context',
     overlayText: 'Text in video',
-    autoEnrich: 'Auto-enrichment',
-    autoEnrichDescription: 'Automatically enrich results with verified web links (OpenAI) after each analysis.',
     mediaAnalysis: 'Advanced media analysis',
     mediaAnalysisDescription: 'Downloads audio/video and analyzes them with AI for transcription, scene recognition, and overlay text.',
     mediaAnalysisPrompt: 'Media Analysis',

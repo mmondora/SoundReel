@@ -92,7 +92,6 @@ export function openEntryStream(onEvent: (event: EntryStreamEvent) => void, onEr
 export interface FeaturesConfig {
   cobaltEnabled: boolean;
   allowDuplicateUrls: boolean;
-  autoEnrichEnabled: boolean;
   mediaAnalysisEnabled: boolean;
   transcriptionEnabled: boolean;
   aiAnalysisEnabled: boolean;
