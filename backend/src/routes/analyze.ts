@@ -740,28 +740,26 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         addedToPlaylist: songs.filter((s) => s.addedToPlaylist).length,
       }));
 
-      if (featuresConfig.autoEnrichEnabled) {
-        try {
-          const openaiConfig = await getOpenAIConfig();
-          if (openaiConfig.enabled && openaiConfig.apiKey) {
-            const entryResults = { songs, films, notes, links, tags, summary: summary ?? null };
-            const enrichment = await enrichWithOpenAI(entryResults, captionForEnrich);
-            if (enrichment.items.length > 0 || enrichment.verdict) {
-              await updateEntry(entryId, { 'results.enrichments': enrichment });
-              await appendActionLog(entryId, createActionLog('auto_enriched', {
-                provider: 'openai',
-                category: enrichment.category,
-                items: enrichment.items.length,
-                links: enrichment.items.reduce((sum, i) => sum + i.links.length, 0),
-                hasVerdict: !!enrichment.verdict,
-              }));
-              results.enrichments = enrichment;
-            }
+      try {
+        const openaiConfig = await getOpenAIConfig();
+        if (openaiConfig.enabled && openaiConfig.apiKey) {
+          const entryResults = { songs, films, notes, links, tags, summary: summary ?? null };
+          const enrichment = await enrichWithOpenAI(entryResults, captionForEnrich);
+          if (enrichment.items.length > 0 || enrichment.verdict) {
+            await updateEntry(entryId, { 'results.enrichments': enrichment });
+            await appendActionLog(entryId, createActionLog('auto_enriched', {
+              provider: 'openai',
+              category: enrichment.category,
+              items: enrichment.items.length,
+              links: enrichment.items.reduce((sum, i) => sum + i.links.length, 0),
+              hasVerdict: !!enrichment.verdict,
+            }));
+            results.enrichments = enrichment;
           }
-        } catch (enrichError) {
-          log.warn('Auto-enrichment fallito', { error: String(enrichError) });
-          await appendActionLog(entryId, createActionLog('auto_enrich_failed', { error: String(enrichError) }));
         }
+      } catch (enrichError) {
+        log.warn('Auto-enrichment fallito', { error: String(enrichError) });
+        await appendActionLog(entryId, createActionLog('auto_enrich_failed', { error: String(enrichError) }));
       }
 
       // Fire-and-forget: detect and resolve music list in background.
