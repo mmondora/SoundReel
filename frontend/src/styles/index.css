@@ -612,6 +612,59 @@ body {
   cursor: not-allowed;
 }
 
+.enrichment-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.75rem;
+  border: 1px solid transparent;
+}
+
+.enrichment-verdict-safe {
+  background: rgba(52, 199, 89, 0.1);
+  border-color: rgba(52, 199, 89, 0.3);
+  color: #1f8a3d;
+}
+
+.enrichment-verdict-warning {
+  background: rgba(255, 204, 0, 0.12);
+  border-color: rgba(255, 204, 0, 0.35);
+  color: #8a6d00;
+}
+
+.enrichment-verdict-danger {
+  background: rgba(255, 59, 48, 0.1);
+  border-color: rgba(255, 59, 48, 0.35);
+  color: #c62828;
+}
+
+.enrichment-verdict-label {
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+}
+
+.enrichment-verdict-confidence {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.enrichment-verdict-explanation {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0;
+  opacity: 0.9;
+}
+
+.enrichment-item-explanation {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0.25rem 0 0.5rem;
+}
+
 /* Inspector placeholder */
 .inspector-placeholder {
   text-align: center;
