@@ -1,8 +1,46 @@
 # Spotify Playlist Control and Relevance Rule Design
 
 **Date:** 2026-07-25
-**Status:** Approved
+**Status:** Rejected — not implemented (see "Why this was abandoned")
 **Scope:** Let the user choose which Spotify playlist receives tracks (from the web UI or Telegram), and stop adding background music that the post never actually talks about.
+
+---
+
+## Why this was abandoned
+
+The integration was wired up end to end and verified as far as Spotify allows:
+the neutral callback host, the PKCE flow, the code exchange and token storage
+all work — `/api/spotify/status` reported `connected: true` with a valid token.
+
+Every API call then returned HTTP 403 with:
+
+> *Active premium subscription required for the owner of the app. When the
+> subscription status changes, it can take a few hours before requests are
+> allowed again.*
+
+Spotify requires the account that **owns the developer app** to hold an active
+Premium subscription before the Web API will serve any request — including
+`/v1/me` and plain search, which need no scopes. There is no code-side
+workaround.
+
+The user chose to drop the integration rather than take out a subscription for
+it. Songs keep the YouTube and SoundCloud search links the pipeline already
+generates, which need no account at all, and Spotify *links* found in posts are
+still forwarded to Spooty as before.
+
+Cleanup applied: the leaked client credentials were blanked from `.env` and the
+stored OAuth tokens deleted, so the pipeline skips Spotify instead of
+collecting a 403 per detected song.
+
+**If this is ever revived**, the design below still holds; only the account
+problem needs solving first (Premium on the owning account, or recreating the
+app under one that has it — only the client id/secret would change).
+
+The relevance rule in particular is worth keeping in mind: `Song.source`
+already distinguishes a track the content *talks about* (`ai_analysis`) from
+the background audio Instagram attaches (`audio_fingerprint`), which is the
+same signal that revealed 128 entries whose failed analysis was masked by a
+stray song.
 
 ---
 
