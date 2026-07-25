@@ -547,6 +547,22 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       if (aiResponse.usageMetadata) aiAnalyzedDetails.tokenUsage = aiResponse.usageMetadata;
       await appendActionLog(entryId, createActionLog('ai_analyzed', aiAnalyzedDetails));
 
+      if (aiResponse.fallback) {
+        const fb = aiResponse.fallback;
+        await appendActionLog(entryId, createActionLog('claude_fallback', {
+          status: fb.status,
+          reason: fb.reason,
+          model: fb.model,
+          durationMs: fb.durationMs,
+          recovered: {
+            songs: aiResult.songs.length,
+            films: aiResult.films.length,
+            notes: aiResult.notes.length,
+            hasSummary: !!aiResult.summary,
+          },
+        }));
+      }
+
       const merged = mergeResults(audioResult, aiResult);
 
       // Merge carousel slide songs into the result set

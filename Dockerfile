@@ -41,6 +41,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
   && rm -rf /var/lib/apt/lists/*
 
+# Claude Code CLI: content-analysis fallback when the local Ollama model
+# returns nothing (see services/claudeFallback.ts)
+RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force
+
 # Install prod deps only
 COPY backend/package.json backend/package-lock.json* ./
 RUN npm install --omit=dev --no-fund --no-audit && npm cache clean --force
