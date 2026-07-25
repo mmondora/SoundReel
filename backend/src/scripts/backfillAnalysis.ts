@@ -62,15 +62,21 @@ function sourceTextLength(input: AiAnalysisInput): number {
 }
 
 async function fetchEmptyEntries(limit: number | null): Promise<Row[]> {
-  // "Empty" mirrors isEmptyAnalysis(): tags/links alone do not count as success.
+  // Mirrors isEmptyAnalysis(): tags/links do not count as success, and neither
+  // does a song identified purely from the audio track — Instagram attaches a
+  // background song to most posts, so counting it as success hid 128 failed
+  // analyses from this very script.
   const { rows } = await pool.query<Row>(
     `SELECT id, caption, results
        FROM entries
       WHERE status = 'completed'
         AND COALESCE(results->>'summary', '') = ''
-        AND COALESCE(jsonb_array_length(results->'songs'), 0) = 0
         AND COALESCE(jsonb_array_length(results->'films'), 0) = 0
         AND COALESCE(jsonb_array_length(results->'notes'), 0) = 0
+        AND NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements(COALESCE(results->'songs', '[]'::jsonb)) AS s
+           WHERE s->>'source' IS DISTINCT FROM 'audio_fingerprint'
+        )
       ORDER BY created_at DESC
       ${limit ? 'LIMIT ' + Number(limit) : ''}`
   );
@@ -169,7 +175,17 @@ async function main(): Promise<void> {
       }
 
       const films = await enrichFilms(parsed.films);
-      const songs = await enrichSongs(parsed.songs);
+      const extractedSongs = await enrichSongs(parsed.songs);
+
+      // The audio pipeline legitimately identified the background track from
+      // the audio itself; a text re-analysis knows nothing about it and would
+      // wipe it out if its songs simply replaced the stored array.
+      const audioSongs = (row.results.songs ?? []).filter((s) => s.source === 'audio_fingerprint');
+      const seen = new Set(audioSongs.map((s) => `${s.artist}|${s.title}`.toLowerCase()));
+      const songs = [
+        ...audioSongs,
+        ...extractedSongs.filter((s) => !seen.has(`${s.artist}|${s.title}`.toLowerCase())),
+      ];
 
       // Merge, never clobber: keep whatever the original run did manage to store
       // (tags, links, transcript, OCR) and fill in only what was missing.

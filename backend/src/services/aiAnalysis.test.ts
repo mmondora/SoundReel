@@ -5,7 +5,7 @@ vi.mock('./claudeFallback', () => ({ runClaudePrompt: vi.fn(), logFallbackOutcom
 vi.mock('./promptLoader', () => ({ getPrompt: vi.fn(), renderTemplate: vi.fn() }));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn() }));
 
-import { analyzeWithAi } from './aiAnalysis';
+import { analyzeWithAi, isEmptyAnalysis } from './aiAnalysis';
 import { generateText } from './ollamaClient';
 import { runClaudePrompt } from './claudeFallback';
 import { getPrompt, renderTemplate } from './promptLoader';
@@ -318,5 +318,37 @@ describe('analyzeWithAi — placeholder junk filtering', () => {
 
     expect(result.tags).toEqual(['#real']);
     expect(result.summary).toBeNull();
+  });
+});
+
+describe('isEmptyAnalysis', () => {
+  const base = {
+    songs: [], films: [], notes: [], links: [], tags: [],
+    summary: null, transcription: null, visualContext: null, overlayText: null,
+  };
+  const track = { title: 'T', artist: 'A', album: null };
+
+  it('treats a null result as empty', () => {
+    expect(isEmptyAnalysis(null)).toBe(true);
+  });
+
+  it('treats a bare result as empty', () => {
+    expect(isEmptyAnalysis(base)).toBe(true);
+  });
+
+  // Every song reaching here is model-derived; the audio-pipeline track is
+  // merged in later and is excluded by the backfill query instead.
+  it('is not empty when the model derived a song', () => {
+    expect(isEmptyAnalysis({ ...base, songs: [track] })).toBe(false);
+  });
+
+  it('is not empty with a summary, a film or a note', () => {
+    expect(isEmptyAnalysis({ ...base, summary: 'x' })).toBe(false);
+    expect(isEmptyAnalysis({ ...base, films: [{ title: 'F', director: null, year: null }] })).toBe(false);
+    expect(isEmptyAnalysis({ ...base, notes: [{ text: 'n', category: 'other' }] })).toBe(false);
+  });
+
+  it('is still empty with only tags and links', () => {
+    expect(isEmptyAnalysis({ ...base, tags: ['#x'], links: [{ url: 'https://a.com', label: null }] })).toBe(true);
   });
 });

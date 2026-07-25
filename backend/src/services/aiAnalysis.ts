@@ -120,8 +120,17 @@ export function parseAnalysisResponse(
 }
 
 /**
+ * Did the model actually understand the content?
+ *
  * Tags and links alone do not count: an entry with only hashtags scraped and no
  * summary is exactly the failure mode the Claude cascade exists to fix.
+ *
+ * This judges the model's own output, where every song is by definition
+ * model-derived — the background track Instagram attaches is resolved by the
+ * audio pipeline and merged in later, so it never appears here. Repair passes
+ * that read *stored* results must exclude `source: 'audio_fingerprint'`
+ * themselves (see the query in scripts/backfillAnalysis.ts); treating a stray
+ * background track as comprehension hid 128 failed analyses from that script.
  */
 export function isEmptyAnalysis(r: MediaAiAnalysisResult | null): boolean {
   if (!r) return true;
