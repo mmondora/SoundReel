@@ -124,6 +124,45 @@ async function enrichSongs(raw: Array<{ title: string; artist: string; album: st
   return songs;
 }
 
+/** Append items absent from `existing`, comparing on a caller-supplied key. */
+function addNew<T>(existing: T[], incoming: T[], key: (item: T) => string): T[] {
+  const seen = new Set(existing.map(key));
+  return [...existing, ...incoming.filter((item) => !seen.has(key(item)))];
+}
+
+/**
+ * Merge re-analysis output into a stored result **without ever removing
+ * anything**. A repair pass must only ever add: it re-reads text and knows
+ * nothing about what the original run learned from the audio track, the media
+ * files or a manual edit, so replacing an array would silently destroy data
+ * this script cannot reconstruct.
+ *
+ * Every field is therefore either a union with what is already stored, or
+ * fill-only-if-absent. Nothing is overwritten.
+ */
+export function mergeAdditive(
+  existing: EntryResults,
+  incoming: {
+    songs: Song[];
+    films: Film[];
+    notes: EntryResults['notes'];
+    tags: string[];
+    links: EntryResults['links'];
+    summary: string | null;
+  }
+): EntryResults {
+  return {
+    ...existing,
+    songs: addNew(existing.songs ?? [], incoming.songs, (s) => `${s.artist}|${s.title}`.toLowerCase()),
+    films: addNew(existing.films ?? [], incoming.films, (f) => `${f.title}|${f.year ?? ''}`.toLowerCase()),
+    notes: addNew(existing.notes ?? [], incoming.notes, (n) => n.text.trim().toLowerCase()),
+    tags: addNew(existing.tags ?? [], incoming.tags, (t) => t.trim().toLowerCase()),
+    links: addNew(existing.links ?? [], incoming.links, (l) => l.url),
+    // Fill only when missing — never replace a summary that already exists.
+    summary: existing.summary || incoming.summary,
+  };
+}
+
 async function main(): Promise<void> {
   const { dryRun, limit } = parseArgs();
   const model = process.env.CLAUDE_FALLBACK_MODEL || '(default)';
@@ -177,41 +216,34 @@ async function main(): Promise<void> {
       const films = await enrichFilms(parsed.films);
       const extractedSongs = await enrichSongs(parsed.songs);
 
-      // The audio pipeline legitimately identified the background track from
-      // the audio itself; a text re-analysis knows nothing about it and would
-      // wipe it out if its songs simply replaced the stored array.
-      const audioSongs = (row.results.songs ?? []).filter((s) => s.source === 'audio_fingerprint');
-      const seen = new Set(audioSongs.map((s) => `${s.artist}|${s.title}`.toLowerCase()));
-      const songs = [
-        ...audioSongs,
-        ...extractedSongs.filter((s) => !seen.has(`${s.artist}|${s.title}`.toLowerCase())),
-      ];
-
-      // Merge, never clobber: keep whatever the original run did manage to store
-      // (tags, links, transcript, OCR) and fill in only what was missing.
-      const merged: EntryResults = {
-        ...row.results,
-        songs,
+      const merged = mergeAdditive(row.results, {
+        songs: extractedSongs,
         films,
         notes: parsed.notes,
+        tags: parsed.tags,
+        links: parsed.links,
         summary: parsed.summary,
-        tags: parsed.tags.length ? parsed.tags : row.results.tags,
-        links: parsed.links.length ? parsed.links : row.results.links,
-      };
+      });
 
       await updateEntry(row.id, { results: merged as unknown as Entry['results'] });
       await appendActionLog(row.id, createActionLog('backfill_analysis', {
         status: 'ok',
         model: res.model,
         durationMs: res.durationMs,
-        recovered: {
-          songs: songs.length, films: films.length,
-          notes: parsed.notes.length, hasSummary: !!parsed.summary,
+        // Report what this pass added, not the entry totals.
+        added: {
+          songs: merged.songs.length - (row.results.songs?.length ?? 0),
+          films: merged.films.length - (row.results.films?.length ?? 0),
+          notes: merged.notes.length - (row.results.notes?.length ?? 0),
+          hasSummary: !!merged.summary,
         },
       }));
 
       recovered++;
-      console.log(`[${n}] ${row.id} — OK: ${songs.length} songs, ${films.length} films, ${parsed.notes.length} notes${parsed.summary ? ', summary' : ''}`);
+      const addedSongs = merged.songs.length - (row.results.songs?.length ?? 0);
+      const addedFilms = merged.films.length - (row.results.films?.length ?? 0);
+      const addedNotes = merged.notes.length - (row.results.notes?.length ?? 0);
+      console.log(`[${n}] ${row.id} — OK: +${addedSongs} songs, +${addedFilms} films, +${addedNotes} notes${merged.summary ? ', summary' : ''}`);
     } catch (err) {
       failed++;
       console.log(`[${n}] ${row.id} — ERRORE: ${String(err)}`);
@@ -224,7 +256,11 @@ async function main(): Promise<void> {
   await pool.end();
 }
 
-main().catch((err) => {
-  console.error('[backfill] errore fatale', err);
-  process.exit(1);
-});
+// Only run when invoked directly; importing this module (e.g. to unit-test
+// mergeAdditive) must not start a backfill.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('[backfill] errore fatale', err);
+    process.exit(1);
+  });
+}
