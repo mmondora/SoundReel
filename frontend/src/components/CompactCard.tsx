@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Entry } from '../types';
 import type { Translations } from '../i18n/translations';
 import { useLanguage, interpolate } from '../i18n';
+import { VERDICT_TONE, VERDICT_ICON } from '../utils/enrichmentVerdict';
 
 interface CompactCardProps {
   entry: Entry;
@@ -59,6 +60,8 @@ export function CompactCard({ entry, selected, onSelect }: CompactCardProps) {
   const linksCount = entry.results.links?.length || 0;
   const hasTranscript = !!(entry.results.transcript || entry.results.transcription);
 
+  const verdict = entry.results.enrichments?.verdict;
+
   const summaryRaw = entry.results.summary?.trim();
   const previewText = summaryRaw
     ? (summaryRaw.length > 100 ? summaryRaw.slice(0, 100).trimEnd() + '…' : summaryRaw)
@@ -99,6 +102,14 @@ export function CompactCard({ entry, selected, onSelect }: CompactCardProps) {
             {hasTranscript && <span className="compact-count">💬</span>}
           </div>
           <span className={`compact-status ${entry.status}`}>
+            {verdict && (
+              <span
+                className={`compact-verdict-icon enrichment-verdict-${VERDICT_TONE[verdict.label]}`}
+                title={`${verdict.label.toUpperCase()} (${verdict.confidence}%) — ${verdict.explanation}`}
+              >
+                {VERDICT_ICON[verdict.label]}
+              </span>
+            )}
             {entry.status === 'processing' && <span className="compact-spinner" />}
             {entry.status === 'completed' && '●'}
             {entry.status === 'error' && '●'}

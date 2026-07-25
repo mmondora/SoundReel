@@ -14,6 +14,8 @@ export interface JournalFilter {
   platform?: string | null;
   channel?: string | null;
   user?: string | null;
+  category?: string | null;
+  verdict?: string | null;
 }
 
 export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter) {
@@ -53,17 +55,21 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter)
   const filterPlatform = filter?.platform ?? null;
   const filterChannel = filter?.channel ?? null;
   const filterUser = filter?.user ?? null;
+  const filterCategory = filter?.category ?? null;
+  const filterVerdict = filter?.verdict ?? null;
 
   // Reset to page 1 when filter changes
-  useEffect(() => { setCurrentPage(1); }, [filterPlatform, filterChannel, filterUser]);
+  useEffect(() => { setCurrentPage(1); }, [filterPlatform, filterChannel, filterUser, filterCategory, filterVerdict]);
 
   const filteredEntries = useMemo(() => {
     let result = allEntries;
     if (filterPlatform) result = result.filter(e => e.sourcePlatform === filterPlatform);
     if (filterChannel) result = result.filter(e => e.inputChannel === filterChannel);
     if (filterUser) result = result.filter(e => e.inputUser === filterUser);
+    if (filterCategory) result = result.filter(e => e.results.enrichments?.category === filterCategory);
+    if (filterVerdict) result = result.filter(e => e.results.enrichments?.verdict?.label === filterVerdict);
     return result;
-  }, [allEntries, filterPlatform, filterChannel, filterUser]);
+  }, [allEntries, filterPlatform, filterChannel, filterUser, filterCategory, filterVerdict]);
 
   const availablePlatforms = useMemo(() => {
     const seen = new Map<string, number>();
@@ -91,6 +97,28 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter)
     return Array.from(seen.entries())
       .sort((a, b) => b[1] - a[1])
       .map(([user, count]) => ({ user, count }));
+  }, [allEntries]);
+
+  const availableCategories = useMemo(() => {
+    const seen = new Map<string, number>();
+    for (const e of allEntries) {
+      const category = e.results.enrichments?.category;
+      if (category) seen.set(category, (seen.get(category) ?? 0) + 1);
+    }
+    return Array.from(seen.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([category, count]) => ({ category, count }));
+  }, [allEntries]);
+
+  const availableVerdicts = useMemo(() => {
+    const seen = new Map<string, number>();
+    for (const e of allEntries) {
+      const label = e.results.enrichments?.verdict?.label;
+      if (label) seen.set(label, (seen.get(label) ?? 0) + 1);
+    }
+    return Array.from(seen.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([verdict, count]) => ({ verdict, count }));
   }, [allEntries]);
 
   const totalCount = filteredEntries.length;
@@ -125,6 +153,8 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter)
     availablePlatforms,
     availableChannels,
     availableUsers,
+    availableCategories,
+    availableVerdicts,
     filteredCount: totalCount,
   };
 }
