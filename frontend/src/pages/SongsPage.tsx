@@ -43,8 +43,17 @@ function getSourceBadge(source: Song['source']): string {
   }
 }
 
-function dedupeKey(song: Song): string {
-  return `${song.artist.trim().toLowerCase()}|${song.title.trim().toLowerCase()}`;
+/**
+ * The Song type declares artist/title as strings, but extracted data can carry
+ * nulls (a track recognised by title with no artist attached), so every read
+ * here is defensive — one null used to take the whole page down.
+ */
+export function artistOf(song: Song): string {
+  return song.artist?.trim() || '';
+}
+
+export function dedupeKey(song: Song): string {
+  return `${artistOf(song).toLowerCase()}|${(song.title?.trim() || '').toLowerCase()}`;
 }
 
 export function SongsPage() {
@@ -105,11 +114,11 @@ export function SongsPage() {
     switch (sort) {
       case 'artist':
         return list.sort((a, b) =>
-          a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title));
+          artistOf(a).localeCompare(artistOf(b)) || (a.title || '').localeCompare(b.title || ''));
       case 'title':
-        return list.sort((a, b) => a.title.localeCompare(b.title));
+        return list.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
       case 'frequency':
-        return list.sort((a, b) => b.count - a.count || a.artist.localeCompare(b.artist));
+        return list.sort((a, b) => b.count - a.count || artistOf(a).localeCompare(artistOf(b)));
       case 'recent':
       default:
         return list.sort((a, b) => (b.lastSeen?.getTime() ?? 0) - (a.lastSeen?.getTime() ?? 0));
@@ -128,7 +137,7 @@ export function SongsPage() {
           {song.count > 1 && <span className="song-count-badge">×{song.count}</span>}
         </div>
         <div className="list-item-subtitle">
-          {song.artist}
+          {artistOf(song) || t.unknownArtist}
           {song.album && <span className="list-item-muted"> — {song.album}</span>}
         </div>
         <div className="list-item-badges">
@@ -168,8 +177,9 @@ export function SongsPage() {
     const blocks: Array<{ artist: string; items: PlaylistSong[] }> = [];
     for (const song of pageItems) {
       const last = blocks[blocks.length - 1];
-      if (last && last.artist === song.artist) last.items.push(song);
-      else blocks.push({ artist: song.artist, items: [song] });
+      const artist = artistOf(song) || t.unknownArtist;
+      if (last && last.artist === artist) last.items.push(song);
+      else blocks.push({ artist, items: [song] });
     }
 
     return (

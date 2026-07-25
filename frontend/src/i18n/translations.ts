@@ -233,6 +233,7 @@ export interface Translations {
   sortArtist: string;
   sortTitle: string;
   sortFrequency: string;
+  unknownArtist: string;
   openEntry: string;
   today: string;
   noSongsYet: string;
@@ -474,6 +475,7 @@ export const translations: Record<Language, Translations> = {
     sortArtist: 'Artista A-Z',
     sortTitle: 'Titolo A-Z',
     sortFrequency: 'Più frequenti',
+    unknownArtist: 'Artista sconosciuto',
     openEntry: 'Apri →',
     today: 'Oggi',
     noSongsYet: 'Nessuna canzone trovata',
@@ -714,6 +716,7 @@ export const translations: Record<Language, Translations> = {
     sortArtist: 'Artist A-Z',
     sortTitle: 'Title A-Z',
     sortFrequency: 'Most frequent',
+    unknownArtist: 'Unknown artist',
     openEntry: 'Open →',
     today: 'Today',
     noSongsYet: 'No songs found',
