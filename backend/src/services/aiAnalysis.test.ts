@@ -243,3 +243,80 @@ describe('analyzeWithAi — Claude fallback cascade', () => {
     expect(res.fallback?.status).toBe('ok');
   });
 });
+
+describe('analyzeWithAi — placeholder junk filtering', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getPrompt).mockResolvedValue({
+      name: 'x', description: 'x', template: 'TPL', variables: [], updatedAt: '2026-01-01',
+    });
+    vi.mocked(renderTemplate).mockReturnValue('rendered prompt');
+    vi.mocked(runClaudePrompt).mockResolvedValue(DISABLED_FALLBACK);
+  });
+
+  it('drops a song where the model echoed the template placeholders', async () => {
+    vi.mocked(generateText).mockResolvedValue({
+      text: JSON.stringify({
+        songs: [
+          { title: '...', artist: '...', album: '... o null' },
+          { title: 'Real Song', artist: 'Real Artist', album: null },
+        ],
+        films: [], notes: [], links: [], tags: [], summary: 'ok',
+      }),
+      usageMetadata: null,
+    });
+
+    const { result } = await analyzeWithAi({ ...BASE_INPUT, caption: 'x'.repeat(60) });
+
+    expect(result.songs).toHaveLength(1);
+    expect(result.songs[0].title).toBe('Real Song');
+  });
+
+  it('keeps short but legitimate titles', async () => {
+    vi.mocked(generateText).mockResolvedValue({
+      text: JSON.stringify({
+        songs: [{ title: 'Ink', artist: 'Coldplay', album: null }],
+        films: [{ title: 'HW', director: null, year: null }],
+        notes: [{ text: 'o3', category: 'other' }],
+        links: [], tags: [], summary: 'ok',
+      }),
+      usageMetadata: null,
+    });
+
+    const { result } = await analyzeWithAi({ ...BASE_INPUT, caption: 'x'.repeat(60) });
+
+    expect(result.songs).toHaveLength(1);
+    expect(result.films).toHaveLength(1);
+    expect(result.notes).toHaveLength(1);
+  });
+
+  it('blanks a placeholder artist without dropping the song', async () => {
+    vi.mocked(generateText).mockResolvedValue({
+      text: JSON.stringify({
+        songs: [{ title: 'UFO Robot', artist: '...', album: null }],
+        films: [], notes: [], links: [], tags: [], summary: 'ok',
+      }),
+      usageMetadata: null,
+    });
+
+    const { result } = await analyzeWithAi({ ...BASE_INPUT, caption: 'x'.repeat(60) });
+
+    expect(result.songs).toHaveLength(1);
+    expect(result.songs[0].artist).toBe('');
+  });
+
+  it('drops placeholder tags and summary', async () => {
+    vi.mocked(generateText).mockResolvedValue({
+      text: JSON.stringify({
+        songs: [], films: [], notes: [{ text: 'real note', category: 'other' }],
+        links: [], tags: ['#real', '...', 'null'], summary: '...',
+      }),
+      usageMetadata: null,
+    });
+
+    const { result } = await analyzeWithAi({ ...BASE_INPUT, caption: 'x'.repeat(60) });
+
+    expect(result.tags).toEqual(['#real']);
+    expect(result.summary).toBeNull();
+  });
+});

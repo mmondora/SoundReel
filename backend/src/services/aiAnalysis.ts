@@ -1,5 +1,6 @@
 import { generateText, OllamaImage } from './ollamaClient';
 import { runClaudePrompt, logFallbackOutcome, type ClaudeFallbackResult } from './claudeFallback';
+import { isRealValue } from './placeholderFilter';
 import { logInfo, logWarning, logError } from '../utils/logger';
 import { getPrompt, renderTemplate } from './promptLoader';
 import type { AiAnalysisResult, MediaAiAnalysisResult, AiUsageMetadata } from '../types';
@@ -90,13 +91,28 @@ export function parseAnalysisResponse(
       typeof l?.url === 'string' && sourceText.includes(l.url)
   );
 
+  // Drop items where the model echoed the prompt's own JSON skeleton instead of
+  // filling it in (a song of {title: "...", artist: "..."} reached production
+  // this way and polluted the songs page).
+  const songs = (parsed.songs || []).filter((s) => isRealValue(s?.title));
+  const films = (parsed.films || []).filter((f) => isRealValue(f?.title));
+  const notes = (parsed.notes || []).filter((n) => isRealValue(n?.text));
+
   return {
-    songs: parsed.songs || [],
-    films: parsed.films || [],
-    notes: parsed.notes || [],
+    songs: songs.map((s) => ({
+      ...s,
+      artist: isRealValue(s.artist) ? s.artist : '',
+      album: isRealValue(s.album) ? s.album : null,
+    })),
+    films: films.map((f) => ({
+      ...f,
+      director: isRealValue(f.director) ? f.director : null,
+      year: isRealValue(f.year) ? f.year : null,
+    })),
+    notes,
     links: verifiedLinks,
-    tags: parsed.tags || [],
-    summary: parsed.summary ?? null,
+    tags: (parsed.tags || []).filter(isRealValue),
+    summary: isRealValue(parsed.summary) ? parsed.summary : null,
     transcription: parsed.transcription ?? null,
     visualContext: parsed.visualContext ?? input.visualContext ?? null,
     overlayText: parsed.overlayText ?? input.ocrText ?? null,
