@@ -99,11 +99,17 @@ export async function analyzeWithAi(input: AiAnalysisInput): Promise<AiAnalysisR
       return { result: EMPTY_RESULT, usageMetadata: response.usageMetadata };
     }
 
+    const sourceText = [input.caption, input.ocrText, input.transcript].filter(Boolean).join(' ');
+    const verifiedLinks = (parsed.links || []).filter(
+      (l): l is { url: string; label: string | null } =>
+        typeof l?.url === 'string' && sourceText.includes(l.url)
+    );
+
     const baseResult: MediaAiAnalysisResult = {
       songs: parsed.songs || [],
       films: parsed.films || [],
       notes: parsed.notes || [],
-      links: parsed.links || [],
+      links: verifiedLinks,
       tags: parsed.tags || [],
       summary: parsed.summary ?? null,
       transcription: parsed.transcription ?? null,

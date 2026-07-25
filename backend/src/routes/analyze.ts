@@ -742,7 +742,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
       try {
         const openaiConfig = await getOpenAIConfig();
-        if (openaiConfig.enabled && openaiConfig.apiKey) {
+        if (openaiConfig.apiKey) {
           const entryResults = { songs, films, notes, links, tags, summary: summary ?? null };
           const enrichment = await enrichWithOpenAI(entryResults, captionForEnrich);
           if (enrichment.items.length > 0 || enrichment.verdict) {
