@@ -10,7 +10,15 @@ import { useSearch } from '../hooks/useSearch';
 import { useAnalyze } from '../hooks/useAnalyze';
 import { useLanguage } from '../i18n';
 import { getEntry } from '../services/api';
-import type { Entry, SearchResult } from '../types';
+import { CATEGORY_ICON, VERDICT_ICON } from '../utils/enrichmentVerdict';
+import type { Entry, SearchResult, EnrichmentCategory, EnrichmentVerdictLabel } from '../types';
+
+const CATEGORY_LABEL: Record<EnrichmentCategory, string> = {
+  tech: 'Tech',
+  security: 'Sicurezza',
+  claim: 'Claim',
+  generic: 'Generico',
+};
 
 const PLATFORM_LABEL: Record<string, string> = {
   instagram: 'IG',
@@ -146,12 +154,17 @@ export function Home() {
   const [filterPlatform, setFilterPlatform] = useState<string | null>(null);
   const [filterChannel, setFilterChannel] = useState<string | null>(null);
   const [filterUser, setFilterUser] = useState<string | null>(null);
+  const [filterCategory, setFilterCategory] = useState<string | null>(null);
+  const [filterVerdict, setFilterVerdict] = useState<string | null>(null);
 
   const {
     entries, stats, loading: journalLoading,
     currentPage, totalPages, nextPage, prevPage,
-    availablePlatforms, availableChannels, availableUsers, filteredCount,
-  } = useJournal(20, { platform: filterPlatform, channel: filterChannel, user: filterUser });
+    availablePlatforms, availableChannels, availableUsers, availableCategories, availableVerdicts, filteredCount,
+  } = useJournal(20, {
+    platform: filterPlatform, channel: filterChannel, user: filterUser,
+    category: filterCategory, verdict: filterVerdict,
+  });
   const { analyze, loading: analyzeLoading, error, successStatus, clearError } = useAnalyze();
   const { t, language } = useLanguage();
   const [searchParams] = useSearchParams();
@@ -163,11 +176,16 @@ export function Home() {
 
   const { results: searchResults, expandedTerms, loading: searchLoading } = useSearch(q);
 
-  const hasFilter = !!(filterPlatform || filterChannel || filterUser);
-  const clearFilters = useCallback(() => { setFilterPlatform(null); setFilterChannel(null); setFilterUser(null); }, []);
+  const hasFilter = !!(filterPlatform || filterChannel || filterUser || filterCategory || filterVerdict);
+  const clearFilters = useCallback(() => {
+    setFilterPlatform(null); setFilterChannel(null); setFilterUser(null);
+    setFilterCategory(null); setFilterVerdict(null);
+  }, []);
   const togglePlatform = useCallback((p: string) => setFilterPlatform(prev => prev === p ? null : p), []);
   const toggleChannel = useCallback((ch: string) => setFilterChannel(prev => prev === ch ? null : ch), []);
   const toggleUser = useCallback((u: string) => setFilterUser(prev => prev === u ? null : u), []);
+  const toggleCategory = useCallback((c: string) => setFilterCategory(prev => prev === c ? null : c), []);
+  const toggleVerdict = useCallback((v: string) => setFilterVerdict(prev => prev === v ? null : v), []);
 
   // Auto-select from query param ?entry=id
   useEffect(() => {
@@ -247,7 +265,7 @@ export function Home() {
         />
       </div>
 
-      {!isSearchMode && (availablePlatforms.length > 1 || availableChannels.length > 1) && (
+      {!isSearchMode && (availablePlatforms.length > 1 || availableChannels.length > 1 || availableCategories.length > 0 || availableVerdicts.length > 0) && (
         <div className="journal-filter-bar">
           <button
             className={`filter-chip ${!hasFilter ? 'active' : ''}`}
@@ -291,6 +309,36 @@ export function Home() {
                   onClick={() => toggleUser(user)}
                 >
                   {user}
+                  <span className="filter-chip-count"> {count}</span>
+                </button>
+              ))}
+            </>
+          )}
+          {availableCategories.length > 0 && (
+            <>
+              <span className="filter-divider" />
+              {availableCategories.map(({ category, count }) => (
+                <button
+                  key={category}
+                  className={`filter-chip ${filterCategory === category ? 'active' : ''}`}
+                  onClick={() => toggleCategory(category)}
+                >
+                  {CATEGORY_ICON[category as EnrichmentCategory] ?? ''} {CATEGORY_LABEL[category as EnrichmentCategory] ?? category}
+                  <span className="filter-chip-count"> {count}</span>
+                </button>
+              ))}
+            </>
+          )}
+          {availableVerdicts.length > 0 && (
+            <>
+              <span className="filter-divider" />
+              {availableVerdicts.map(({ verdict, count }) => (
+                <button
+                  key={verdict}
+                  className={`filter-chip ${filterVerdict === verdict ? 'active' : ''}`}
+                  onClick={() => toggleVerdict(verdict)}
+                >
+                  {VERDICT_ICON[verdict as EnrichmentVerdictLabel]} {verdict.toUpperCase()}
                   <span className="filter-chip-count"> {count}</span>
                 </button>
               ))}
