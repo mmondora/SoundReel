@@ -5,7 +5,7 @@ import { FilmItem } from './FilmItem';
 import { ActivityTimeline } from './ActivityTimeline';
 import { deleteEntry, retryEntry, enrichEntry } from '../services/api';
 import { useLanguage } from '../i18n';
-import { VERDICT_TONE } from '../utils/enrichmentVerdict';
+import { VERDICT_TONE, VERDICT_ICON } from '../utils/enrichmentVerdict';
 
 interface EntryInspectorProps {
   entry: Entry;
@@ -111,6 +111,7 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
   const hasLinks = (entry.results.links?.length || 0) > 0;
   const hasTags = (entry.results.tags?.length || 0) > 0;
   const hasEnrichments = !!entry.results.enrichments;
+  const verdict = entry.results.enrichments?.verdict;
   const transcript = entry.results.transcript || entry.results.transcription || null;
   const hasTranscript = !!transcript;
 
@@ -178,6 +179,14 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
             )}
           </div>
           <div className="inspector-actions">
+            {verdict && (
+              <span
+                className={`inspector-action-btn inspector-action-verdict enrichment-verdict-${VERDICT_TONE[verdict.label]}`}
+                title={`${verdict.label.toUpperCase()} (${verdict.confidence}%) — ${verdict.explanation}`}
+              >
+                {VERDICT_ICON[verdict.label]}
+              </span>
+            )}
             <button className="inspector-action-btn" onClick={handleRetry} disabled={retrying} title={t.retryEntry}>
               {retrying ? '...' : '↻'}
             </button>
@@ -304,9 +313,14 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
       )}
 
       {/* Tags */}
-      {hasTags && (
+      {(hasTags || verdict) && (
         <section className="inspector-section">
           <div className="inspector-tags">
+            {verdict && (
+              <span className={`tag-badge inspector-tag-verdict enrichment-verdict-${VERDICT_TONE[verdict.label]}`}>
+                {VERDICT_ICON[verdict.label]} {verdict.label.toUpperCase()}
+              </span>
+            )}
             {entry.results.tags.map((tag, i) => (
               <span key={i} className="tag-badge">{tag}</span>
             ))}
