@@ -15,7 +15,7 @@ function getClientSecret(): string {
 }
 
 export function getRedirectUri(): string {
-  return process.env.SPOTIFY_REDIRECT_URI || 'https://soundreel.casamon.dev/spotify/callback';
+  return process.env.SPOTIFY_REDIRECT_URI || 'https://oauth.casamon.dev/spotify/callback';
 }
 
 async function refreshAccessToken(): Promise<string | null> {
