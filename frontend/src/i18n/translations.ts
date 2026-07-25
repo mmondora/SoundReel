@@ -191,6 +191,7 @@ export interface Translations {
   openOriginal: string;
   copyUrl: string;
   urlCopied: string;
+  shareEntry: string;
   transcript: string;
   deepSearch: string;
   runDeepSearch: string;
@@ -426,6 +427,7 @@ export const translations: Record<Language, Translations> = {
     selectEntryHint: 'Clicca su una card a sinistra',
     openOriginal: 'Apri originale',
     copyUrl: 'Copia URL',
+    shareEntry: 'Copia link condivisibile',
     urlCopied: 'URL copiato!',
     transcript: 'Trascrizione',
     deepSearch: 'Deep Search',
@@ -661,6 +663,7 @@ export const translations: Record<Language, Translations> = {
     selectEntryHint: 'Click a card on the left',
     openOriginal: 'Open original',
     copyUrl: 'Copy URL',
+    shareEntry: 'Copy shareable link',
     urlCopied: 'URL copied!',
     transcript: 'Transcript',
     deepSearch: 'Deep Search',

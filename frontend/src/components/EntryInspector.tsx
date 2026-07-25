@@ -100,6 +100,7 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
   const [enriching, setEnriching] = useState(false);
   const [transcriptExpanded, setTranscriptExpanded] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const { t, language } = useLanguage();
 
   const dateLocale = language === 'it' ? 'it-IT' : 'en-US';
@@ -138,6 +139,13 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
     await navigator.clipboard.writeText(entry.sourceUrl);
     setUrlCopied(true);
     setTimeout(() => setUrlCopied(false), 2000);
+  };
+
+  const handleShareEntry = async () => {
+    const shareUrl = `${window.location.origin}/?entry=${entry.id}`;
+    await navigator.clipboard.writeText(shareUrl);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
   };
 
   // Truncated transcript preview (3 lines ~ 200 chars)
@@ -201,6 +209,9 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
             </a>
             <button className="inspector-action-btn" onClick={handleCopyUrl} title={t.copyUrl}>
               {urlCopied ? '✓' : '📋'}
+            </button>
+            <button className="inspector-action-btn" onClick={handleShareEntry} title={t.shareEntry}>
+              {shareCopied ? '✓' : '🔗'}
             </button>
           </div>
         </div>
