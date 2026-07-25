@@ -191,3 +191,44 @@ describe('analyzeSlides', () => {
     expect(generateText).not.toHaveBeenCalled();
   });
 });
+
+// An infographic posted as a single image is one page of exactly the kind this
+// service exists for: it names tools the reader wants to reach, and those
+// destinations can only come from the suggested-links path.
+describe('analyzeSlides — single-image post', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getPrompt).mockResolvedValue({
+      name: 'x', description: 'x', template: 'TPL', variables: [], updatedAt: '2026-01-01',
+    });
+    vi.mocked(renderTemplate).mockReturnValue('rendered prompt');
+    vi.mocked(runClaudePrompt).mockResolvedValue(DISABLED_FALLBACK);
+    vi.mocked(describeFramesWithVision).mockResolvedValue(null);
+  });
+
+  it('handles a one-page input and suggests its links', async () => {
+    vi.mocked(generateText).mockResolvedValue({
+      text: slidesPayload([{
+        index: 0,
+        summary: '10 repo GitHub per Claude Code.',
+        links: [
+          { url: 'https://github.com/yamadashy/repomix', label: 'Repomix' },
+          { url: 'https://dify.ai', label: 'Dify' },
+        ],
+      }]),
+      usageMetadata: null,
+    });
+
+    const slides = await analyzeSlides({
+      entryId: 'entry-single',
+      slidePaths: ['/data/media/entry-single/thumbnail-source.jpg'],
+      ocrPerSlide: ['10 GitHub Repos That Turn Claude Code Into a Productivity Beast. Repomix, Dify, Flowise, Onyx...'],
+      caption: 'Comment Beast to get all the 10 repo direct link',
+    });
+
+    expect(slides).toHaveLength(1);
+    expect(slides[0].imageUrl).toBe('/media/entry-single/thumbnail-source.jpg');
+    expect(slides[0].links).toHaveLength(2);
+    expect(slides[0].summary).toContain('10 repo');
+  });
+});

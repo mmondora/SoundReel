@@ -59,6 +59,13 @@ interface AnalyzeRequestBody {
 
 const KEY_FRAMES_COUNT = Number(process.env.KEY_FRAMES_COUNT || 5);
 
+/**
+ * A single-image post is analysed as a one-page carousel only when its image
+ * carried at least this much text — enough to be an infographic rather than a
+ * photo with an incidental watermark.
+ */
+const SINGLE_IMAGE_OCR_MIN_CHARS = 120;
+
 export function registerAnalyzeRoute(app: FastifyInstance): void {
   app.post<{ Body: AnalyzeRequestBody }>('/api/analyze', async (req, reply) => {
     const log = new Logger('analyzeUrl');
@@ -338,10 +345,15 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           }
 
           // OCR on frames + slides
-          const ocrPaths = [
-            ...(localPaths?.framePaths ?? []),
-            ...(localPaths?.slidePaths ?? []),
-          ];
+          const frames = localPaths?.framePaths ?? [];
+          const slides = localPaths?.slidePaths ?? [];
+          // Single-image posts have neither frames nor slides, so they used to
+          // reach OCR with an empty list and skip it entirely — losing every
+          // word rendered into the image, which for infographic-style posts is
+          // the whole content. Fall back to the thumbnail in that case.
+          const ocrPaths = frames.length || slides.length
+            ? [...frames, ...slides]
+            : (localPaths?.thumbnailPath ? [localPaths.thumbnailPath] : []);
           const ocr = await ocrImages(ocrPaths);
           await appendActionLog(entryId, createActionLog('ocr_extract', {
             status: ocr.status,
@@ -368,14 +380,26 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             }));
           }
 
-          // Per-slide narrative: each slide keeps its own OCR text, description
+          // Per-page narrative: each page keeps its own OCR text, description
           // and links instead of being melted into one merged blob.
-          if ((localPaths?.slidePaths?.length ?? 0) > 0) {
+          //
+          // An infographic posted as a single image is one page of exactly this
+          // kind — it names tools and products the reader wants to reach, and
+          // those destinations can only come from the suggested-links path
+          // (extraction requires the URL to be present in the text, and an
+          // image lists names, not addresses). It is included whenever the
+          // image actually carried text.
+          const pagePaths = slides.length
+            ? slides
+            : (ocr.merged.trim().length >= SINGLE_IMAGE_OCR_MIN_CHARS && localPaths?.thumbnailPath
+                ? [localPaths.thumbnailPath]
+                : []);
+          if (pagePaths.length > 0) {
             try {
-              const frameCount = localPaths?.framePaths?.length ?? 0;
+              const frameCount = slides.length ? (localPaths?.framePaths?.length ?? 0) : 0;
               entrySlides = await analyzeSlides({
                 entryId,
-                slidePaths: localPaths!.slidePaths,
+                slidePaths: pagePaths,
                 ocrPerSlide: ocr.perImage.slice(frameCount).map((r) => r.text ?? null),
                 caption: captionForEnrich,
               });
