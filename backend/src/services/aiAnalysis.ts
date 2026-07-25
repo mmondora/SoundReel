@@ -1,4 +1,5 @@
 import { generateText, OllamaImage } from './ollamaClient';
+import { runClaudePrompt, logFallbackOutcome, type ClaudeFallbackResult } from './claudeFallback';
 import { logInfo, logWarning, logError } from '../utils/logger';
 import { getPrompt, renderTemplate } from './promptLoader';
 import type { AiAnalysisResult, MediaAiAnalysisResult, AiUsageMetadata } from '../types';
@@ -6,7 +7,16 @@ import type { AiAnalysisResult, MediaAiAnalysisResult, AiUsageMetadata } from '.
 export interface AiAnalysisResponse {
   result: AiAnalysisResult | MediaAiAnalysisResult;
   usageMetadata: AiUsageMetadata | null;
+  /** Outcome of the Claude cascade, or null when it was never reached. */
+  fallback: ClaudeFallbackResult | null;
 }
+
+/**
+ * Below this many characters of real source text, an empty result is most likely
+ * correct (a story with no caption, no speech and no on-screen text) rather than
+ * a model failure — not worth spending subscription quota on.
+ */
+const MIN_SOURCE_TEXT_FOR_FALLBACK = 40;
 
 export interface AiAnalysisInput {
   caption: string | null;
@@ -28,6 +38,62 @@ const EMPTY_RESULT: AiAnalysisResult = {
   summary: null,
 };
 
+/**
+ * Turn a raw model response into a validated result, or null when the response
+ * carries no usable JSON. Shared by the Ollama and Claude paths so a hallucinated
+ * link is rejected identically whichever model produced it.
+ */
+function parseAnalysisResponse(
+  text: string,
+  input: AiAnalysisInput
+): MediaAiAnalysisResult | null {
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+
+  let parsed: Partial<MediaAiAnalysisResult>;
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch {
+    logWarning('JSON AI invalido', { preview: jsonMatch[0].substring(0, 300) });
+    return null;
+  }
+
+  const sourceText = [input.caption, input.ocrText, input.transcript].filter(Boolean).join(' ');
+  const verifiedLinks = (parsed.links || []).filter(
+    (l): l is { url: string; label: string | null } =>
+      typeof l?.url === 'string' && sourceText.includes(l.url)
+  );
+
+  return {
+    songs: parsed.songs || [],
+    films: parsed.films || [],
+    notes: parsed.notes || [],
+    links: verifiedLinks,
+    tags: parsed.tags || [],
+    summary: parsed.summary ?? null,
+    transcription: parsed.transcription ?? null,
+    visualContext: parsed.visualContext ?? input.visualContext ?? null,
+    overlayText: parsed.overlayText ?? input.ocrText ?? null,
+  };
+}
+
+/**
+ * Tags and links alone do not count: an entry with only hashtags scraped and no
+ * summary is exactly the failure mode the Claude cascade exists to fix.
+ */
+function isEmptyAnalysis(r: MediaAiAnalysisResult | null): boolean {
+  if (!r) return true;
+  return !r.summary && r.songs.length === 0 && r.films.length === 0 && r.notes.length === 0;
+}
+
+function sourceTextLength(input: AiAnalysisInput): number {
+  return [input.caption, input.ocrText, input.transcript]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+    .length;
+}
+
 export async function analyzeWithAi(input: AiAnalysisInput): Promise<AiAnalysisResponse> {
   const hasAnyInput =
     !!input.caption ||
@@ -40,7 +106,7 @@ export async function analyzeWithAi(input: AiAnalysisInput): Promise<AiAnalysisR
 
   if (!hasAnyInput) {
     logInfo('Nessun contenuto da analizzare con AI');
-    return { result: EMPTY_RESULT, usageMetadata: null };
+    return { result: EMPTY_RESULT, usageMetadata: null, fallback: null };
   }
 
   try {
@@ -85,37 +151,35 @@ export async function analyzeWithAi(input: AiAnalysisInput): Promise<AiAnalysisR
     const text = response.text;
     logInfo('Risposta AI ricevuta', { chars: text.length });
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      logWarning('Nessun JSON trovato nella risposta AI');
-      return { result: EMPTY_RESULT, usageMetadata: response.usageMetadata };
+    const ollamaResult = parseAnalysisResponse(text, input);
+    if (!ollamaResult) logWarning('Nessun JSON utilizzabile nella risposta Ollama');
+
+    // Cascade: the local model returns nothing at all on a large share of entries
+    // even when handed a full caption + transcript + OCR payload. Retry the very
+    // same prompt through Claude before giving up.
+    let fallback: ClaudeFallbackResult | null = null;
+    if (isEmptyAnalysis(ollamaResult) && sourceTextLength(input) >= MIN_SOURCE_TEXT_FOR_FALLBACK) {
+      logInfo('Ollama non ha estratto nulla, provo il fallback Claude');
+      fallback = await runClaudePrompt(prompt);
+      logFallbackOutcome(fallback);
+
+      if (fallback.status === 'ok' && fallback.text) {
+        const claudeResult = parseAnalysisResponse(fallback.text, input);
+        if (!isEmptyAnalysis(claudeResult) && claudeResult) {
+          logInfo('Analisi recuperata dal fallback Claude', {
+            model: fallback.model,
+            songs: claudeResult.songs.length,
+            films: claudeResult.films.length,
+            notes: claudeResult.notes.length,
+            hasSummary: !!claudeResult.summary,
+          });
+          return { result: claudeResult, usageMetadata: response.usageMetadata, fallback };
+        }
+        logWarning('Anche il fallback Claude non ha estratto nulla di utile');
+      }
     }
 
-    let parsed: Partial<MediaAiAnalysisResult>;
-    try {
-      parsed = JSON.parse(jsonMatch[0]);
-    } catch {
-      logWarning('JSON AI invalido', { preview: jsonMatch[0].substring(0, 300) });
-      return { result: EMPTY_RESULT, usageMetadata: response.usageMetadata };
-    }
-
-    const sourceText = [input.caption, input.ocrText, input.transcript].filter(Boolean).join(' ');
-    const verifiedLinks = (parsed.links || []).filter(
-      (l): l is { url: string; label: string | null } =>
-        typeof l?.url === 'string' && sourceText.includes(l.url)
-    );
-
-    const baseResult: MediaAiAnalysisResult = {
-      songs: parsed.songs || [],
-      films: parsed.films || [],
-      notes: parsed.notes || [],
-      links: verifiedLinks,
-      tags: parsed.tags || [],
-      summary: parsed.summary ?? null,
-      transcription: parsed.transcription ?? null,
-      visualContext: parsed.visualContext ?? input.visualContext ?? null,
-      overlayText: parsed.overlayText ?? input.ocrText ?? null,
-    };
+    const baseResult = ollamaResult ?? { ...EMPTY_RESULT, transcription: null, visualContext: input.visualContext ?? null, overlayText: input.ocrText ?? null };
 
     logInfo('Analisi AI completata', {
       songs: baseResult.songs.length,
@@ -126,10 +190,10 @@ export async function analyzeWithAi(input: AiAnalysisInput): Promise<AiAnalysisR
       hasSummary: !!baseResult.summary,
     });
 
-    return { result: baseResult, usageMetadata: response.usageMetadata };
+    return { result: baseResult, usageMetadata: response.usageMetadata, fallback };
   } catch (error) {
     logError('Errore analisi AI', error);
-    return { result: EMPTY_RESULT, usageMetadata: null };
+    return { result: EMPTY_RESULT, usageMetadata: null, fallback: null };
   }
 }
 

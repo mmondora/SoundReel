@@ -9,6 +9,12 @@ import type { PageExtractResult } from './pageExtractor';
 export interface WebPageAnalysisResponse {
   result: MediaAiAnalysisResult;
   usageMetadata: AiUsageMetadata | null;
+  /**
+   * Always null here: the Claude cascade is wired into the media/content path
+   * only. Present so this response stays assignable to AiAnalysisResponse,
+   * which the analyze route uses for both paths.
+   */
+  fallback: null;
 }
 
 const VALID_CATEGORIES: ExtractedLinkCategory[] = [
@@ -33,7 +39,7 @@ export async function analyzeWebPage(input: PageExtractResult): Promise<WebPageA
   const hasAnyInput = !!input.title || !!input.description || !!input.mainText || input.rawLinks.length > 0;
   if (!hasAnyInput) {
     logInfo('Pagina senza contenuto analizzabile');
-    return { result: EMPTY, usageMetadata: null };
+    return { result: EMPTY, usageMetadata: null, fallback: null };
   }
 
   const promptConfig = await getPrompt('webPageAnalysis');
@@ -58,13 +64,13 @@ export async function analyzeWebPage(input: PageExtractResult): Promise<WebPageA
     response = await generateText(prompt);
   } catch (e) {
     logWarning('Web-page LLM failed', { error: String(e) });
-    return { result: EMPTY, usageMetadata: null };
+    return { result: EMPTY, usageMetadata: null, fallback: null };
   }
 
   const parsed = parseJsonLoose(response.text);
   if (!parsed) {
     logWarning('Web-page LLM JSON parse failed', { raw: response.text.slice(0, 500) });
-    return { result: EMPTY, usageMetadata: response.usageMetadata };
+    return { result: EMPTY, usageMetadata: response.usageMetadata, fallback: null };
   }
 
   const allowedUrls = new Set(input.rawLinks.map((l) => l.url));
@@ -86,7 +92,7 @@ export async function analyzeWebPage(input: PageExtractResult): Promise<WebPageA
     overlayText: null,
   };
 
-  return { result, usageMetadata: response.usageMetadata };
+  return { result, usageMetadata: response.usageMetadata, fallback: null };
 }
 
 function parseJsonLoose(raw: string): Record<string, unknown> | null {

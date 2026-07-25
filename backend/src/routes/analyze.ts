@@ -192,7 +192,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           if (featuresConfig.aiAnalysisEnabled) {
             aiResponse = await analyzeWebPage(page);
           } else {
-            aiResponse = { result: emptyMedia(), usageMetadata: null };
+            aiResponse = { result: emptyMedia(), usageMetadata: null, fallback: null };
           }
         } catch (e) {
           if (e instanceof SsrfBlockedError) {
@@ -395,7 +395,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
               thumbnailPath: localPaths?.thumbnailPath ?? null,
             });
           } else {
-            aiResponse = { result: emptyMedia(), usageMetadata: null };
+            aiResponse = { result: emptyMedia(), usageMetadata: null, fallback: null };
           }
 
           // Music: musicInfo Instagram only (authoritative, no AudD)
@@ -511,7 +511,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
                   slidePaths: [],
                   thumbnailPath: null,
                 })
-              : Promise.resolve({ result: emptyMedia(), usageMetadata: null }),
+              : Promise.resolve({ result: emptyMedia(), usageMetadata: null, fallback: null }),
           ]);
 
           aiResponse = aiRes;
