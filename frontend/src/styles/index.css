@@ -1521,6 +1521,27 @@ body {
   cursor: default;
 }
 
+/* Higher-specificity overrides — .tag-badge sets background/color and is
+   declared later in this file, which would otherwise win over the
+   single-class .enrichment-verdict-* tone rules applied alongside it. */
+.inspector-tag-verdict.enrichment-verdict-safe {
+  background: rgba(52, 199, 89, 0.1);
+  border-color: rgba(52, 199, 89, 0.3);
+  color: #1f8a3d;
+}
+
+.inspector-tag-verdict.enrichment-verdict-warning {
+  background: rgba(255, 204, 0, 0.12);
+  border-color: rgba(255, 204, 0, 0.35);
+  color: #8a6d00;
+}
+
+.inspector-tag-verdict.enrichment-verdict-danger {
+  background: rgba(255, 59, 48, 0.1);
+  border-color: rgba(255, 59, 48, 0.35);
+  color: #c62828;
+}
+
 /* ==================== LINKS ==================== */
 .links-list {
   list-style: none;
