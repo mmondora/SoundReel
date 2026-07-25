@@ -30,6 +30,9 @@ const SLIDE_FILE = /^slide[-_]?(\d+)\.(jpe?g|png|webp)$/i;
 /** Full-resolution still for a single-image post. */
 const THUMBNAIL_FILE = 'thumbnail-source.jpg';
 
+/** Sampled video frames; their presence means the post is a video, not a still. */
+const FRAME_FILE = /^frame[-_]?\d+\.(jpe?g|png|webp)$/i;
+
 /**
  * Mirrors the live pipeline: a single image is worth treating as a one-page
  * carousel only when it actually carried text, so ordinary photos with an
@@ -70,6 +73,13 @@ async function findPages(entryId: string): Promise<string[]> {
     .map((f) => join(MEDIA_ROOT, entryId, f.name));
 
   if (slides.length) return slides;
+
+  // A video post keeps its sampled frames here and already has them plus a
+  // transcript analysed; its thumbnail is a still from the video, not a page.
+  // Mirrors the live pipeline, which only falls back to the thumbnail when
+  // there are neither frames nor slides.
+  if (files.some((name) => FRAME_FILE.test(name))) return [];
+
   return files.includes(THUMBNAIL_FILE) ? [join(MEDIA_ROOT, entryId, THUMBNAIL_FILE)] : [];
 }
 
