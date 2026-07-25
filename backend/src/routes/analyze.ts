@@ -192,7 +192,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           if (featuresConfig.aiAnalysisEnabled) {
             aiResponse = await analyzeWebPage(page);
           } else {
-            aiResponse = { result: emptyMedia(), usageMetadata: null };
+            aiResponse = { result: emptyMedia(), usageMetadata: null, fallback: null };
           }
         } catch (e) {
           if (e instanceof SsrfBlockedError) {
@@ -395,7 +395,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
               thumbnailPath: localPaths?.thumbnailPath ?? null,
             });
           } else {
-            aiResponse = { result: emptyMedia(), usageMetadata: null };
+            aiResponse = { result: emptyMedia(), usageMetadata: null, fallback: null };
           }
 
           // Music: musicInfo Instagram only (authoritative, no AudD)
@@ -511,7 +511,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
                   slidePaths: [],
                   thumbnailPath: null,
                 })
-              : Promise.resolve({ result: emptyMedia(), usageMetadata: null }),
+              : Promise.resolve({ result: emptyMedia(), usageMetadata: null, fallback: null }),
           ]);
 
           aiResponse = aiRes;
@@ -546,6 +546,22 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         : { status: 'skipped', reason: 'disabled in settings' };
       if (aiResponse.usageMetadata) aiAnalyzedDetails.tokenUsage = aiResponse.usageMetadata;
       await appendActionLog(entryId, createActionLog('ai_analyzed', aiAnalyzedDetails));
+
+      if (aiResponse.fallback) {
+        const fb = aiResponse.fallback;
+        await appendActionLog(entryId, createActionLog('claude_fallback', {
+          status: fb.status,
+          reason: fb.reason,
+          model: fb.model,
+          durationMs: fb.durationMs,
+          recovered: {
+            songs: aiResult.songs.length,
+            films: aiResult.films.length,
+            notes: aiResult.notes.length,
+            hasSummary: !!aiResult.summary,
+          },
+        }));
+      }
 
       const merged = mergeResults(audioResult, aiResult);
 

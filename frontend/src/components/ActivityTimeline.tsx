@@ -17,6 +17,7 @@ const ACTION_LABELS: Record<string, { it: string; en: string }> = {
   whisper_asr: { it: 'Trascrizione audio (Whisper)', en: 'Audio transcription (Whisper)' },
   audio_analyzed: { it: 'Audio fingerprint', en: 'Audio fingerprint' },
   ai_analyzed: { it: 'Analisi AI', en: 'AI Analysis' },
+  claude_fallback: { it: 'Fallback Claude', en: 'Claude fallback' },
   media_analysis_complete: { it: 'Analisi media', en: 'Media analysis' },
   spotify_added: { it: 'Spotify lookup', en: 'Spotify lookup' },
   film_found: { it: 'TMDb lookup', en: 'TMDb lookup' },
@@ -83,6 +84,21 @@ function getSubtitle(action: string, details: Record<string, unknown>, lang: str
     }
     case 'ai_analyzed':
       return `${details.songs || 0} songs, ${details.films || 0} films, ${details.notes || 0} notes`;
+    case 'claude_fallback': {
+      const status = details.status as string;
+      const model = details.model as string | undefined;
+      if (status === 'disabled') return details.reason as string || (lang === 'it' ? 'disattivato' : 'disabled');
+      if (status === 'timeout') return lang === 'it' ? `timeout (${model})` : `timed out (${model})`;
+      if (status === 'error') return `${model}: ${details.reason || (lang === 'it' ? 'errore' : 'error')}`;
+      const rec = details.recovered as Record<string, unknown> | undefined;
+      if (!rec) return model || '';
+      const parts = [
+        `${rec.songs || 0} songs`,
+        `${rec.films || 0} films`,
+        `${rec.notes || 0} notes`,
+      ].join(', ');
+      return `${model} → ${parts}${rec.hasSummary ? (lang === 'it' ? ', con riassunto' : ', with summary') : ''}`;
+    }
     case 'media_downloaded':
       return details.mimeType as string || '';
     case 'media_download_skipped':
