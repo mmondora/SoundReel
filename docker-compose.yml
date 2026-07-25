@@ -22,7 +22,7 @@ services:
       OCR_URL: http://soundreel-ocr:5001
       MEDIA_ROOT: /data/media
       FRONTEND_URL: https://soundreel.casamon.dev
-      SPOTIFY_REDIRECT_URI: https://soundreel.casamon.dev/spotify/callback
+      SPOTIFY_REDIRECT_URI: https://oauth.casamon.dev/spotify/callback
     volumes:
       - soundreel_media:/data/media
     depends_on:
