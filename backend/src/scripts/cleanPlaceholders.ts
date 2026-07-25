@@ -11,7 +11,7 @@
  *   node dist/scripts/cleanPlaceholders.js             # apply
  */
 import { pool, updateEntry, appendActionLog, createActionLog } from '../utils/db';
-import { isRealValue, isPlaceholderValue } from '../services/placeholderFilter';
+import { isRealValue, isPlaceholderText } from '../services/placeholderFilter';
 import type { Entry, EntryResults } from '../types';
 
 interface Row {
@@ -38,11 +38,13 @@ function clean(results: EntryResults): Cleaned {
   const tags = tagsIn.filter(isRealValue);
 
   // A placeholder in a secondary field (artist, director, year) does not make
-  // the whole item junk — blank the field and keep the item.
+  // the whole item junk — blank the field and keep the item. isPlaceholderText
+  // is used rather than isPlaceholderValue so that absent/empty fields, which
+  // hold no junk, do not count as changes and cause needless rewrites.
   let blanked = 0;
   const songsFixed = songs.map((s) => {
-    const artistBad = isPlaceholderValue(s.artist);
-    const albumBad = s.album !== null && isPlaceholderValue(s.album);
+    const artistBad = isPlaceholderText(s.artist);
+    const albumBad = isPlaceholderText(s.album);
     if (artistBad || albumBad) blanked++;
     return {
       ...s,
@@ -51,8 +53,8 @@ function clean(results: EntryResults): Cleaned {
     };
   });
   const filmsFixed = films.map((f) => {
-    const dirBad = f.director !== null && isPlaceholderValue(f.director);
-    const yearBad = f.year !== null && isPlaceholderValue(f.year);
+    const dirBad = isPlaceholderText(f.director);
+    const yearBad = isPlaceholderText(f.year);
     if (dirBad || yearBad) blanked++;
     return {
       ...f,
@@ -61,7 +63,7 @@ function clean(results: EntryResults): Cleaned {
     };
   });
 
-  const summaryBad = results.summary != null && isPlaceholderValue(results.summary);
+  const summaryBad = isPlaceholderText(results.summary);
   if (summaryBad) blanked++;
 
   const removed = {

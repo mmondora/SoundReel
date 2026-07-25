@@ -31,3 +31,16 @@ export function isPlaceholderValue(value: string | null | undefined): boolean {
 export function isRealValue(value: string | null | undefined): value is string {
   return !isPlaceholderValue(value);
 }
+
+/**
+ * True only when the field actually holds placeholder *text* that needs
+ * removing — as opposed to being absent, null or empty, which carry no junk
+ * and are already "no value".
+ *
+ * Repair passes over existing records must use this rather than
+ * isPlaceholderValue(), which treats missing/empty as placeholders and would
+ * rewrite untouched records purely to normalise undefined to null.
+ */
+export function isPlaceholderText(value: unknown): boolean {
+  return typeof value === 'string' && value.trim() !== '' && isPlaceholderValue(value);
+}

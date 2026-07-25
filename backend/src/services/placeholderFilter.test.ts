@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isPlaceholderValue } from './placeholderFilter';
+import { isPlaceholderValue, isPlaceholderText } from './placeholderFilter';
 
 describe('isPlaceholderValue', () => {
   it('rejects a bare ellipsis, the prompt template placeholder', () => {
@@ -56,5 +56,26 @@ describe('isPlaceholderValue', () => {
 
   it('keeps a title that legitimately contains the word null', () => {
     expect(isPlaceholderValue('Null Object Pattern')).toBe(false);
+  });
+});
+
+describe('isPlaceholderText', () => {
+  // Repair passes must not rewrite a record just to normalise a missing field.
+  it('ignores absent, null and empty values', () => {
+    expect(isPlaceholderText(undefined)).toBe(false);
+    expect(isPlaceholderText(null)).toBe(false);
+    expect(isPlaceholderText('')).toBe(false);
+    expect(isPlaceholderText('   ')).toBe(false);
+  });
+
+  it('flags real placeholder text', () => {
+    expect(isPlaceholderText('...')).toBe(true);
+    expect(isPlaceholderText('null')).toBe(true);
+    expect(isPlaceholderText('anno o null')).toBe(true);
+  });
+
+  it('leaves genuine values alone', () => {
+    expect(isPlaceholderText('King Crimson')).toBe(false);
+    expect(isPlaceholderText('Red')).toBe(false);
   });
 });
