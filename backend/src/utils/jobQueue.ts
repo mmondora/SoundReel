@@ -15,6 +15,8 @@ export interface JobQueueRow {
   nextAttemptAt: string;
   createdAt: string;
   updatedAt: string;
+  /** False for repair runs, which must stay silent. */
+  notify: boolean;
 }
 
 interface JobQueueDbRow {
@@ -29,6 +31,7 @@ interface JobQueueDbRow {
   next_attempt_at: Date;
   created_at: Date;
   updated_at: Date;
+  notify: boolean;
 }
 
 function rowToJob(row: JobQueueDbRow): JobQueueRow {
@@ -44,6 +47,7 @@ function rowToJob(row: JobQueueDbRow): JobQueueRow {
     nextAttemptAt: row.next_attempt_at.toISOString(),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
+    notify: row.notify ?? true,
   };
 }
 
@@ -53,12 +57,17 @@ export async function enqueueJob(job: {
   platform: JobPlatform;
   chatId: number;
   inputUser: string | null;
+  /** Skip the Telegram message on completion. Defaults to notifying. */
+  notify?: boolean;
+  /** Earliest dispatch time; defaults to immediately. */
+  nextAttemptAt?: Date;
 }): Promise<number> {
   const rows = await query<{ id: number }>(
-    `INSERT INTO job_queue (entry_id, source_url, platform, chat_id, input_user)
-     VALUES ($1,$2,$3,$4,$5)
+    `INSERT INTO job_queue (entry_id, source_url, platform, chat_id, input_user, notify, next_attempt_at)
+     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7, NOW()))
      RETURNING id`,
-    [job.entryId, job.sourceUrl, job.platform, job.chatId, job.inputUser]
+    [job.entryId, job.sourceUrl, job.platform, job.chatId, job.inputUser,
+     job.notify ?? true, job.nextAttemptAt ?? null]
   );
   return rows[0].id;
 }

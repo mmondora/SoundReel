@@ -49,7 +49,7 @@ function flush(): Promise<void> {
 const IG_JOB: JobQueueRow = {
   id: 1, entryId: 'e1', sourceUrl: 'https://instagram.com/reel/x', platform: 'instagram',
   chatId: 42, inputUser: '@mike', status: 'processing', attempts: 0,
-  nextAttemptAt: '', createdAt: '', updatedAt: '',
+  nextAttemptAt: '', createdAt: '', updatedAt: '', notify: true,
 };
 
 describe('computeJitterDelayMs', () => {
@@ -214,5 +214,31 @@ describe('tick', () => {
     // Reaching these assertions with onSettle having run is sufficient evidence.
     expect(scheduleJobRetry).toHaveBeenCalledWith(1, 1, expect.any(Date));
     expect(state.igBusy).toBe(false);
+  });
+});
+
+describe('notify flag', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ success: true, entryId: 'e1', entry: {} }),
+    }));
+    vi.mocked(claimNextOtherJob).mockResolvedValue(null);
+  });
+
+  it('sends a Telegram message for a normal job', async () => {
+    vi.mocked(claimNextInstagramJob).mockResolvedValue(IG_JOB);
+    await tick(createInitialWorkerState());
+    await flush();
+    expect(sendTelegramMessage).toHaveBeenCalled();
+  });
+
+  // A repair run re-queues content submitted days ago; notifying would spam.
+  it('stays silent when the job opted out', async () => {
+    vi.mocked(claimNextInstagramJob).mockResolvedValue({ ...IG_JOB, notify: false });
+    await tick(createInitialWorkerState());
+    await flush();
+    expect(sendTelegramMessage).not.toHaveBeenCalled();
   });
 });

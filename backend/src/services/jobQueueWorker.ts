@@ -35,6 +35,9 @@ export function computeBackoffMs(platform: JobPlatform, attempts: number): numbe
 }
 
 async function sendResultToTelegram(job: JobQueueRow, result: AnalyzeResult): Promise<void> {
+  // Repair runs re-queue entries the user submitted days ago; staying silent is
+  // the point of the flag, so bail before touching the Telegram API.
+  if (!job.notify) return;
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return;
   if (!result.success || !result.entry) {
@@ -51,7 +54,7 @@ async function handleFailure(job: JobQueueRow, err: unknown, log: Logger): Promi
   const backoff = computeBackoffMs(job.platform, attempts);
   if (backoff === null) {
     await markJobFailed(job.id);
-    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const token = job.notify ? process.env.TELEGRAM_BOT_TOKEN : null;
     if (token) {
       await sendTelegramMessage(
         job.chatId,

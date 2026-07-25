@@ -141,4 +141,8 @@ CREATE TABLE IF NOT EXISTS job_queue (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Repair/backfill runs re-queue old entries; they must not fire a Telegram
+-- message for content the user submitted days ago.
+ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS notify BOOLEAN NOT NULL DEFAULT TRUE;
+
 CREATE INDEX IF NOT EXISTS idx_job_queue_dispatch ON job_queue (status, platform, next_attempt_at);
