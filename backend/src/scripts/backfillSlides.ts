@@ -27,6 +27,16 @@ const DELAY_MS = 1_000;
 /** Slide files as written by the instaloader service. */
 const SLIDE_FILE = /^slide[-_]?(\d+)\.(jpe?g|png|webp)$/i;
 
+/** Full-resolution still for a single-image post. */
+const THUMBNAIL_FILE = 'thumbnail-source.jpg';
+
+/**
+ * Mirrors the live pipeline: a single image is worth treating as a one-page
+ * carousel only when it actually carried text, so ordinary photos with an
+ * incidental watermark are left alone.
+ */
+const SINGLE_IMAGE_OCR_MIN_CHARS = 120;
+
 interface Row {
   id: string;
   caption: string | null;
@@ -41,8 +51,11 @@ function parseArgs() {
   };
 }
 
-/** Slide images for an entry, ordered by their index in the carousel. */
-async function findSlides(entryId: string): Promise<string[]> {
+/**
+ * Pages to analyse for an entry: the carousel slides in order, or — for a
+ * single-image post, which has no slides at all — the still image on its own.
+ */
+async function findPages(entryId: string): Promise<string[]> {
   let files: string[];
   try {
     files = await readdir(join(MEDIA_ROOT, entryId));
@@ -50,11 +63,14 @@ async function findSlides(entryId: string): Promise<string[]> {
     return [];
   }
 
-  return files
+  const slides = files
     .map((name) => ({ name, match: SLIDE_FILE.exec(name) }))
     .filter((f): f is { name: string; match: RegExpExecArray } => !!f.match)
     .sort((a, b) => Number(a.match[1]) - Number(b.match[1]))
     .map((f) => join(MEDIA_ROOT, entryId, f.name));
+
+  if (slides.length) return slides;
+  return files.includes(THUMBNAIL_FILE) ? [join(MEDIA_ROOT, entryId, THUMBNAIL_FILE)] : [];
 }
 
 async function fetchCandidates(limit: number | null): Promise<Row[]> {
@@ -77,12 +93,12 @@ async function main(): Promise<void> {
   // Only entries whose slide images survived the retention purge can be redone.
   const candidates: Array<Row & { slidePaths: string[] }> = [];
   for (const row of rows) {
-    const slidePaths = await findSlides(row.id);
+    const slidePaths = await findPages(row.id);
     if (slidePaths.length > 0) candidates.push({ ...row, slidePaths });
   }
 
   console.log(
-    `[slides] entry senza slides: ${rows.length} | con immagini su disco: ${candidates.length}` +
+    `[slides] entry senza slides: ${rows.length} | con pagine su disco: ${candidates.length}` +
     `${dryRun ? ' | DRY RUN (nessuna modifica)' : ''}`
   );
 
@@ -94,11 +110,21 @@ async function main(): Promise<void> {
 
   let done = 0;
   let failed = 0;
+  let skipped = 0;
 
   for (const [i, row] of candidates.entries()) {
     const n = `${i + 1}/${candidates.length}`;
     try {
       const ocr = await ocrImages(row.slidePaths);
+
+      // A lone image with no readable text is just a photo — skip it rather
+      // than store an empty page block.
+      if (row.slidePaths.length === 1 && ocr.merged.trim().length < SINGLE_IMAGE_OCR_MIN_CHARS) {
+        skipped++;
+        console.log(`[${n}] ${row.id} — immagine singola senza testo, saltata`);
+        continue;
+      }
+
       const slides = await analyzeSlides({
         entryId: row.id,
         slidePaths: row.slidePaths,
@@ -126,7 +152,7 @@ async function main(): Promise<void> {
     if (i < candidates.length - 1) await new Promise((r) => setTimeout(r, DELAY_MS));
   }
 
-  console.log(`\n[slides] fatto — elaborate: ${done} | fallite: ${failed}`);
+  console.log(`\n[slides] fatto — elaborate: ${done} | saltate: ${skipped} | fallite: ${failed}`);
   await pool.end();
 }
 
