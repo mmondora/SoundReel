@@ -49,3 +49,5 @@ tasks/
 prompts/ignore/
 backend/tsconfig.tsbuildinfo
 frontend/tsconfig.tsbuildinfo
+.gstack/
+.worktrees/
