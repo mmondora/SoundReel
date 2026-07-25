@@ -3357,3 +3357,92 @@ body {
     min-width: 0;
   }
 }
+
+/* ==================== CAROUSEL SLIDES ==================== */
+.slide-block {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.slide-block:last-child {
+  border-bottom: none;
+}
+
+.slide-thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.slide-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.slide-counter {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.slide-summary {
+  font-size: 0.875rem;
+  margin: 0.25rem 0 0.5rem;
+  line-height: 1.45;
+}
+
+/* Shown when no paragraph was produced and only a vision description exists */
+.slide-visual {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.slide-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.slide-links-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* Distinct from extracted links: these are model suggestions, not found in the post */
+.slide-link {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 20px;
+  border: 1px dashed var(--border);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.slide-link:hover {
+  border-style: solid;
+  background: var(--accent-soft);
+}
+
+.slide-ocr {
+  margin-top: 0.5rem;
+}
+
+.slide-ocr summary {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.slide-ocr p {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  margin-top: 0.35rem;
+}

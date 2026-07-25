@@ -4,7 +4,7 @@ import { SongItem } from './SongItem';
 import { FilmItem } from './FilmItem';
 import { ActivityTimeline } from './ActivityTimeline';
 import { deleteEntry, retryEntry, enrichEntry } from '../services/api';
-import { useLanguage } from '../i18n';
+import { useLanguage, interpolate } from '../i18n';
 import { VERDICT_TONE, VERDICT_ICON } from '../utils/enrichmentVerdict';
 
 interface EntryInspectorProps {
@@ -112,6 +112,7 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
   const hasLinks = (entry.results.links?.length || 0) > 0;
   const hasTags = (entry.results.tags?.length || 0) > 0;
   const hasEnrichments = !!entry.results.enrichments;
+  const slides = entry.results.slides ?? [];
   const verdict = entry.results.enrichments?.verdict;
   const transcript = entry.results.transcript || entry.results.transcription || null;
   const hasTranscript = !!transcript;
@@ -336,6 +337,57 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
               <span key={i} className="tag-badge">{tag}</span>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* Per-slide breakdown (carousels) */}
+      {slides.length > 0 && (
+        <section className="inspector-section">
+          <h3 className="inspector-section-title">{t.slidesSection}</h3>
+          {slides.map((slide) => (
+            <div key={slide.index} className="slide-block">
+              {slide.imageUrl && (
+                <img
+                  src={slide.imageUrl}
+                  alt=""
+                  className="slide-thumb"
+                  loading="lazy"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                />
+              )}
+              <div className="slide-body">
+                <span className="slide-counter">
+                  {interpolate(t.slideCounter, { n: slide.index + 1, total: slides.length })}
+                </span>
+                {slide.summary && <p className="slide-summary">{slide.summary}</p>}
+                {!slide.summary && slide.visualDescription && (
+                  <p className="slide-summary slide-visual">{slide.visualDescription}</p>
+                )}
+                {slide.links.length > 0 && (
+                  <div className="slide-links">
+                    <span className="slide-links-label">{t.slideSuggestedLinks}</span>
+                    {slide.links.map((link) => (
+                      <a
+                        key={link.url}
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="slide-link"
+                      >
+                        {link.label}
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {slide.ocrText && (
+                  <details className="slide-ocr">
+                    <summary>{t.slideOcrText}</summary>
+                    <p>{slide.ocrText}</p>
+                  </details>
+                )}
+              </div>
+            </div>
+          ))}
         </section>
       )}
 

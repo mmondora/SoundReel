@@ -234,6 +234,10 @@ export interface Translations {
   sortTitle: string;
   sortFrequency: string;
   unknownArtist: string;
+  slidesSection: string;
+  slideCounter: string;
+  slideSuggestedLinks: string;
+  slideOcrText: string;
   openEntry: string;
   today: string;
   noSongsYet: string;
@@ -476,6 +480,10 @@ export const translations: Record<Language, Translations> = {
     sortTitle: 'Titolo A-Z',
     sortFrequency: 'Più frequenti',
     unknownArtist: 'Artista sconosciuto',
+    slidesSection: 'Pagine del carosello',
+    slideCounter: 'Slide {n} / {total}',
+    slideSuggestedLinks: 'Link suggeriti:',
+    slideOcrText: 'Testo estratto dalla slide',
     openEntry: 'Apri →',
     today: 'Oggi',
     noSongsYet: 'Nessuna canzone trovata',
@@ -717,6 +725,10 @@ export const translations: Record<Language, Translations> = {
     sortTitle: 'Title A-Z',
     sortFrequency: 'Most frequent',
     unknownArtist: 'Unknown artist',
+    slidesSection: 'Carousel pages',
+    slideCounter: 'Slide {n} / {total}',
+    slideSuggestedLinks: 'Suggested links:',
+    slideOcrText: 'Text extracted from this slide',
     openEntry: 'Open →',
     today: 'Today',
     noSongsYet: 'No songs found',
