@@ -14,6 +14,7 @@ const ACTION_LABELS: Record<string, { it: string; en: string }> = {
   media_download_skipped: { it: 'Download media', en: 'Media download' },
   media_download_failed: { it: 'Download media', en: 'Media download' },
   transcribe: { it: 'Trascrizione audio', en: 'Audio transcription' },
+  whisper_asr: { it: 'Trascrizione audio (Whisper)', en: 'Audio transcription (Whisper)' },
   audio_analyzed: { it: 'Audio fingerprint', en: 'Audio fingerprint' },
   ai_analyzed: { it: 'Analisi AI', en: 'AI Analysis' },
   media_analysis_complete: { it: 'Analisi media', en: 'Media analysis' },
@@ -64,6 +65,17 @@ function getSubtitle(action: string, details: Record<string, unknown>, lang: str
       if (status === 'error') return details.reason as string || details.error as string || 'error';
       const len = details.transcriptLength as number;
       return len ? `${len} ${lang === 'it' ? 'caratteri' : 'chars'}` : (lang === 'it' ? 'nessun parlato' : 'no speech');
+    }
+    case 'whisper_asr': {
+      const status = details.status as string;
+      if (status === 'skipped') return details.reason as string || (lang === 'it' ? 'saltato' : 'skipped');
+      if (status === 'error') return details.reason as string || details.error as string || (lang === 'it' ? 'errore' : 'error');
+      const len = details.chars as number;
+      const detectedLang = details.language as string | undefined;
+      const langSuffix = detectedLang ? ` (${detectedLang})` : '';
+      return len
+        ? `${len} ${lang === 'it' ? 'caratteri' : 'chars'}${langSuffix}`
+        : (lang === 'it' ? 'nessun parlato rilevato' : 'no speech detected');
     }
     case 'audio_analyzed': {
       if (details.found === false) return lang === 'it' ? 'nessuna corrispondenza' : 'no match';
