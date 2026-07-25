@@ -229,6 +229,10 @@ export interface Translations {
   allFilms: string;
   allNotes: string;
   viewReel: string;
+  sortRecent: string;
+  sortArtist: string;
+  sortTitle: string;
+  sortFrequency: string;
   openEntry: string;
   today: string;
   noSongsYet: string;
@@ -466,6 +470,10 @@ export const translations: Record<Language, Translations> = {
     allFilms: 'Tutti i film',
     allNotes: 'Tutte le note',
     viewReel: 'Vedi reel →',
+    sortRecent: 'Recenti',
+    sortArtist: 'Artista A-Z',
+    sortTitle: 'Titolo A-Z',
+    sortFrequency: 'Più frequenti',
     openEntry: 'Apri →',
     today: 'Oggi',
     noSongsYet: 'Nessuna canzone trovata',
@@ -702,6 +710,10 @@ export const translations: Record<Language, Translations> = {
     allFilms: 'All films',
     allNotes: 'All notes',
     viewReel: 'View reel →',
+    sortRecent: 'Recent',
+    sortArtist: 'Artist A-Z',
+    sortTitle: 'Title A-Z',
+    sortFrequency: 'Most frequent',
     openEntry: 'Open →',
     today: 'Today',
     noSongsYet: 'No songs found',

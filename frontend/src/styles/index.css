@@ -3236,10 +3236,23 @@ body {
 
 .badge-link.spotify { background: var(--spotify); }
 .badge-link.youtube { background: var(--youtube); }
+.badge-link.soundcloud { background: #ff5500; }
 .badge-link.imdb { background: var(--imdb); color: #000; }
 .badge-link.netflix { background: var(--netflix); }
 .badge-link.prime { background: var(--prime); }
 .badge-link.disney { background: var(--disney); }
+
+/* Occurrence counter on a deduplicated playlist row */
+.song-count-badge {
+  margin-left: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.05rem 0.35rem;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  vertical-align: middle;
+}
 
 .badge-playlist {
   font-size: 0.65rem;
