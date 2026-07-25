@@ -87,6 +87,26 @@ export interface EnrichmentResult {
   items: EnrichmentItem[];
 }
 
+export interface SlideLink {
+  url: string;
+  label: string;
+}
+
+export interface EntrySlide {
+  /** 0-based position in the carousel. */
+  index: number;
+  /** Servable path under /media/<entryId>/, or null when the file is gone. */
+  imageUrl: string | null;
+  /** OCR text for this slide alone. */
+  ocrText: string | null;
+  /** Vision description — only for slides carrying little or no OCR text. */
+  visualDescription: string | null;
+  /** The model's paragraph explaining this slide. */
+  summary: string | null;
+  /** Model-suggested destinations for what this slide is about. */
+  links: SlideLink[];
+}
+
 export interface EntryResults {
   songs: Song[];
   films: Film[];
@@ -96,6 +116,7 @@ export interface EntryResults {
   summary: string | null;
   transcript?: string | null;
   enrichments?: EnrichmentResult;
+  slides?: EntrySlide[];
   transcription?: string | null;
   visualContext?: string | null;
   overlayText?: string | null;

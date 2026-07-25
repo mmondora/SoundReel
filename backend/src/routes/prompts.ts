@@ -9,7 +9,7 @@ interface UpdatePromptRequest {
   description?: string;
 }
 
-const VALID_PROMPT_IDS: Array<keyof PromptsConfig> = ['contentAnalysis', 'telegramResponse', 'mediaAnalysis', 'enrichment', 'webPageAnalysis'];
+const VALID_PROMPT_IDS: Array<keyof PromptsConfig> = ['contentAnalysis', 'telegramResponse', 'mediaAnalysis', 'enrichment', 'webPageAnalysis', 'slideAnalysis'];
 
 async function mergedPrompts(): Promise<PromptsConfig> {
   const defaults = getDefaultPrompts();
@@ -20,6 +20,7 @@ async function mergedPrompts(): Promise<PromptsConfig> {
     enrichment: stored.enrichment || defaults.enrichment,
     mediaAnalysis: stored.mediaAnalysis || defaults.mediaAnalysis,
     webPageAnalysis: stored.webPageAnalysis || defaults.webPageAnalysis,
+    slideAnalysis: stored.slideAnalysis || defaults.slideAnalysis,
   };
 }
 

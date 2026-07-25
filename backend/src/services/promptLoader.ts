@@ -16,6 +16,7 @@ export interface PromptsConfig {
   enrichment: PromptTemplate;
   mediaAnalysis: PromptTemplate;
   webPageAnalysis: PromptTemplate;
+  slideAnalysis: PromptTemplate;
 }
 
 const DEFAULT_PROMPTS: PromptsConfig = {
@@ -225,6 +226,46 @@ Se non trovi nulla per un campo, usa un array vuoto [] o null.`,
     variables: ['caption', 'hasImage'],
     updatedAt: new Date().toISOString()
   },
+  slideAnalysis: {
+    name: 'Analisi per slide (carosello)',
+    description: 'Analizza tutte le slide di un carosello insieme e produce, per ciascuna, un paragrafo e i link alle destinazioni citate',
+    template: `Questo è un post carosello Instagram composto da {{slideCount}} slide.
+
+{{#if caption}}
+Caption del post:
+\"\"\"
+{{caption}}
+\"\"\"
+{{/if}}
+
+Contenuto di ogni slide:
+{{#each slides}}
+--- SLIDE {{indexLabel}} ---
+{{#if ocrText}}Testo estratto (OCR):
+{{ocrText}}{{/if}}
+{{#if visualDescription}}Descrizione visiva: {{visualDescription}}{{/if}}
+{{#unless ocrText}}{{#unless visualDescription}}[nessun contenuto estratto per questa slide]{{/unless}}{{/unless}}
+{{/each}}
+
+Compito: per OGNI slide scrivi un paragrafo che spiega cosa presenta, e raccogli i link alle destinazioni ufficiali di tutto ciò che vi è nominato (app, siti, strumenti, prodotti, libri, film, servizi).
+
+Regole importanti:
+- Considera le slide come parti di un unico discorso: se la slide 3 di 8 è il terzo elemento di una lista, il paragrafo deve rifletterlo.
+- Il paragrafo è in italiano, 2-4 frasi, concreto: cosa mostra la slide e perché è rilevante. Niente frasi vuote tipo \"questa slide mostra del testo\".
+- Per i link usa l'URL ufficiale del servizio o prodotto nominato (es. Plex → https://www.plex.tv). Includi SOLO destinazioni di cui conosci l'indirizzo reale: se non sei sicuro dell'URL, ometti quel link.
+- \"label\" è il nome leggibile della destinazione (es. \"Plex\").
+- Se una slide non nomina nulla di raggiungibile, lascia \"links\": [].
+- Restituisci un oggetto per OGNI slide, con l'indice corretto (0-based), anche quando non c'è nulla da dire (in quel caso \"summary\": null).
+
+Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
+{
+  \"slides\": [
+    { \"index\": 0, \"summary\": \"...\", \"links\": [ { \"url\": \"https://...\", \"label\": \"...\" } ] }
+  ]
+}`,
+    variables: ['slideCount', 'caption', 'slides'],
+    updatedAt: new Date().toISOString(),
+  },
   webPageAnalysis: {
     name: 'Analisi pagina web',
     description: 'Prompt per analizzare una pagina web (articolo, blog, post) e produrre sintesi + link categorizzati',
@@ -320,6 +361,7 @@ export async function getPrompts(): Promise<PromptsConfig> {
       enrichment: data.enrichment || DEFAULT_PROMPTS.enrichment,
       mediaAnalysis: data.mediaAnalysis || DEFAULT_PROMPTS.mediaAnalysis,
       webPageAnalysis: data.webPageAnalysis || DEFAULT_PROMPTS.webPageAnalysis,
+      slideAnalysis: data.slideAnalysis || DEFAULT_PROMPTS.slideAnalysis,
     };
     cacheTimestamp = now;
 

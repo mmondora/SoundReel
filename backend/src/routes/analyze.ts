@@ -16,6 +16,7 @@ import {
 } from '../services/pageExtractor';
 import { analyzeWebPage } from '../services/aiAnalysisWebPage';
 import { normalizeUrl } from '../services/urlNormalize';
+import { analyzeSlides } from '../services/slideAnalysis';
 import { extractSongsFromMainText } from '../services/musicListExtractor';
 import { resolveSongs } from '../services/songResolver';
 import { SsrfBlockedError } from '../services/ssrfGuard';
@@ -47,6 +48,7 @@ import type {
   ExtractedLink,
   MediaAiAnalysisResult,
   AudioRecognitionResult,
+  EntrySlide,
 } from '../types';
 
 interface AnalyzeRequestBody {
@@ -146,6 +148,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       // Caption used by auto-enrichment at the end.
       let captionForEnrich: string | null = null;
       let slideItems: SlideItem[] = [];
+      let entrySlides: EntrySlide[] = [];
       // Hoisted so the fire-and-forget below can reuse mainText without re-fetching
       let pageMainText: string | null = null;
 
@@ -363,6 +366,32 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
               slides: localPaths?.slidePaths?.length ?? 0,
               itemsFound: extracted.length,
             }));
+          }
+
+          // Per-slide narrative: each slide keeps its own OCR text, description
+          // and links instead of being melted into one merged blob.
+          if ((localPaths?.slidePaths?.length ?? 0) > 0) {
+            try {
+              const frameCount = localPaths?.framePaths?.length ?? 0;
+              entrySlides = await analyzeSlides({
+                entryId,
+                slidePaths: localPaths!.slidePaths,
+                ocrPerSlide: ocr.perImage.slice(frameCount).map((r) => r.text ?? null),
+                caption: captionForEnrich,
+              });
+              await appendActionLog(entryId, createActionLog('slides_analyzed', {
+                slides: entrySlides.length,
+                withOcr: entrySlides.filter((s) => s.ocrText).length,
+                withVision: entrySlides.filter((s) => s.visualDescription).length,
+                withSummary: entrySlides.filter((s) => s.summary).length,
+                totalLinks: entrySlides.reduce((n, s) => n + s.links.length, 0),
+              }));
+            } catch (e) {
+              log.warn('Analisi per slide fallita', { error: String(e) });
+              await appendActionLog(entryId, createActionLog('slides_analyzed', {
+                status: 'error', error: String(e),
+              }));
+            }
           }
 
           // Vision describe on key frames (only if mediaAnalysisEnabled + frames present)
@@ -737,6 +766,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       }
 
       const results: Record<string, unknown> = { songs, films, notes, links, tags, summary };
+      if (entrySlides.length) results.slides = entrySlides;
       if (transcript) results.transcript = transcript;
       if (transcription) results.transcription = transcription;
       if (visualContextOut) results.visualContext = visualContextOut;
