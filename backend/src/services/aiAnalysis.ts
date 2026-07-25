@@ -39,11 +39,37 @@ const EMPTY_RESULT: AiAnalysisResult = {
 };
 
 /**
+ * Render the content-analysis prompt. Exported so the backfill script sends the
+ * exact same prompt the live pipeline does, keeping the two from drifting.
+ */
+export async function buildAnalysisPrompt(input: AiAnalysisInput): Promise<string> {
+  const promptConfig = await getPrompt('contentAnalysis');
+  const isCarousel = input.slidePaths.length > 0;
+  return renderTemplate(promptConfig.template, {
+    caption: input.caption || '[nessuna caption]',
+    hasCaption: !!input.caption,
+    musicInfo: input.musicInfo,
+    hasMusicInfo: !!input.musicInfo,
+    transcript: input.transcript || null,
+    hasTranscript: !!input.transcript,
+    transcriptLanguage: input.transcriptLanguage || null,
+    ocrText: input.ocrText || null,
+    hasOcr: !!input.ocrText,
+    visualContext: input.visualContext || null,
+    hasVisualContext: !!input.visualContext,
+    isCarousel,
+    carouselCount: input.slidePaths.length,
+    hasImage: !!input.thumbnailPath || isCarousel,
+    // Legacy compat: older prompts may still reference hasImage
+  });
+}
+
+/**
  * Turn a raw model response into a validated result, or null when the response
  * carries no usable JSON. Shared by the Ollama and Claude paths so a hallucinated
  * link is rejected identically whichever model produced it.
  */
-function parseAnalysisResponse(
+export function parseAnalysisResponse(
   text: string,
   input: AiAnalysisInput
 ): MediaAiAnalysisResult | null {
@@ -81,7 +107,7 @@ function parseAnalysisResponse(
  * Tags and links alone do not count: an entry with only hashtags scraped and no
  * summary is exactly the failure mode the Claude cascade exists to fix.
  */
-function isEmptyAnalysis(r: MediaAiAnalysisResult | null): boolean {
+export function isEmptyAnalysis(r: MediaAiAnalysisResult | null): boolean {
   if (!r) return true;
   return !r.summary && r.songs.length === 0 && r.films.length === 0 && r.notes.length === 0;
 }
@@ -121,25 +147,7 @@ export async function analyzeWithAi(input: AiAnalysisInput): Promise<AiAnalysisR
       hasThumbnail: !!input.thumbnailPath,
     });
 
-    const promptConfig = await getPrompt('contentAnalysis');
-    const isCarousel = input.slidePaths.length > 0;
-    const prompt = renderTemplate(promptConfig.template, {
-      caption: input.caption || '[nessuna caption]',
-      hasCaption: !!input.caption,
-      musicInfo: input.musicInfo,
-      hasMusicInfo: !!input.musicInfo,
-      transcript: input.transcript || null,
-      hasTranscript: !!input.transcript,
-      transcriptLanguage: input.transcriptLanguage || null,
-      ocrText: input.ocrText || null,
-      hasOcr: !!input.ocrText,
-      visualContext: input.visualContext || null,
-      hasVisualContext: !!input.visualContext,
-      isCarousel,
-      carouselCount: input.slidePaths.length,
-      hasImage: !!input.thumbnailPath || isCarousel,
-      // Legacy compat: older prompts may still reference hasImage
-    });
+    const prompt = await buildAnalysisPrompt(input);
 
     // Text-only analysis: OCR already captured slide text, visualContext already
     // describes video frames. No need to pass images to the final LLM — the text
