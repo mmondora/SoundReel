@@ -122,6 +122,23 @@ function looselyMatches(candidate: string, input: string): boolean {
   return c.includes(i) || i.includes(c);
 }
 
+/**
+ * Precedence: (1) first result where BOTH artistName and trackName loosely
+ * match — avoids picking a same-titled track by an unrelated artist (e.g. a
+ * cover band) over the real one; (2) else first result where EITHER
+ * matches; (3) else the first result outright.
+ */
+function selectItunesMatch(results: ItunesTrack[], artist: string, title: string): ItunesTrack {
+  const artistMatch = (r: ItunesTrack) => looselyMatches(r.artistName ?? '', artist);
+  const trackMatch = (r: ItunesTrack) => looselyMatches(r.trackName ?? '', title);
+
+  return (
+    results.find((r) => artistMatch(r) && trackMatch(r)) ??
+    results.find((r) => artistMatch(r) || trackMatch(r)) ??
+    results[0]
+  );
+}
+
 async function tryItunes(artist: string, title: string): Promise<SongEnrichmentResult | null> {
   try {
     const url = `https://itunes.apple.com/search?term=${encodeURIComponent(`${artist} ${title}`)}&media=music&limit=5&country=IT`;
@@ -136,10 +153,7 @@ async function tryItunes(artist: string, title: string): Promise<SongEnrichmentR
       return null;
     }
 
-    const match =
-      data.results.find(
-        (r) => looselyMatches(r.artistName ?? '', artist) || looselyMatches(r.trackName ?? '', title)
-      ) ?? data.results[0];
+    const match = selectItunesMatch(data.results, artist, title);
 
     logInfo('Canzone trovata su iTunes', { itunesId: match.trackId, artist, title });
     return {

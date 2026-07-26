@@ -88,6 +88,22 @@ describe('enrichSong — Deezer happy path', () => {
     expect(result?.genres).toEqual([]);
   });
 
+  it('tolerates the album endpoint returning HTTP 200 with a rate-limit error body — genres [], track kept, no iTunes fallback', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [DEEZER_TRACK] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ error: { code: 4, message: 'Quota limit exceeded' } }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await enrichSong('Daft Punk', 'One More Time');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result).not.toBeNull();
+    expect(result?.deezerId).toBe(111);
+    expect(result?.itunesId).toBeNull();
+    expect(result?.genres).toEqual([]);
+  });
+
   it('skips the album genres call when the track has no album id', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       ok: true,
@@ -190,7 +206,25 @@ describe('enrichSong — both providers miss', () => {
 });
 
 describe('enrichSong — iTunes loose match selection', () => {
-  it('picks the result whose artistName/trackName loosely match over the first result', async () => {
+  it('prefers a both-match candidate over an earlier either-match candidate (avoids a cover-band same-title pick)', async () => {
+    // index 0: either-match only (artist matches, track is an unrelated cover-band title)
+    const eitherMatch = { ...ITUNES_TRACK, trackId: 10, artistName: 'Daft Punk Official', trackName: 'Nope Not This' };
+    // index 1: no match at all
+    const decoy = { ...ITUNES_TRACK, trackId: 11, artistName: 'Someone Else', trackName: 'Totally Different' };
+    // index 2: both-match — the real one, but listed after the either-match candidate
+    const bothMatch = { ...ITUNES_TRACK, trackId: 12, artistName: 'Daft Punk', trackName: 'One More Time' };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [eitherMatch, decoy, bothMatch] }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await enrichSong('Daft Punk', 'One More Time');
+
+    expect(result?.itunesId).toBe(12);
+  });
+
+  it('picks the result whose artistName loosely matches when no both-match candidate exists', async () => {
     const decoy = { ...ITUNES_TRACK, trackId: 1, artistName: 'Someone Else', trackName: 'Totally Different' };
     const matchByArtist = { ...ITUNES_TRACK, trackId: 2, artistName: 'Daft Punk Official', trackName: 'Nope Not This' };
     const fetchMock = vi
@@ -204,7 +238,7 @@ describe('enrichSong — iTunes loose match selection', () => {
     expect(result?.itunesId).toBe(2);
   });
 
-  it('matches on trackName containment even if artistName differs', async () => {
+  it('matches on trackName containment alone, but only wins when no both-match candidate exists', async () => {
     const decoy = { ...ITUNES_TRACK, trackId: 1, artistName: 'Someone Else', trackName: 'Totally Different' };
     const matchByTrack = { ...ITUNES_TRACK, trackId: 3, artistName: 'Cover Band', trackName: 'One More Time (cover)' };
     const fetchMock = vi
@@ -230,6 +264,21 @@ describe('enrichSong — iTunes loose match selection', () => {
     const result = await enrichSong('Daft Punk', 'One More Time');
 
     expect(result?.itunesId).toBe(1);
+  });
+
+  it('search url includes media=music, limit=5 and country=IT', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [ITUNES_TRACK] }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await enrichSong('Daft Punk', 'One More Time');
+
+    const itunesUrl = fetchMock.mock.calls[1][0] as string;
+    expect(itunesUrl).toContain('media=music');
+    expect(itunesUrl).toContain('limit=5');
+    expect(itunesUrl).toContain('country=IT');
   });
 });
 
