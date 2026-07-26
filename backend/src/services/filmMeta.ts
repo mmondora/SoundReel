@@ -74,20 +74,34 @@ export async function patchFilmUserMeta(
   const sets: string[] = [];
   const params: unknown[] = [key];
 
+  // Determine if rating/score force watched to true.
+  const forceWatched =
+    (patch.rating !== undefined && patch.rating !== null) ||
+    (patch.score !== undefined && patch.score !== null);
+
+  // Handle watched separately — it may be overridden by forceWatched.
+  let watchedAssignment: string | null = null;
   if (patch.watched !== undefined) {
     params.push(patch.watched);
-    sets.push(`watched = $${params.length}`);
+    watchedAssignment = `watched = $${params.length}`;
   }
+
   if (patch.rating !== undefined) {
     params.push(patch.rating);
     sets.push(`rating = $${params.length}`);
-    if (patch.rating !== null) sets.push('watched = true');
   }
   if (patch.score !== undefined) {
     params.push(patch.score);
     sets.push(`score = $${params.length}`);
-    if (patch.score !== null) sets.push('watched = true');
   }
+
+  // Apply watched: forceWatched wins over explicit value.
+  if (forceWatched) {
+    sets.push('watched = true');
+  } else if (watchedAssignment !== null) {
+    sets.push(watchedAssignment);
+  }
+
   if (patch.availability !== undefined) {
     // Merge per-key; explicit null removes the service key.
     const removals = Object.entries(patch.availability)

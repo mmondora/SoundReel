@@ -47,6 +47,33 @@ describe('patchFilmUserMeta', () => {
     expect(rec.watched).toBe(true);
   });
 
+  it('patch with both rating and score produces exactly one watched assignment', async () => {
+    vi.mocked(query).mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...ROW, rating: 'fresh', score: 85, watched: true }]);
+    await patchFilmUserMeta('heat::1995', { rating: 'fresh', score: 85 });
+    const updateSql = vi.mocked(query).mock.calls[1][0];
+    const watchedMatches = updateSql.match(/watched\s*=/g) || [];
+    expect(watchedMatches).toHaveLength(1);
+    expect(updateSql).toContain('watched = true');
+  });
+
+  it('patch with watched=false and rating=fresh produces exactly one watched=true assignment', async () => {
+    vi.mocked(query).mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...ROW, watched: true, rating: 'fresh' }]);
+    await patchFilmUserMeta('heat::1995', { watched: false, rating: 'fresh' });
+    const updateSql = vi.mocked(query).mock.calls[1][0];
+    const watchedMatches = updateSql.match(/watched\s*=/g) || [];
+    expect(watchedMatches).toHaveLength(1);
+    expect(updateSql).toContain('watched = true');
+  });
+
+  it('patch watched=false alone produces watched assignment with false param', async () => {
+    vi.mocked(query).mockResolvedValueOnce([]).mockResolvedValueOnce([{ ...ROW, watched: false }]);
+    await patchFilmUserMeta('heat::1995', { watched: false });
+    const updateSql = vi.mocked(query).mock.calls[1][0];
+    const watchedMatches = updateSql.match(/watched\s*=/g) || [];
+    expect(watchedMatches).toHaveLength(1);
+    expect(updateSql).toMatch(/watched\s*=\s*\$/);
+  });
+
   it('availability merge adds and removes keys', async () => {
     vi.mocked(query).mockResolvedValueOnce([]).mockResolvedValueOnce([ROW]);
     await patchFilmUserMeta('heat::1995', {
