@@ -22,6 +22,7 @@ import { resolveSongs } from '../services/songResolver';
 import { SsrfBlockedError } from '../services/ssrfGuard';
 import { searchTrack, addToPlaylist, generateYoutubeSearchUrl, generateSoundcloudSearchUrl } from '../services/spotify';
 import { searchFilm, generateImdbUrl, generateStreamingUrls } from '../services/filmSearch';
+import { filmKey, upsertFilmEnrichment } from '../services/filmMeta';
 import { mergeResults } from '../services/resultMerger';
 import { downloadMedia } from '../services/_legacy/mediaDownloader';
 import { transcribeAudio as transcribeAudioLegacyStub } from '../services/_legacy/transcribeAudioStub';
@@ -36,7 +37,7 @@ import {
   getOpenAIConfig,
   getEntry,
 } from '../utils/db';
-import { createActionLog } from '../utils/logger';
+import { createActionLog, logError } from '../utils/logger';
 import { Logger } from '../services/debugLogger';
 import { scanFullAudio, resolveYoutubeUrl } from '../services/shazamClient';
 import type { ShazamTrack } from '../services/shazamClient';
@@ -734,6 +735,16 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           provider: 'tmdb',
           found: !!tmdbResult,
         }));
+        if (tmdbResult) {
+          void upsertFilmEnrichment({
+            filmKey: filmKey(filmData.title, filmData.year),
+            tmdbId: tmdbResult.id,
+            genres: tmdbResult.genres,
+            overview: tmdbResult.overview,
+            cast: tmdbResult.cast,
+            tmdbScore: tmdbResult.voteAverage,
+          }).catch((err) => logError('film_meta upsert failed', { err: String(err) }));
+        }
         films.push({
           title: filmData.title,
           director: filmData.director,
@@ -746,6 +757,16 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
       for (const slideFilm of slideFilms) {
         const tmdbResult = await searchFilm(slideFilm.title, slideFilm.year?.toString() ?? null);
+        if (tmdbResult) {
+          void upsertFilmEnrichment({
+            filmKey: filmKey(slideFilm.title, slideFilm.year?.toString() ?? null),
+            tmdbId: tmdbResult.id,
+            genres: tmdbResult.genres,
+            overview: tmdbResult.overview,
+            cast: tmdbResult.cast,
+            tmdbScore: tmdbResult.voteAverage,
+          }).catch((err) => logError('film_meta upsert failed', { err: String(err) }));
+        }
         films.push({
           title: slideFilm.title,
           director: slideFilm.director ?? null,
