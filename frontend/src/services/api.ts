@@ -370,3 +370,14 @@ export async function patchFilmMeta(
   const data = await json<{ meta: FilmMetaRecord }>(res);
   return data.meta;
 }
+
+// On-demand refresh of a film's streaming availability data. Throws on any
+// non-2xx response (including 503 when no provider is configured) — the
+// caller is expected to catch and log, per the pipeline resilience convention.
+export async function refreshFilmStreaming(filmKey: string): Promise<FilmMetaRecord> {
+  const res = await fetch(url(`/api/films/${encodeURIComponent(filmKey)}/refresh-streaming`), {
+    method: 'POST',
+  });
+  const data = await json<{ meta: FilmMetaRecord }>(res);
+  return data.meta;
+}

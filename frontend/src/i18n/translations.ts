@@ -259,6 +259,7 @@ export interface Translations {
   filmsWatchedFilterLabel: string;
   filmsAvailabilityFilterLabel: string;
   filmsTmdbScore: string;
+  filmsRefreshStreaming: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -520,6 +521,7 @@ export const translations: Record<Language, Translations> = {
     filmsWatchedFilterLabel: 'Visto',
     filmsAvailabilityFilterLabel: 'Disponibilità',
     filmsTmdbScore: 'Voto TMDb',
+    filmsRefreshStreaming: 'Aggiorna disponibilità',
   },
 
   en: {
@@ -780,6 +782,7 @@ export const translations: Record<Language, Translations> = {
     filmsWatchedFilterLabel: 'Watched',
     filmsAvailabilityFilterLabel: 'Availability',
     filmsTmdbScore: 'TMDb score',
+    filmsRefreshStreaming: 'Refresh availability',
   }
 };
 

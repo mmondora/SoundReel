@@ -3520,6 +3520,38 @@ body {
 .avail-dot.paid { background: var(--warning); border-color: var(--warning); }
 .avail-dot.absent { background: var(--error); border-color: var(--error); opacity: 0.5; }
 
+/* Direct-link streaming badges, from the streaming-availability API data */
+.badge-link.stream-free { background: var(--success); color: #000; }
+.badge-link.stream-sub { background: var(--border); color: var(--text-primary); }
+.badge-link.stream-paid { background: var(--warning); color: #000; }
+
+/* A manual dot, when set, overrides the API-derived badge color (defined
+   after .stream-* so it wins at equal specificity). */
+.badge-link.manual-override-free { background: var(--success); color: #000; }
+.badge-link.manual-override-paid { background: var(--warning); color: #000; }
+.badge-link.manual-override-absent { background: var(--error); color: #fff; opacity: 0.5; }
+
+.stream-refresh {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 0.1rem 0.35rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.stream-refresh:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.stream-refresh:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* Search */
 
 .search-wrapper {
