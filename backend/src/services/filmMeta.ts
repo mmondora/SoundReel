@@ -79,13 +79,6 @@ export async function patchFilmUserMeta(
     (patch.rating !== undefined && patch.rating !== null) ||
     (patch.score !== undefined && patch.score !== null);
 
-  // Handle watched separately — it may be overridden by forceWatched.
-  let watchedAssignment: string | null = null;
-  if (patch.watched !== undefined) {
-    params.push(patch.watched);
-    watchedAssignment = `watched = $${params.length}`;
-  }
-
   if (patch.rating !== undefined) {
     params.push(patch.rating);
     sets.push(`rating = $${params.length}`);
@@ -96,10 +89,12 @@ export async function patchFilmUserMeta(
   }
 
   // Apply watched: forceWatched wins over explicit value.
+  // Only push to params if we actually use the parameterized form.
   if (forceWatched) {
     sets.push('watched = true');
-  } else if (watchedAssignment !== null) {
-    sets.push(watchedAssignment);
+  } else if (patch.watched !== undefined) {
+    params.push(patch.watched);
+    sets.push(`watched = $${params.length}`);
   }
 
   if (patch.availability !== undefined) {
