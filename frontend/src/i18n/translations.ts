@@ -256,6 +256,13 @@ export interface Translations {
   filmsMarkWatched: string;
   filmsScorePlaceholder: string;
   filmsAvailabilityHint: string;
+  licensesTitle: string;
+  licensesDataProviders: string;
+  licensesOssTitle: string;
+  licensesPackage: string;
+  licensesVersion: string;
+  licensesLicense: string;
+  licensesLink: string;
   filmsWatchedFilterLabel: string;
   filmsAvailabilityFilterLabel: string;
   filmsTmdbScore: string;
@@ -522,6 +529,13 @@ export const translations: Record<Language, Translations> = {
     filmsMarkWatched: 'Segna come visto',
     filmsScorePlaceholder: '%',
     filmsAvailabilityHint: 'Disponibilità: click sul punto per cambiare stato',
+    licensesTitle: 'Licenze e attribuzioni',
+    licensesDataProviders: 'Fonti dati',
+    licensesOssTitle: 'Dipendenze open source',
+    licensesPackage: 'Pacchetto',
+    licensesVersion: 'Versione',
+    licensesLicense: 'Licenza',
+    licensesLink: 'Licenze',
     filmsWatchedFilterLabel: 'Visto',
     filmsAvailabilityFilterLabel: 'Disponibilità',
     filmsTmdbScore: 'Voto TMDb',
@@ -787,6 +801,13 @@ export const translations: Record<Language, Translations> = {
     filmsMarkWatched: 'Mark as watched',
     filmsScorePlaceholder: '%',
     filmsAvailabilityHint: 'Availability: click the dot to cycle status',
+    licensesTitle: 'Licenses and attributions',
+    licensesDataProviders: 'Data providers',
+    licensesOssTitle: 'Open source dependencies',
+    licensesPackage: 'Package',
+    licensesVersion: 'Version',
+    licensesLicense: 'License',
+    licensesLink: 'Licenses',
     filmsWatchedFilterLabel: 'Watched',
     filmsAvailabilityFilterLabel: 'Availability',
     filmsTmdbScore: 'TMDb score',

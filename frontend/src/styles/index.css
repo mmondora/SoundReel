@@ -3705,3 +3705,53 @@ body {
   white-space: pre-wrap;
   margin-top: 0.35rem;
 }
+
+/* --- Licenses & attributions --- */
+.data-attribution {
+  margin-top: 1.5rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.data-attribution a {
+  color: var(--text-secondary);
+}
+
+.licenses-attribution {
+  margin-bottom: 1.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.licenses-attribution h2,
+.licenses-section-title {
+  font-size: 0.95rem;
+  margin: 0.75rem 0 0.4rem;
+}
+
+.licenses-table-wrap {
+  overflow-x: auto;
+}
+
+.licenses-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.licenses-table th,
+.licenses-table td {
+  text-align: left;
+  padding: 0.25rem 0.6rem 0.25rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.licenses-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.licenses-table a {
+  color: var(--text-primary);
+}

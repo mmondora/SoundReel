@@ -9,6 +9,7 @@ import { EntriesPage } from './pages/EntriesPage';
 import { SongsPage } from './pages/SongsPage';
 import { FilmsPage } from './pages/FilmsPage';
 import { NotesPage } from './pages/NotesPage';
+import { LicensesPage } from './pages/LicensesPage';
 import './styles/index.css';
 
 export function App() {
@@ -21,6 +22,7 @@ export function App() {
           <Route path="/songs" element={<SongsPage />} />
           <Route path="/films" element={<FilmsPage />} />
           <Route path="/notes" element={<NotesPage />} />
+          <Route path="/licenses" element={<LicensesPage />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/prompts" element={<Prompts />} />
           <Route path="/console" element={<Console />} />

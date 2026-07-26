@@ -228,6 +228,13 @@ export function FilmsPage() {
             />
           ))
         )}
+
+        <div className="data-attribution">
+          Streaming data by{' '}
+          <a href="https://www.watchmode.com/" target="_blank" rel="noopener noreferrer">Watchmode</a>
+          {' · '}
+          <Link to="/licenses">{t.licensesLink}</Link>
+        </div>
       </div>
     </div>
   );
