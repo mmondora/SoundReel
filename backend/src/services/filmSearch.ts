@@ -35,7 +35,10 @@ async function getMovieDetails(tmdbId: number, apiKey: string): Promise<MovieDet
     const response = await fetch(
       `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${apiKey}&language=it-IT&append_to_response=credits`
     );
-    if (!response.ok) return EMPTY_DETAILS;
+    if (!response.ok) {
+      logWarning('TMDb details fallita', { tmdbId, status: response.status });
+      return EMPTY_DETAILS;
+    }
     const data = (await response.json()) as TmdbMovieDetails;
     return {
       imdbId: data.imdb_id || null,
@@ -45,7 +48,8 @@ async function getMovieDetails(tmdbId: number, apiKey: string): Promise<MovieDet
       voteAverage:
         typeof data.vote_average === 'number' ? Math.round(data.vote_average * 10) / 10 : null,
     };
-  } catch {
+  } catch (error) {
+    logWarning('TMDb details errore', { tmdbId });
     return EMPTY_DETAILS;
   }
 }
@@ -95,7 +99,7 @@ export async function searchFilm(
       voteAverage: details.voteAverage,
     };
 
-    logInfo('Film trovato su TMDb', { title: result.title, imdbId: result.imdbId, enriched: true });
+    logInfo('Film trovato su TMDb', { title: result.title, imdbId: result.imdbId, enriched: details !== EMPTY_DETAILS });
     return result;
   } catch (error) {
     logError('Errore ricerca TMDb', error);

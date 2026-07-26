@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn() }));
 
 import { searchFilm } from './filmSearch';
+import * as logger from '../utils/logger';
 
 const SEARCH_RESPONSE = {
   results: [{ id: 949, title: 'Heat', release_date: '1995-12-15', poster_path: '/p.jpg' }],
@@ -58,5 +59,15 @@ describe('searchFilm', () => {
     expect(result?.cast).toEqual([]);
     expect(result?.voteAverage).toBeNull();
     expect(result?.imdbId).toBeNull();
+  });
+
+  it('logs warning when details call fails and enriched: false in final log', async () => {
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => SEARCH_RESPONSE })
+      .mockResolvedValueOnce({ ok: false, status: 500 }));
+    await searchFilm('Heat', '1995');
+    expect(vi.mocked(logger.logWarning)).toHaveBeenCalledWith('TMDb details fallita', { tmdbId: 949, status: 500 });
+    expect(vi.mocked(logger.logInfo)).toHaveBeenCalledWith('Film trovato su TMDb', expect.objectContaining({ enriched: false }));
   });
 });
