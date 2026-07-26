@@ -45,11 +45,11 @@ export function streamTypeLabel(type: StreamingPlatformOption['type'], t: Transl
 // real-world platform name is a data concern, and they diverge.
 const SERVICE_ALIASES: Record<keyof StreamingUrls, string[]> = {
   netflix: ['netflix'],
-  primeVideo: ['prime video', 'amazon prime', 'prime'],
+  primeVideo: ['prime video', 'amazon prime', 'prime', 'amazon'],
   raiPlay: ['raiplay', 'rai play'],
   now: ['now tv', 'now'],
   disneyPlus: ['disney plus', 'disney+', 'disney'],
-  appleTv: ['apple tv', 'itunes'],
+  appleTv: ['apple tv', 'appletv', 'itunes'],
 };
 
 // Flattened (service, alias) pairs, longest alias first, so a more specific

@@ -42,6 +42,11 @@ describe('matchService', () => {
     expect(matchService('Now TV')).toBe('now');
   });
 
+  it('matches the platform names Watchmode actually uses in production data', () => {
+    expect(matchService('Amazon')).toBe('primeVideo');
+    expect(matchService('AppleTV')).toBe('appleTv');
+  });
+
   it('is case-insensitive', () => {
     expect(matchService('nEtFlIx')).toBe('netflix');
     expect(matchService('APPLE TV')).toBe('appleTv');
