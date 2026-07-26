@@ -1,4 +1,7 @@
-import type { Entry, SearchResponse, EnrichmentResult, AggregatedFilm, FilmMetaRecord, AvailabilityStatus } from '../types';
+import type {
+  Entry, SearchResponse, EnrichmentResult, AggregatedFilm, FilmMetaRecord, AvailabilityStatus,
+  AggregatedSong, SongMetaRecord, SongRating,
+} from '../types';
 
 // When served from the same origin as the backend, relative paths work.
 // For local dev against a backend on :8080, set VITE_API_BASE_URL in .env.local.
@@ -379,5 +382,50 @@ export async function refreshFilmStreaming(filmKey: string): Promise<FilmMetaRec
     method: 'POST',
   });
   const data = await json<{ meta: FilmMetaRecord }>(res);
+  return data.meta;
+}
+
+// --- Songs ---
+
+export interface SongMetaPatchBody {
+  listened?: boolean;
+  favorite?: boolean;
+  downloaded?: boolean;
+  rating?: SongRating | null;
+  score?: number | null;
+}
+
+export async function fetchSongs(): Promise<AggregatedSong[]> {
+  const res = await fetch(url('/api/songs'));
+  const data = await json<{ songs: AggregatedSong[] }>(res);
+  return data.songs;
+}
+
+/**
+ * Resolves a playable preview URL right before playback. Always hits the
+ * backend rather than trusting a cached client-side value: when the stored
+ * URL is Deezer-backed it's a signed URL that expires ~14min after issue,
+ * so the backend re-resolves it live on every call; the iTunes-backed case
+ * is durable and the backend just returns the stored value. Either way this
+ * is one small call per play-press, so there's no need for a client cache.
+ * Rejects (via `json()`) on a 404 (no meta / no resolvable source) or any
+ * other non-2xx response.
+ */
+export async function fetchSongPreview(songKey: string): Promise<string> {
+  const res = await fetch(url(`/api/songs/${encodeURIComponent(songKey)}/preview`));
+  const data = await json<{ url: string }>(res);
+  return data.url;
+}
+
+export async function patchSongMeta(
+  songKey: string,
+  patch: SongMetaPatchBody
+): Promise<SongMetaRecord> {
+  const res = await fetch(url(`/api/songs/${encodeURIComponent(songKey)}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  const data = await json<{ meta: SongMetaRecord }>(res);
   return data.meta;
 }

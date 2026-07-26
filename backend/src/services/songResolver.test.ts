@@ -5,6 +5,13 @@ vi.mock('./spotify', () => ({
   generateYoutubeSearchUrl: vi.fn(),
 }));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn() }));
+vi.mock('./songMeta', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./songMeta')>();
+  return {
+    songKey: actual.songKey,
+    patchSongUserMeta: vi.fn(),
+  };
+});
 
 // Mock global fetch for Spooty calls
 const mockFetch = vi.fn();
@@ -12,6 +19,11 @@ vi.stubGlobal('fetch', mockFetch);
 
 import { resolveSong, resolveSongs } from './songResolver';
 import { searchTrack, generateYoutubeSearchUrl } from './spotify';
+import { songKey, patchSongUserMeta } from './songMeta';
+
+// resolveSong's downloaded-flag update is fire-and-forget (`void promise.catch(...)`),
+// so tests that assert on it must flush the microtask queue after awaiting resolveSong.
+const flushMicrotasks = () => new Promise((r) => setImmediate(r));
 
 const SONG = { title: 'Bohemian Rhapsody', artist: 'Queen' };
 
@@ -19,6 +31,7 @@ describe('resolveSong', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(generateYoutubeSearchUrl).mockReturnValue('https://youtube.com/results?search_query=Bohemian+Rhapsody+Queen');
+    vi.mocked(patchSongUserMeta).mockResolvedValue({} as never);
   });
 
   it('resolves with Spotify URL when track found', async () => {
@@ -32,6 +45,55 @@ describe('resolveSong', () => {
     expect(result.spotifyUrl).toBe('https://open.spotify.com/track/123');
     expect(result.spotifyUri).toBe('spotify:track:123');
     expect(result.youtubeUrl).toBe('https://youtube.com/results?search_query=Bohemian+Rhapsody+Queen');
+    expect(result.sentToSpooty).toBe(true);
+  });
+
+  it('flags the song as downloaded in song_meta when sent to Spooty', async () => {
+    vi.mocked(searchTrack).mockResolvedValue({
+      uri: 'spotify:track:123', url: 'https://open.spotify.com/track/123',
+      name: 'Bohemian Rhapsody', artist: 'Queen',
+    });
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await resolveSong(SONG);
+    await flushMicrotasks();
+
+    expect(patchSongUserMeta).toHaveBeenCalledWith(songKey(SONG.artist, SONG.title), { downloaded: true });
+  });
+
+  it('does not flag the song as downloaded when Spooty POST fails', async () => {
+    vi.mocked(searchTrack).mockResolvedValue({
+      uri: 'spotify:track:123', url: 'https://open.spotify.com/track/123',
+      name: 'Bohemian Rhapsody', artist: 'Queen',
+    });
+    mockFetch.mockResolvedValue({ ok: false, status: 500, text: async () => 'Server Error' });
+
+    await resolveSong(SONG);
+    await flushMicrotasks();
+
+    expect(patchSongUserMeta).not.toHaveBeenCalled();
+  });
+
+  it('does not flag the song as downloaded when Spotify search returns nothing', async () => {
+    vi.mocked(searchTrack).mockResolvedValue(null);
+
+    await resolveSong(SONG);
+    await flushMicrotasks();
+
+    expect(patchSongUserMeta).not.toHaveBeenCalled();
+  });
+
+  it('logs but does not throw when the song_meta downloaded-flag update fails', async () => {
+    vi.mocked(searchTrack).mockResolvedValue({
+      uri: 'spotify:track:123', url: 'https://open.spotify.com/track/123',
+      name: 'Bohemian Rhapsody', artist: 'Queen',
+    });
+    mockFetch.mockResolvedValue({ ok: true });
+    vi.mocked(patchSongUserMeta).mockRejectedValue(new Error('db down'));
+
+    const result = await resolveSong(SONG);
+    await flushMicrotasks();
+
     expect(result.sentToSpooty).toBe(true);
   });
 

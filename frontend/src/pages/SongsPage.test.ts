@@ -1,63 +1,85 @@
 import { describe, it, expect } from 'vitest';
-import { artistOf, dedupeKey } from './SongsPage';
-import type { Song } from '../types';
+import { mergePatch } from './SongsPage';
+import type { SongMetaRecord } from '../types';
 
-/**
- * Regression cover for a production crash: one extracted track carried
- * `artist: null` (the Song type says string), and an unguarded `.trim()` in the
- * dedupe key took the entire songs page down with a white screen.
- */
-function song(partial: Partial<Song>): Song {
+function meta(partial: Partial<SongMetaRecord>): SongMetaRecord {
   return {
-    title: 'Some Title',
-    artist: 'Some Artist',
-    album: null,
-    source: 'ai_analysis',
-    spotifyUri: null,
-    spotifyUrl: null,
-    youtubeUrl: null,
-    soundcloudUrl: null,
-    addedToPlaylist: false,
+    songKey: 'artist::title',
+    deezerId: 123,
+    itunesId: null,
+    genres: ['Pop'],
+    album: 'An Album',
+    coverUrl: 'https://example.com/cover.jpg',
+    previewUrl: 'https://example.com/preview.mp3',
+    deezerUrl: 'https://deezer.com/track/123',
+    itunesUrl: null,
+    enrichedAt: '2026-01-01T00:00:00Z',
+    listened: false,
+    favorite: false,
+    downloaded: false,
+    rating: null,
+    score: null,
     ...partial,
   };
 }
 
-describe('artistOf', () => {
-  it('returns the trimmed artist', () => {
-    expect(artistOf(song({ artist: '  Queen  ' }))).toBe('Queen');
+describe('mergePatch', () => {
+  it('creates a default meta record when meta is null', () => {
+    const result = mergePatch(null, 'artist::new', { listened: true });
+    expect(result).toEqual({
+      songKey: 'artist::new',
+      deezerId: null,
+      itunesId: null,
+      genres: [],
+      album: null,
+      coverUrl: null,
+      previewUrl: null,
+      deezerUrl: null,
+      itunesUrl: null,
+      enrichedAt: null,
+      listened: true,
+      favorite: false,
+      downloaded: false,
+      rating: null,
+      score: null,
+    });
   });
 
-  it('returns an empty string for a null artist instead of throwing', () => {
-    expect(artistOf(song({ artist: null as unknown as string }))).toBe('');
+  it('forces listened true when rating is set to a non-null value', () => {
+    const result = mergePatch(meta({ listened: false, rating: null }), 'artist::title', { rating: 'like' });
+    expect(result.rating).toBe('like');
+    expect(result.listened).toBe(true);
   });
 
-  it('returns an empty string for an undefined artist', () => {
-    expect(artistOf(song({ artist: undefined as unknown as string }))).toBe('');
+  it('forces listened true when score is set to a non-null value', () => {
+    const result = mergePatch(meta({ listened: false }), 'artist::title', { score: 87 });
+    expect(result.score).toBe(87);
+    expect(result.listened).toBe(true);
   });
 
-  it('returns an empty string for a whitespace-only artist', () => {
-    expect(artistOf(song({ artist: '   ' }))).toBe('');
-  });
-});
-
-describe('dedupeKey', () => {
-  it('matches the same track regardless of case and padding', () => {
-    expect(dedupeKey(song({ artist: 'Queen', title: 'Bohemian Rhapsody' })))
-      .toBe(dedupeKey(song({ artist: ' QUEEN ', title: 'bohemian rhapsody ' })));
+  it('clears the rating without forcing listened back to false', () => {
+    const base = meta({ listened: true, rating: 'like' });
+    const result = mergePatch(base, 'artist::title', { rating: null });
+    expect(result.rating).toBeNull();
+    expect(result.listened).toBe(true);
   });
 
-  it('separates different tracks by the same artist', () => {
-    expect(dedupeKey(song({ artist: 'Queen', title: 'A' })))
-      .not.toBe(dedupeKey(song({ artist: 'Queen', title: 'B' })));
+  it('passes through favorite toggles', () => {
+    const result = mergePatch(meta({ favorite: false }), 'artist::title', { favorite: true });
+    expect(result.favorite).toBe(true);
+    // Unrelated fields untouched.
+    expect(result.listened).toBe(false);
   });
 
-  it('does not throw on a null artist', () => {
-    expect(() => dedupeKey(song({ artist: null as unknown as string }))).not.toThrow();
-    expect(dedupeKey(song({ artist: null as unknown as string, title: 'UFO Robot' })))
-      .toBe('|ufo robot');
+  it('passes through downloaded toggles', () => {
+    const result = mergePatch(meta({ downloaded: false }), 'artist::title', { downloaded: true });
+    expect(result.downloaded).toBe(true);
   });
 
-  it('does not throw on a null title', () => {
-    expect(() => dedupeKey(song({ title: null as unknown as string }))).not.toThrow();
+  it('does not mutate the source meta object', () => {
+    const base = meta({ rating: 'like', favorite: false });
+    mergePatch(base, 'artist::title', { rating: 'dislike', favorite: true });
+    expect(base.rating).toBe('like');
+    expect(base.favorite).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import { searchTrack, generateYoutubeSearchUrl } from './spotify';
 import { logInfo, logWarning, logError } from '../utils/logger';
 import type { ExtractedSong } from './musicListExtractor';
+import { songKey, patchSongUserMeta } from './songMeta';
 
 export interface ResolvedSong {
   title: string;
@@ -41,6 +42,11 @@ export async function resolveSong(song: ExtractedSong): Promise<ResolvedSong> {
     }
     logInfo('resolveSong: Spotify found', { title: track.name, artist: track.artist });
     const sentToSpooty = await postToSpooty(track.url);
+    if (sentToSpooty) {
+      // Fire-and-forget: never delay/break song resolution on a song_meta write.
+      void patchSongUserMeta(songKey(song.artist, song.title), { downloaded: true })
+        .catch((err) => logError('song_meta downloaded flag update failed', { title: song.title, artist: song.artist, err: String(err) }));
+    }
     return {
       title: song.title,
       artist: song.artist,

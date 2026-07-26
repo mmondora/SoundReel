@@ -76,6 +76,45 @@ export interface AggregatedFilm {
   meta: FilmMetaRecord | null;
 }
 
+export type SongRating = 'like' | 'dislike';
+
+export interface SongUserMeta {
+  listened: boolean;
+  favorite: boolean;
+  downloaded: boolean;
+  rating: SongRating | null;
+  score: number | null;
+}
+
+export interface SongMetaRecord extends SongUserMeta {
+  songKey: string;
+  deezerId: number | null;
+  itunesId: number | null;
+  genres: string[];
+  album: string | null;
+  coverUrl: string | null;
+  previewUrl: string | null;
+  deezerUrl: string | null;
+  itunesUrl: string | null;
+  enrichedAt: string | null;
+}
+
+export interface SongMention {
+  entryId: string;
+  createdAt: string;
+}
+
+export interface AggregatedSong {
+  songKey: string;
+  title: string;
+  artist: string;
+  album: string | null;
+  youtubeUrl: string | null;
+  spotifyUrl: string | null;
+  mentions: SongMention[];
+  meta: SongMetaRecord | null;
+}
+
 export interface ActionLogItem {
   action: string;
   details: Record<string, unknown>;

@@ -33,6 +33,8 @@
   --now: #26d07c;
   --disney: #113ccf;
   --appletv: #000000;
+  --deezer: #a238ff;
+  --applemusic: #fa243c;
 
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
@@ -3241,6 +3243,8 @@ body {
 .badge-link.netflix { background: var(--netflix); }
 .badge-link.prime { background: var(--prime); }
 .badge-link.raiplay { background: var(--raiplay); }
+.badge-link.deezer { background: var(--deezer); }
+.badge-link.applemusic { background: var(--applemusic); }
 .badge-link.now { background: var(--now); }
 .badge-link.disney { background: var(--disney); }
 .badge-link.appletv { background: var(--appletv); }
@@ -3550,6 +3554,43 @@ body {
 .stream-refresh:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* Songs page */
+
+.song-cover {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.song-preview-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 1.4rem;
+  height: 1.4rem;
+  font-size: 0.65rem;
+  line-height: 1;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.song-preview-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.song-preview-btn.playing {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 /* Search */
