@@ -58,7 +58,6 @@ export function FilmsPage() {
   const [genreFilter, setGenreFilter] = useState<string[]>([]);
   const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>('all');
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>('all');
-  const [scoreEditing, setScoreEditing] = useState<string | null>(null);
   // Per-filmKey monotonic counter so a slow/out-of-order PATCH response (success
   // or failure) can never clobber a newer patch already applied to that film.
   const patchSeqRef = useRef(new Map<string, number>());
@@ -154,30 +153,36 @@ export function FilmsPage() {
                 {genre}
               </button>
             ))}
-            <div className="filter-segment">
-              {watchedOptions.map((opt) => (
-                <button
-                  key={opt.key}
-                  type="button"
-                  className={watchedFilter === opt.key ? 'active' : ''}
-                  onClick={() => setWatchedFilter(opt.key)}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            <div className="filter-segment">
-              {availabilityOptions.map((opt) => (
-                <button
-                  key={opt.key}
-                  type="button"
-                  className={availabilityFilter === opt.key ? 'active' : ''}
-                  onClick={() => setAvailabilityFilter(opt.key)}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            <span className="filter-segment-group">
+              <span className="filter-segment-label">{t.filmsWatchedFilterLabel}</span>
+              <div className="filter-segment">
+                {watchedOptions.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    className={watchedFilter === opt.key ? 'active' : ''}
+                    onClick={() => setWatchedFilter(opt.key)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </span>
+            <span className="filter-segment-group">
+              <span className="filter-segment-label">{t.filmsAvailabilityFilterLabel}</span>
+              <div className="filter-segment">
+                {availabilityOptions.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    className={availabilityFilter === opt.key ? 'active' : ''}
+                    onClick={() => setAvailabilityFilter(opt.key)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </span>
             <span className="filter-result-count">{visible.length}</span>
           </div>
         )}
@@ -194,9 +199,6 @@ export function FilmsPage() {
             <FilmCard
               key={film.filmKey}
               film={film}
-              scoreEditing={scoreEditing === film.filmKey}
-              onStartScoreEdit={() => setScoreEditing(film.filmKey)}
-              onStopScoreEdit={() => setScoreEditing(null)}
               onPatch={(patch) => {
                 void applyPatch(film.filmKey, patch);
               }}

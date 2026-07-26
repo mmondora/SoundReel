@@ -256,6 +256,8 @@ export interface Translations {
   filmsMarkWatched: string;
   filmsScorePlaceholder: string;
   filmsAvailabilityHint: string;
+  filmsWatchedFilterLabel: string;
+  filmsAvailabilityFilterLabel: string;
   filmsTmdbScore: string;
 }
 
@@ -515,6 +517,8 @@ export const translations: Record<Language, Translations> = {
     filmsMarkWatched: 'Segna come visto',
     filmsScorePlaceholder: '%',
     filmsAvailabilityHint: 'Disponibilità: click sul punto per cambiare stato',
+    filmsWatchedFilterLabel: 'Visto',
+    filmsAvailabilityFilterLabel: 'Disponibilità',
     filmsTmdbScore: 'Voto TMDb',
   },
 
@@ -773,6 +777,8 @@ export const translations: Record<Language, Translations> = {
     filmsMarkWatched: 'Mark as watched',
     filmsScorePlaceholder: '%',
     filmsAvailabilityHint: 'Availability: click the dot to cycle status',
+    filmsWatchedFilterLabel: 'Watched',
+    filmsAvailabilityFilterLabel: 'Availability',
     filmsTmdbScore: 'TMDb score',
   }
 };

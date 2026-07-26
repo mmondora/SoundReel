@@ -3416,27 +3416,87 @@ body {
   transform: scale(1.15);
 }
 
-.score-btn {
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.1rem 0.4rem;
-  margin-left: 0.25rem;
+.rating-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 9rem;
+  max-width: 40vw;
+  height: 6px;
+  border-radius: 3px;
+  margin: 0 0.25rem;
   cursor: pointer;
+  /* Rotten zone (<20), neutral middle, fresh zone (>80) */
+  background: linear-gradient(
+    to right,
+    var(--error) 0%,
+    var(--error) 20%,
+    var(--border) 20%,
+    var(--border) 80%,
+    var(--success) 80%,
+    var(--success) 100%
+  );
 }
 
-.score-input {
-  width: 3.25rem;
-  background: var(--bg-input);
-  color: var(--text-primary);
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  padding: 0.1rem 0.3rem;
-  margin-left: 0.25rem;
+.rating-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  border: 2px solid var(--bg-primary);
+}
+
+.rating-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  border: 2px solid var(--bg-primary);
+}
+
+.rating-score-label {
   font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 2.2rem;
+  text-align: right;
+}
+
+.rating-score-label.unset {
+  color: var(--text-muted);
+}
+
+.watched-toggle {
+  background: none;
+  border: none;
+  font-size: 1.35rem;
+  cursor: pointer;
+  opacity: 0.3;
+  padding: 0 0.1rem;
+  margin-left: 0.45rem;
+  line-height: 1;
+  vertical-align: middle;
+  transition: opacity 0.12s, transform 0.12s;
+}
+
+.watched-toggle.active {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.filter-segment-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.filter-segment-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 
 .film-service {

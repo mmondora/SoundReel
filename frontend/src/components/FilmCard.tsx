@@ -1,15 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
+import { ratingFromScore } from '../utils/filmRating';
 import type { AggregatedFilm, AvailabilityStatus, StreamingUrls } from '../types';
 import type { FilmMetaPatchBody } from '../services/api';
 
 interface FilmCardProps {
   film: AggregatedFilm;
-  /** Whether the score input is currently open for this film. */
-  scoreEditing: boolean;
-  onStartScoreEdit: () => void;
-  onStopScoreEdit: () => void;
   onPatch: (patch: FilmMetaPatchBody) => void;
 }
 
@@ -25,34 +22,25 @@ const SERVICES: Array<{ key: keyof StreamingUrls; label: string; className: stri
 const AVAILABILITY_CYCLE: Array<AvailabilityStatus | null> = [null, 'free', 'paid', 'absent'];
 
 /** One deduplicated film row: poster, TMDb metadata, ratings and streaming availability. */
-export function FilmCard({ film, scoreEditing, onStartScoreEdit, onStopScoreEdit, onPatch }: FilmCardProps) {
+export function FilmCard({ film, onPatch }: FilmCardProps) {
   const { t } = useLanguage();
   const meta = film.meta;
-  const [scoreDraft, setScoreDraft] = useState('');
-  // Enter/blur both try to commit; guards against double-handling when the
-  // input unmounts (React can fire blur right after a keydown-triggered close).
-  const handledRef = useRef(false);
+  // Slider position while dragging; null when idle (shows the stored score).
+  const [sliderDraft, setSliderDraft] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (scoreEditing) {
-      handledRef.current = false;
-      setScoreDraft(meta?.score != null ? String(meta.score) : '');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scoreEditing]);
+  const sliderValue = sliderDraft ?? meta?.score ?? 50;
 
-  function finishScoreEdit(commit: boolean) {
-    if (handledRef.current) return;
-    handledRef.current = true;
-    if (commit) {
-      const trimmed = scoreDraft.trim();
-      const parsed = Number(trimmed);
-      if (trimmed !== '' && Number.isFinite(parsed)) {
-        const clamped = Math.max(0, Math.min(100, Math.round(parsed)));
-        if (clamped !== meta?.score) onPatch({ score: clamped });
-      }
-    }
-    onStopScoreEdit();
+  function commitSlider() {
+    if (sliderDraft == null) return;
+    const value = sliderDraft;
+    setSliderDraft(null);
+    if (value === meta?.score) return;
+    // Explicit 🍅/🤢 clicks win; the slider only derives a rating in its
+    // outer zones (<20 rotten, >80 fresh) — mid-range keeps the current one.
+    const derived = ratingFromScore(value);
+    const patch: FilmMetaPatchBody = { score: value };
+    if (derived) patch.rating = derived;
+    onPatch(patch);
   }
 
   return (
@@ -65,6 +53,14 @@ export function FilmCard({ film, scoreEditing, onStartScoreEdit, onStopScoreEdit
       <div className="list-item-content">
         <div className="list-item-title">
           {film.title}
+          <button
+            type="button"
+            className={`watched-toggle ${meta?.watched ? 'active' : ''}`}
+            title={t.filmsMarkWatched}
+            onClick={() => onPatch({ watched: !(meta?.watched ?? false) })}
+          >
+            👁
+          </button>
           {meta?.tmdbScore != null && (
             <span className="film-score" title={t.filmsTmdbScore}>★ {meta.tmdbScore.toFixed(1)}</span>
           )}
@@ -88,52 +84,37 @@ export function FilmCard({ film, scoreEditing, onStartScoreEdit, onStopScoreEdit
         <div className="film-controls">
           <button
             type="button"
-            className={`rating-btn ${meta?.rating === 'fresh' ? 'active' : ''}`}
-            title={t.filmsMarkFresh}
-            onClick={() => onPatch({ rating: meta?.rating === 'fresh' ? null : 'fresh' })}
-          >
-            🍅
-          </button>
-          <button
-            type="button"
             className={`rating-btn ${meta?.rating === 'rotten' ? 'active' : ''}`}
             title={t.filmsMarkRotten}
             onClick={() => onPatch({ rating: meta?.rating === 'rotten' ? null : 'rotten' })}
           >
             🤢
           </button>
+          <input
+            type="range"
+            className="rating-slider"
+            min={0}
+            max={100}
+            step={1}
+            value={sliderValue}
+            aria-label={t.filmsMarkFresh}
+            onChange={(e) => setSliderDraft(Number(e.target.value))}
+            onPointerUp={commitSlider}
+            onKeyUp={commitSlider}
+            onBlur={commitSlider}
+          />
           <button
             type="button"
-            className={`rating-btn ${meta?.watched ? 'active' : ''}`}
-            title={t.filmsMarkWatched}
-            onClick={() => onPatch({ watched: !(meta?.watched ?? false) })}
+            className={`rating-btn ${meta?.rating === 'fresh' ? 'active' : ''}`}
+            title={t.filmsMarkFresh}
+            onClick={() => onPatch({ rating: meta?.rating === 'fresh' ? null : 'fresh' })}
           >
-            👁
+            🍅
           </button>
-
-          {meta?.rating && (
-            scoreEditing ? (
-              <input
-                type="number"
-                className="score-input"
-                min={0}
-                max={100}
-                autoFocus
-                value={scoreDraft}
-                placeholder={t.filmsScorePlaceholder}
-                onChange={(e) => setScoreDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') finishScoreEdit(true);
-                  else if (e.key === 'Escape') finishScoreEdit(false);
-                }}
-                onBlur={() => finishScoreEdit(true)}
-              />
-            ) : (
-              <button type="button" className="score-btn" onClick={onStartScoreEdit}>
-                {meta.score != null ? `${meta.score}${t.filmsScorePlaceholder}` : t.filmsScorePlaceholder}
-              </button>
-            )
-          )}
+          <span className={`rating-score-label ${meta?.score == null && sliderDraft == null ? 'unset' : ''}`}>
+            {sliderDraft ?? meta?.score ?? '—'}
+            {(sliderDraft != null || meta?.score != null) && '%'}
+          </span>
         </div>
 
         <div className="list-item-badges">
