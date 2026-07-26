@@ -22,6 +22,7 @@ import { resolveSongs } from '../services/songResolver';
 import { SsrfBlockedError } from '../services/ssrfGuard';
 import { searchTrack, addToPlaylist, generateYoutubeSearchUrl, generateSoundcloudSearchUrl } from '../services/spotify';
 import { searchFilm, generateImdbUrl, generateStreamingUrls } from '../services/filmSearch';
+import { filmKey, upsertFilmEnrichment } from '../services/filmMeta';
 import { mergeResults } from '../services/resultMerger';
 import { downloadMedia } from '../services/_legacy/mediaDownloader';
 import { transcribeAudio as transcribeAudioLegacyStub } from '../services/_legacy/transcribeAudioStub';
@@ -36,7 +37,7 @@ import {
   getOpenAIConfig,
   getEntry,
 } from '../utils/db';
-import { createActionLog } from '../utils/logger';
+import { createActionLog, logError } from '../utils/logger';
 import { Logger } from '../services/debugLogger';
 import { scanFullAudio, resolveYoutubeUrl } from '../services/shazamClient';
 import type { ShazamTrack } from '../services/shazamClient';
@@ -65,6 +66,43 @@ const KEY_FRAMES_COUNT = Number(process.env.KEY_FRAMES_COUNT || 5);
  * photo with an incidental watermark.
  */
 const SINGLE_IMAGE_OCR_MIN_CHARS = 120;
+
+/**
+ * Resolves the year to persist on a Film (and to key its film_meta enrichment
+ * row with) once, from the same inputs used to call searchFilm: the extractor's
+ * own year if present, otherwise the year TMDb resolved. Both the persisted
+ * `Film.year` and the `filmKey(...)` used for `upsertFilmEnrichment` MUST use
+ * this same value — otherwise the enrichment row is keyed under a different
+ * year than the one GET /api/films looks it up with, and the join silently
+ * never matches.
+ */
+export function resolveFilmYear(
+  extractedYear: string | number | null | undefined,
+  tmdbReleaseDate: string | null | undefined
+): string | null {
+  // extractedYear is typed as string at every call site, but films are
+  // parsed from AI-model JSON (not schema-validated) and can carry a
+  // numeric year at runtime — coerce so downstream filmKey() computation
+  // doesn't diverge based on JS type coercion quirks.
+  const normalizedYear =
+    typeof extractedYear === 'number' ? String(extractedYear) : extractedYear;
+  return normalizedYear || tmdbReleaseDate?.split('-')[0] || null;
+}
+
+/**
+ * True when a TMDb details lookup returned actual enrichment data (genres
+ * and/or an overview). searchFilm() falls back to EMPTY_DETAILS (empty
+ * genres, null overview) when the TMDb details call fails but the search
+ * itself succeeded — in that case tmdbResult is truthy but carries nothing
+ * worth persisting. Upserting it anyway would overwrite any enrichment a
+ * previous, successful run already stored for this film. Mirrors the same
+ * guard used by the backfill script (backfillFilmMeta.ts).
+ */
+export function hasEnrichmentData<T extends { genres: string[]; overview: string | null }>(
+  tmdb: T | null | undefined
+): tmdb is T {
+  return !!tmdb && (tmdb.genres.length > 0 || !!tmdb.overview);
+}
 
 export function registerAnalyzeRoute(app: FastifyInstance): void {
   app.post<{ Body: AnalyzeRequestBody }>('/api/analyze', async (req, reply) => {
@@ -734,10 +772,21 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           provider: 'tmdb',
           found: !!tmdbResult,
         }));
+        const filmYear = resolveFilmYear(filmData.year, tmdbResult?.releaseDate);
+        if (hasEnrichmentData(tmdbResult)) {
+          void upsertFilmEnrichment({
+            filmKey: filmKey(filmData.title, filmYear),
+            tmdbId: tmdbResult.id,
+            genres: tmdbResult.genres,
+            overview: tmdbResult.overview,
+            cast: tmdbResult.cast,
+            tmdbScore: tmdbResult.voteAverage,
+          }).catch((err) => logError('film_meta upsert failed', { err: String(err) }));
+        }
         films.push({
           title: filmData.title,
           director: filmData.director,
-          year: filmData.year || tmdbResult?.releaseDate?.split('-')[0] || null,
+          year: filmYear,
           imdbUrl: tmdbResult?.imdbId ? generateImdbUrl(tmdbResult.imdbId) : null,
           posterUrl: tmdbResult?.posterPath || null,
           streamingUrls: generateStreamingUrls(filmData.title),
@@ -746,10 +795,21 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
       for (const slideFilm of slideFilms) {
         const tmdbResult = await searchFilm(slideFilm.title, slideFilm.year?.toString() ?? null);
+        const slideFilmYear = resolveFilmYear(slideFilm.year?.toString() ?? null, tmdbResult?.releaseDate);
+        if (hasEnrichmentData(tmdbResult)) {
+          void upsertFilmEnrichment({
+            filmKey: filmKey(slideFilm.title, slideFilmYear),
+            tmdbId: tmdbResult.id,
+            genres: tmdbResult.genres,
+            overview: tmdbResult.overview,
+            cast: tmdbResult.cast,
+            tmdbScore: tmdbResult.voteAverage,
+          }).catch((err) => logError('film_meta upsert failed', { err: String(err) }));
+        }
         films.push({
           title: slideFilm.title,
           director: slideFilm.director ?? null,
-          year: slideFilm.year?.toString() ?? tmdbResult?.releaseDate?.split('-')[0] ?? null,
+          year: slideFilmYear,
           imdbUrl: tmdbResult?.imdbId ? generateImdbUrl(tmdbResult.imdbId) : null,
           posterUrl: tmdbResult?.posterPath ?? null,
           streamingUrls: generateStreamingUrls(slideFilm.title),

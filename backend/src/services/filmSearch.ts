@@ -12,6 +12,46 @@ interface TmdbSearchResponse {
 
 interface TmdbMovieDetails {
   imdb_id: string | null;
+  genres?: Array<{ id: number; name: string }>;
+  overview?: string | null;
+  vote_average?: number;
+  credits?: { cast?: Array<{ name: string }> };
+}
+
+interface MovieDetails {
+  imdbId: string | null;
+  genres: string[];
+  overview: string | null;
+  cast: string[];
+  voteAverage: number | null;
+}
+
+const EMPTY_DETAILS: MovieDetails = {
+  imdbId: null, genres: [], overview: null, cast: [], voteAverage: null,
+};
+
+async function getMovieDetails(tmdbId: number, apiKey: string): Promise<MovieDetails> {
+  try {
+    const response = await fetch(
+      `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${apiKey}&language=it-IT&append_to_response=credits`
+    );
+    if (!response.ok) {
+      logWarning('TMDb details fallita', { tmdbId, status: response.status });
+      return EMPTY_DETAILS;
+    }
+    const data = (await response.json()) as TmdbMovieDetails;
+    return {
+      imdbId: data.imdb_id || null,
+      genres: (data.genres ?? []).map((g) => g.name),
+      overview: data.overview || null,
+      cast: (data.credits?.cast ?? []).slice(0, 4).map((c) => c.name),
+      voteAverage:
+        typeof data.vote_average === 'number' ? Math.round(data.vote_average * 10) / 10 : null,
+    };
+  } catch (error) {
+    logWarning('TMDb details errore', { tmdbId });
+    return EMPTY_DETAILS;
+  }
 }
 
 export async function searchFilm(
@@ -43,35 +83,26 @@ export async function searchFilm(
     }
 
     const movie = data.results[0];
-    const imdbId = await getImdbId(movie.id, apiKey);
+    const details = await getMovieDetails(movie.id, apiKey);
 
     const result: TmdbSearchResult = {
       id: movie.id,
       title: movie.title,
-      imdbId,
+      imdbId: details.imdbId,
       posterPath: movie.poster_path
         ? `https://image.tmdb.org/t/p/w200${movie.poster_path}`
         : null,
       releaseDate: movie.release_date || null,
+      genres: details.genres,
+      overview: details.overview,
+      cast: details.cast,
+      voteAverage: details.voteAverage,
     };
 
-    logInfo('Film trovato su TMDb', { title: result.title, imdbId: result.imdbId });
+    logInfo('Film trovato su TMDb', { title: result.title, imdbId: result.imdbId, enriched: details !== EMPTY_DETAILS });
     return result;
   } catch (error) {
     logError('Errore ricerca TMDb', error);
-    return null;
-  }
-}
-
-async function getImdbId(tmdbId: number, apiKey: string): Promise<string | null> {
-  try {
-    const response = await fetch(
-      `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${apiKey}`
-    );
-    if (!response.ok) return null;
-    const data = (await response.json()) as TmdbMovieDetails;
-    return data.imdb_id || null;
-  } catch {
     return null;
   }
 }
