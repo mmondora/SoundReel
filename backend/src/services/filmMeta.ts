@@ -1,9 +1,9 @@
 import { query } from '../utils/db';
 import type { FilmMetaRecord, FilmUserMeta } from '../types';
 
-export function filmKey(title: string, year: string | null | undefined): string {
+export function filmKey(title: string, year: string | number | null | undefined): string {
   const t = title.trim().toLowerCase().replace(/\s+/g, ' ');
-  const y = (year ?? '').trim();
+  const y = typeof year === 'string' ? year.trim() : typeof year === 'number' ? String(year) : '';
   return `${t}::${y}`;
 }
 

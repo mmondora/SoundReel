@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveFilmYear } from './analyze';
+import { resolveFilmYear, hasEnrichmentData } from './analyze';
 import { filmKey } from '../services/filmMeta';
 
 describe('resolveFilmYear', () => {
@@ -26,5 +26,28 @@ describe('resolveFilmYear', () => {
     // upsertFilmEnrichment filmKey.
     const finalYear = resolveFilmYear(null, '1995-12-15');
     expect(filmKey('Heat', finalYear)).toBe('heat::1995');
+  });
+
+  it('regression: coerces a numeric extractedYear (AI JSON output is not schema-validated) instead of producing a mismatched key', () => {
+    expect(resolveFilmYear(1994 as unknown as string, '1995-12-15')).toBe('1994');
+  });
+});
+
+describe('hasEnrichmentData', () => {
+  it('is false for null/undefined tmdb result', () => {
+    expect(hasEnrichmentData(null)).toBe(false);
+    expect(hasEnrichmentData(undefined)).toBe(false);
+  });
+
+  it('is false for TMDb EMPTY_DETAILS (details fetch failed but search succeeded)', () => {
+    expect(hasEnrichmentData({ genres: [], overview: null })).toBe(false);
+  });
+
+  it('is true when genres are present', () => {
+    expect(hasEnrichmentData({ genres: ['Thriller'], overview: null })).toBe(true);
+  });
+
+  it('is true when only overview is present', () => {
+    expect(hasEnrichmentData({ genres: [], overview: 'A cop and a thief.' })).toBe(true);
   });
 });

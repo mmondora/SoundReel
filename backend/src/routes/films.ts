@@ -15,11 +15,20 @@ const AVAILABILITY = new Set(['free', 'paid', 'absent']);
 const LIST_ENTRIES_LIMIT = 10000;
 
 function isFilm(value: unknown): value is Film {
-  return (
-    typeof value === 'object' && value !== null &&
-    typeof (value as { title?: unknown }).title === 'string' &&
-    (value as { title: string }).title.trim().length > 0
-  );
+  if (
+    typeof value !== 'object' || value === null ||
+    typeof (value as { title?: unknown }).title !== 'string' ||
+    (value as { title: string }).title.trim().length === 0
+  ) {
+    return false;
+  }
+  // JSONB-stored film mentions are not schema-validated on write; a `year`
+  // of an unexpected type (e.g. an object) would otherwise reach filmKey()
+  // and either throw or silently produce a garbage key. Only string, number,
+  // null and undefined are accepted here — anything else is skipped rather
+  // than surfaced as a 500.
+  const year = (value as { year?: unknown }).year;
+  return year === undefined || year === null || typeof year === 'string' || typeof year === 'number';
 }
 
 export function registerFilmsRoutes(app: FastifyInstance): void {

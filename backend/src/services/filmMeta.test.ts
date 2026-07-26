@@ -19,6 +19,9 @@ describe('filmKey', () => {
   it('trims year', () => {
     expect(filmKey('Heat', ' 1995 ')).toBe('heat::1995');
   });
+  it('regression: coerces a numeric year (e.g. from JSONB stored as JSON number) instead of throwing', () => {
+    expect(filmKey('Heat', 1995 as unknown as string)).toBe('heat::1995');
+  });
 });
 
 const ROW = {

@@ -77,10 +77,31 @@ const SINGLE_IMAGE_OCR_MIN_CHARS = 120;
  * never matches.
  */
 export function resolveFilmYear(
-  extractedYear: string | null | undefined,
+  extractedYear: string | number | null | undefined,
   tmdbReleaseDate: string | null | undefined
 ): string | null {
-  return extractedYear || tmdbReleaseDate?.split('-')[0] || null;
+  // extractedYear is typed as string at every call site, but films are
+  // parsed from AI-model JSON (not schema-validated) and can carry a
+  // numeric year at runtime — coerce so downstream filmKey() computation
+  // doesn't diverge based on JS type coercion quirks.
+  const normalizedYear =
+    typeof extractedYear === 'number' ? String(extractedYear) : extractedYear;
+  return normalizedYear || tmdbReleaseDate?.split('-')[0] || null;
+}
+
+/**
+ * True when a TMDb details lookup returned actual enrichment data (genres
+ * and/or an overview). searchFilm() falls back to EMPTY_DETAILS (empty
+ * genres, null overview) when the TMDb details call fails but the search
+ * itself succeeded — in that case tmdbResult is truthy but carries nothing
+ * worth persisting. Upserting it anyway would overwrite any enrichment a
+ * previous, successful run already stored for this film. Mirrors the same
+ * guard used by the backfill script (backfillFilmMeta.ts).
+ */
+export function hasEnrichmentData<T extends { genres: string[]; overview: string | null }>(
+  tmdb: T | null | undefined
+): tmdb is T {
+  return !!tmdb && (tmdb.genres.length > 0 || !!tmdb.overview);
 }
 
 export function registerAnalyzeRoute(app: FastifyInstance): void {
@@ -752,7 +773,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           found: !!tmdbResult,
         }));
         const filmYear = resolveFilmYear(filmData.year, tmdbResult?.releaseDate);
-        if (tmdbResult) {
+        if (hasEnrichmentData(tmdbResult)) {
           void upsertFilmEnrichment({
             filmKey: filmKey(filmData.title, filmYear),
             tmdbId: tmdbResult.id,
@@ -775,7 +796,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       for (const slideFilm of slideFilms) {
         const tmdbResult = await searchFilm(slideFilm.title, slideFilm.year?.toString() ?? null);
         const slideFilmYear = resolveFilmYear(slideFilm.year?.toString() ?? null, tmdbResult?.releaseDate);
-        if (tmdbResult) {
+        if (hasEnrichmentData(tmdbResult)) {
           void upsertFilmEnrichment({
             filmKey: filmKey(slideFilm.title, slideFilmYear),
             tmdbId: tmdbResult.id,

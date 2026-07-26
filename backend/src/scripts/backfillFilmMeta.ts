@@ -34,7 +34,11 @@ async function main(): Promise<void> {
       const key = filmKey(film.title, film.year);
       const meta = existing.get(key);
       if (meta && meta.genres.length > 0) continue; // already enriched
-      if (!targets.has(key)) targets.set(key, { title: film.title.trim(), year: film.year ?? null });
+      if (!targets.has(key)) {
+        const year =
+          typeof film.year === 'string' ? film.year : typeof film.year === 'number' ? String(film.year) : null;
+        targets.set(key, { title: film.title.trim(), year });
+      }
     }
   }
 

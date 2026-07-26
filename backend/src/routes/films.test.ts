@@ -67,6 +67,35 @@ describe('GET /api/films', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().films).toHaveLength(1);
   });
+
+  it('regression: a film with a numeric JSONB year is included, keyed like a string year', async () => {
+    // Live prod entries can carry `year` as a JSON number rather than a
+    // string (JSONB is not schema-validated on write). filmKey() used to
+    // throw on `year.trim()` when year was a number, which turned the whole
+    // GET /api/films aggregation into a 500 for any account with one such
+    // entry.
+    vi.mocked(listEntries).mockResolvedValue([
+      entry('e1', '2026-07-01T00:00:00Z', [{ ...HEAT, title: 'X', year: 1995 }]),
+    ]);
+    vi.mocked(listFilmMeta).mockResolvedValue(new Map());
+    const res = await buildApp().inject({ method: 'GET', url: '/api/films' });
+    expect(res.statusCode).toBe(200);
+    const { films } = res.json();
+    expect(films).toHaveLength(1);
+    expect(films[0].filmKey).toBe('x::1995');
+  });
+
+  it('regression: a film with a non-primitive year is skipped instead of causing a 500', async () => {
+    vi.mocked(listEntries).mockResolvedValue([
+      entry('e1', '2026-07-01T00:00:00Z', [{ ...HEAT, title: 'Weird', year: { nested: true } }, HEAT]),
+    ]);
+    vi.mocked(listFilmMeta).mockResolvedValue(new Map());
+    const res = await buildApp().inject({ method: 'GET', url: '/api/films' });
+    expect(res.statusCode).toBe(200);
+    const { films } = res.json();
+    expect(films).toHaveLength(1);
+    expect(films[0].title).toBe('Heat');
+  });
 });
 
 describe('PATCH /api/films/:filmKey', () => {
