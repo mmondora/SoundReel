@@ -26,7 +26,9 @@ Metadata/links source: **Deezer primary, iTunes Search API fallback** (both free
 no API key, no OAuth — Spotify API remains blocked without Premium):
 - Deezer: `GET https://api.deezer.com/search?q=artist:"X" track:"Y"` → track id,
   direct link (`link`), album title + cover (`album.cover_medium`), 30s preview
-  (`preview`), artist; genre via `GET /album/{id}` (`genres.data[].name`).
+  (`preview`, **signed, expires ~14min after issue — see Architecture section:
+  never stored, resolved on demand**), artist; genre via `GET /album/{id}`
+  (`genres.data[].name`).
 - iTunes: `GET https://itunes.apple.com/search?term=…&media=music&limit=5&country=IT`
   → `trackViewUrl`, `artworkUrl100`, `primaryGenreName`, `previewUrl`.
 - Fallback: song not found on Deezer → try iTunes. Neither → song stays as today
@@ -80,17 +82,47 @@ invariant test).
   unified `{ deezerId, itunesId, genres, album, coverUrl, previewUrl, deezerUrl,
   itunesUrl }`; URLs validated `^https?:`; all fields nullable; errors logged not
   thrown to callers in the pipeline path.
+  - **Deezer preview expiry (found live post-implementation)**: Deezer's
+    `preview` field is a signed URL (`?hdnea=exp=...`) that expires ~14
+    minutes after being issued — verified live, it 403s once expired. A
+    preview fetched at enrichment time and stored in `song_meta` would
+    almost always be dead by the time a user clicks ▶. Fix: `tryDeezer`
+    never persists `previewUrl` (always writes `null`, everything else
+    including `deezerId` is still stored); a fresh preview is instead
+    resolved **on demand**, right before playback, via
+    `resolveDeezerPreviewUrl(deezerId)` (live `GET
+    https://api.deezer.com/track/{id}` → `preview`) called from the new
+    `GET /api/songs/:songKey/preview` route below. iTunes preview URLs are
+    durable and continue to be stored as before.
+  - Deezer match verification: mirrors the iTunes both-field precedence
+    (see T2 ruling) — `tryDeezer` only accepts a result whose `title` and/or
+    `artist.name` loosely match the input (both match preferred, title-only
+    as a weaker fallback, input artist `''` makes the artist check
+    vacuously true); no match at all is a miss that falls through to
+    iTunes, rather than blindly trusting Deezer's `data[0]`.
+  - iTunes throttle: module-level min 3000ms interval between calls to
+    `tryItunes`, shared by every caller (pipeline hook and backfill script
+    alike) since they both funnel through the same `enrichSong`/`tryItunes`.
 - `services/songMeta.ts`: `songKey()`, `upsertSongEnrichment()` (enrichment columns
   only), `patchSongUserMeta()` (user columns only, availability-style partial
   semantics), `listSongMeta()`, `getSongMeta()`.
 - Routes `routes/songs.ts`:
   - `GET /api/songs` — aggregate entries' `results.songs`, dedupe by `song_key`,
     mentions with entryId+createdAt, left-join `song_meta`, malformed tolerated.
+  - `GET /api/songs/:songKey/preview` — on-demand preview resolution. Returns
+    the stored `previewUrl` directly when present (iTunes, durable); else
+    live-resolves a fresh Deezer preview from `deezerId` and returns it
+    **without ever caching it back to the DB**; 404 when there's no
+    `song_meta` row, no preview source, or resolution fails/comes back empty.
+    The frontend calls this every time a preview starts playing instead of
+    trusting a client-cached URL.
   - `PATCH /api/songs/:songKey` — user state, validated, `{ meta }`.
 - Pipeline hook (analyze.ts, where songs land in results): fire-and-forget
   enrichment upsert, skip when `enriched_at` fresh (30d TTL), never blocking.
 - Spooty auto-flag: where the code currently reports `sentToSpooty: true`, also
-  `patch downloaded = true` on song_meta (fire-and-forget).
+  `patch downloaded = true` on song_meta (fire-and-forget). **(partially unmet:
+  automatic flag writes an orphaned row because music-list songs are not
+  persisted to entries — product decision pending)**
 - Backfill `scripts/backfillSongMeta.ts` — house style (`[song-meta]` prefix,
   dry-run, per-item try/catch, ~4 req/s max vs Deezer's 50 req/5s limit,
   pool.end, require.main).

@@ -401,6 +401,22 @@ export async function fetchSongs(): Promise<AggregatedSong[]> {
   return data.songs;
 }
 
+/**
+ * Resolves a playable preview URL right before playback. Always hits the
+ * backend rather than trusting a cached client-side value: when the stored
+ * URL is Deezer-backed it's a signed URL that expires ~14min after issue,
+ * so the backend re-resolves it live on every call; the iTunes-backed case
+ * is durable and the backend just returns the stored value. Either way this
+ * is one small call per play-press, so there's no need for a client cache.
+ * Rejects (via `json()`) on a 404 (no meta / no resolvable source) or any
+ * other non-2xx response.
+ */
+export async function fetchSongPreview(songKey: string): Promise<string> {
+  const res = await fetch(url(`/api/songs/${encodeURIComponent(songKey)}/preview`));
+  const data = await json<{ url: string }>(res);
+  return data.url;
+}
+
 export async function patchSongMeta(
   songKey: string,
   patch: SongMetaPatchBody

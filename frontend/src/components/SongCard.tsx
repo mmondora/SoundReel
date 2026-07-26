@@ -4,6 +4,7 @@ import { useLanguage } from '../i18n';
 import { ratingFromScore } from '../utils/filmRating';
 import type { AggregatedSong } from '../types';
 import type { SongMetaPatchBody } from '../services/api';
+import { fetchSongPreview } from '../services/api';
 
 interface SongCardProps {
   song: AggregatedSong;
@@ -30,19 +31,57 @@ function notify(): void {
 /**
  * Pure form of the snapshot check, taking the active key/audio explicitly
  * instead of reading module state — exported so the logic is unit-testable
- * without a DOM `<audio>` element or a render harness.
+ * without a DOM `<audio>` element or a render harness. `ended` is checked
+ * separately from `paused`: a finished HTMLAudioElement reports
+ * `paused === true` too, but relying on that alone is fragile — checking
+ * `ended` explicitly makes the "playback finished" case unambiguous instead
+ * of piggybacking on a side-effect of how the browser happens to report it.
  */
 export function computeIsPlaying(
   songKey: string,
   activeKey: string | null,
-  audio: { paused: boolean } | null
+  audio: { paused: boolean; ended: boolean } | null
 ): boolean {
-  return activeKey === songKey && !!audio && !audio.paused;
+  return activeKey === songKey && !!audio && !audio.paused && !audio.ended;
 }
 
 /** Snapshot of "is this song's preview currently the one playing", read from module state. */
 export function isPreviewPlaying(songKey: string): boolean {
   return computeIsPlaying(songKey, sharedAudioKey, sharedAudio);
+}
+
+/**
+ * Clears shared-audio ownership when `key` currently holds it, and notifies
+ * subscribers. Used on unmount (below), and — critically — after a rejected
+ * `play()` or a failed preview-URL fetch: without releasing ownership there,
+ * `sharedAudioKey` would keep pointing at a song whose audio never actually
+ * started, so the next ▶ click would hit the "this song owns the key, so
+ * pause it" branch and call `.pause()` on an already-silent element instead
+ * of retrying — the button would look inert forever.
+ */
+function releaseSharedAudioIfOwner(key: string): void {
+  if (sharedAudioKey === key) {
+    sharedAudio = null;
+    sharedAudioKey = null;
+    notify();
+  }
+}
+
+/** Test-only: seeds module state directly so releaseSharedAudioIfOwner is
+ * unit-testable without a DOM `<audio>` element or a render harness. */
+export function _setSharedAudioForTest(key: string | null, audio: { paused: boolean } | null): void {
+  sharedAudioKey = key;
+  sharedAudio = audio as HTMLAudioElement | null;
+}
+
+/** Test-only: reads back the module-private owner key. */
+export function _getSharedAudioKeyForTest(): string | null {
+  return sharedAudioKey;
+}
+
+/** Test-only: exposes releaseSharedAudioIfOwner for direct unit testing. */
+export function _releaseSharedAudioIfOwnerForTest(key: string): void {
+  releaseSharedAudioIfOwner(key);
 }
 
 function subscribe(onStoreChange: () => void): () => void {
@@ -94,12 +133,24 @@ export function SongCard({ song, onPatch }: SongCardProps) {
     onPatch(patch);
   }
 
-  function togglePreview() {
-    const url = meta?.previewUrl;
-    if (!url) return;
+  async function togglePreview() {
+    if (!meta || (!meta.previewUrl && !meta.deezerId)) return;
 
     if (sharedAudioKey === song.songKey && sharedAudio) {
       sharedAudio.pause(); // onpause below calls notify()
+      return;
+    }
+
+    // Always resolve through the backend rather than trusting a locally
+    // cached URL: a Deezer-backed preview expires ~14min after issue, so it
+    // has to be re-resolved live on every play-press. The iTunes-backed
+    // case is durable — the backend just echoes the stored value back — so
+    // there's no need to special-case it here; it's one tiny call either way.
+    let resolvedUrl: string;
+    try {
+      resolvedUrl = await fetchSongPreview(song.songKey);
+    } catch {
+      releaseSharedAudioIfOwner(song.songKey);
       return;
     }
 
@@ -109,12 +160,12 @@ export function SongCard({ song, onPatch }: SongCardProps) {
       sharedAudio.onpause = null;
     }
 
-    const audio = new Audio(url);
+    const audio = new Audio(resolvedUrl);
     sharedAudio = audio;
     sharedAudioKey = song.songKey;
     audio.onended = () => notify();
     audio.onpause = () => notify();
-    void audio.play().catch(() => notify());
+    void audio.play().catch(() => releaseSharedAudioIfOwner(song.songKey));
     notify();
   }
 
@@ -216,7 +267,7 @@ export function SongCard({ song, onPatch }: SongCardProps) {
           <a href={youtubeUrl} target="_blank" rel="noopener noreferrer" className="badge-link youtube">
             YouTube
           </a>
-          {meta?.previewUrl && (
+          {meta && (meta.previewUrl || meta.deezerId) && (
             <button
               type="button"
               className={`song-preview-btn ${playing ? 'playing' : ''}`}

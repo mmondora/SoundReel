@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { listEntries } from '../utils/db';
-import { songKey, listSongMeta, patchSongUserMeta } from '../services/songMeta';
+import { songKey, listSongMeta, patchSongUserMeta, getSongMeta } from '../services/songMeta';
 import type { SongUserMetaPatch } from '../services/songMeta';
+import { resolveDeezerPreviewUrl } from '../services/songEnrichment';
 import type { AggregatedSong, Entry, Song, SongMetaRecord } from '../types';
 import { logError } from '../utils/logger';
 
@@ -90,6 +91,37 @@ export function registerSongsRoutes(app: FastifyInstance): void {
     } catch (err) {
       logError('GET /api/songs failed', { err: String(err) });
       return reply.code(500).send({ error: 'songs aggregation failed' });
+    }
+  });
+
+  // On-demand preview resolution. Deezer's stored preview_url is never
+  // persisted (see songEnrichment.tryDeezer — it's a signed URL that expires
+  // ~14min after issue), so this route is the only place a Deezer preview
+  // URL is ever handed to a client: resolved live, right before playback,
+  // and never written back to song_meta. The iTunes-backed case is durable,
+  // so it's just a straight read of the stored value.
+  app.get<{ Params: { songKey: string } }>('/api/songs/:songKey/preview', async (req, reply) => {
+    try {
+      const meta = await getSongMeta(req.params.songKey);
+      if (!meta) {
+        return reply.code(404).send({ error: 'song not found' });
+      }
+
+      if (meta.previewUrl) {
+        return reply.send({ url: meta.previewUrl });
+      }
+
+      if (meta.deezerId) {
+        const url = await resolveDeezerPreviewUrl(meta.deezerId);
+        if (url) {
+          return reply.send({ url });
+        }
+      }
+
+      return reply.code(404).send({ error: 'preview not available' });
+    } catch (err) {
+      logError('GET /api/songs/:songKey/preview failed', { songKey: req.params.songKey, err: String(err) });
+      return reply.code(500).send({ error: 'preview resolution failed' });
     }
   });
 

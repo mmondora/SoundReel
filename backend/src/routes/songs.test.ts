@@ -8,13 +8,17 @@ vi.mock('../services/songMeta', async (importOriginal) => {
     songKey: actual.songKey,
     listSongMeta: vi.fn(),
     patchSongUserMeta: vi.fn(),
+    getSongMeta: vi.fn(),
   };
 });
+vi.mock('../services/songEnrichment', () => ({ resolveDeezerPreviewUrl: vi.fn() }));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logError: vi.fn() }));
 
 import { registerSongsRoutes } from './songs';
 import { listEntries } from '../utils/db';
-import { listSongMeta, patchSongUserMeta } from '../services/songMeta';
+import { listSongMeta, patchSongUserMeta, getSongMeta } from '../services/songMeta';
+import { resolveDeezerPreviewUrl } from '../services/songEnrichment';
+import type { SongMetaRecord } from '../types';
 
 function buildApp() {
   const app = Fastify();
@@ -113,6 +117,77 @@ describe('GET /api/songs', () => {
     vi.mocked(listEntries).mockRejectedValue(new Error('db down'));
     vi.mocked(listSongMeta).mockResolvedValue(new Map());
     const res = await buildApp().inject({ method: 'GET', url: '/api/songs' });
+    expect(res.statusCode).toBe(500);
+  });
+});
+
+function songMeta(partial: Partial<SongMetaRecord> = {}): SongMetaRecord {
+  return {
+    songKey: 'queen::bohemian rhapsody',
+    deezerId: null,
+    itunesId: null,
+    genres: [],
+    album: null,
+    coverUrl: null,
+    previewUrl: null,
+    deezerUrl: null,
+    itunesUrl: null,
+    enrichedAt: null,
+    listened: false,
+    favorite: false,
+    downloaded: false,
+    rating: null,
+    score: null,
+    ...partial,
+  };
+}
+
+describe('GET /api/songs/:songKey/preview', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('404s when there is no song_meta row', async () => {
+    vi.mocked(getSongMeta).mockResolvedValue(null);
+    const res = await buildApp().inject({ method: 'GET', url: '/api/songs/queen%3A%3Abohemian%20rhapsody/preview' });
+    expect(res.statusCode).toBe(404);
+    expect(resolveDeezerPreviewUrl).not.toHaveBeenCalled();
+  });
+
+  it('returns the stored (durable, iTunes-backed) preview URL directly without hitting Deezer', async () => {
+    vi.mocked(getSongMeta).mockResolvedValue(
+      songMeta({ previewUrl: 'https://audio-ssl.itunes.apple.com/preview333.m4a', deezerId: 111 })
+    );
+    const res = await buildApp().inject({ method: 'GET', url: '/api/songs/queen%3A%3Abohemian%20rhapsody/preview' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ url: 'https://audio-ssl.itunes.apple.com/preview333.m4a' });
+    expect(resolveDeezerPreviewUrl).not.toHaveBeenCalled();
+  });
+
+  it('live-resolves a fresh Deezer preview URL when only deezerId is known', async () => {
+    vi.mocked(getSongMeta).mockResolvedValue(songMeta({ deezerId: 111, previewUrl: null }));
+    vi.mocked(resolveDeezerPreviewUrl).mockResolvedValue('https://cdns-preview.deezer.com/fresh.mp3');
+    const res = await buildApp().inject({ method: 'GET', url: '/api/songs/queen%3A%3Abohemian%20rhapsody/preview' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ url: 'https://cdns-preview.deezer.com/fresh.mp3' });
+    expect(resolveDeezerPreviewUrl).toHaveBeenCalledWith(111);
+  });
+
+  it('404s when neither a stored preview nor a deezerId is available', async () => {
+    vi.mocked(getSongMeta).mockResolvedValue(songMeta({ deezerId: null, previewUrl: null }));
+    const res = await buildApp().inject({ method: 'GET', url: '/api/songs/queen%3A%3Abohemian%20rhapsody/preview' });
+    expect(res.statusCode).toBe(404);
+    expect(resolveDeezerPreviewUrl).not.toHaveBeenCalled();
+  });
+
+  it('404s when the live Deezer resolution fails/returns empty', async () => {
+    vi.mocked(getSongMeta).mockResolvedValue(songMeta({ deezerId: 111, previewUrl: null }));
+    vi.mocked(resolveDeezerPreviewUrl).mockResolvedValue(null);
+    const res = await buildApp().inject({ method: 'GET', url: '/api/songs/queen%3A%3Abohemian%20rhapsody/preview' });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('500 and logs when getSongMeta throws', async () => {
+    vi.mocked(getSongMeta).mockRejectedValue(new Error('db down'));
+    const res = await buildApp().inject({ method: 'GET', url: '/api/songs/queen%3A%3Abohemian%20rhapsody/preview' });
     expect(res.statusCode).toBe(500);
   });
 });
