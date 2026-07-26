@@ -1,4 +1,4 @@
-import type { Entry, SearchResponse, EnrichmentResult } from '../types';
+import type { Entry, SearchResponse, EnrichmentResult, AggregatedFilm, FilmMetaRecord, AvailabilityStatus } from '../types';
 
 // When served from the same origin as the backend, relative paths work.
 // For local dev against a backend on :8080, set VITE_API_BASE_URL in .env.local.
@@ -341,4 +341,32 @@ export async function searchEntries(q: string, limit = 20): Promise<SearchRespon
   const params = new URLSearchParams({ q, limit: String(limit) });
   const res = await fetch(url(`/api/search?${params.toString()}`));
   return json<SearchResponse>(res);
+}
+
+// --- Films ---
+
+export interface FilmMetaPatchBody {
+  watched?: boolean;
+  rating?: 'fresh' | 'rotten' | null;
+  score?: number | null;
+  availability?: Record<string, AvailabilityStatus | null>;
+}
+
+export async function fetchFilms(): Promise<AggregatedFilm[]> {
+  const res = await fetch(url('/api/films'));
+  const data = await json<{ films: AggregatedFilm[] }>(res);
+  return data.films;
+}
+
+export async function patchFilmMeta(
+  filmKey: string,
+  patch: FilmMetaPatchBody
+): Promise<FilmMetaRecord> {
+  const res = await fetch(url(`/api/films/${encodeURIComponent(filmKey)}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  const data = await json<{ meta: FilmMetaRecord }>(res);
+  return data.meta;
 }
