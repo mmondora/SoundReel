@@ -1,33 +1,68 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
-import { DateGroupedList } from '../components/DateGroupedList';
+import { FilmCard } from '../components/FilmCard';
+import { fetchFilms, patchFilmMeta } from '../services/api';
+import type { FilmMetaPatchBody } from '../services/api';
+import { filterFilms, collectGenres } from '../utils/filmFilters';
+import type { WatchedFilter, AvailabilityFilter } from '../utils/filmFilters';
 import { useAllEntries } from '../hooks/useJournal';
 import { useLanguage } from '../i18n';
-import type { Film, JournalStats } from '../types';
+import type { AggregatedFilm, FilmMetaRecord, JournalStats, StreamingUrls } from '../types';
 
-interface FilmWithEntry extends Film {
-  entryId: string;
-  entryDate: Date | null;
+function createDefaultMeta(filmKey: string): FilmMetaRecord {
+  return {
+    filmKey,
+    tmdbId: null,
+    genres: [],
+    overview: null,
+    cast: [],
+    tmdbScore: null,
+    watched: false,
+    rating: null,
+    score: null,
+    availability: {},
+  };
 }
 
-function parseFirestoreDate(timestamp: unknown): Date | null {
-  if (!timestamp) return null;
-  if (typeof timestamp === 'object' && timestamp !== null) {
-    const ts = timestamp as Record<string, unknown>;
-    const seconds = ts._seconds ?? ts.seconds;
-    if (typeof seconds === 'number') return new Date(seconds * 1000);
+/** Applies a patch to a film's local meta the same way the backend would, for optimistic updates. */
+function mergePatch(meta: FilmMetaRecord | null, filmKey: string, patch: FilmMetaPatchBody): FilmMetaRecord {
+  const next: FilmMetaRecord = { ...(meta ?? createDefaultMeta(filmKey)) };
+
+  if (patch.watched !== undefined) next.watched = patch.watched;
+  if (patch.rating !== undefined) next.rating = patch.rating;
+  if (patch.score !== undefined) next.score = patch.score;
+  // Rating or a score always implies the film has been watched.
+  if ((patch.rating !== undefined && patch.rating !== null) || (patch.score !== undefined && patch.score !== null)) {
+    next.watched = true;
   }
-  if (typeof timestamp === 'string') {
-    const date = new Date(timestamp);
-    if (!isNaN(date.getTime())) return date;
+  if (patch.availability) {
+    const availability = { ...next.availability };
+    for (const [key, value] of Object.entries(patch.availability)) {
+      const svcKey = key as keyof StreamingUrls;
+      if (value == null) delete availability[svcKey];
+      else availability[svcKey] = value;
+    }
+    next.availability = availability;
   }
-  return null;
+
+  return next;
 }
 
 export function FilmsPage() {
-  const { entries, loading } = useAllEntries();
+  const { entries } = useAllEntries();
   const { t } = useLanguage();
+
+  const [films, setFilms] = useState<AggregatedFilm[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [genreFilter, setGenreFilter] = useState<string[]>([]);
+  const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>('all');
+  const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>('all');
+  const [scoreEditing, setScoreEditing] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchFilms().then(setFilms).catch(() => setFilms([])).finally(() => setLoading(false));
+  }, []);
 
   const stats: JournalStats = {
     totalEntries: entries.length,
@@ -36,56 +71,51 @@ export function FilmsPage() {
     totalNotes: entries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0),
   };
 
-  const allFilms = useMemo<FilmWithEntry[]>(() => {
-    const films: FilmWithEntry[] = [];
-    for (const entry of entries) {
-      const date = parseFirestoreDate(entry.createdAt);
-      for (const film of entry.results.films) {
-        films.push({ ...film, entryId: entry.id, entryDate: date });
-      }
-    }
-    return films;
-  }, [entries]);
+  // Most recently mentioned film first (mentions are ordered newest-first by the backend).
+  const sortedFilms = useMemo(() => {
+    return [...films].sort((a, b) => {
+      const aTime = a.mentions[0] ? new Date(a.mentions[0].createdAt).getTime() : 0;
+      const bTime = b.mentions[0] ? new Date(b.mentions[0].createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
+  }, [films]);
 
-  const renderFilm = (film: FilmWithEntry) => (
-    <div className="list-item-row">
-      {film.posterUrl ? (
-        <img src={film.posterUrl} alt="" className="list-item-poster" loading="lazy" />
-      ) : (
-        <div className="list-item-icon">🎬</div>
-      )}
-      <div className="list-item-content">
-        <div className="list-item-title">{film.title}</div>
-        <div className="list-item-subtitle">
-          {film.director && <span>{t.director}: {film.director}</span>}
-          {film.year && <span className="list-item-muted"> ({film.year})</span>}
-        </div>
-        <div className="list-item-badges">
-          {film.imdbUrl && (
-            <a href={film.imdbUrl} target="_blank" rel="noopener noreferrer" className="badge-link imdb">
-              IMDb
-            </a>
-          )}
-          {film.streamingUrls?.netflix && (
-            <a href={film.streamingUrls.netflix} target="_blank" rel="noopener noreferrer" className="badge-link netflix">
-              Netflix
-            </a>
-          )}
-          {film.streamingUrls?.primeVideo && (
-            <a href={film.streamingUrls.primeVideo} target="_blank" rel="noopener noreferrer" className="badge-link prime">
-              Prime
-            </a>
-          )}
-          {film.streamingUrls?.disneyPlus && (
-            <a href={film.streamingUrls.disneyPlus} target="_blank" rel="noopener noreferrer" className="badge-link disney">
-              Disney+
-            </a>
-          )}
-        </div>
-      </div>
-      <Link to={`/?entry=${film.entryId}`} className="list-item-action">{t.viewReel}</Link>
-    </div>
+  const genres = useMemo(() => collectGenres(sortedFilms), [sortedFilms]);
+  const visible = useMemo(
+    () => filterFilms(sortedFilms, { genres: genreFilter, watched: watchedFilter, availability: availabilityFilter }),
+    [sortedFilms, genreFilter, watchedFilter, availabilityFilter]
   );
+
+  function toggleGenre(genre: string) {
+    setGenreFilter((prev) => (prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]));
+  }
+
+  // Optimistic patch: apply locally, PATCH, roll back on failure.
+  async function applyPatch(filmKey: string, patch: FilmMetaPatchBody) {
+    const snapshot = films;
+    setFilms((prev) =>
+      prev.map((f) => (f.filmKey === filmKey ? { ...f, meta: mergePatch(f.meta, filmKey, patch) } : f))
+    );
+
+    try {
+      const serverMeta = await patchFilmMeta(filmKey, patch);
+      setFilms((prev) => prev.map((f) => (f.filmKey === filmKey ? { ...f, meta: serverMeta } : f)));
+    } catch {
+      setFilms(snapshot);
+    }
+  }
+
+  const watchedOptions: Array<{ key: WatchedFilter; label: string }> = [
+    { key: 'all', label: t.filmsFilterAll },
+    { key: 'watched', label: t.filmsFilterWatched },
+    { key: 'unwatched', label: t.filmsFilterUnwatched },
+  ];
+
+  const availabilityOptions: Array<{ key: AvailabilityFilter; label: string }> = [
+    { key: 'all', label: t.filmsFilterAll },
+    { key: 'free', label: t.filmsFilterFree },
+    { key: 'notfree', label: t.filmsFilterNotFree },
+  ];
 
   return (
     <div className="list-page">
@@ -95,18 +125,64 @@ export function FilmsPage() {
           <Link to="/" className="list-page-back">{t.back}</Link>
           <h1>{t.allFilms}</h1>
         </div>
+
+        {!loading && (
+          <div className="films-filter-bar">
+            {genres.map((genre) => (
+              <button
+                key={genre}
+                className={`genre-chip ${genreFilter.includes(genre) ? 'active' : ''}`}
+                onClick={() => toggleGenre(genre)}
+              >
+                {genre}
+              </button>
+            ))}
+            <div className="filter-segment">
+              {watchedOptions.map((opt) => (
+                <button
+                  key={opt.key}
+                  className={watchedFilter === opt.key ? 'active' : ''}
+                  onClick={() => setWatchedFilter(opt.key)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="filter-segment">
+              {availabilityOptions.map((opt) => (
+                <button
+                  key={opt.key}
+                  className={availabilityFilter === opt.key ? 'active' : ''}
+                  onClick={() => setAvailabilityFilter(opt.key)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <span className="filter-result-count">{visible.length}</span>
+          </div>
+        )}
+
         {loading ? (
           <div className="journal-loading">
             <span className="spinner" />
             <p>{t.loading}</p>
           </div>
+        ) : visible.length === 0 ? (
+          <div className="list-page-empty">{t.noFilmsYet}</div>
         ) : (
-          <DateGroupedList
-            items={allFilms}
-            renderItem={renderFilm}
-            getDate={(f) => f.entryDate}
-            emptyMessage={t.noFilmsYet}
-          />
+          visible.map((film) => (
+            <FilmCard
+              key={film.filmKey}
+              film={film}
+              scoreEditing={scoreEditing === film.filmKey}
+              onStartScoreEdit={() => setScoreEditing(film.filmKey)}
+              onStopScoreEdit={() => setScoreEditing(null)}
+              onPatch={(patch) => {
+                void applyPatch(film.filmKey, patch);
+              }}
+            />
+          ))
         )}
       </div>
     </div>

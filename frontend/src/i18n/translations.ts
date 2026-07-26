@@ -243,6 +243,20 @@ export interface Translations {
   noSongsYet: string;
   noFilmsYet: string;
   noNotesYet: string;
+
+  // Films page filters & ratings
+  filmsFilterAll: string;
+  filmsFilterWatched: string;
+  filmsFilterUnwatched: string;
+  filmsFilterFree: string;
+  filmsFilterNotFree: string;
+  filmsMentions: string;
+  filmsMarkFresh: string;
+  filmsMarkRotten: string;
+  filmsMarkWatched: string;
+  filmsScorePlaceholder: string;
+  filmsAvailabilityHint: string;
+  filmsTmdbScore: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -489,6 +503,19 @@ export const translations: Record<Language, Translations> = {
     noSongsYet: 'Nessuna canzone trovata',
     noFilmsYet: 'Nessun film trovato',
     noNotesYet: 'Nessuna nota trovata',
+
+    filmsFilterAll: 'Tutti',
+    filmsFilterWatched: 'Visti',
+    filmsFilterUnwatched: 'Non visti',
+    filmsFilterFree: 'Gratis',
+    filmsFilterNotFree: 'Non gratis',
+    filmsMentions: 'menzioni',
+    filmsMarkFresh: 'Fresco',
+    filmsMarkRotten: 'Marcio',
+    filmsMarkWatched: 'Segna come visto',
+    filmsScorePlaceholder: '%',
+    filmsAvailabilityHint: 'Disponibilità: click sul punto per cambiare stato',
+    filmsTmdbScore: 'Voto TMDb',
   },
 
   en: {
@@ -734,6 +761,19 @@ export const translations: Record<Language, Translations> = {
     noSongsYet: 'No songs found',
     noFilmsYet: 'No films found',
     noNotesYet: 'No notes found',
+
+    filmsFilterAll: 'All',
+    filmsFilterWatched: 'Watched',
+    filmsFilterUnwatched: 'Unwatched',
+    filmsFilterFree: 'Free',
+    filmsFilterNotFree: 'Not free',
+    filmsMentions: 'mentions',
+    filmsMarkFresh: 'Fresh',
+    filmsMarkRotten: 'Rotten',
+    filmsMarkWatched: 'Mark as watched',
+    filmsScorePlaceholder: '%',
+    filmsAvailabilityHint: 'Availability: click the dot to cycle status',
+    filmsTmdbScore: 'TMDb score',
   }
 };
 
