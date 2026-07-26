@@ -158,5 +158,8 @@ CREATE TABLE IF NOT EXISTS film_meta (
   rating TEXT CHECK (rating IN ('fresh','rotten')),
   score SMALLINT CHECK (score BETWEEN 0 AND 100),
   availability JSONB NOT NULL DEFAULT '{}'::jsonb,
+  streaming_options JSONB,
+  streaming_checked_at TIMESTAMPTZ,
+  watchmode_title_id INTEGER,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

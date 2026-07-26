@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { FilmCard } from '../components/FilmCard';
-import { fetchFilms, patchFilmMeta } from '../services/api';
+import { fetchFilms, patchFilmMeta, refreshFilmStreaming } from '../services/api';
 import type { FilmMetaPatchBody } from '../services/api';
 import { filterFilms, collectGenres } from '../utils/filmFilters';
 import type { WatchedFilter, AvailabilityFilter } from '../utils/filmFilters';
@@ -22,6 +22,9 @@ function createDefaultMeta(filmKey: string): FilmMetaRecord {
     rating: null,
     score: null,
     availability: {},
+    streamingOptions: null,
+    streamingCheckedAt: null,
+    watchmodeTitleId: null,
   };
 }
 
@@ -120,6 +123,25 @@ export function FilmsPage() {
     }
   }
 
+  // On-demand streaming availability refresh. No optimistic change — nothing
+  // local is known until the server responds — but still seq-guarded like
+  // applyPatch so a slow response can't clobber a newer update for this film.
+  async function refreshStreaming(filmKey: string) {
+    const seq = (patchSeqRef.current.get(filmKey) ?? 0) + 1;
+    patchSeqRef.current.set(filmKey, seq);
+    const isLatest = () => patchSeqRef.current.get(filmKey) === seq;
+
+    try {
+      const serverMeta = await refreshFilmStreaming(filmKey);
+      if (!isLatest()) return; // superseded by a later patch/refresh for this film
+      setFilms((prev) => prev.map((f) => (f.filmKey === filmKey ? { ...f, meta: serverMeta } : f)));
+    } catch (err) {
+      // Not configured (503), no IMDb id (404), or a provider error (500) —
+      // all silently no-op per the pipeline resilience convention.
+      console.warn('refresh streaming availability failed', filmKey, err);
+    }
+  }
+
   const watchedOptions: Array<{ key: WatchedFilter; label: string }> = [
     { key: 'all', label: t.filmsFilterAll },
     { key: 'watched', label: t.filmsFilterWatched },
@@ -202,6 +224,7 @@ export function FilmsPage() {
               onPatch={(patch) => {
                 void applyPatch(film.filmKey, patch);
               }}
+              onRefreshStreaming={() => refreshStreaming(film.filmKey)}
             />
           ))
         )}

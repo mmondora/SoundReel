@@ -1,5 +1,5 @@
 import { query } from '../utils/db';
-import type { FilmMetaRecord, FilmUserMeta } from '../types';
+import type { FilmMetaRecord, FilmUserMeta, StreamingPlatformOption } from '../types';
 
 export function filmKey(title: string, year: string | number | null | undefined): string {
   const t = title.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -18,6 +18,9 @@ interface FilmMetaRow {
   rating: 'fresh' | 'rotten' | null;
   score: number | null;
   availability: FilmUserMeta['availability'];
+  streaming_options: StreamingPlatformOption[] | null;
+  streaming_checked_at: Date | null;
+  watchmode_title_id: number | null;
 }
 
 function rowToRecord(row: FilmMetaRow): FilmMetaRecord {
@@ -32,11 +35,15 @@ function rowToRecord(row: FilmMetaRow): FilmMetaRecord {
     rating: row.rating,
     score: row.score,
     availability: row.availability ?? {},
+    streamingOptions: row.streaming_options ?? null,
+    streamingCheckedAt: row.streaming_checked_at ? row.streaming_checked_at.toISOString() : null,
+    watchmodeTitleId: row.watchmode_title_id ?? null,
   };
 }
 
 const SELECT_COLS =
-  'film_key, tmdb_id, genres, overview, film_cast, tmdb_score, watched, rating, score, availability';
+  'film_key, tmdb_id, genres, overview, film_cast, tmdb_score, watched, rating, score, availability, ' +
+  'streaming_options, streaming_checked_at, watchmode_title_id';
 
 export async function upsertFilmEnrichment(input: {
   filmKey: string;
@@ -57,6 +64,25 @@ export async function upsertFilmEnrichment(input: {
        tmdb_score = EXCLUDED.tmdb_score,
        updated_at = now()`,
     [input.filmKey, input.tmdbId, input.genres, input.overview, input.cast, input.tmdbScore]
+  );
+}
+
+export async function upsertStreamingOptions(input: {
+  filmKey: string;
+  options: StreamingPlatformOption[];
+  watchmodeTitleId: number | null; // null preserves the existing value (COALESCE)
+}): Promise<void> {
+  // Ensure the row exists, then apply only the streaming columns — never
+  // touches user-state columns (watched/rating/score/availability).
+  await query(`INSERT INTO film_meta (film_key) VALUES ($1) ON CONFLICT (film_key) DO NOTHING`, [input.filmKey]);
+  await query(
+    `UPDATE film_meta SET
+       streaming_options = $2::jsonb,
+       streaming_checked_at = now(),
+       watchmode_title_id = COALESCE($3, watchmode_title_id),
+       updated_at = now()
+     WHERE film_key = $1`,
+    [input.filmKey, JSON.stringify(input.options), input.watchmodeTitleId]
   );
 }
 
@@ -126,4 +152,15 @@ export async function patchFilmUserMeta(
 export async function listFilmMeta(): Promise<Map<string, FilmMetaRecord>> {
   const rows = await query<FilmMetaRow>(`SELECT ${SELECT_COLS} FROM film_meta`);
   return new Map(rows.map((r) => [r.film_key, rowToRecord(r)]));
+}
+
+/**
+ * Single-row lookup, used by the analyze.ts pipeline hook to check TTL
+ * staleness and reuse a cached watchmode_title_id before firing a streaming
+ * refresh — cheaper than `listFilmMeta()` (which loads every film) on the
+ * per-request hot path.
+ */
+export async function getFilmMeta(key: string): Promise<FilmMetaRecord | null> {
+  const rows = await query<FilmMetaRow>(`SELECT ${SELECT_COLS} FROM film_meta WHERE film_key = $1`, [key]);
+  return rows[0] ? rowToRecord(rows[0]) : null;
 }

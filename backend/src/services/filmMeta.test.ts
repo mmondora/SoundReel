@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../utils/db', () => ({ query: vi.fn() }));
 
-import { filmKey, patchFilmUserMeta, upsertFilmEnrichment } from './filmMeta';
+import { filmKey, patchFilmUserMeta, upsertFilmEnrichment, upsertStreamingOptions, getFilmMeta } from './filmMeta';
 import { query } from '../utils/db';
 
 describe('filmKey', () => {
@@ -135,5 +135,67 @@ describe('upsertFilmEnrichment', () => {
     });
     const sql = vi.mocked(query).mock.calls[0][0];
     expect(sql).not.toMatch(/\b(watched|rating|score|availability)\b/);
+  });
+});
+
+describe('upsertStreamingOptions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const OPTIONS = [
+    { platform: 'Netflix', type: 'SUBSCRIPTION' as const, is_free: false, price: null, url: 'https://netflix.com/1' },
+  ];
+
+  it('ensures the row exists then updates streaming columns, never touching user-state columns', async () => {
+    vi.mocked(query).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    await upsertStreamingOptions({ filmKey: 'heat::1995', options: OPTIONS, watchmodeTitleId: 42 });
+
+    expect(vi.mocked(query)).toHaveBeenCalledTimes(2);
+    const [ensureSql, ensureParams] = vi.mocked(query).mock.calls[0] as [string, unknown[]];
+    expect(ensureSql).toContain('ON CONFLICT (film_key) DO NOTHING');
+    expect(ensureParams).toEqual(['heat::1995']);
+
+    const [updateSql, updateParams] = vi.mocked(query).mock.calls[1] as [string, unknown[]];
+    expect(updateSql).not.toMatch(/\b(watched|rating|score)\b/);
+    expect(updateSql).toContain('streaming_options = $2::jsonb');
+    expect(updateSql).toContain('streaming_checked_at = now()');
+    expect(updateSql).toContain('watchmode_title_id = COALESCE($3, watchmode_title_id)');
+    expect(updateParams).toEqual(['heat::1995', JSON.stringify(OPTIONS), 42]);
+  });
+
+  it('passes null watchmodeTitleId through so COALESCE preserves the existing value', async () => {
+    vi.mocked(query).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    await upsertStreamingOptions({ filmKey: 'heat::1995', options: [], watchmodeTitleId: null });
+
+    const [, updateParams] = vi.mocked(query).mock.calls[1] as [string, unknown[]];
+    expect(updateParams).toEqual(['heat::1995', '[]', null]);
+  });
+});
+
+describe('getFilmMeta', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns the mapped record for a single film_key lookup', async () => {
+    vi.mocked(query).mockResolvedValueOnce([
+      { ...ROW, streaming_options: [], streaming_checked_at: null, watchmode_title_id: 42 },
+    ]);
+
+    const rec = await getFilmMeta('heat::1995');
+
+    expect(rec).not.toBeNull();
+    expect(rec!.filmKey).toBe('heat::1995');
+    expect(rec!.watchmodeTitleId).toBe(42);
+    const [sql, params] = vi.mocked(query).mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('WHERE film_key = $1');
+    expect(params).toEqual(['heat::1995']);
+  });
+
+  it('returns null when no row matches', async () => {
+    vi.mocked(query).mockResolvedValueOnce([]);
+    const rec = await getFilmMeta('nope::1999');
+    expect(rec).toBeNull();
   });
 });

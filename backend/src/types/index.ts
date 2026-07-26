@@ -235,6 +235,16 @@ export interface TmdbSearchResult {
 
 export type AvailabilityStatus = 'free' | 'paid' | 'absent';
 
+export type StreamingOptionType = 'FREE' | 'SUBSCRIPTION' | 'RENTAL' | 'PURCHASE';
+
+export interface StreamingPlatformOption {
+  platform: string;
+  type: StreamingOptionType;
+  is_free: boolean;
+  price: number | null;
+  url: string;
+}
+
 export interface FilmUserMeta {
   watched: boolean;
   rating: 'fresh' | 'rotten' | null;
@@ -249,6 +259,9 @@ export interface FilmMetaRecord extends FilmUserMeta {
   overview: string | null;
   cast: string[];
   tmdbScore: number | null;
+  streamingOptions: StreamingPlatformOption[] | null;
+  streamingCheckedAt: string | null;
+  watchmodeTitleId: number | null;
 }
 
 export interface FilmMention {

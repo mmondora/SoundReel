@@ -22,7 +22,9 @@ import { resolveSongs } from '../services/songResolver';
 import { SsrfBlockedError } from '../services/ssrfGuard';
 import { searchTrack, addToPlaylist, generateYoutubeSearchUrl, generateSoundcloudSearchUrl } from '../services/spotify';
 import { searchFilm, generateImdbUrl, generateStreamingUrls } from '../services/filmSearch';
-import { filmKey, upsertFilmEnrichment } from '../services/filmMeta';
+import { filmKey, upsertFilmEnrichment, getFilmMeta } from '../services/filmMeta';
+import { streamingConfigured } from '../services/streamingAvailability';
+import { refreshStreamingForFilm, isStale } from '../services/streamingRefresher';
 import { mergeResults } from '../services/resultMerger';
 import { downloadMedia } from '../services/_legacy/mediaDownloader';
 import { transcribeAudio as transcribeAudioLegacyStub } from '../services/_legacy/transcribeAudioStub';
@@ -66,6 +68,9 @@ const KEY_FRAMES_COUNT = Number(process.env.KEY_FRAMES_COUNT || 5);
  * photo with an incidental watermark.
  */
 const SINGLE_IMAGE_OCR_MIN_CHARS = 120;
+
+/** TTL (days) before a film's cached streaming availability is refetched by the pipeline hook. */
+const STREAMING_TTL_DAYS = Number(process.env.STREAMING_TTL_DAYS || 30);
 
 /**
  * Resolves the year to persist on a Film (and to key its film_meta enrichment
@@ -773,15 +778,30 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           found: !!tmdbResult,
         }));
         const filmYear = resolveFilmYear(filmData.year, tmdbResult?.releaseDate);
+        const filmMetaKey = filmKey(filmData.title, filmYear);
         if (hasEnrichmentData(tmdbResult)) {
           void upsertFilmEnrichment({
-            filmKey: filmKey(filmData.title, filmYear),
+            filmKey: filmMetaKey,
             tmdbId: tmdbResult.id,
             genres: tmdbResult.genres,
             overview: tmdbResult.overview,
             cast: tmdbResult.cast,
             tmdbScore: tmdbResult.voteAverage,
           }).catch((err) => logError('film_meta upsert failed', { err: String(err) }));
+        }
+        const filmImdbId = tmdbResult?.imdbId ?? null;
+        if (filmImdbId && streamingConfigured()) {
+          // Meta read happens inside the fire-and-forget IIFE, not before it,
+          // so the extra DB round-trip never delays the analyze response.
+          void (async () => {
+            const existingMeta = await getFilmMeta(filmMetaKey);
+            if (!isStale(existingMeta?.streamingCheckedAt ?? null, STREAMING_TTL_DAYS)) return;
+            await refreshStreamingForFilm({
+              filmKey: filmMetaKey,
+              imdbId: filmImdbId,
+              cachedTitleId: existingMeta?.watchmodeTitleId ?? null,
+            });
+          })().catch((err) => logError('streaming refresh failed', { err: String(err) }));
         }
         films.push({
           title: filmData.title,
@@ -796,15 +816,30 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       for (const slideFilm of slideFilms) {
         const tmdbResult = await searchFilm(slideFilm.title, slideFilm.year?.toString() ?? null);
         const slideFilmYear = resolveFilmYear(slideFilm.year?.toString() ?? null, tmdbResult?.releaseDate);
+        const slideFilmMetaKey = filmKey(slideFilm.title, slideFilmYear);
         if (hasEnrichmentData(tmdbResult)) {
           void upsertFilmEnrichment({
-            filmKey: filmKey(slideFilm.title, slideFilmYear),
+            filmKey: slideFilmMetaKey,
             tmdbId: tmdbResult.id,
             genres: tmdbResult.genres,
             overview: tmdbResult.overview,
             cast: tmdbResult.cast,
             tmdbScore: tmdbResult.voteAverage,
           }).catch((err) => logError('film_meta upsert failed', { err: String(err) }));
+        }
+        const slideFilmImdbId = tmdbResult?.imdbId ?? null;
+        if (slideFilmImdbId && streamingConfigured()) {
+          // Meta read happens inside the fire-and-forget IIFE, not before it,
+          // so the extra DB round-trip never delays the analyze response.
+          void (async () => {
+            const existingMeta = await getFilmMeta(slideFilmMetaKey);
+            if (!isStale(existingMeta?.streamingCheckedAt ?? null, STREAMING_TTL_DAYS)) return;
+            await refreshStreamingForFilm({
+              filmKey: slideFilmMetaKey,
+              imdbId: slideFilmImdbId,
+              cachedTitleId: existingMeta?.watchmodeTitleId ?? null,
+            });
+          })().catch((err) => logError('streaming refresh failed', { err: String(err) }));
         }
         films.push({
           title: slideFilm.title,

@@ -259,6 +259,11 @@ export interface Translations {
   filmsWatchedFilterLabel: string;
   filmsAvailabilityFilterLabel: string;
   filmsTmdbScore: string;
+  filmsRefreshStreaming: string;
+  filmsStreamFree: string;
+  filmsStreamSub: string;
+  filmsStreamRent: string;
+  filmsStreamBuy: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -520,6 +525,11 @@ export const translations: Record<Language, Translations> = {
     filmsWatchedFilterLabel: 'Visto',
     filmsAvailabilityFilterLabel: 'Disponibilità',
     filmsTmdbScore: 'Voto TMDb',
+    filmsRefreshStreaming: 'Aggiorna disponibilità',
+    filmsStreamFree: 'Gratis',
+    filmsStreamSub: 'Abbonamento',
+    filmsStreamRent: 'Noleggio',
+    filmsStreamBuy: 'Acquisto',
   },
 
   en: {
@@ -780,6 +790,11 @@ export const translations: Record<Language, Translations> = {
     filmsWatchedFilterLabel: 'Watched',
     filmsAvailabilityFilterLabel: 'Availability',
     filmsTmdbScore: 'TMDb score',
+    filmsRefreshStreaming: 'Refresh availability',
+    filmsStreamFree: 'Free',
+    filmsStreamSub: 'Subscription',
+    filmsStreamRent: 'Rental',
+    filmsStreamBuy: 'Purchase',
   }
 };
 
