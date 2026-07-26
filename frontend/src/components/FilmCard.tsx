@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
+import type { Translations } from '../i18n';
 import { ratingFromScore } from '../utils/filmRating';
 import type { AggregatedFilm, AvailabilityStatus, StreamingPlatformOption, StreamingUrls } from '../types';
 import type { FilmMetaPatchBody } from '../services/api';
@@ -23,20 +24,53 @@ const SERVICES: Array<{ key: keyof StreamingUrls; label: string; className: stri
 const AVAILABILITY_CYCLE: Array<AvailabilityStatus | null> = [null, 'free', 'paid', 'absent'];
 
 /** Badge color class for an API-reported streaming option, by type. */
-function streamBadgeClass(type: StreamingPlatformOption['type']): string {
+export function streamBadgeClass(type: StreamingPlatformOption['type']): string {
   if (type === 'FREE') return 'stream-free';
   if (type === 'SUBSCRIPTION') return 'stream-sub';
   return 'stream-paid'; // RENTAL / PURCHASE
 }
 
+/** Localized badge title, by type. */
+export function streamTypeLabel(type: StreamingPlatformOption['type'], t: Translations): string {
+  if (type === 'FREE') return t.filmsStreamFree;
+  if (type === 'SUBSCRIPTION') return t.filmsStreamSub;
+  if (type === 'RENTAL') return t.filmsStreamRent;
+  return t.filmsStreamBuy; // PURCHASE
+}
+
+// Explicit per-service alias lists (not the short display labels in SERVICES,
+// which are too ambiguous to substring-match against real API platform names:
+// 'D+' never appears in "Disney Plus"/"Disney+", and 'TV' false-positives on
+// "Rakuten TV" / "ITVX"). Matching a display label is a UI concern; matching a
+// real-world platform name is a data concern, and they diverge.
+const SERVICE_ALIASES: Record<keyof StreamingUrls, string[]> = {
+  netflix: ['netflix'],
+  primeVideo: ['prime video', 'amazon prime', 'prime'],
+  raiPlay: ['raiplay', 'rai play'],
+  now: ['now tv', 'now'],
+  disneyPlus: ['disney plus', 'disney+', 'disney'],
+  appleTv: ['apple tv', 'itunes'],
+};
+
+// Flattened (service, alias) pairs, longest alias first, so a more specific
+// alias ("now tv", "amazon prime") is checked before a shorter one that could
+// otherwise over-match ("now", "prime") on an unrelated platform name.
+const ALIAS_ENTRIES: Array<{ key: keyof StreamingUrls; alias: string }> = (
+  Object.entries(SERVICE_ALIASES) as Array<[keyof StreamingUrls, string[]]>
+)
+  .flatMap(([key, aliases]) => aliases.map((alias) => ({ key, alias })))
+  .sort((a, b) => b.alias.length - a.alias.length);
+
 /**
- * Best-effort match between an API platform name (e.g. "Prime Video") and one
- * of our known manual-dot services (e.g. label "Prime"), so the existing
- * manual override dot can still be placed next to the right API badge.
+ * Best-effort match between an API platform name (e.g. "Amazon Prime Video")
+ * and one of our known manual-dot services, so the existing manual override
+ * dot can still be placed next to the right API badge. Platforms that don't
+ * resemble any known service (e.g. "Rakuten TV", "Paramount+") return
+ * `undefined` — by design, they render a badge with no adjacent dot.
  */
-function matchService(platform: string): (typeof SERVICES)[number] | undefined {
+export function matchService(platform: string): keyof StreamingUrls | undefined {
   const lower = platform.toLowerCase();
-  return SERVICES.find((svc) => lower.includes(svc.label.toLowerCase()));
+  return ALIAS_ENTRIES.find(({ alias }) => lower.includes(alias))?.key;
 }
 
 /** One deduplicated film row: poster, TMDb metadata, ratings and streaming availability. */
@@ -154,8 +188,8 @@ export function FilmCard({ film, onPatch, onRefreshStreaming }: FilmCardProps) {
           )}
           {meta?.streamingOptions && meta.streamingOptions.length > 0
             ? meta.streamingOptions.map((option, idx) => {
-                const matchedSvc = matchService(option.platform);
-                const status = matchedSvc ? meta?.availability?.[matchedSvc.key] ?? null : null;
+                const matchedKey = matchService(option.platform);
+                const status = matchedKey ? meta?.availability?.[matchedKey] ?? null : null;
                 const overrideClass = status ? `manual-override-${status}` : '';
                 const priceSuffix =
                   (option.type === 'RENTAL' || option.type === 'PURCHASE') && option.price != null
@@ -168,21 +202,21 @@ export function FilmCard({ film, onPatch, onRefreshStreaming }: FilmCardProps) {
                       target="_blank"
                       rel="noopener noreferrer"
                       className={`badge-link ${streamBadgeClass(option.type)} ${overrideClass}`.trim()}
-                      title={option.type}
+                      title={streamTypeLabel(option.type, t)}
                     >
                       {option.platform}
                       {priceSuffix}
                     </a>
-                    {matchedSvc && (
+                    {matchedKey && (
                       <button
                         type="button"
                         className={`avail-dot ${status ?? 'unknown'}`}
                         title={t.filmsAvailabilityHint}
                         onClick={() => {
-                          const current = meta?.availability?.[matchedSvc.key] ?? null;
+                          const current = meta?.availability?.[matchedKey] ?? null;
                           const cycleIdx = AVAILABILITY_CYCLE.indexOf(current);
                           const next = AVAILABILITY_CYCLE[(cycleIdx + 1) % AVAILABILITY_CYCLE.length];
-                          onPatch({ availability: { [matchedSvc.key]: next } });
+                          onPatch({ availability: { [matchedKey]: next } });
                         }}
                       />
                     )}
