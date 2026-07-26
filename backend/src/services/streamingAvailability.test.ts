@@ -79,11 +79,11 @@ describe('getStreamingPlatforms — watchmode', () => {
     { source_id: 3, name: 'Apple TV', type: 'rent', region: 'IT', web_url: 'https://tv.apple.com/2b', price: 2.99 },
     { source_id: 4, name: 'Chili', type: 'buy', region: 'IT', web_url: 'https://chili.com/4', price: 9.99 },
     { source_id: 5, name: 'RaiPlay', type: 'free', region: 'IT', web_url: 'https://raiplay.it/5', price: null },
-    { source_id: 6, name: 'Sky Go', type: 'tv_everywhere', region: 'IT', web_url: 'https://sky.it/6', price: null },
+    { source_id: 6, name: 'Sky Go', type: 'tve', region: 'IT', web_url: 'https://sky.it/6', price: null },
     { source_id: 7, name: 'Netflix', type: 'sub', region: 'US', web_url: 'https://netflix.com/watch/us', price: null },
   ];
 
-  it('two-step happy path: search then sources, maps + dedupes + ignores tv_everywhere', async () => {
+  it('two-step happy path: search then sources, maps + dedupes + ignores tve', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => SEARCH_RESPONSE })
       .mockResolvedValueOnce({ ok: true, json: async () => SOURCES_RESPONSE });
@@ -105,7 +105,7 @@ describe('getStreamingPlatforms — watchmode', () => {
         { platform: 'RaiPlay', type: 'FREE', is_free: true, price: null, url: 'https://raiplay.it/5' },
       ])
     );
-    // tv_everywhere ignored, US region excluded, duplicate Apple TV rent deduped to lowest price
+    // tve ignored, US region excluded, duplicate Apple TV rent deduped to lowest price
     expect(result.options).toHaveLength(4);
   });
 
@@ -148,6 +148,52 @@ describe('getStreamingPlatforms — watchmode', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(getStreamingPlatforms('tt0113277', 'IT', 'watchmode')).rejects.toThrow(/watchmode.*429/i);
+  });
+
+  it('matches region case-insensitively', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => SEARCH_RESPONSE })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          { source_id: 1, name: 'Netflix', type: 'sub', region: 'it', web_url: 'https://netflix.com/watch/1', price: null },
+        ],
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getStreamingPlatforms('tt0113277', 'it', 'watchmode');
+
+    expect(result.options).toHaveLength(1);
+    expect(result.options[0].platform).toBe('Netflix');
+  });
+
+  it('drops options with a javascript: url (href injection) and options with no url', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => SEARCH_RESPONSE })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          { source_id: 1, name: 'Evil', type: 'sub', region: 'IT', web_url: 'javascript:alert(1)', price: null },
+          { source_id: 2, name: 'NoUrl', type: 'sub', region: 'IT', web_url: undefined, price: null },
+          { source_id: 3, name: 'Netflix', type: 'sub', region: 'IT', web_url: 'https://netflix.com/watch/1', price: null },
+        ],
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getStreamingPlatforms('tt0113277', 'IT', 'watchmode');
+
+    expect(result.options).toEqual([
+      { platform: 'Netflix', type: 'SUBSCRIPTION', is_free: false, price: null, url: 'https://netflix.com/watch/1' },
+    ]);
+  });
+
+  it('throws instead of silently no-op-iterating when the sources response is not an array', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => SEARCH_RESPONSE })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ error: 'not an array' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getStreamingPlatforms('tt0113277', 'IT', 'watchmode')).rejects.toThrow(/not an array/i);
   });
 });
 
@@ -228,5 +274,68 @@ describe('getStreamingPlatforms — movie_of_the_night', () => {
 
     const result = await getStreamingPlatforms('tt0113277', 'IT', 'movie_of_the_night');
     expect(result).toEqual({ options: [], watchmodeTitleId: null });
+  });
+
+  it('coerces a string price.amount (the real API shape) to a number', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        streamingOptions: {
+          it: [
+            { service: { name: 'Apple TV' }, type: 'rent', link: 'https://tv.apple.com/1', price: { amount: '3.99', currency: 'GBP' } },
+          ],
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getStreamingPlatforms('tt0113277', 'IT', 'movie_of_the_night');
+
+    expect(result.options).toEqual([
+      { platform: 'Apple TV', type: 'RENTAL', is_free: false, price: 3.99, url: 'https://tv.apple.com/1' },
+    ]);
+    expect(typeof result.options[0].price).toBe('number');
+  });
+
+  it('maps a non-numeric price.amount to null instead of storing garbage', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        streamingOptions: {
+          it: [
+            { service: { name: 'Apple TV' }, type: 'rent', link: 'https://tv.apple.com/1', price: { amount: 'not-a-number' } },
+          ],
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getStreamingPlatforms('tt0113277', 'IT', 'movie_of_the_night');
+
+    expect(result.options).toEqual([
+      { platform: 'Apple TV', type: 'RENTAL', is_free: false, price: null, url: 'https://tv.apple.com/1' },
+    ]);
+  });
+
+  it('drops options with a javascript: url (href injection) and options with no url', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        streamingOptions: {
+          it: [
+            { service: { name: 'Evil' }, type: 'subscription', link: 'javascript:alert(1)' },
+            { service: { name: 'NoUrl' }, type: 'subscription', link: undefined },
+            { service: { name: 'Netflix' }, type: 'subscription', link: 'https://netflix.com/it/1' },
+          ],
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getStreamingPlatforms('tt0113277', 'IT', 'movie_of_the_night');
+
+    expect(result.options).toEqual([
+      { platform: 'Netflix', type: 'SUBSCRIPTION', is_free: false, price: null, url: 'https://netflix.com/it/1' },
+    ]);
   });
 });

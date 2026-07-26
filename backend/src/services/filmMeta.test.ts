@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../utils/db', () => ({ query: vi.fn() }));
 
-import { filmKey, patchFilmUserMeta, upsertFilmEnrichment, upsertStreamingOptions } from './filmMeta';
+import { filmKey, patchFilmUserMeta, upsertFilmEnrichment, upsertStreamingOptions, getFilmMeta } from './filmMeta';
 import { query } from '../utils/db';
 
 describe('filmKey', () => {
@@ -170,5 +170,32 @@ describe('upsertStreamingOptions', () => {
 
     const [, updateParams] = vi.mocked(query).mock.calls[1] as [string, unknown[]];
     expect(updateParams).toEqual(['heat::1995', '[]', null]);
+  });
+});
+
+describe('getFilmMeta', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns the mapped record for a single film_key lookup', async () => {
+    vi.mocked(query).mockResolvedValueOnce([
+      { ...ROW, streaming_options: [], streaming_checked_at: null, watchmode_title_id: 42 },
+    ]);
+
+    const rec = await getFilmMeta('heat::1995');
+
+    expect(rec).not.toBeNull();
+    expect(rec!.filmKey).toBe('heat::1995');
+    expect(rec!.watchmodeTitleId).toBe(42);
+    const [sql, params] = vi.mocked(query).mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('WHERE film_key = $1');
+    expect(params).toEqual(['heat::1995']);
+  });
+
+  it('returns null when no row matches', async () => {
+    vi.mocked(query).mockResolvedValueOnce([]);
+    const rec = await getFilmMeta('nope::1999');
+    expect(rec).toBeNull();
   });
 });

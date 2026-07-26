@@ -86,6 +86,23 @@ export function matchService(platform: string): keyof StreamingUrls | undefined 
   return ALIAS_ENTRIES.find(({ alias }) => aliasMatches(lower, alias))?.key;
 }
 
+/**
+ * Service keys that carry a manual availability mark but have no matching
+ * API badge among `streamingOptions` (e.g. marked before API data existed,
+ * or the provider simply doesn't list that service for this film). Without
+ * surfacing these separately, the mark becomes invisible and unreachable
+ * once API badges take over the card.
+ */
+export function manualOnlyServices(
+  streamingOptions: StreamingPlatformOption[],
+  availability: Partial<Record<keyof StreamingUrls, AvailabilityStatus>> | undefined
+): Array<keyof StreamingUrls> {
+  return SERVICES.filter((svc) => {
+    const hasApiBadge = streamingOptions.some((o) => matchService(o.platform) === svc.key);
+    return !hasApiBadge && (availability?.[svc.key] ?? null) != null;
+  }).map((svc) => svc.key);
+}
+
 /** One deduplicated film row: poster, TMDb metadata, ratings and streaming availability. */
 export function FilmCard({ film, onPatch, onRefreshStreaming }: FilmCardProps) {
   const { t } = useLanguage();
@@ -104,6 +121,31 @@ export function FilmCard({ film, onPatch, onRefreshStreaming }: FilmCardProps) {
     } finally {
       setRefreshing(false);
     }
+  }
+
+  /** Search-link badge + manual availability dot for one of the six known services. */
+  function renderSearchBadge(svc: (typeof SERVICES)[number]) {
+    const href = film.streamingUrls?.[svc.key];
+    if (!href) return null;
+    const status = meta?.availability?.[svc.key] ?? null;
+    return (
+      <span key={svc.key} className="film-service">
+        <a href={href} target="_blank" rel="noopener noreferrer" className={`badge-link ${svc.className}`}>
+          {svc.label}
+        </a>
+        <button
+          type="button"
+          className={`avail-dot ${status ?? 'unknown'}`}
+          title={t.filmsAvailabilityHint}
+          onClick={() => {
+            const current = meta?.availability?.[svc.key] ?? null;
+            const idx = AVAILABILITY_CYCLE.indexOf(current);
+            const next = AVAILABILITY_CYCLE[(idx + 1) % AVAILABILITY_CYCLE.length];
+            onPatch({ availability: { [svc.key]: next } });
+          }}
+        />
+      </span>
+    );
   }
 
   function commitSlider() {
@@ -199,8 +241,9 @@ export function FilmCard({ film, onPatch, onRefreshStreaming }: FilmCardProps) {
               IMDb
             </a>
           )}
-          {meta?.streamingOptions && meta.streamingOptions.length > 0
-            ? meta.streamingOptions.map((option, idx) => {
+          {meta?.streamingOptions && meta.streamingOptions.length > 0 ? (
+            <>
+              {meta.streamingOptions.map((option, idx) => {
                 const matchedKey = matchService(option.platform);
                 const status = matchedKey ? meta?.availability?.[matchedKey] ?? null : null;
                 const overrideClass = status ? `manual-override-${status}` : '';
@@ -235,30 +278,24 @@ export function FilmCard({ film, onPatch, onRefreshStreaming }: FilmCardProps) {
                     )}
                   </span>
                 );
-              })
-            : SERVICES.map((svc) => {
-                const href = film.streamingUrls?.[svc.key];
-                if (!href) return null;
-                const status = meta?.availability?.[svc.key] ?? null;
-                return (
-                  <span key={svc.key} className="film-service">
-                    <a href={href} target="_blank" rel="noopener noreferrer" className={`badge-link ${svc.className}`}>
-                      {svc.label}
-                    </a>
-                    <button
-                      type="button"
-                      className={`avail-dot ${status ?? 'unknown'}`}
-                      title={t.filmsAvailabilityHint}
-                      onClick={() => {
-                        const current = meta?.availability?.[svc.key] ?? null;
-                        const idx = AVAILABILITY_CYCLE.indexOf(current);
-                        const next = AVAILABILITY_CYCLE[(idx + 1) % AVAILABILITY_CYCLE.length];
-                        onPatch({ availability: { [svc.key]: next } });
-                      }}
-                    />
-                  </span>
-                );
               })}
+              {/*
+                A manual availability mark can exist for a known service that
+                the API didn't report (e.g. the user marked it free/paid
+                before the API data existed, or the API just doesn't list
+                it). Without this, that mark becomes invisible and
+                unreachable once API badges take over. Append a search-link
+                badge (same as the no-API-data fallback) for any such
+                service so the mark stays visible and can still be cleared.
+              */}
+              {manualOnlyServices(meta.streamingOptions, meta?.availability)
+                .map((key) => SERVICES.find((s) => s.key === key))
+                .filter((svc): svc is (typeof SERVICES)[number] => !!svc)
+                .map((svc) => renderSearchBadge(svc))}
+            </>
+          ) : (
+            SERVICES.map((svc) => renderSearchBadge(svc))
+          )}
           <button
             type="button"
             className="stream-refresh"

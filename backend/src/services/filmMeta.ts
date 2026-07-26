@@ -153,3 +153,14 @@ export async function listFilmMeta(): Promise<Map<string, FilmMetaRecord>> {
   const rows = await query<FilmMetaRow>(`SELECT ${SELECT_COLS} FROM film_meta`);
   return new Map(rows.map((r) => [r.film_key, rowToRecord(r)]));
 }
+
+/**
+ * Single-row lookup, used by the analyze.ts pipeline hook to check TTL
+ * staleness and reuse a cached watchmode_title_id before firing a streaming
+ * refresh — cheaper than `listFilmMeta()` (which loads every film) on the
+ * per-request hot path.
+ */
+export async function getFilmMeta(key: string): Promise<FilmMetaRecord | null> {
+  const rows = await query<FilmMetaRow>(`SELECT ${SELECT_COLS} FROM film_meta WHERE film_key = $1`, [key]);
+  return rows[0] ? rowToRecord(rows[0]) : null;
+}

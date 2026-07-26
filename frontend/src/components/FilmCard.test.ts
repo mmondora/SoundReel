@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { matchService, streamBadgeClass, streamTypeLabel } from './FilmCard';
+import { matchService, streamBadgeClass, streamTypeLabel, manualOnlyServices } from './FilmCard';
 import { translations } from '../i18n/translations';
+import type { StreamingPlatformOption } from '../types';
 
 describe('matchService', () => {
   it('matches the six canonical platform names', () => {
@@ -53,6 +54,37 @@ describe('streamBadgeClass', () => {
     expect(streamBadgeClass('SUBSCRIPTION')).toBe('stream-sub');
     expect(streamBadgeClass('RENTAL')).toBe('stream-paid');
     expect(streamBadgeClass('PURCHASE')).toBe('stream-paid');
+  });
+});
+
+describe('manualOnlyServices', () => {
+  const netflixOption: StreamingPlatformOption = {
+    platform: 'Netflix',
+    type: 'SUBSCRIPTION',
+    is_free: false,
+    price: null,
+    url: 'https://netflix.com/1',
+  };
+
+  it('returns a service with a manual mark that has no matching API badge', () => {
+    expect(manualOnlyServices([netflixOption], { primeVideo: 'free' })).toEqual(['primeVideo']);
+  });
+
+  it('excludes a service already covered by an API badge, even if manually marked too', () => {
+    expect(manualOnlyServices([netflixOption], { netflix: 'paid' })).toEqual([]);
+  });
+
+  it('excludes services with no manual mark at all', () => {
+    expect(manualOnlyServices([netflixOption], {})).toEqual([]);
+    expect(manualOnlyServices([netflixOption], undefined)).toEqual([]);
+  });
+
+  it('ignores an explicit null mark (treated as unset)', () => {
+    expect(manualOnlyServices([netflixOption], { primeVideo: null as unknown as 'free' })).toEqual([]);
+  });
+
+  it('returns multiple uncovered services, in SERVICES order', () => {
+    expect(manualOnlyServices([], { appleTv: 'paid', raiPlay: 'free' })).toEqual(['raiPlay', 'appleTv']);
   });
 });
 

@@ -37,6 +37,15 @@ function throwProviderError(provider: string, response: Response, snippet: strin
   throw new Error(`${provider} ${response.status}: ${snippet}`);
 }
 
+/**
+ * Accepts only absolute http(s) URLs. Guards against `javascript:` href
+ * injection from provider data and drops options with a missing/malformed
+ * url rather than storing (and later rendering) something unsafe.
+ */
+function safeUrl(u: unknown): string | null {
+  return typeof u === 'string' && /^https?:/i.test(u) ? u : null;
+}
+
 // --- Watchmode -------------------------------------------------------------
 
 interface WatchmodeSearchResult {
@@ -51,8 +60,8 @@ interface WatchmodeSource {
   price: number | null;
 }
 
-// Watchmode source `type` values we act on. Other types (e.g. `tv_everywhere`,
-// which is a cable-login gateway, not directly actionable) are ignored.
+// Watchmode source `type` values we act on. Other types (e.g. `tve` —
+// TV-Everywhere, a cable-login gateway, not directly actionable) are ignored.
 const WATCHMODE_TYPE_MAP: Record<string, StreamingOptionType> = {
   free: 'FREE',
   sub: 'SUBSCRIPTION',
@@ -84,13 +93,19 @@ async function fetchWatchmodeSources(
   if (!response.ok) {
     throwProviderError('watchmode', response, await bodySnippet(response));
   }
-  const sources = (await response.json()) as WatchmodeSource[];
+  const sources = await response.json();
+  if (!Array.isArray(sources)) {
+    throw new Error('watchmode sources response was not an array');
+  }
 
   const byKey = new Map<string, StreamingPlatformOption>();
-  for (const source of sources) {
-    if (source.region !== countryCode) continue;
+  for (const source of sources as WatchmodeSource[]) {
+    if (source.region.toUpperCase() !== countryCode.toUpperCase()) continue;
     const type = WATCHMODE_TYPE_MAP[source.type];
-    if (!type) continue; // ignored type (e.g. tv_everywhere)
+    if (!type) continue; // ignored type (e.g. tve)
+
+    const url = safeUrl(source.web_url);
+    if (!url) continue; // drop options with no valid, safe url
 
     const price = type === 'RENTAL' || type === 'PURCHASE' ? source.price ?? null : null;
     const option: StreamingPlatformOption = {
@@ -98,7 +113,7 @@ async function fetchWatchmodeSources(
       type,
       is_free: type === 'FREE',
       price,
-      url: source.web_url,
+      url,
     };
 
     const key = `${option.platform}::${option.type}`;
@@ -139,7 +154,10 @@ interface MotnOption {
   service: { name: string };
   type: string;
   link: string;
-  price?: { amount: number };
+  // The real API returns amount as a string (e.g. "3.99"); accept both so a
+  // provider payload doesn't get typed-past into a value that later crashes
+  // frontend `.toFixed(2)` rendering.
+  price?: { amount: string | number };
 }
 
 interface MotnResponse {
@@ -185,13 +203,20 @@ async function getMotnPlatforms(imdbId: string, countryCode: string): Promise<St
     const type = MOTN_TYPE_MAP[opt.type];
     if (!type) continue; // ignored type
 
-    const price = type === 'RENTAL' || type === 'PURCHASE' ? opt.price?.amount ?? null : null;
+    const url = safeUrl(opt.link);
+    if (!url) continue; // drop options with no valid, safe url
+
+    let price: number | null = null;
+    if (type === 'RENTAL' || type === 'PURCHASE') {
+      const raw = Number(opt.price?.amount);
+      price = Number.isFinite(raw) ? raw : null;
+    }
     options.push({
       platform: opt.service.name,
       type,
       is_free: type === 'FREE',
       price,
-      url: opt.link,
+      url,
     });
   }
 

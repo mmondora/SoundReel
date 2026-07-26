@@ -1,7 +1,7 @@
 # Streaming Availability — Direct Platform Links & Free/Paid Detection
 
 **Date**: 2026-07-26
-**Status**: Draft — awaiting user review
+**Status**: Approved
 
 ## Problem
 
@@ -13,7 +13,7 @@ platform instead of search links.
 
 ## Decisions (from brainstorming)
 
-- **Provider**: Watchmode primary (free tier 1000 req/month is enough); Movie of the
+- **Provider**: Watchmode primary (free tier 2500 req/month is enough); Movie of the
   Night (RapidAPI) supported behind a config flag. Both implemented.
 - **Fetch strategy**: automatic for new films in the analysis pipeline + one-off
   backfill for existing films + TTL refresh when data is older than 30 days.
@@ -32,21 +32,29 @@ interface StreamingPlatformOption {
   type: StreamingOptionType;
   is_free: boolean;        // true only for FREE
   price: number | null;    // numeric for RENTAL/PURCHASE, null otherwise
-  url: string;             // deep link to the film on the platform
+  url: string;             // deep link to the film on the platform; only http(s), else dropped
+}
+
+interface StreamingLookupResult {
+  options: StreamingPlatformOption[];
+  watchmodeTitleId: number | null; // cached Watchmode title id, for provider === 'watchmode'
 }
 
 async function getStreamingPlatforms(
   imdbId: string,
   countryCode: string,
-  provider: 'watchmode' | 'movie_of_the_night'
-): Promise<StreamingPlatformOption[]>;
+  provider: 'watchmode' | 'movie_of_the_night',
+  cachedWatchmodeTitleId?: number | null // skips the search step when known
+): Promise<StreamingLookupResult>;
 ```
 
 Behavior:
-- Movie not found on the provider → `[]` (not an error).
+- Movie not found on the provider → `{ options: [], watchmodeTitleId: null }` (not an error).
 - HTTP/API failure → throw `Error` carrying status code + message; callers log and
   continue (pipeline resilience convention).
 - No hardcoded titles; works for any IMDb id.
+- Options with a missing or non-http(s) `url` (e.g. a `javascript:` value) are dropped
+  before being mapped, never stored or rendered.
 
 ### Watchmode mapping (two-step)
 
@@ -54,12 +62,13 @@ Behavior:
    → first result whose `imdb_id` matches → `title_id`. The `title_id` is persisted
    (see storage) so refreshes skip this step.
 2. `GET https://api.watchmode.com/v1/title/{title_id}/sources/?apiKey=…&regions={country}`
-   → filter `region === countryCode`, map per source:
+   → filter `region === countryCode` (case-insensitive), map per source:
    - `free` → `FREE`; `sub` → `SUBSCRIPTION`; `rent` → `RENTAL`; `buy` → `PURCHASE`
-   - other types (`tv_everywhere`, …) → **ignored** (documented choice: they are
+   - other types (`tve` — TV-Everywhere, …) → **ignored** (documented choice: they are
      cable-login gateways, not actionable for this app)
-   - `name` → platform, `web_url` → url, `price` → price
+   - `name` → platform, `web_url` → url (dropped if not http/https), `price` → price
    - Dedupe: same platform+type keeps the lowest price.
+   - A non-array sources response is treated as a provider error, not silently iterated.
 
 ### Movie of the Night mapping (single call)
 
@@ -68,7 +77,9 @@ headers → `streamingOptions[countryCode.toLowerCase()]`, map per option:
 - `free`, `ads` → `FREE`; `subscription` → `SUBSCRIPTION`; `rent` → `RENTAL`;
   `buy` → `PURCHASE`; `addon` → `SUBSCRIPTION` (documented choice: included in an
   add-on plan the user may have); anything else → ignored
-- `service.name` → platform, `link` → url, `price.amount` (number) → price
+- `service.name` → platform, `link` → url (dropped if not http/https), `price.amount`
+  → price, coerced with `Number(...)` (the real API returns it as a **string**, e.g.
+  `"3.99"`; a non-numeric amount maps to `null` rather than being stored verbatim)
 
 ## Configuration (env vars)
 
@@ -98,15 +109,18 @@ ALTER TABLE film_meta
 ## Fetch orchestration
 
 - **Pipeline hook** (analyze.ts, after TMDb enrichment which provides the IMDb id):
-  fire-and-forget fetch + upsert, `.catch` → logError. Never blocks or fails analysis.
-  Skipped when film has no IMDb id or data is fresher than the TTL.
+  fire-and-forget — the existing `film_meta` row is read *inside* the async IIFE (so
+  the DB round-trip never delays the analyze response), and the refresh is skipped
+  when `streamingCheckedAt` is fresher than the TTL. When it does fire, the cached
+  `watchmodeTitleId` is passed through so the search step is skipped. `.catch` →
+  logError. Never blocks or fails analysis.
 - **Backfill/refresh script** `backend/src/scripts/backfillStreaming.ts`:
   targets = films in `film_meta` with an IMDb id (from entries' `imdbUrl` or TMDb id
   lookup) whose `streaming_checked_at` is NULL or older than 30 days. Rate-limited
   (1 req/s), `--dry-run`, idempotent, per-item try/catch, `[streaming]` log prefix,
   summary with API-call count (quota visibility).
 - **TTL**: 30 days (`STREAMING_TTL_DAYS` env, default 30).
-- Quota math (Watchmode free = 1000/month): ~128 films with IMDb id → initial
+- Quota math (Watchmode free = 2500/month): ~128 films with IMDb id → initial
   backfill ≈ 256 calls (search+sources), monthly refresh ≈ 128 (title_id cached).
 
 ## API surface
@@ -135,9 +149,13 @@ ALTER TABLE film_meta
 
 - Provider errors logged (`logWarning`/`logError`) with status + body snippet;
   pipeline and backfill continue.
-- Quota exhaustion (HTTP 429 / Watchmode quota error): backfill aborts cleanly with
-  a clear message (no point hammering); pipeline hook just logs.
+- Quota exhaustion (HTTP 429, HTTP 401 with a quota/entitlement statusMessage — this
+  is Watchmode's actual signal, 429 is undocumented — or any error message matching
+  `/quota/i`): backfill aborts cleanly with a clear message (no point hammering);
+  pipeline hook just logs.
 - Unknown platform names pass through verbatim (no whitelist).
+- `javascript:` and other non-http(s) urls in provider data are dropped before
+  storage, never rendered as an href.
 
 ## Testing (all mocked — no real API calls)
 

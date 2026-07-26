@@ -8,8 +8,9 @@
  * unnecessary API calls for recently checked films.
  *
  * Purely additive: it only upserts streaming data and never modifies entries.
- * Quota-aware: on HTTP 429 (API quota exhausted), aborts cleanly with a status
- * message rather than hammering the API.
+ * Quota-aware: on HTTP 429, HTTP 401 (Watchmode's actual quota/entitlement
+ * signal, undocumented 429) or a "quota" message, aborts cleanly with a
+ * status rather than hammering the API.
  *
  * Usage (inside the container):
  *   node dist/scripts/backfillStreaming.js --dry-run
@@ -25,6 +26,17 @@ const STREAMING_TTL_DAYS = Number(process.env.STREAMING_TTL_DAYS || 30);
 const DELAY_MS = 1000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * True when a caught error string signals API quota/entitlement exhaustion —
+ * the point at which the backfill should abort cleanly instead of continuing
+ * to hammer the provider. Watchmode's actual quota/entitlement signal is
+ * HTTP 401 with a JSON statusMessage; 429 is undocumented but also handled.
+ * A bad API key also surfaces as 401 and legitimately aborts too.
+ */
+export function isQuotaError(errorStr: string): boolean {
+  return /429|401/.test(errorStr) || /quota/i.test(errorStr);
+}
 
 async function main(): Promise<void> {
   if (!streamingConfigured()) {
@@ -104,7 +116,7 @@ async function main(): Promise<void> {
       }
     } catch (err) {
       const errorStr = String(err);
-      if (errorStr.includes('429')) {
+      if (isQuotaError(errorStr)) {
         console.log(`[streaming] QUOTA exhausted, aborting`);
         console.log(
           `\n[streaming] done — updated: ${updated} | empty: ${empty} | errors: ${failed} | provider: ${activeProvider()}`
