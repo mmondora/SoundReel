@@ -50,26 +50,26 @@ export async function searchFilm(
 
     const movie = data.results[0];
     const movieDetails = await getMovieDetails(movie.id, apiKey);
+
     if (!movieDetails) {
-      logWarning('Non riuscito a recuperare dettagli film da TMDb', { movieId: movie.id });
-      return null;
+      logWarning('Non riuscito a recuperare dettagli film da TMDb, restituendo risultati parziali', { movieId: movie.id });
     }
 
     const result: TmdbSearchResult = {
       id: movie.id,
       title: movie.title,
-      imdbId: movieDetails.imdb_id || null,
+      imdbId: movieDetails?.imdb_id || null,
       posterPath: movie.poster_path
         ? `https://image.tmdb.org/t/p/w200${movie.poster_path}`
         : null,
       releaseDate: movie.release_date || null,
-      genres: movieDetails.genres.map((g) => g.name),
-      overview: movieDetails.overview || null,
-      cast: (movieDetails.credits?.cast || []).slice(0, 10).map((actor) => actor.name),
-      voteAverage: movieDetails.vote_average,
+      genres: movieDetails?.genres.map((g) => g.name) || [],
+      overview: movieDetails?.overview || null,
+      cast: (movieDetails?.credits?.cast || []).slice(0, 10).map((actor) => actor.name),
+      voteAverage: movieDetails?.vote_average || null,
     };
 
-    logInfo('Film trovato su TMDb', { title: result.title, imdbId: result.imdbId });
+    logInfo('Film trovato su TMDb', { title: result.title, imdbId: result.imdbId, enriched: !!movieDetails });
     return result;
   } catch (error) {
     logError('Errore ricerca TMDb', error);
