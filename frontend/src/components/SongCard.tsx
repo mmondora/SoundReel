@@ -24,6 +24,18 @@ let sharedAudio: HTMLAudioElement | null = null;
 let sharedAudioKey: string | null = null;
 const listeners = new Set<() => void>();
 
+// Guards the async gap in togglePreview (below): resolving a preview URL is
+// an `await fetchSongPreview(...)` round-trip, and a newer click — on this
+// card or any other — can land while an older one is still in flight. Since
+// resolution latency isn't ordered (a Deezer live-resolve can be slower than
+// a stored-iTunes-URL lookup), the *later* click can finish first; without a
+// guard, an older click's continuation would then run anyway and stomp
+// whatever the later click already started playing. Every togglePreview
+// invocation claims the next value before its first await; after every
+// subsequent await it checks whether it's still current before touching
+// shared state, so only the most recent click ever gets to act.
+let previewRequestSeq = 0;
+
 function notify(): void {
   listeners.forEach((l) => l());
 }
@@ -84,6 +96,29 @@ export function _releaseSharedAudioIfOwnerForTest(key: string): void {
   releaseSharedAudioIfOwner(key);
 }
 
+/**
+ * Pure form of togglePreview's post-await staleness check: `myReq` is the
+ * sequence number a call claimed right before its first await; `currentSeq`
+ * is the live module counter at the point the continuation is about to
+ * touch shared state. A mismatch means a newer call (this card or another)
+ * has since claimed the counter, so this continuation must no-op instead of
+ * resurrecting/stomping whatever the newer call already did.
+ */
+export function isPreviewRequestStale(myReq: number, currentSeq: number): boolean {
+  return myReq !== currentSeq;
+}
+
+/** Test-only: reads the module-private preview-request sequence counter. */
+export function _getPreviewRequestSeqForTest(): number {
+  return previewRequestSeq;
+}
+
+/** Test-only: simulates a togglePreview call claiming the next sequence
+ * number (mirrors `++previewRequestSeq` in the real code), returning it. */
+export function _bumpPreviewRequestSeqForTest(): number {
+  return ++previewRequestSeq;
+}
+
 function subscribe(onStoreChange: () => void): () => void {
   listeners.add(onStoreChange);
   return () => listeners.delete(onStoreChange);
@@ -137,9 +172,18 @@ export function SongCard({ song, onPatch }: SongCardProps) {
     if (!meta || (!meta.previewUrl && !meta.deezerId)) return;
 
     if (sharedAudioKey === song.songKey && sharedAudio) {
+      // Bump the sequence so a still-in-flight fetch from an earlier click
+      // can't resurrect playback after the user just paused it.
+      previewRequestSeq++;
       sharedAudio.pause(); // onpause below calls notify()
       return;
     }
+
+    // Claim this call's sequence number before the first await. If a newer
+    // call (this card or another — the counter is module-level/shared)
+    // claims a higher number while we're awaiting, `myReq` goes stale and
+    // every check below no-ops instead of stomping the newer call's state.
+    const myReq = ++previewRequestSeq;
 
     // Always resolve through the backend rather than trusting a locally
     // cached URL: a Deezer-backed preview expires ~14min after issue, so it
@@ -150,9 +194,12 @@ export function SongCard({ song, onPatch }: SongCardProps) {
     try {
       resolvedUrl = await fetchSongPreview(song.songKey);
     } catch {
+      if (isPreviewRequestStale(myReq, previewRequestSeq)) return;
       releaseSharedAudioIfOwner(song.songKey);
       return;
     }
+
+    if (isPreviewRequestStale(myReq, previewRequestSeq)) return;
 
     if (sharedAudio) {
       sharedAudio.pause();
