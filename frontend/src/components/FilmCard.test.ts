@@ -26,6 +26,16 @@ describe('matchService', () => {
     expect(matchService('Paramount+')).toBeUndefined();
   });
 
+  it('requires a word boundary, not a bare substring (regression: "now" inside "Snowpiercer", "prime" inside "Primetime")', () => {
+    expect(matchService('Snowpiercer TV')).toBeUndefined();
+    expect(matchService('Primetime Channel')).toBeUndefined();
+  });
+
+  it('still matches short aliases as whole words, including the "+" edge case', () => {
+    expect(matchService('NOW')).toBe('now');
+    expect(matchService('Disney+')).toBe('disneyPlus');
+  });
+
   it('prefers a longer, more specific alias over a shorter one that would over-match', () => {
     expect(matchService('Amazon Prime Video')).toBe('primeVideo');
     expect(matchService('Now TV')).toBe('now');

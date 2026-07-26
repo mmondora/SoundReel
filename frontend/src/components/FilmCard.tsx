@@ -61,16 +61,29 @@ const ALIAS_ENTRIES: Array<{ key: keyof StreamingUrls; alias: string }> = (
   .flatMap(([key, aliases]) => aliases.map((alias) => ({ key, alias })))
   .sort((a, b) => b.alias.length - a.alias.length);
 
+// True when `alias` occurs in `lower` as a whole word/phrase — not merely as
+// a substring. Plain `.includes()` over-matches badly: 'now' inside
+// "Snowpiercer TV" ('s-now-piercer'), or 'prime' inside "Primetime Channel".
+// We can't use `\b` here because '+' (as in "disney+"/"paramount+") is a
+// non-word character, so `\bdisney\+\b` doesn't behave predictably around
+// it; an explicit non-alphanumeric-or-edge boundary class handles both plain
+// words and aliases ending in '+' the same way.
+function aliasMatches(lower: string, alias: string): boolean {
+  const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`).test(lower);
+}
+
 /**
  * Best-effort match between an API platform name (e.g. "Amazon Prime Video")
  * and one of our known manual-dot services, so the existing manual override
  * dot can still be placed next to the right API badge. Platforms that don't
- * resemble any known service (e.g. "Rakuten TV", "Paramount+") return
- * `undefined` — by design, they render a badge with no adjacent dot.
+ * resemble any known service (e.g. "Rakuten TV", "Paramount+", "Snowpiercer
+ * TV", "Primetime Channel") return `undefined` — by design, they render a
+ * badge with no adjacent dot.
  */
 export function matchService(platform: string): keyof StreamingUrls | undefined {
   const lower = platform.toLowerCase();
-  return ALIAS_ENTRIES.find(({ alias }) => lower.includes(alias))?.key;
+  return ALIAS_ENTRIES.find(({ alias }) => aliasMatches(lower, alias))?.key;
 }
 
 /** One deduplicated film row: poster, TMDb metadata, ratings and streaming availability. */
