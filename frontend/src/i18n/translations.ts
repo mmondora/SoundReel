@@ -271,6 +271,22 @@ export interface Translations {
   filmsStreamSub: string;
   filmsStreamRent: string;
   filmsStreamBuy: string;
+
+  // Songs page filters & ratings
+  songsFilterListened: string;
+  songsFilterUnlistened: string;
+  songsFilterFavorites: string;
+  songsFilterDownloaded: string;
+  songsFilterNotDownloaded: string;
+  songsListenedFilterLabel: string;
+  songsDownloadedFilterLabel: string;
+  songsMarkLike: string;
+  songsMarkDislike: string;
+  songsMarkListened: string;
+  songsMarkFavorite: string;
+  songsMarkDownloaded: string;
+  songsPreview: string;
+  songsMentions: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -544,6 +560,21 @@ export const translations: Record<Language, Translations> = {
     filmsStreamSub: 'Abbonamento',
     filmsStreamRent: 'Noleggio',
     filmsStreamBuy: 'Acquisto',
+
+    songsFilterListened: 'Ascoltate',
+    songsFilterUnlistened: 'Da ascoltare',
+    songsFilterFavorites: 'Preferite',
+    songsFilterDownloaded: 'Scaricate',
+    songsFilterNotDownloaded: 'Non scaricate',
+    songsListenedFilterLabel: 'Ascoltata',
+    songsDownloadedFilterLabel: 'Scaricata',
+    songsMarkLike: 'Mi piace',
+    songsMarkDislike: 'Non mi piace',
+    songsMarkListened: 'Segna come ascoltata',
+    songsMarkFavorite: 'Preferita',
+    songsMarkDownloaded: 'Scaricata (Spooty)',
+    songsPreview: 'Anteprima',
+    songsMentions: 'menzioni',
   },
 
   en: {
@@ -816,6 +847,21 @@ export const translations: Record<Language, Translations> = {
     filmsStreamSub: 'Subscription',
     filmsStreamRent: 'Rental',
     filmsStreamBuy: 'Purchase',
+
+    songsFilterListened: 'Listened',
+    songsFilterUnlistened: 'To listen',
+    songsFilterFavorites: 'Favorites',
+    songsFilterDownloaded: 'Downloaded',
+    songsFilterNotDownloaded: 'Not downloaded',
+    songsListenedFilterLabel: 'Listened',
+    songsDownloadedFilterLabel: 'Downloaded',
+    songsMarkLike: 'Like',
+    songsMarkDislike: 'Dislike',
+    songsMarkListened: 'Mark as listened',
+    songsMarkFavorite: 'Favorite',
+    songsMarkDownloaded: 'Downloaded (Spooty)',
+    songsPreview: 'Preview',
+    songsMentions: 'mentions',
   }
 };
 

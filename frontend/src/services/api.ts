@@ -1,4 +1,7 @@
-import type { Entry, SearchResponse, EnrichmentResult, AggregatedFilm, FilmMetaRecord, AvailabilityStatus } from '../types';
+import type {
+  Entry, SearchResponse, EnrichmentResult, AggregatedFilm, FilmMetaRecord, AvailabilityStatus,
+  AggregatedSong, SongMetaRecord, SongRating,
+} from '../types';
 
 // When served from the same origin as the backend, relative paths work.
 // For local dev against a backend on :8080, set VITE_API_BASE_URL in .env.local.
@@ -379,5 +382,34 @@ export async function refreshFilmStreaming(filmKey: string): Promise<FilmMetaRec
     method: 'POST',
   });
   const data = await json<{ meta: FilmMetaRecord }>(res);
+  return data.meta;
+}
+
+// --- Songs ---
+
+export interface SongMetaPatchBody {
+  listened?: boolean;
+  favorite?: boolean;
+  downloaded?: boolean;
+  rating?: SongRating | null;
+  score?: number | null;
+}
+
+export async function fetchSongs(): Promise<AggregatedSong[]> {
+  const res = await fetch(url('/api/songs'));
+  const data = await json<{ songs: AggregatedSong[] }>(res);
+  return data.songs;
+}
+
+export async function patchSongMeta(
+  songKey: string,
+  patch: SongMetaPatchBody
+): Promise<SongMetaRecord> {
+  const res = await fetch(url(`/api/songs/${encodeURIComponent(songKey)}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  const data = await json<{ meta: SongMetaRecord }>(res);
   return data.meta;
 }

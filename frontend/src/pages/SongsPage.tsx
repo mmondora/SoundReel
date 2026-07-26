@@ -1,70 +1,69 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
-import { Pagination } from '../components/Pagination';
+import { SongCard } from '../components/SongCard';
+import { fetchSongs, patchSongMeta } from '../services/api';
+import type { SongMetaPatchBody } from '../services/api';
+import { filterSongs, collectGenres } from '../utils/songFilters';
+import type { ListenedFilter, DownloadedFilter } from '../utils/songFilters';
 import { useAllEntries } from '../hooks/useJournal';
 import { useLanguage } from '../i18n';
-import type { Song, JournalStats } from '../types';
+import type { AggregatedSong, SongMetaRecord, JournalStats } from '../types';
 
-type SortKey = 'recent' | 'artist' | 'title' | 'frequency';
-
-const PAGE_SIZE = 50;
-
-/** One row of the playlist: a unique track plus how often it turned up. */
-interface PlaylistSong extends Song {
-  /** Entry to open when clicking through — the most recent occurrence. */
-  entryId: string;
-  /** How many entries this song appeared in. */
-  count: number;
-  /** Most recent occurrence, used for the "recent" sort. */
-  lastSeen: Date | null;
+function createDefaultMeta(songKey: string): SongMetaRecord {
+  return {
+    songKey,
+    deezerId: null,
+    itunesId: null,
+    genres: [],
+    album: null,
+    coverUrl: null,
+    previewUrl: null,
+    deezerUrl: null,
+    itunesUrl: null,
+    enrichedAt: null,
+    listened: false,
+    favorite: false,
+    downloaded: false,
+    rating: null,
+    score: null,
+  };
 }
 
-function parseFirestoreDate(timestamp: unknown): Date | null {
-  if (!timestamp) return null;
-  if (typeof timestamp === 'object' && timestamp !== null) {
-    const ts = timestamp as Record<string, unknown>;
-    const seconds = ts._seconds ?? ts.seconds;
-    if (typeof seconds === 'number') return new Date(seconds * 1000);
+/** Applies a patch to a song's local meta the same way the backend would, for optimistic updates. */
+export function mergePatch(meta: SongMetaRecord | null, songKey: string, patch: SongMetaPatchBody): SongMetaRecord {
+  const next: SongMetaRecord = { ...(meta ?? createDefaultMeta(songKey)) };
+
+  if (patch.listened !== undefined) next.listened = patch.listened;
+  if (patch.favorite !== undefined) next.favorite = patch.favorite;
+  if (patch.downloaded !== undefined) next.downloaded = patch.downloaded;
+  if (patch.rating !== undefined) next.rating = patch.rating;
+  if (patch.score !== undefined) next.score = patch.score;
+  // Rating or a score always implies the song has been listened to.
+  if ((patch.rating !== undefined && patch.rating !== null) || (patch.score !== undefined && patch.score !== null)) {
+    next.listened = true;
   }
-  if (typeof timestamp === 'string') {
-    const date = new Date(timestamp);
-    if (!isNaN(date.getTime())) return date;
-  }
-  return null;
-}
 
-function getSourceBadge(source: Song['source']): string {
-  switch (source) {
-    case 'audio_fingerprint': return 'AudD';
-    case 'ai_analysis': return 'AI';
-    case 'both': return 'AudD + AI';
-    default: return '';
-  }
-}
-
-/**
- * The Song type declares artist/title as strings, but extracted data can carry
- * nulls (a track recognised by title with no artist attached), so every read
- * here is defensive — one null used to take the whole page down.
- */
-export function artistOf(song: Song): string {
-  return song.artist?.trim() || '';
-}
-
-export function dedupeKey(song: Song): string {
-  return `${artistOf(song).toLowerCase()}|${(song.title?.trim() || '').toLowerCase()}`;
+  return next;
 }
 
 export function SongsPage() {
-  const { entries, loading } = useAllEntries();
+  const { entries } = useAllEntries();
   const { t } = useLanguage();
-  const [sort, setSort] = useState<SortKey>('recent');
-  const [page, setPage] = useState(1);
 
-  const changeSort = useCallback((key: SortKey) => {
-    setSort(key);
-    setPage(1);
+  const [songs, setSongs] = useState<AggregatedSong[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [genreFilter, setGenreFilter] = useState<string[]>([]);
+  const [listenedFilter, setListenedFilter] = useState<ListenedFilter>('all');
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
+  const [downloadedFilter, setDownloadedFilter] = useState<DownloadedFilter>('all');
+  // Per-songKey monotonic counter so a slow/out-of-order PATCH response
+  // (success or failure) can never clobber a newer patch already applied to
+  // that song.
+  const patchSeqRef = useRef(new Map<string, number>());
+
+  useEffect(() => {
+    fetchSongs().then(setSongs).catch(() => setSongs([])).finally(() => setLoading(false));
   }, []);
 
   const stats: JournalStats = {
@@ -74,131 +73,69 @@ export function SongsPage() {
     totalNotes: entries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0),
   };
 
-  // The same track often shows up across several posts; collapse those into one
-  // row so this reads as a library rather than a log of occurrences.
-  const songs = useMemo<PlaylistSong[]>(() => {
-    const byKey = new Map<string, PlaylistSong>();
+  // Most recently mentioned song first (mentions are ordered newest-first by the backend).
+  const sortedSongs = useMemo(() => {
+    return [...songs].sort((a, b) => {
+      const aTime = a.mentions[0] ? new Date(a.mentions[0].createdAt).getTime() : 0;
+      const bTime = b.mentions[0] ? new Date(b.mentions[0].createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
+  }, [songs]);
 
-    for (const entry of entries) {
-      const date = parseFirestoreDate(entry.createdAt);
-      for (const song of entry.results.songs) {
-        if (!song.title?.trim()) continue;
-        const key = dedupeKey(song);
-        const existing = byKey.get(key);
-
-        if (!existing) {
-          byKey.set(key, { ...song, entryId: entry.id, count: 1, lastSeen: date });
-          continue;
-        }
-
-        existing.count += 1;
-        // Newest occurrence wins as the clickthrough target; listening links are
-        // merged so a copy that lacks them inherits from one that has them.
-        if (date && (!existing.lastSeen || date > existing.lastSeen)) {
-          existing.lastSeen = date;
-          existing.entryId = entry.id;
-        }
-        existing.spotifyUrl = existing.spotifyUrl || song.spotifyUrl;
-        existing.youtubeUrl = existing.youtubeUrl || song.youtubeUrl;
-        existing.soundcloudUrl = existing.soundcloudUrl || song.soundcloudUrl;
-        existing.album = existing.album || song.album;
-        existing.addedToPlaylist = existing.addedToPlaylist || song.addedToPlaylist;
-      }
-    }
-
-    return Array.from(byKey.values());
-  }, [entries]);
-
-  const sorted = useMemo(() => {
-    const list = [...songs];
-    switch (sort) {
-      case 'artist':
-        return list.sort((a, b) =>
-          artistOf(a).localeCompare(artistOf(b)) || (a.title || '').localeCompare(b.title || ''));
-      case 'title':
-        return list.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-      case 'frequency':
-        return list.sort((a, b) => b.count - a.count || artistOf(a).localeCompare(artistOf(b)));
-      case 'recent':
-      default:
-        return list.sort((a, b) => (b.lastSeen?.getTime() ?? 0) - (a.lastSeen?.getTime() ?? 0));
-    }
-  }, [songs, sort]);
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const pageItems = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  const renderSong = (song: PlaylistSong) => (
-    <div className="list-item-row" key={dedupeKey(song)}>
-      <div className="list-item-icon">🎵</div>
-      <div className="list-item-content">
-        <div className="list-item-title">
-          {song.title}
-          {song.count > 1 && <span className="song-count-badge">×{song.count}</span>}
-        </div>
-        <div className="list-item-subtitle">
-          {artistOf(song) || t.unknownArtist}
-          {song.album && <span className="list-item-muted"> — {song.album}</span>}
-        </div>
-        <div className="list-item-badges">
-          <span className="source-badge">{getSourceBadge(song.source)}</span>
-          {song.spotifyUrl && (
-            <a href={song.spotifyUrl} target="_blank" rel="noopener noreferrer" className="badge-link spotify">
-              Spotify
-            </a>
-          )}
-          {song.youtubeUrl && (
-            <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" className="badge-link youtube">
-              YouTube
-            </a>
-          )}
-          {song.soundcloudUrl && (
-            <a href={song.soundcloudUrl} target="_blank" rel="noopener noreferrer" className="badge-link soundcloud">
-              SoundCloud
-            </a>
-          )}
-          {song.addedToPlaylist && <span className="badge-playlist">✓ Playlist</span>}
-        </div>
-      </div>
-      <Link to={`/?entry=${song.entryId}`} className="list-item-action">{t.viewReel}</Link>
-    </div>
+  const genres = useMemo(() => collectGenres(sortedSongs), [sortedSongs]);
+  const visible = useMemo(
+    () =>
+      filterSongs(sortedSongs, {
+        genres: genreFilter,
+        listened: listenedFilter,
+        favorite: favoriteOnly,
+        downloaded: downloadedFilter,
+      }),
+    [sortedSongs, genreFilter, listenedFilter, favoriteOnly, downloadedFilter]
   );
 
-  /** Under the artist sort, print each artist once above their tracks. */
-  const renderList = () => {
-    if (pageItems.length === 0) {
-      return <div className="journal-empty"><p>{t.noSongsYet}</p></div>;
-    }
+  function toggleGenre(genre: string) {
+    setGenreFilter((prev) => (prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]));
+  }
 
-    if (sort !== 'artist') {
-      return <>{pageItems.map(renderSong)}</>;
-    }
+  // Optimistic patch: apply locally, PATCH, roll back on failure. Rollback and
+  // the success write are both scoped to this one song's meta (never the
+  // whole array) and guarded by a per-songKey sequence number so a response
+  // that arrives after a newer patch for the same song can't overwrite it.
+  async function applyPatch(songKey: string, patch: SongMetaPatchBody) {
+    const seq = (patchSeqRef.current.get(songKey) ?? 0) + 1;
+    patchSeqRef.current.set(songKey, seq);
+    const isLatest = () => patchSeqRef.current.get(songKey) === seq;
 
-    const blocks: Array<{ artist: string; items: PlaylistSong[] }> = [];
-    for (const song of pageItems) {
-      const last = blocks[blocks.length - 1];
-      const artist = artistOf(song) || t.unknownArtist;
-      if (last && last.artist === artist) last.items.push(song);
-      else blocks.push({ artist, items: [song] });
-    }
-
-    return (
-      <>
-        {blocks.map((block) => (
-          <div key={block.artist}>
-            <div className="date-group-header">{block.artist}</div>
-            {block.items.map(renderSong)}
-          </div>
-        ))}
-      </>
+    let previousMeta: SongMetaRecord | null = null;
+    setSongs((prev) =>
+      prev.map((s) => {
+        if (s.songKey !== songKey) return s;
+        previousMeta = s.meta;
+        return { ...s, meta: mergePatch(s.meta, songKey, patch) };
+      })
     );
-  };
 
-  const SORTS: Array<{ key: SortKey; label: string }> = [
-    { key: 'recent', label: t.sortRecent },
-    { key: 'artist', label: t.sortArtist },
-    { key: 'title', label: t.sortTitle },
-    { key: 'frequency', label: t.sortFrequency },
+    try {
+      const serverMeta = await patchSongMeta(songKey, patch);
+      if (!isLatest()) return; // superseded by a later patch for this song
+      setSongs((prev) => prev.map((s) => (s.songKey === songKey ? { ...s, meta: serverMeta } : s)));
+    } catch {
+      if (!isLatest()) return; // a newer patch already replaced this state; don't roll back over it
+      setSongs((prev) => prev.map((s) => (s.songKey === songKey ? { ...s, meta: previousMeta } : s)));
+    }
+  }
+
+  const listenedOptions: Array<{ key: ListenedFilter; label: string }> = [
+    { key: 'all', label: t.filmsFilterAll },
+    { key: 'listened', label: t.songsFilterListened },
+    { key: 'unlistened', label: t.songsFilterUnlistened },
+  ];
+
+  const downloadedOptions: Array<{ key: DownloadedFilter; label: string }> = [
+    { key: 'all', label: t.filmsFilterAll },
+    { key: 'yes', label: t.songsFilterDownloaded },
+    { key: 'no', label: t.songsFilterNotDownloaded },
   ];
 
   return (
@@ -211,17 +148,55 @@ export function SongsPage() {
         </div>
 
         {!loading && (
-          <div className="journal-filter-bar">
-            {SORTS.map(({ key, label }) => (
+          <div className="films-filter-bar">
+            {genres.map((genre) => (
               <button
-                key={key}
-                className={`filter-chip ${sort === key ? 'active' : ''}`}
-                onClick={() => changeSort(key)}
+                key={genre}
+                type="button"
+                className={`genre-chip ${genreFilter.includes(genre) ? 'active' : ''}`}
+                onClick={() => toggleGenre(genre)}
               >
-                {label}
+                {genre}
               </button>
             ))}
-            <span className="filter-result-count">{sorted.length}</span>
+            <span className="filter-segment-group">
+              <span className="filter-segment-label">{t.songsListenedFilterLabel}</span>
+              <div className="filter-segment">
+                {listenedOptions.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    className={listenedFilter === opt.key ? 'active' : ''}
+                    onClick={() => setListenedFilter(opt.key)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </span>
+            <button
+              type="button"
+              className={`genre-chip ${favoriteOnly ? 'active' : ''}`}
+              onClick={() => setFavoriteOnly((v) => !v)}
+            >
+              ⭐ {t.songsFilterFavorites}
+            </button>
+            <span className="filter-segment-group">
+              <span className="filter-segment-label">{t.songsDownloadedFilterLabel}</span>
+              <div className="filter-segment">
+                {downloadedOptions.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    className={downloadedFilter === opt.key ? 'active' : ''}
+                    onClick={() => setDownloadedFilter(opt.key)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </span>
+            <span className="filter-result-count">{visible.length}</span>
           </div>
         )}
 
@@ -230,16 +205,18 @@ export function SongsPage() {
             <span className="spinner" />
             <p>{t.loading}</p>
           </div>
+        ) : visible.length === 0 ? (
+          <div className="list-page-empty">{t.noSongsYet}</div>
         ) : (
-          <>
-            {renderList()}
-            <Pagination
-              currentPage={page}
-              totalPages={totalPages}
-              onPrev={() => setPage((p) => Math.max(1, p - 1))}
-              onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+          visible.map((song) => (
+            <SongCard
+              key={song.songKey}
+              song={song}
+              onPatch={(patch) => {
+                void applyPatch(song.songKey, patch);
+              }}
             />
-          </>
+          ))
         )}
       </div>
     </div>
