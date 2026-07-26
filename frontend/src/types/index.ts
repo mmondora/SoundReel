@@ -28,6 +28,41 @@ export interface Film {
   streamingUrls: StreamingUrls | null;
 }
 
+export type AvailabilityStatus = 'free' | 'paid' | 'absent';
+
+export interface FilmUserMeta {
+  watched: boolean;
+  rating: 'fresh' | 'rotten' | null;
+  score: number | null;
+  availability: Partial<Record<keyof StreamingUrls, AvailabilityStatus>>;
+}
+
+export interface FilmMetaRecord extends FilmUserMeta {
+  filmKey: string;
+  tmdbId: number | null;
+  genres: string[];
+  overview: string | null;
+  cast: string[];
+  tmdbScore: number | null;
+}
+
+export interface FilmMention {
+  entryId: string;
+  createdAt: string;
+}
+
+export interface AggregatedFilm {
+  filmKey: string;
+  title: string;
+  director: string | null;
+  year: string | null;
+  imdbUrl: string | null;
+  posterUrl: string | null;
+  streamingUrls: StreamingUrls | null;
+  mentions: FilmMention[];
+  meta: FilmMetaRecord | null;
+}
+
 export interface ActionLogItem {
   action: string;
   details: Record<string, unknown>;

@@ -12,6 +12,12 @@ interface TmdbSearchResponse {
 
 interface TmdbMovieDetails {
   imdb_id: string | null;
+  genres: Array<{ id: number; name: string }>;
+  overview: string | null;
+  credits?: {
+    cast: Array<{ name: string }>;
+  };
+  vote_average: number | null;
 }
 
 export async function searchFilm(
@@ -43,16 +49,24 @@ export async function searchFilm(
     }
 
     const movie = data.results[0];
-    const imdbId = await getImdbId(movie.id, apiKey);
+    const movieDetails = await getMovieDetails(movie.id, apiKey);
+    if (!movieDetails) {
+      logWarning('Non riuscito a recuperare dettagli film da TMDb', { movieId: movie.id });
+      return null;
+    }
 
     const result: TmdbSearchResult = {
       id: movie.id,
       title: movie.title,
-      imdbId,
+      imdbId: movieDetails.imdb_id || null,
       posterPath: movie.poster_path
         ? `https://image.tmdb.org/t/p/w200${movie.poster_path}`
         : null,
       releaseDate: movie.release_date || null,
+      genres: movieDetails.genres.map((g) => g.name),
+      overview: movieDetails.overview || null,
+      cast: (movieDetails.credits?.cast || []).slice(0, 10).map((actor) => actor.name),
+      voteAverage: movieDetails.vote_average,
     };
 
     logInfo('Film trovato su TMDb', { title: result.title, imdbId: result.imdbId });
@@ -63,14 +77,14 @@ export async function searchFilm(
   }
 }
 
-async function getImdbId(tmdbId: number, apiKey: string): Promise<string | null> {
+async function getMovieDetails(tmdbId: number, apiKey: string): Promise<TmdbMovieDetails | null> {
   try {
     const response = await fetch(
-      `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${apiKey}`
+      `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${apiKey}&append_to_response=credits`
     );
     if (!response.ok) return null;
     const data = (await response.json()) as TmdbMovieDetails;
-    return data.imdb_id || null;
+    return data;
   } catch {
     return null;
   }
