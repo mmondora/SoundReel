@@ -49,14 +49,14 @@ export function FilmCard({ film, scoreEditing, onStartScoreEdit, onStopScoreEdit
       const parsed = Number(trimmed);
       if (trimmed !== '' && Number.isFinite(parsed)) {
         const clamped = Math.max(0, Math.min(100, Math.round(parsed)));
-        onPatch({ score: clamped });
+        if (clamped !== meta?.score) onPatch({ score: clamped });
       }
     }
     onStopScoreEdit();
   }
 
   return (
-    <div className="list-item-row film-row">
+    <div className="list-item-row">
       {film.posterUrl ? (
         <img src={film.posterUrl} alt="" className="list-item-poster" loading="lazy" />
       ) : (

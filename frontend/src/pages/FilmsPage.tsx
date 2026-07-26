@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { FilmCard } from '../components/FilmCard';
@@ -26,7 +26,7 @@ function createDefaultMeta(filmKey: string): FilmMetaRecord {
 }
 
 /** Applies a patch to a film's local meta the same way the backend would, for optimistic updates. */
-function mergePatch(meta: FilmMetaRecord | null, filmKey: string, patch: FilmMetaPatchBody): FilmMetaRecord {
+export function mergePatch(meta: FilmMetaRecord | null, filmKey: string, patch: FilmMetaPatchBody): FilmMetaRecord {
   const next: FilmMetaRecord = { ...(meta ?? createDefaultMeta(filmKey)) };
 
   if (patch.watched !== undefined) next.watched = patch.watched;
@@ -59,6 +59,9 @@ export function FilmsPage() {
   const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>('all');
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>('all');
   const [scoreEditing, setScoreEditing] = useState<string | null>(null);
+  // Per-filmKey monotonic counter so a slow/out-of-order PATCH response (success
+  // or failure) can never clobber a newer patch already applied to that film.
+  const patchSeqRef = useRef(new Map<string, number>());
 
   useEffect(() => {
     fetchFilms().then(setFilms).catch(() => setFilms([])).finally(() => setLoading(false));
@@ -90,18 +93,31 @@ export function FilmsPage() {
     setGenreFilter((prev) => (prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]));
   }
 
-  // Optimistic patch: apply locally, PATCH, roll back on failure.
+  // Optimistic patch: apply locally, PATCH, roll back on failure. Rollback and
+  // the success write are both scoped to this one film's meta (never the whole
+  // array) and guarded by a per-filmKey sequence number so a response that
+  // arrives after a newer patch for the same film can't overwrite it.
   async function applyPatch(filmKey: string, patch: FilmMetaPatchBody) {
-    const snapshot = films;
+    const seq = (patchSeqRef.current.get(filmKey) ?? 0) + 1;
+    patchSeqRef.current.set(filmKey, seq);
+    const isLatest = () => patchSeqRef.current.get(filmKey) === seq;
+
+    let previousMeta: FilmMetaRecord | null = null;
     setFilms((prev) =>
-      prev.map((f) => (f.filmKey === filmKey ? { ...f, meta: mergePatch(f.meta, filmKey, patch) } : f))
+      prev.map((f) => {
+        if (f.filmKey !== filmKey) return f;
+        previousMeta = f.meta;
+        return { ...f, meta: mergePatch(f.meta, filmKey, patch) };
+      })
     );
 
     try {
       const serverMeta = await patchFilmMeta(filmKey, patch);
+      if (!isLatest()) return; // superseded by a later patch for this film
       setFilms((prev) => prev.map((f) => (f.filmKey === filmKey ? { ...f, meta: serverMeta } : f)));
     } catch {
-      setFilms(snapshot);
+      if (!isLatest()) return; // a newer patch already replaced this state; don't roll back over it
+      setFilms((prev) => prev.map((f) => (f.filmKey === filmKey ? { ...f, meta: previousMeta } : f)));
     }
   }
 
@@ -131,6 +147,7 @@ export function FilmsPage() {
             {genres.map((genre) => (
               <button
                 key={genre}
+                type="button"
                 className={`genre-chip ${genreFilter.includes(genre) ? 'active' : ''}`}
                 onClick={() => toggleGenre(genre)}
               >
@@ -141,6 +158,7 @@ export function FilmsPage() {
               {watchedOptions.map((opt) => (
                 <button
                   key={opt.key}
+                  type="button"
                   className={watchedFilter === opt.key ? 'active' : ''}
                   onClick={() => setWatchedFilter(opt.key)}
                 >
@@ -152,6 +170,7 @@ export function FilmsPage() {
               {availabilityOptions.map((opt) => (
                 <button
                   key={opt.key}
+                  type="button"
                   className={availabilityFilter === opt.key ? 'active' : ''}
                   onClick={() => setAvailabilityFilter(opt.key)}
                 >
