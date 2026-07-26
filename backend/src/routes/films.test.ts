@@ -10,11 +10,20 @@ vi.mock('../services/filmMeta', async (importOriginal) => {
     patchFilmUserMeta: vi.fn(),
   };
 });
+vi.mock('../services/streamingAvailability', () => ({
+  streamingConfigured: vi.fn(),
+}));
+vi.mock('../services/streamingRefresher', () => ({
+  refreshStreamingForFilm: vi.fn(),
+  extractImdbId: vi.fn(),
+}));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logError: vi.fn() }));
 
 import { registerFilmsRoutes } from './films';
 import { listEntries } from '../utils/db';
 import { listFilmMeta, patchFilmUserMeta } from '../services/filmMeta';
+import { streamingConfigured } from '../services/streamingAvailability';
+import { refreshStreamingForFilm, extractImdbId } from '../services/streamingRefresher';
 
 function buildApp() {
   const app = Fastify();
@@ -56,6 +65,22 @@ describe('GET /api/films', () => {
     const { films } = res.json();
     expect(films[0].posterUrl).toBe('p.jpg');
     expect(films[0].meta.rating).toBe('fresh');
+  });
+
+  it('streaming meta fields (streamingOptions, streamingCheckedAt) pass through from the joined record', async () => {
+    vi.mocked(listEntries).mockResolvedValue([entry('e1', '2026-07-01T00:00:00Z', [HEAT])]);
+    const meta = {
+      filmKey: 'heat::1995', tmdbId: 949, genres: [], overview: null, cast: [], tmdbScore: null,
+      watched: false, rating: null, score: null, availability: {},
+      streamingOptions: [{ platform: 'Netflix', type: 'SUBSCRIPTION', is_free: false, price: null, url: 'https://netflix.com/1' }],
+      streamingCheckedAt: '2026-07-01T00:00:00.000Z',
+      watchmodeTitleId: 42,
+    };
+    vi.mocked(listFilmMeta).mockResolvedValue(new Map([['heat::1995', meta as never]]));
+    const res = await buildApp().inject({ method: 'GET', url: '/api/films' });
+    const { films } = res.json();
+    expect(films[0].meta.streamingOptions).toEqual(meta.streamingOptions);
+    expect(films[0].meta.streamingCheckedAt).toBe('2026-07-01T00:00:00.000Z');
   });
 
   it('skips malformed film objects without failing', async () => {
@@ -133,5 +158,77 @@ describe('PATCH /api/films/:filmKey', () => {
       rating: 'fresh', availability: { primeVideo: 'paid', netflix: null },
     });
     expect(res.json().meta.watched).toBe(true);
+  });
+});
+
+describe('POST /api/films/:filmKey/refresh-streaming', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const HEAT_WITH_IMDB = { ...HEAT, imdbUrl: 'https://www.imdb.com/title/tt0113277/' };
+
+  it('404 when the film is not known', async () => {
+    vi.mocked(listEntries).mockResolvedValue([]);
+    vi.mocked(listFilmMeta).mockResolvedValue(new Map());
+
+    const res = await buildApp().inject({ method: 'POST', url: '/api/films/nope%3A%3A2000/refresh-streaming' });
+
+    expect(res.statusCode).toBe(404);
+    expect(refreshStreamingForFilm).not.toHaveBeenCalled();
+  });
+
+  it('404 when the film has no IMDb id', async () => {
+    vi.mocked(listEntries).mockResolvedValue([entry('e1', '2026-07-01T00:00:00Z', [HEAT])]);
+    vi.mocked(listFilmMeta).mockResolvedValue(new Map());
+    vi.mocked(extractImdbId).mockReturnValue(null);
+
+    const res = await buildApp().inject({ method: 'POST', url: '/api/films/heat%3A%3A1995/refresh-streaming' });
+
+    expect(res.statusCode).toBe(404);
+    expect(refreshStreamingForFilm).not.toHaveBeenCalled();
+  });
+
+  it('503 when the streaming provider is not configured', async () => {
+    vi.mocked(listEntries).mockResolvedValue([entry('e1', '2026-07-01T00:00:00Z', [HEAT_WITH_IMDB])]);
+    vi.mocked(listFilmMeta).mockResolvedValue(new Map());
+    vi.mocked(extractImdbId).mockReturnValue('tt0113277');
+    vi.mocked(streamingConfigured).mockReturnValue(false);
+
+    const res = await buildApp().inject({ method: 'POST', url: '/api/films/heat%3A%3A1995/refresh-streaming' });
+
+    expect(res.statusCode).toBe(503);
+    expect(refreshStreamingForFilm).not.toHaveBeenCalled();
+  });
+
+  it('200 happy path: refreshes and returns the fresh meta', async () => {
+    vi.mocked(listEntries).mockResolvedValue([entry('e1', '2026-07-01T00:00:00Z', [HEAT_WITH_IMDB])]);
+    const freshMeta = { filmKey: 'heat::1995', watched: false, streamingOptions: [{ platform: 'Netflix' }] };
+    vi.mocked(listFilmMeta)
+      .mockResolvedValueOnce(new Map())
+      .mockResolvedValueOnce(new Map([['heat::1995', freshMeta as never]]));
+    vi.mocked(extractImdbId).mockReturnValue('tt0113277');
+    vi.mocked(streamingConfigured).mockReturnValue(true);
+    vi.mocked(refreshStreamingForFilm).mockResolvedValue([]);
+
+    const res = await buildApp().inject({ method: 'POST', url: '/api/films/heat%3A%3A1995/refresh-streaming' });
+
+    expect(res.statusCode).toBe(200);
+    expect(refreshStreamingForFilm).toHaveBeenCalledWith({
+      filmKey: 'heat::1995',
+      imdbId: 'tt0113277',
+      cachedTitleId: null,
+    });
+    expect(res.json().meta).toEqual(freshMeta);
+  });
+
+  it('500 when the refresh call fails', async () => {
+    vi.mocked(listEntries).mockResolvedValue([entry('e1', '2026-07-01T00:00:00Z', [HEAT_WITH_IMDB])]);
+    vi.mocked(listFilmMeta).mockResolvedValue(new Map());
+    vi.mocked(extractImdbId).mockReturnValue('tt0113277');
+    vi.mocked(streamingConfigured).mockReturnValue(true);
+    vi.mocked(refreshStreamingForFilm).mockRejectedValue(new Error('watchmode 500: boom'));
+
+    const res = await buildApp().inject({ method: 'POST', url: '/api/films/heat%3A%3A1995/refresh-streaming' });
+
+    expect(res.statusCode).toBe(500);
   });
 });

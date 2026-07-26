@@ -67,6 +67,25 @@ export async function upsertFilmEnrichment(input: {
   );
 }
 
+export async function upsertStreamingOptions(input: {
+  filmKey: string;
+  options: StreamingPlatformOption[];
+  watchmodeTitleId: number | null; // null preserves the existing value (COALESCE)
+}): Promise<void> {
+  // Ensure the row exists, then apply only the streaming columns — never
+  // touches user-state columns (watched/rating/score/availability).
+  await query(`INSERT INTO film_meta (film_key) VALUES ($1) ON CONFLICT (film_key) DO NOTHING`, [input.filmKey]);
+  await query(
+    `UPDATE film_meta SET
+       streaming_options = $2::jsonb,
+       streaming_checked_at = now(),
+       watchmode_title_id = COALESCE($3, watchmode_title_id),
+       updated_at = now()
+     WHERE film_key = $1`,
+    [input.filmKey, JSON.stringify(input.options), input.watchmodeTitleId]
+  );
+}
+
 export type FilmUserMetaPatch = Omit<Partial<FilmUserMeta>, 'availability'> & {
   availability?: Record<string, 'free' | 'paid' | 'absent' | null>;
 };

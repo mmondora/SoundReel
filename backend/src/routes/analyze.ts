@@ -23,6 +23,8 @@ import { SsrfBlockedError } from '../services/ssrfGuard';
 import { searchTrack, addToPlaylist, generateYoutubeSearchUrl, generateSoundcloudSearchUrl } from '../services/spotify';
 import { searchFilm, generateImdbUrl, generateStreamingUrls } from '../services/filmSearch';
 import { filmKey, upsertFilmEnrichment } from '../services/filmMeta';
+import { streamingConfigured } from '../services/streamingAvailability';
+import { refreshStreamingForFilm } from '../services/streamingRefresher';
 import { mergeResults } from '../services/resultMerger';
 import { downloadMedia } from '../services/_legacy/mediaDownloader';
 import { transcribeAudio as transcribeAudioLegacyStub } from '../services/_legacy/transcribeAudioStub';
@@ -773,15 +775,21 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           found: !!tmdbResult,
         }));
         const filmYear = resolveFilmYear(filmData.year, tmdbResult?.releaseDate);
+        const filmMetaKey = filmKey(filmData.title, filmYear);
         if (hasEnrichmentData(tmdbResult)) {
           void upsertFilmEnrichment({
-            filmKey: filmKey(filmData.title, filmYear),
+            filmKey: filmMetaKey,
             tmdbId: tmdbResult.id,
             genres: tmdbResult.genres,
             overview: tmdbResult.overview,
             cast: tmdbResult.cast,
             tmdbScore: tmdbResult.voteAverage,
           }).catch((err) => logError('film_meta upsert failed', { err: String(err) }));
+        }
+        if (tmdbResult?.imdbId && streamingConfigured()) {
+          void refreshStreamingForFilm({ filmKey: filmMetaKey, imdbId: tmdbResult.imdbId }).catch((err) =>
+            logError('streaming refresh failed', { err: String(err) })
+          );
         }
         films.push({
           title: filmData.title,
@@ -796,15 +804,21 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       for (const slideFilm of slideFilms) {
         const tmdbResult = await searchFilm(slideFilm.title, slideFilm.year?.toString() ?? null);
         const slideFilmYear = resolveFilmYear(slideFilm.year?.toString() ?? null, tmdbResult?.releaseDate);
+        const slideFilmMetaKey = filmKey(slideFilm.title, slideFilmYear);
         if (hasEnrichmentData(tmdbResult)) {
           void upsertFilmEnrichment({
-            filmKey: filmKey(slideFilm.title, slideFilmYear),
+            filmKey: slideFilmMetaKey,
             tmdbId: tmdbResult.id,
             genres: tmdbResult.genres,
             overview: tmdbResult.overview,
             cast: tmdbResult.cast,
             tmdbScore: tmdbResult.voteAverage,
           }).catch((err) => logError('film_meta upsert failed', { err: String(err) }));
+        }
+        if (tmdbResult?.imdbId && streamingConfigured()) {
+          void refreshStreamingForFilm({ filmKey: slideFilmMetaKey, imdbId: tmdbResult.imdbId }).catch((err) =>
+            logError('streaming refresh failed', { err: String(err) })
+          );
         }
         films.push({
           title: slideFilm.title,
