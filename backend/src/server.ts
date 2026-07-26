@@ -17,6 +17,7 @@ import { registerAdminRoutes, runCleanup } from './routes/admin';
 import { registerSearchRoute } from './routes/search';
 import { registerMusicListRoute } from './routes/musicList';
 import { registerFilmsRoutes } from './routes/films';
+import { registerSongsRoutes } from './routes/songs';
 import { requeueStuckJobs } from './utils/jobQueue';
 import { startJobQueueWorker } from './services/jobQueueWorker';
 
@@ -46,6 +47,7 @@ async function bootstrap(): Promise<void> {
   registerSearchRoute(app);
   registerMusicListRoute(app);
   registerFilmsRoutes(app);
+  registerSongsRoutes(app);
 
   // Serve static frontend (after routes so /api/* wins)
   const publicDir = path.resolve(__dirname, 'public');

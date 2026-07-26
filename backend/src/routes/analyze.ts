@@ -23,6 +23,8 @@ import { SsrfBlockedError } from '../services/ssrfGuard';
 import { searchTrack, addToPlaylist, generateYoutubeSearchUrl, generateSoundcloudSearchUrl } from '../services/spotify';
 import { searchFilm, generateImdbUrl, generateStreamingUrls } from '../services/filmSearch';
 import { filmKey, upsertFilmEnrichment, getFilmMeta } from '../services/filmMeta';
+import { songKey, upsertSongEnrichment, getSongMeta } from '../services/songMeta';
+import { enrichSong } from '../services/songEnrichment';
 import { streamingConfigured } from '../services/streamingAvailability';
 import { refreshStreamingForFilm, isStale } from '../services/streamingRefresher';
 import { mergeResults } from '../services/resultMerger';
@@ -71,6 +73,9 @@ const SINGLE_IMAGE_OCR_MIN_CHARS = 120;
 
 /** TTL (days) before a film's cached streaming availability is refetched by the pipeline hook. */
 const STREAMING_TTL_DAYS = Number(process.env.STREAMING_TTL_DAYS || 30);
+
+/** TTL (days) before a song's cached Deezer/iTunes enrichment is refetched by the pipeline hook. */
+const SONG_ENRICHMENT_TTL_DAYS = Number(process.env.SONG_ENRICHMENT_TTL_DAYS || 30);
 
 /**
  * Resolves the year to persist on a Film (and to key its film_meta enrichment
@@ -767,6 +772,22 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             songs[i] = { ...song, youtubeUrl: generateYoutubeSearchUrl(song.title, song.artist) };
           }
         });
+      }
+
+      // Fire-and-forget: enrich every song with title in the merged result set
+      // (Deezer/iTunes cover, genres, direct links) skipping ones enriched
+      // within the TTL. Never delays the pipeline.
+      for (const song of songs) {
+        if (!song.title.trim()) continue;
+        const songMetaKey = songKey(song.artist, song.title);
+        void (async () => {
+          const existingMeta = await getSongMeta(songMetaKey);
+          if (existingMeta?.enrichedAt && !isStale(existingMeta.enrichedAt, SONG_ENRICHMENT_TTL_DAYS)) return;
+          const enrichment = await enrichSong(song.artist, song.title);
+          if (enrichment) {
+            await upsertSongEnrichment({ songKey: songMetaKey, ...enrichment });
+          }
+        })().catch((err) => logError('song enrichment failed', { err: String(err) }));
       }
 
       const films: Film[] = [];
