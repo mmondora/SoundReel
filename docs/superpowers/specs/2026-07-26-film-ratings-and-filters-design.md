@@ -18,6 +18,7 @@ Films extracted from social content are listed per-mention on FilmsPage with no 
 - **Availability**: per-service status — `free` | `paid` | `absent` per streaming service (unset = unknown).
 - **Genres**: automatic from TMDb (official genre names), captured at analysis time + one-off backfill of existing films. Not user-editable.
 - **Films view**: deduplicated — one row per film, with mention count linking back to entries. Filters at top.
+- **Film card content** (user addition mid-design): 2-line description (TMDb overview, it-IT), top cast names, director, and public score. Score is TMDb `vote_average` (0–10) — IMDb has no free API; label it as TMDb score.
 - **Storage**: separate `film_meta` table (approach A). Entry JSONB (`results.films`) stays untouched.
 
 ## Architecture
@@ -37,6 +38,9 @@ CREATE TABLE IF NOT EXISTS film_meta (
   film_key TEXT PRIMARY KEY,
   tmdb_id INTEGER,
   genres TEXT[] NOT NULL DEFAULT '{}',
+  overview TEXT,
+  film_cast TEXT[] NOT NULL DEFAULT '{}',
+  tmdb_score NUMERIC(3,1),
   watched BOOLEAN NOT NULL DEFAULT false,
   rating TEXT CHECK (rating IN ('fresh','rotten')),
   score SMALLINT CHECK (score BETWEEN 0 AND 100),
@@ -44,6 +48,8 @@ CREATE TABLE IF NOT EXISTS film_meta (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
+
+Enrichment columns (`tmdb_id`, `genres`, `overview`, `film_cast`, `tmdb_score`) are written by the pipeline/backfill; user-state columns (`watched`, `rating`, `score`, `availability`) only by PATCH. (`film_cast` not `cast`: `cast` unquoted is awkward in SQL contexts.)
 
 - `availability` shape: `{"netflix":"free","primeVideo":"paid",...}` — keys are the service ids already used in `StreamingUrls` (`netflix`, `primeVideo`, `raiPlay`, `now`, `disneyPlus`, `appleTv`); values `free|paid|absent`; missing key = unknown.
 - Setting `rating` (or `score`) forces `watched = true` server-side. Clearing rating does NOT clear watched.
@@ -61,14 +67,14 @@ CREATE TABLE IF NOT EXISTS film_meta (
 
 **`filmSearch.ts` extension:**
 
-- TMDb search response already contains `genre_ids`; movie detail call already made for IMDb id contains `genres` (names). Capture TMDb `id` + genre names.
-- After successful film enrichment during analysis, upsert `film_meta (film_key, tmdb_id, genres)` — never touching user state columns (`ON CONFLICT ... DO UPDATE SET tmdb_id, genres, updated_at` only when genres were found).
+- Movie detail call (already made for IMDb id) switches to `?append_to_response=credits&language=it-IT`, capturing: `genres` (names, it-IT), `overview` (it-IT), `vote_average`, top 4 `credits.cast` names, TMDb `id`.
+- After successful film enrichment during analysis, upsert enrichment columns of `film_meta` — never touching user state columns.
 - Failure to fetch/store genres never blocks the pipeline (log to actionLog per project convention).
 
 **Backfill script `backend/src/scripts/backfillFilmGenres.ts`:**
 
-- Iterate distinct films from entries missing genres in `film_meta`.
-- TMDb search (title + year) → detail → genres + tmdb_id. Upsert.
+- Iterate distinct films from entries missing enrichment in `film_meta`.
+- TMDb search (title + year) → detail with credits → genres, overview, cast, tmdb_score, tmdb_id. Upsert.
 - Rate-limited (~250ms between calls), idempotent, `--dry-run` support, logs misses.
 
 ### Frontend
@@ -80,7 +86,7 @@ CREATE TABLE IF NOT EXISTS film_meta (
   - Genre chips built from genres present in data (multi-select, OR semantics).
   - Watched toggle: All / Watched / Unwatched.
   - Availability filter: All / Free somewhere / Paid-only or absent (any service marked non-free and none free).
-- List rows: poster, title (year, director), genre badges, mention count `×N` linking to the most recent entry (existing `/?entry=` pattern), streaming badges.
+- List rows: poster, title (year, director), TMDb score badge (e.g. `★ 7.1`), genre badges, 2-line clamped overview, top cast names, mention count `×N` linking to the most recent entry (existing `/?entry=` pattern), streaming badges.
 - Quick actions per row:
   - 🍅 / 🤢 buttons — one tap sets rating (and watched); tapping the active one clears rating (watched stays).
   - Score: small `%` affordance next to rating opens inline number input (0–100), optional.
