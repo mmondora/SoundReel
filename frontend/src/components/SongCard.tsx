@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
 import { ratingFromScore } from '../utils/filmRating';
@@ -13,11 +13,46 @@ interface SongCardProps {
 // A single shared <audio> element so starting one preview always stops
 // whichever other song was playing — module-level because previews are a
 // page-wide "only one at a time" concern, not something scoped to one card.
+// `playing` state is *derived* from this (via useSyncExternalStore below)
+// rather than mirrored into per-card useState: a card's own onpause/onended
+// closures raced the key reassignment when switching cards directly, so
+// card A could still be showing ⏸ after B took over playback. Deriving from
+// the single source of truth on every notify() removes that whole class of
+// bug instead of patching around it.
 let sharedAudio: HTMLAudioElement | null = null;
 let sharedAudioKey: string | null = null;
+const listeners = new Set<() => void>();
 
-function youtubeSearchUrl(artist: string, title: string): string {
-  return `https://youtube.com/results?search_query=${encodeURIComponent(`${artist} ${title}`)}`;
+function notify(): void {
+  listeners.forEach((l) => l());
+}
+
+/**
+ * Pure form of the snapshot check, taking the active key/audio explicitly
+ * instead of reading module state — exported so the logic is unit-testable
+ * without a DOM `<audio>` element or a render harness.
+ */
+export function computeIsPlaying(
+  songKey: string,
+  activeKey: string | null,
+  audio: { paused: boolean } | null
+): boolean {
+  return activeKey === songKey && !!audio && !audio.paused;
+}
+
+/** Snapshot of "is this song's preview currently the one playing", read from module state. */
+export function isPreviewPlaying(songKey: string): boolean {
+  return computeIsPlaying(songKey, sharedAudioKey, sharedAudio);
+}
+
+function subscribe(onStoreChange: () => void): () => void {
+  listeners.add(onStoreChange);
+  return () => listeners.delete(onStoreChange);
+}
+
+/** Exported for unit testing the leading-space trim when `artist` is empty. */
+export function youtubeSearchUrl(artist: string, title: string): string {
+  return `https://youtube.com/results?search_query=${encodeURIComponent(`${artist} ${title}`.trim())}`;
 }
 
 /** One deduplicated song row: cover art, genre badges, rating slider and quick actions. */
@@ -26,23 +61,22 @@ export function SongCard({ song, onPatch }: SongCardProps) {
   const meta = song.meta;
   // Slider position while dragging; null when idle (shows the stored score).
   const [sliderDraft, setSliderDraft] = useState<number | null>(null);
-  const [playing, setPlaying] = useState(false);
-  // Guards against a stray 'ended'/'pause' event from a stopped-and-discarded
-  // audio element flipping this card's playing state after another card has
-  // already taken over sharedAudio.
-  const cardKeyRef = useRef(song.songKey);
-  cardKeyRef.current = song.songKey;
+  const playing = useSyncExternalStore(subscribe, () => isPreviewPlaying(song.songKey));
 
   // If this card unmounts (filtered out, navigated away) while its own
-  // preview is the one playing, stop it — otherwise it would keep playing
-  // silently in the background with no visible control left to pause it.
+  // preview is the one playing, stop it and release ownership — otherwise
+  // it would keep playing silently in the background with no visible
+  // control left to pause it.
   useEffect(() => {
     return () => {
-      if (sharedAudioKey === cardKeyRef.current) {
+      if (sharedAudioKey === song.songKey) {
         sharedAudio?.pause();
+        sharedAudio = null;
+        sharedAudioKey = null;
+        notify();
       }
     };
-  }, []);
+  }, [song.songKey]);
 
   const sliderValue = sliderDraft ?? meta?.score ?? 50;
   const youtubeUrl = song.youtubeUrl || youtubeSearchUrl(song.artist, song.title);
@@ -64,8 +98,8 @@ export function SongCard({ song, onPatch }: SongCardProps) {
     const url = meta?.previewUrl;
     if (!url) return;
 
-    if (playing && sharedAudioKey === song.songKey) {
-      sharedAudio?.pause();
+    if (sharedAudioKey === song.songKey && sharedAudio) {
+      sharedAudio.pause(); // onpause below calls notify()
       return;
     }
 
@@ -78,14 +112,10 @@ export function SongCard({ song, onPatch }: SongCardProps) {
     const audio = new Audio(url);
     sharedAudio = audio;
     sharedAudioKey = song.songKey;
-    setPlaying(true);
-    audio.onended = () => {
-      if (sharedAudioKey === song.songKey) setPlaying(false);
-    };
-    audio.onpause = () => {
-      if (sharedAudioKey === song.songKey) setPlaying(false);
-    };
-    void audio.play().catch(() => setPlaying(false));
+    audio.onended = () => notify();
+    audio.onpause = () => notify();
+    void audio.play().catch(() => notify());
+    notify();
   }
 
   return (
