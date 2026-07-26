@@ -9,6 +9,7 @@ function film(key: string, meta: Partial<NonNullable<AggregatedFilm['meta']>> | 
     meta: meta === null ? null : {
       filmKey: key, tmdbId: null, genres: [], overview: null, cast: [],
       tmdbScore: null, watched: false, rating: null, score: null, availability: {},
+      streamingOptions: null, streamingCheckedAt: null, watchmodeTitleId: null,
       ...meta,
     },
   };

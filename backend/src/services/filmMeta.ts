@@ -1,5 +1,5 @@
 import { query } from '../utils/db';
-import type { FilmMetaRecord, FilmUserMeta } from '../types';
+import type { FilmMetaRecord, FilmUserMeta, StreamingPlatformOption } from '../types';
 
 export function filmKey(title: string, year: string | number | null | undefined): string {
   const t = title.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -18,6 +18,9 @@ interface FilmMetaRow {
   rating: 'fresh' | 'rotten' | null;
   score: number | null;
   availability: FilmUserMeta['availability'];
+  streaming_options: StreamingPlatformOption[] | null;
+  streaming_checked_at: Date | null;
+  watchmode_title_id: number | null;
 }
 
 function rowToRecord(row: FilmMetaRow): FilmMetaRecord {
@@ -32,11 +35,15 @@ function rowToRecord(row: FilmMetaRow): FilmMetaRecord {
     rating: row.rating,
     score: row.score,
     availability: row.availability ?? {},
+    streamingOptions: row.streaming_options ?? null,
+    streamingCheckedAt: row.streaming_checked_at ? row.streaming_checked_at.toISOString() : null,
+    watchmodeTitleId: row.watchmode_title_id ?? null,
   };
 }
 
 const SELECT_COLS =
-  'film_key, tmdb_id, genres, overview, film_cast, tmdb_score, watched, rating, score, availability';
+  'film_key, tmdb_id, genres, overview, film_cast, tmdb_score, watched, rating, score, availability, ' +
+  'streaming_options, streaming_checked_at, watchmode_title_id';
 
 export async function upsertFilmEnrichment(input: {
   filmKey: string;

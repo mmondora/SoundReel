@@ -14,6 +14,9 @@ function meta(partial: Partial<FilmMetaRecord>): FilmMetaRecord {
     rating: null,
     score: null,
     availability: {},
+    streamingOptions: null,
+    streamingCheckedAt: null,
+    watchmodeTitleId: null,
     ...partial,
   };
 }
@@ -32,6 +35,9 @@ describe('mergePatch', () => {
       rating: null,
       score: null,
       availability: {},
+      streamingOptions: null,
+      streamingCheckedAt: null,
+      watchmodeTitleId: null,
     });
   });
 
