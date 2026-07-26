@@ -85,6 +85,14 @@ describe('PATCH /api/films/:filmKey', () => {
     expect((await app.inject({ method: 'PATCH', url: '/api/films/k', payload: { availability: { netflix: 'cheap' } } })).statusCode).toBe(400);
   });
 
+  it('rejects a malformed availability shape instead of throwing', async () => {
+    const app = buildApp();
+    expect((await app.inject({ method: 'PATCH', url: '/api/films/k', payload: { availability: null } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'PATCH', url: '/api/films/k', payload: { availability: ['free'] } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'PATCH', url: '/api/films/k', payload: { availability: 5 } })).statusCode).toBe(400);
+    expect(patchFilmUserMeta).not.toHaveBeenCalled();
+  });
+
   it('passes valid patch through and returns updated meta', async () => {
     vi.mocked(patchFilmUserMeta).mockResolvedValue({ filmKey: 'heat::1995', watched: true } as never);
     const res = await buildApp().inject({

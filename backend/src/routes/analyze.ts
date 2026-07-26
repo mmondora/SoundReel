@@ -67,6 +67,22 @@ const KEY_FRAMES_COUNT = Number(process.env.KEY_FRAMES_COUNT || 5);
  */
 const SINGLE_IMAGE_OCR_MIN_CHARS = 120;
 
+/**
+ * Resolves the year to persist on a Film (and to key its film_meta enrichment
+ * row with) once, from the same inputs used to call searchFilm: the extractor's
+ * own year if present, otherwise the year TMDb resolved. Both the persisted
+ * `Film.year` and the `filmKey(...)` used for `upsertFilmEnrichment` MUST use
+ * this same value — otherwise the enrichment row is keyed under a different
+ * year than the one GET /api/films looks it up with, and the join silently
+ * never matches.
+ */
+export function resolveFilmYear(
+  extractedYear: string | null | undefined,
+  tmdbReleaseDate: string | null | undefined
+): string | null {
+  return extractedYear || tmdbReleaseDate?.split('-')[0] || null;
+}
+
 export function registerAnalyzeRoute(app: FastifyInstance): void {
   app.post<{ Body: AnalyzeRequestBody }>('/api/analyze', async (req, reply) => {
     const log = new Logger('analyzeUrl');
@@ -735,9 +751,10 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           provider: 'tmdb',
           found: !!tmdbResult,
         }));
+        const filmYear = resolveFilmYear(filmData.year, tmdbResult?.releaseDate);
         if (tmdbResult) {
           void upsertFilmEnrichment({
-            filmKey: filmKey(filmData.title, filmData.year),
+            filmKey: filmKey(filmData.title, filmYear),
             tmdbId: tmdbResult.id,
             genres: tmdbResult.genres,
             overview: tmdbResult.overview,
@@ -748,7 +765,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         films.push({
           title: filmData.title,
           director: filmData.director,
-          year: filmData.year || tmdbResult?.releaseDate?.split('-')[0] || null,
+          year: filmYear,
           imdbUrl: tmdbResult?.imdbId ? generateImdbUrl(tmdbResult.imdbId) : null,
           posterUrl: tmdbResult?.posterPath || null,
           streamingUrls: generateStreamingUrls(filmData.title),
@@ -757,9 +774,10 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
       for (const slideFilm of slideFilms) {
         const tmdbResult = await searchFilm(slideFilm.title, slideFilm.year?.toString() ?? null);
+        const slideFilmYear = resolveFilmYear(slideFilm.year?.toString() ?? null, tmdbResult?.releaseDate);
         if (tmdbResult) {
           void upsertFilmEnrichment({
-            filmKey: filmKey(slideFilm.title, slideFilm.year?.toString() ?? null),
+            filmKey: filmKey(slideFilm.title, slideFilmYear),
             tmdbId: tmdbResult.id,
             genres: tmdbResult.genres,
             overview: tmdbResult.overview,
@@ -770,7 +788,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         films.push({
           title: slideFilm.title,
           director: slideFilm.director ?? null,
-          year: slideFilm.year?.toString() ?? tmdbResult?.releaseDate?.split('-')[0] ?? null,
+          year: slideFilmYear,
           imdbUrl: tmdbResult?.imdbId ? generateImdbUrl(tmdbResult.imdbId) : null,
           posterUrl: tmdbResult?.posterPath ?? null,
           streamingUrls: generateStreamingUrls(slideFilm.title),
