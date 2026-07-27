@@ -1,35 +1,20 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
-import { DateGroupedList } from '../components/DateGroupedList';
+import { FilterPanel } from '../components/FilterPanel';
+import type { FilterSection } from '../components/FilterPanel';
+import { fetchNotes } from '../services/api';
+import { filterNotes, collectCategories, sortNotes } from '../utils/noteFilters';
+import type { NoteSortMode } from '../utils/noteFilters';
 import { useAllEntries } from '../hooks/useJournal';
 import { useLanguage } from '../i18n';
-import type { Note, JournalStats } from '../types';
+import type { AggregatedNote, NoteCategory, JournalStats } from '../types';
 import type { Translations } from '../i18n/translations';
 
-interface NoteWithEntry extends Note {
-  entryId: string;
-  entryDate: Date | null;
-}
-
-function parseFirestoreDate(timestamp: unknown): Date | null {
-  if (!timestamp) return null;
-  if (typeof timestamp === 'object' && timestamp !== null) {
-    const ts = timestamp as Record<string, unknown>;
-    const seconds = ts._seconds ?? ts.seconds;
-    if (typeof seconds === 'number') return new Date(seconds * 1000);
-  }
-  if (typeof timestamp === 'string') {
-    const date = new Date(timestamp);
-    if (!isNaN(date.getTime())) return date;
-  }
-  return null;
-}
-
-const CATEGORY_ICONS: Record<Note['category'], string> = {
+const CATEGORY_ICONS: Record<NoteCategory, string> = {
   place: '📍',
-  event: '📅',
-  brand: '🏷️',
+  event: '🎫',
+  brand: '🏷',
   book: '📚',
   product: '📦',
   quote: '💬',
@@ -37,23 +22,84 @@ const CATEGORY_ICONS: Record<Note['category'], string> = {
   other: '📝',
 };
 
-function getCategoryLabel(category: Note['category'], t: Translations): string {
-  const map: Record<Note['category'], string> = {
-    place: t.notePlace,
-    event: t.noteEvent,
-    brand: t.noteBrand,
-    book: t.noteBook,
-    product: t.noteProduct,
-    quote: t.noteQuote,
-    person: t.notePerson,
-    other: t.noteOther,
+function categoryLabel(category: NoteCategory, t: Translations): string {
+  const map: Record<NoteCategory, string> = {
+    place: t.noteCategoryPlace,
+    event: t.noteCategoryEvent,
+    brand: t.noteCategoryBrand,
+    book: t.noteCategoryBook,
+    product: t.noteCategoryProduct,
+    quote: t.noteCategoryQuote,
+    person: t.noteCategoryPerson,
+    other: t.noteCategoryOther,
   };
   return map[category] || category;
 }
 
-export function NotesPage() {
-  const { entries, loading } = useAllEntries();
+/** Client-side Google Maps search link for a place note — no geocoding, just a search query. */
+function mapsSearchUrl(query: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+interface NoteRowProps {
+  note: AggregatedNote;
+}
+
+function NoteRow({ note }: NoteRowProps) {
   const { t } = useLanguage();
+  const meta = note.meta;
+  const bookInfo = note.category === 'book' ? meta : null;
+  const bookByline = bookInfo && (bookInfo.bookAuthor || bookInfo.bookYear)
+    ? `${bookInfo.bookAuthor ?? ''}${bookInfo.bookYear ? ` (${bookInfo.bookYear})` : ''}`
+    : null;
+
+  return (
+    <div className="list-item-row">
+      {bookInfo?.coverUrl ? (
+        <img src={bookInfo.coverUrl} alt="" className="note-cover" loading="lazy" />
+      ) : (
+        <div className="list-item-icon">{CATEGORY_ICONS[note.category] || '📝'}</div>
+      )}
+      <div className="list-item-content">
+        <div className="list-item-title note-text">{note.text}</div>
+        {bookByline && <div className="list-item-subtitle">{bookByline}</div>}
+        <div className="list-item-badges">
+          <span className="note-category-badge">
+            {CATEGORY_ICONS[note.category] || '📝'} {categoryLabel(note.category, t)}
+          </span>
+          {note.category === 'place' && (
+            <a href={mapsSearchUrl(note.text)} target="_blank" rel="noopener noreferrer" className="badge-link maps">
+              🗺 Maps
+            </a>
+          )}
+          {bookInfo?.openlibraryUrl && (
+            <a href={bookInfo.openlibraryUrl} target="_blank" rel="noopener noreferrer" className="badge-link openlibrary">
+              OpenLibrary
+            </a>
+          )}
+        </div>
+      </div>
+      <Link to={`/?entry=${note.mentions[0].entryId}`} className="list-item-action">
+        ×{note.mentions.length} {t.notesMentions}
+      </Link>
+    </div>
+  );
+}
+
+export function NotesPage() {
+  const { entries } = useAllEntries();
+  const { t } = useLanguage();
+
+  const [notes, setNotes] = useState<AggregatedNote[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [textFilter, setTextFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<NoteCategory[]>([]);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [sortMode, setSortMode] = useState<NoteSortMode>('date');
+
+  useEffect(() => {
+    fetchNotes().then(setNotes).catch(() => setNotes([])).finally(() => setLoading(false));
+  }, []);
 
   const stats: JournalStats = {
     totalEntries: entries.length,
@@ -62,29 +108,46 @@ export function NotesPage() {
     totalNotes: entries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0),
   };
 
-  const allNotes = useMemo<NoteWithEntry[]>(() => {
-    const notes: NoteWithEntry[] = [];
-    for (const entry of entries) {
-      const date = parseFirestoreDate(entry.createdAt);
-      for (const note of entry.results.notes || []) {
-        notes.push({ ...note, entryId: entry.id, entryDate: date });
-      }
-    }
-    return notes;
-  }, [entries]);
+  const sortedNotes = useMemo(() => sortNotes(notes, sortMode), [notes, sortMode]);
 
-  const renderNote = (note: NoteWithEntry) => (
-    <div className="list-item-row">
-      <div className="list-item-icon">{CATEGORY_ICONS[note.category] || '📝'}</div>
-      <div className="list-item-content">
-        <div className="list-item-title">{note.text}</div>
-        <div className="list-item-badges">
-          <span className="category-badge">{getCategoryLabel(note.category, t)}</span>
-        </div>
-      </div>
-      <Link to={`/?entry=${note.entryId}`} className="list-item-action">{t.viewReel}</Link>
-    </div>
+  const categories = useMemo(() => collectCategories(sortedNotes), [sortedNotes]);
+  const visible = useMemo(
+    () => filterNotes(sortedNotes, { categories: categoryFilter, text: textFilter }),
+    [sortedNotes, categoryFilter, textFilter]
   );
+
+  function toggleCategory(category: NoteCategory) {
+    setCategoryFilter((prev) => (prev.includes(category) ? prev.filter((c) => c !== category) : [...prev, category]));
+  }
+
+  function resetFilters() {
+    setCategoryFilter([]);
+  }
+
+  // Non-default filters count toward the "Filtri (n)" badge; text search is excluded on purpose.
+  const activeFilterCount = categoryFilter.length;
+
+  // FilterPanel's chips section is a plain string list, so localized labels
+  // double as the chip identity here; toggleCategoryLabel maps a clicked
+  // label back to its NoteCategory. Labels are unique per category so this
+  // round-trip is unambiguous.
+  const categoryChipOptions = useMemo(() => categories.map((c) => categoryLabel(c, t)), [categories, t]);
+  const selectedCategoryLabels = useMemo(() => categoryFilter.map((c) => categoryLabel(c, t)), [categoryFilter, t]);
+
+  function toggleCategoryLabel(label: string) {
+    const found = categories.find((c) => categoryLabel(c, t) === label);
+    if (found) toggleCategory(found);
+  }
+
+  const filterSections: FilterSection[] = [
+    {
+      kind: 'chips',
+      label: t.categorySectionLabel,
+      options: categoryChipOptions,
+      selected: selectedCategoryLabels,
+      onToggle: toggleCategoryLabel,
+    },
+  ];
 
   return (
     <div className="list-page">
@@ -94,18 +157,62 @@ export function NotesPage() {
           <Link to="/" className="list-page-back">{t.back}</Link>
           <h1>{t.allNotes}</h1>
         </div>
+
+        {!loading && (
+          <>
+            <div className="filter-topbar">
+              <input
+                type="text"
+                className="filter-search"
+                placeholder={`🔍 ${t.searchPlaceholder}`}
+                value={textFilter}
+                onChange={(e) => setTextFilter(e.target.value)}
+              />
+              <span className="filter-result-count">{visible.length}</span>
+              <select
+                className="sort-select"
+                value={sortMode}
+                aria-label={t.sortLabel}
+                onChange={(e) => setSortMode(e.target.value as NoteSortMode)}
+              >
+                <option value="date">{t.sortByDate}</option>
+                <option value="mentions">{t.sortByMentions}</option>
+              </select>
+              <button type="button" className="filter-open-btn" onClick={() => setPanelOpen(true)}>
+                {t.filtersButton}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+              </button>
+            </div>
+
+            {activeFilterCount > 0 && (
+              <div className="active-chips">
+                {categoryFilter.map((category) => (
+                  <button key={category} type="button" className="genre-chip active" onClick={() => toggleCategory(category)}>
+                    {categoryLabel(category, t)} ×
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <FilterPanel
+              open={panelOpen}
+              onClose={() => setPanelOpen(false)}
+              title={t.filtersTitle}
+              onReset={resetFilters}
+              resetLabel={t.filtersReset}
+              sections={filterSections}
+            />
+          </>
+        )}
+
         {loading ? (
           <div className="journal-loading">
             <span className="spinner" />
             <p>{t.loading}</p>
           </div>
+        ) : visible.length === 0 ? (
+          <div className="list-page-empty">{t.noNotesYet}</div>
         ) : (
-          <DateGroupedList
-            items={allNotes}
-            renderItem={renderNote}
-            getDate={(n) => n.entryDate}
-            emptyMessage={t.noNotesYet}
-          />
+          visible.map((note) => <NoteRow key={note.noteKey} note={note} />)
         )}
       </div>
     </div>

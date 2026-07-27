@@ -1,6 +1,6 @@
 import type {
   Entry, SearchResponse, EnrichmentResult, AggregatedFilm, FilmMetaRecord, AvailabilityStatus,
-  AggregatedSong, SongMetaRecord, SongRating,
+  AggregatedSong, SongMetaRecord, SongRating, AggregatedNote,
 } from '../types';
 
 // When served from the same origin as the backend, relative paths work.
@@ -428,4 +428,12 @@ export async function patchSongMeta(
   });
   const data = await json<{ meta: SongMetaRecord }>(res);
   return data.meta;
+}
+
+// --- Notes ---
+
+export async function fetchNotes(): Promise<AggregatedNote[]> {
+  const res = await fetch(url('/api/notes'));
+  const data = await json<{ notes: AggregatedNote[] }>(res);
+  return data.notes;
 }
