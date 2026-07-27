@@ -9,6 +9,8 @@ export interface LibraryTrack {
   artist: string;
   title: string;
   album: string | null;
+  /** Path relative to the library root, e.g. 'Big Calm/Morcheeba - The Sea.mp3'. */
+  relPath: string;
 }
 
 /**
@@ -57,10 +59,32 @@ export async function scanLibrary(root?: string): Promise<LibraryTrack[]> {
     const artist = sepIdx === -1 ? '' : base.slice(0, sepIdx).trim();
     const title = sepIdx === -1 ? base.trim() : base.slice(sepIdx + 3).trim();
 
-    tracks.push({ artist, title, album });
+    tracks.push({ artist, title, album, relPath: relPath });
   }
 
   return tracks;
+}
+
+/**
+ * Finds the library file backing a song, when present. Same matching rules as
+ * libraryHasSong; returns the track (with its library-relative path) of the
+ * first match, or null.
+ */
+export function findLibraryTrack(tracks: LibraryTrack[], artist: string, title: string): LibraryTrack | null {
+  const wantTitle = normalizeForMatch(title);
+  const wantArtist = normalizeForMatch(artist);
+
+  return (
+    tracks.find((track) => {
+      if (normalizeForMatch(track.title) !== wantTitle) return false;
+
+      const trackArtist = normalizeForMatch(track.artist);
+      if (trackArtist === '') return wantArtist === '';
+      if (wantArtist === '') return true;
+
+      return trackArtist.includes(wantArtist) || wantArtist.includes(trackArtist);
+    }) ?? null
+  );
 }
 
 /**
@@ -94,18 +118,7 @@ export function normalizeForMatch(s: string): string {
  *   artist: wildcard allowed, title match suffices.
  */
 export function libraryHasSong(tracks: LibraryTrack[], artist: string, title: string): boolean {
-  const wantTitle = normalizeForMatch(title);
-  const wantArtist = normalizeForMatch(artist);
-
-  return tracks.some((track) => {
-    if (normalizeForMatch(track.title) !== wantTitle) return false;
-
-    const trackArtist = normalizeForMatch(track.artist);
-    if (trackArtist === '') return wantArtist === '';
-    if (wantArtist === '') return true;
-
-    return trackArtist.includes(wantArtist) || wantArtist.includes(trackArtist);
-  });
+  return findLibraryTrack(tracks, artist, title) !== null;
 }
 
 /**

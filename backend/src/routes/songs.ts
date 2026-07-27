@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import { createReadStream } from 'fs';
+import { join } from 'path';
 import { listEntries } from '../utils/db';
 import { songKey, listSongMeta, patchSongUserMeta, getSongMeta } from '../services/songMeta';
 import type { SongUserMetaPatch } from '../services/songMeta';
 import { resolveDeezerPreviewUrl } from '../services/songEnrichment';
-import { syncDownloadedFlags } from '../services/musicLibrary';
+import { syncDownloadedFlags, scanLibrary, findLibraryTrack } from '../services/musicLibrary';
 import type { AggregatedSong, Entry, Song, SongMetaRecord } from '../types';
 import { logError } from '../utils/logger';
 
@@ -111,6 +113,42 @@ export function registerSongsRoutes(app: FastifyInstance): void {
     } catch (err) {
       logError('GET /api/songs failed', { err: String(err) });
       return reply.code(500).send({ error: 'songs aggregation failed' });
+    }
+  });
+
+  // The downloaded arrow in the UI: streams the matched MP3 from the music
+  // share when the file is there, else falls back to a redirect to the Spooty
+  // frontend (the song was queued on Spooty but the file isn't in the share,
+  // or the share isn't mounted). The path served always comes from our own
+  // library scan — never from user input — so no traversal surface.
+  app.get<{ Params: { songKey: string } }>('/api/songs/:songKey/file', async (req, reply) => {
+    const spootyFrontend = process.env.SPOOTY_FRONTEND_URL || 'https://spooty.casamon.dev';
+    try {
+      const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listSongMeta()]);
+      const song = aggregateSongs(entries, metaMap).get(req.params.songKey);
+      if (!song) {
+        return reply.code(404).send({ error: 'song not found' });
+      }
+
+      const tracks = await scanLibrary();
+      const track = findLibraryTrack(tracks, song.artist, song.title);
+      const root = process.env.MUSIC_LIBRARY_PATH;
+      if (!track || !root) {
+        return reply.redirect(spootyFrontend, 302);
+      }
+
+      const filename = track.relPath.split('/').pop() ?? 'song.mp3';
+      const stream = createReadStream(join(root, track.relPath));
+      stream.on('error', (err) => {
+        logError('GET /api/songs/:songKey/file stream failed', { songKey: req.params.songKey, err: String(err) });
+      });
+      return reply
+        .header('Content-Type', 'audio/mpeg')
+        .header('Content-Disposition', `attachment; filename="${filename.replace(/"/g, '')}"`)
+        .send(stream);
+    } catch (err) {
+      logError('GET /api/songs/:songKey/file failed', { songKey: req.params.songKey, err: String(err) });
+      return reply.redirect(spootyFrontend, 302);
     }
   });
 

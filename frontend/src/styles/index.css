@@ -4018,3 +4018,8 @@ body {
   padding: 0.25rem 0.4rem;
   cursor: pointer;
 }
+
+.downloaded-link {
+  text-decoration: none;
+  color: var(--success);
+}

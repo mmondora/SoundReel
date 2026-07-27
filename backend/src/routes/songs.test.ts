@@ -14,6 +14,8 @@ vi.mock('../services/songMeta', async (importOriginal) => {
 vi.mock('../services/songEnrichment', () => ({ resolveDeezerPreviewUrl: vi.fn() }));
 vi.mock('../services/musicLibrary', () => ({
   syncDownloadedFlags: vi.fn().mockResolvedValue({ scanned: 0, matched: 0, updated: 0 }),
+  scanLibrary: vi.fn().mockResolvedValue([]),
+  findLibraryTrack: vi.fn().mockReturnValue(null),
 }));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logError: vi.fn() }));
 
@@ -21,7 +23,7 @@ import { registerSongsRoutes, _resetSyncThrottleForTest } from './songs';
 import { listEntries } from '../utils/db';
 import { listSongMeta, patchSongUserMeta, getSongMeta } from '../services/songMeta';
 import { resolveDeezerPreviewUrl } from '../services/songEnrichment';
-import { syncDownloadedFlags } from '../services/musicLibrary';
+import { syncDownloadedFlags, scanLibrary, findLibraryTrack } from '../services/musicLibrary';
 import { logError } from '../utils/logger';
 import type { SongMetaRecord } from '../types';
 
@@ -170,6 +172,31 @@ describe('GET /api/songs', () => {
     // let the fire-and-forget rejection's .catch handler run before asserting.
     await new Promise((resolve) => setImmediate(resolve));
     expect(logError).toHaveBeenCalledWith('background music library sync failed', expect.objectContaining({ err: expect.any(String) }));
+  });
+});
+
+describe('GET /api/songs/:songKey/file', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(scanLibrary).mockResolvedValue([]);
+    vi.mocked(findLibraryTrack).mockReturnValue(null);
+  });
+
+  it('404s for an unknown song', async () => {
+    vi.mocked(listEntries).mockResolvedValue([]);
+    vi.mocked(listSongMeta).mockResolvedValue(new Map());
+    const res = await buildApp().inject({ method: 'GET', url: '/api/songs/nope%3A%3Anothing/file' });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('redirects to the Spooty frontend when the file is not in the library', async () => {
+    vi.mocked(listEntries).mockResolvedValue([
+      entry('e1', '2026-07-01T00:00:00Z', [{ title: 'Runaway', artist: 'Kanye West' }]),
+    ]);
+    vi.mocked(listSongMeta).mockResolvedValue(new Map());
+    const res = await buildApp().inject({ method: 'GET', url: '/api/songs/kanye%20west%3A%3Arunaway/file' });
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toContain('spooty');
   });
 });
 

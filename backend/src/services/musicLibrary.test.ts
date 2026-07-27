@@ -62,7 +62,7 @@ describe('scanLibrary', () => {
     await writeFile(dir, 'Queen - Bohemian Rhapsody.mp3');
 
     const result = await scanLibrary(dir);
-    expect(result).toEqual([{ artist: 'Queen', title: 'Bohemian Rhapsody', album: null }]);
+    expect(result).toEqual([{ artist: 'Queen', title: 'Bohemian Rhapsody', album: null, relPath: 'Queen - Bohemian Rhapsody.mp3' }]);
   });
 
   it('splits on the FIRST " - " only, keeping remaining dashes in the title', async () => {
@@ -72,7 +72,7 @@ describe('scanLibrary', () => {
 
     const result = await scanLibrary(dir);
     expect(result).toEqual([
-      { artist: 'Patty Pravo & Federico Scavo', title: 'La bambola - Federico Scavo Remix', album: null },
+      { artist: 'Patty Pravo & Federico Scavo', title: 'La bambola - Federico Scavo Remix', album: null, relPath: 'Patty Pravo & Federico Scavo - La bambola - Federico Scavo Remix.mp3' },
     ]);
   });
 
@@ -82,7 +82,7 @@ describe('scanLibrary', () => {
     await writeFile(dir, 'JustATitle.mp3');
 
     const result = await scanLibrary(dir);
-    expect(result).toEqual([{ artist: '', title: 'JustATitle', album: null }]);
+    expect(result).toEqual([{ artist: '', title: 'JustATitle', album: null, relPath: 'JustATitle.mp3' }]);
   });
 
   it('uses the immediate parent directory as album for nested files', async () => {
@@ -94,8 +94,8 @@ describe('scanLibrary', () => {
     const result = await scanLibrary(dir);
     expect(result).toEqual(
       expect.arrayContaining([
-        { artist: 'Bedouin Burger, Zeid Hamdan', title: 'Some Track', album: 'Arabic Indie Electronic' },
-        { artist: 'Kanye West', title: 'Runaway', album: 'Big Calm' },
+        { artist: 'Bedouin Burger, Zeid Hamdan', title: 'Some Track', album: 'Arabic Indie Electronic', relPath: path.join('Arabic Indie Electronic', 'Bedouin Burger, Zeid Hamdan - Some Track.mp3') },
+        { artist: 'Kanye West', title: 'Runaway', album: 'Big Calm', relPath: path.join('Big Calm', 'Kanye West - Runaway.mp3') },
       ])
     );
   });
@@ -108,7 +108,7 @@ describe('scanLibrary', () => {
     await writeFile(dir, 'Artist - Other.wav');
 
     const result = await scanLibrary(dir);
-    expect(result).toEqual([{ artist: 'Artist', title: 'Track', album: null }]);
+    expect(result).toEqual([{ artist: 'Artist', title: 'Track', album: null, relPath: 'Artist - Track.MP3' }]);
   });
 });
 
@@ -137,9 +137,9 @@ describe('normalizeForMatch', () => {
 
 describe('libraryHasSong', () => {
   const tracks = [
-    { artist: 'Kanye West', title: 'Runaway', album: null },
-    { artist: 'Bedouin Burger, Zeid Hamdan', title: 'Some Track', album: 'Arabic Indie Electronic' },
-    { artist: '', title: 'Where Is My Mind?', album: null },
+    { artist: 'Kanye West', title: 'Runaway', album: null, relPath: 'Kanye West - Runaway.mp3' },
+    { artist: 'Bedouin Burger, Zeid Hamdan', title: 'Some Track', album: 'Arabic Indie Electronic', relPath: 'Arabic Indie Electronic/Bedouin Burger, Zeid Hamdan - Some Track.mp3' },
+    { artist: '', title: 'Where Is My Mind?', album: null, relPath: 'Where Is My Mind?.mp3' },
   ];
 
   it('matches exact title and artist, case-insensitively', () => {
@@ -173,7 +173,7 @@ describe('libraryHasSong', () => {
   });
 
   it('does not match when both artists are non-empty and unrelated', () => {
-    const withUnrelated = [{ artist: 'Some Other Artist', title: 'Runaway', album: null }];
+    const withUnrelated = [{ artist: 'Some Other Artist', title: 'Runaway', album: null, relPath: 'Some Other Artist - Runaway.mp3' }];
     expect(libraryHasSong(withUnrelated, 'Kanye West', 'Runaway')).toBe(false);
   });
 });

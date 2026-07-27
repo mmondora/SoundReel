@@ -297,6 +297,7 @@ export interface Translations {
   songsMarkListened: string;
   songsMarkFavorite: string;
   songsMarkDownloaded: string;
+  songsDownloadedLink: string;
   songsPreview: string;
   songsMentions: string;
 }
@@ -596,6 +597,7 @@ export const translations: Record<Language, Translations> = {
     songsMarkListened: 'Segna come ascoltata',
     songsMarkFavorite: 'Preferita',
     songsMarkDownloaded: 'Scaricata (Spooty)',
+    songsDownloadedLink: 'Scaricata — apri il file o Spooty',
     songsPreview: 'Anteprima',
     songsMentions: 'menzioni',
   },
@@ -894,6 +896,7 @@ export const translations: Record<Language, Translations> = {
     songsMarkListened: 'Mark as listened',
     songsMarkFavorite: 'Favorite',
     songsMarkDownloaded: 'Downloaded (Spooty)',
+    songsDownloadedLink: 'Downloaded — open the file or Spooty',
     songsPreview: 'Preview',
     songsMentions: 'mentions',
   }
