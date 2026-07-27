@@ -300,6 +300,18 @@ export interface Translations {
   songsDownloadedLink: string;
   songsPreview: string;
   songsMentions: string;
+
+  // Notes page filters & categories
+  notesMentions: string;
+  categorySectionLabel: string;
+  noteCategoryPlace: string;
+  noteCategoryEvent: string;
+  noteCategoryBrand: string;
+  noteCategoryBook: string;
+  noteCategoryProduct: string;
+  noteCategoryQuote: string;
+  noteCategoryPerson: string;
+  noteCategoryOther: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -600,6 +612,17 @@ export const translations: Record<Language, Translations> = {
     songsDownloadedLink: 'Scaricata — apri il file o Spooty',
     songsPreview: 'Anteprima',
     songsMentions: 'menzioni',
+
+    notesMentions: 'menzioni',
+    categorySectionLabel: 'Categoria',
+    noteCategoryPlace: 'Luogo',
+    noteCategoryEvent: 'Evento',
+    noteCategoryBrand: 'Brand',
+    noteCategoryBook: 'Libro',
+    noteCategoryProduct: 'Prodotto',
+    noteCategoryQuote: 'Citazione',
+    noteCategoryPerson: 'Persona',
+    noteCategoryOther: 'Altro',
   },
 
   en: {
@@ -899,6 +922,17 @@ export const translations: Record<Language, Translations> = {
     songsDownloadedLink: 'Downloaded — open the file or Spooty',
     songsPreview: 'Preview',
     songsMentions: 'mentions',
+
+    notesMentions: 'mentions',
+    categorySectionLabel: 'Category',
+    noteCategoryPlace: 'Place',
+    noteCategoryEvent: 'Event',
+    noteCategoryBrand: 'Brand',
+    noteCategoryBook: 'Book',
+    noteCategoryProduct: 'Product',
+    noteCategoryQuote: 'Quote',
+    noteCategoryPerson: 'Person',
+    noteCategoryOther: 'Other',
   }
 };
 

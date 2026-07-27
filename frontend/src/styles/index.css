@@ -3805,6 +3805,35 @@ body {
   border-color: var(--accent);
 }
 
+/* Notes page */
+
+.note-cover {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.note-text {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.note-category-badge {
+  font-size: 0.65rem;
+  font-weight: 500;
+  padding: 0.1rem 0.4rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 4px;
+}
+
+.badge-link.maps { background: var(--success); color: #000; }
+.badge-link.openlibrary { background: var(--border); color: var(--text-primary); }
+
 /* Search */
 
 .search-wrapper {
