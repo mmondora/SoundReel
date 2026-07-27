@@ -292,13 +292,15 @@ export function SongCard({ song, onPatch }: SongCardProps) {
           </span>
           {meta?.downloaded && (
             // Status indicator, not a toggle: the flag is set automatically
-            // (library sync / Spooty send). Clicking fetches the MP3 from the
-            // music share, or lands on the Spooty frontend when the file
-            // isn't there.
+            // (library sync / Spooty send). Clicking opens a tab that plays
+            // the MP3 from the music share (inline, seekable), or lands on
+            // the Spooty frontend when the file isn't there.
             <a
               className="watched-toggle active downloaded-link"
               title={t.songsDownloadedLink}
               href={`/api/songs/${encodeURIComponent(song.songKey)}/file`}
+              target="_blank"
+              rel="noopener noreferrer"
             >
               ⬇
             </a>

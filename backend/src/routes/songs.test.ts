@@ -1,5 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Fastify from 'fastify';
+import { promises as fs } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 vi.mock('../utils/db', () => ({ listEntries: vi.fn() }));
 vi.mock('../services/songMeta', async (importOriginal) => {
@@ -197,6 +200,84 @@ describe('GET /api/songs/:songKey/file', () => {
     const res = await buildApp().inject({ method: 'GET', url: '/api/songs/kanye%20west%3A%3Arunaway/file' });
     expect(res.statusCode).toBe(302);
     expect(res.headers.location).toContain('spooty');
+  });
+
+  describe('with a real file in the library', () => {
+    // 10 known bytes so range assertions are byte-exact.
+    const FILE_BYTES = Buffer.from('0123456789');
+    let libraryDir: string;
+
+    beforeEach(async () => {
+      libraryDir = await fs.mkdtemp(join(tmpdir(), 'soundreel-songs-test-'));
+      await fs.writeFile(join(libraryDir, 'Kanye West - Runaway.mp3'), FILE_BYTES);
+      process.env.MUSIC_LIBRARY_PATH = libraryDir;
+      vi.mocked(listEntries).mockResolvedValue([
+        entry('e1', '2026-07-01T00:00:00Z', [{ title: 'Runaway', artist: 'Kanye West' }]),
+      ]);
+      vi.mocked(listSongMeta).mockResolvedValue(new Map());
+      vi.mocked(findLibraryTrack).mockReturnValue({
+        artist: 'Kanye West', title: 'Runaway', album: null, relPath: 'Kanye West - Runaway.mp3',
+      });
+    });
+
+    afterEach(async () => {
+      delete process.env.MUSIC_LIBRARY_PATH;
+      await fs.rm(libraryDir, { recursive: true, force: true });
+    });
+
+    it('serves the full file inline (playable in-browser, not a forced download)', async () => {
+      const res = await buildApp().inject({ method: 'GET', url: '/api/songs/kanye%20west%3A%3Arunaway/file' });
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toBe('audio/mpeg');
+      expect(res.headers['content-disposition']).toBe('inline; filename="Kanye West - Runaway.mp3"');
+      expect(res.headers['accept-ranges']).toBe('bytes');
+      expect(res.headers['content-length']).toBe('10');
+      expect(res.body).toBe('0123456789');
+    });
+
+    it('honors a bounded Range request with 206 + Content-Range (audio seeking)', async () => {
+      const res = await buildApp().inject({
+        method: 'GET', url: '/api/songs/kanye%20west%3A%3Arunaway/file', headers: { range: 'bytes=2-5' },
+      });
+      expect(res.statusCode).toBe(206);
+      expect(res.headers['content-range']).toBe('bytes 2-5/10');
+      expect(res.headers['content-length']).toBe('4');
+      expect(res.body).toBe('2345');
+    });
+
+    it('honors an open-ended Range request (bytes=N-)', async () => {
+      const res = await buildApp().inject({
+        method: 'GET', url: '/api/songs/kanye%20west%3A%3Arunaway/file', headers: { range: 'bytes=7-' },
+      });
+      expect(res.statusCode).toBe(206);
+      expect(res.headers['content-range']).toBe('bytes 7-9/10');
+      expect(res.body).toBe('789');
+    });
+
+    it('honors a suffix Range request (bytes=-N)', async () => {
+      const res = await buildApp().inject({
+        method: 'GET', url: '/api/songs/kanye%20west%3A%3Arunaway/file', headers: { range: 'bytes=-3' },
+      });
+      expect(res.statusCode).toBe(206);
+      expect(res.headers['content-range']).toBe('bytes 7-9/10');
+      expect(res.body).toBe('789');
+    });
+
+    it('rejects an out-of-bounds Range with 416', async () => {
+      const res = await buildApp().inject({
+        method: 'GET', url: '/api/songs/kanye%20west%3A%3Arunaway/file', headers: { range: 'bytes=10-' },
+      });
+      expect(res.statusCode).toBe(416);
+      expect(res.headers['content-range']).toBe('bytes */10');
+    });
+
+    it('serves the full file when the Range header is unparsable', async () => {
+      const res = await buildApp().inject({
+        method: 'GET', url: '/api/songs/kanye%20west%3A%3Arunaway/file', headers: { range: 'bytes=zz-5' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toBe('0123456789');
+    });
   });
 });
 

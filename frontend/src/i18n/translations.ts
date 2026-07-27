@@ -609,7 +609,7 @@ export const translations: Record<Language, Translations> = {
     songsMarkListened: 'Segna come ascoltata',
     songsMarkFavorite: 'Preferita',
     songsMarkDownloaded: 'Scaricata (Spooty)',
-    songsDownloadedLink: 'Scaricata — apri il file o Spooty',
+    songsDownloadedLink: 'Scaricata — riproduci il file o apri Spooty',
     songsPreview: 'Anteprima',
     songsMentions: 'menzioni',
 
@@ -919,7 +919,7 @@ export const translations: Record<Language, Translations> = {
     songsMarkListened: 'Mark as listened',
     songsMarkFavorite: 'Favorite',
     songsMarkDownloaded: 'Downloaded (Spooty)',
-    songsDownloadedLink: 'Downloaded — open the file or Spooty',
+    songsDownloadedLink: 'Downloaded — play the file or open Spooty',
     songsPreview: 'Preview',
     songsMentions: 'mentions',
 

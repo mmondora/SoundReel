@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { createReadStream } from 'fs';
+import { stat } from 'fs/promises';
 import { join } from 'path';
 import { listEntries } from '../utils/db';
 import { songKey, listSongMeta, patchSongUserMeta, getSongMeta } from '../services/songMeta';
@@ -116,11 +117,12 @@ export function registerSongsRoutes(app: FastifyInstance): void {
     }
   });
 
-  // The downloaded arrow in the UI: streams the matched MP3 from the music
-  // share when the file is there, else falls back to a redirect to the Spooty
-  // frontend (the song was queued on Spooty but the file isn't in the share,
-  // or the share isn't mounted). The path served always comes from our own
-  // library scan — never from user input — so no traversal surface.
+  // The downloaded arrow in the UI: plays the matched MP3 from the music
+  // share in the browser (inline disposition + Range support so the native
+  // player can seek), else falls back to a redirect to the Spooty frontend
+  // (the song was queued on Spooty but the file isn't in the share, or the
+  // share isn't mounted). The path served always comes from our own library
+  // scan — never from user input — so no traversal surface.
   app.get<{ Params: { songKey: string } }>('/api/songs/:songKey/file', async (req, reply) => {
     const spootyFrontend = process.env.SPOOTY_FRONTEND_URL || 'https://spooty.casamon.dev';
     try {
@@ -137,15 +139,39 @@ export function registerSongsRoutes(app: FastifyInstance): void {
         return reply.redirect(spootyFrontend, 302);
       }
 
+      const filePath = join(root, track.relPath);
+      const { size } = await stat(filePath);
       const filename = track.relPath.split('/').pop() ?? 'song.mp3';
-      const stream = createReadStream(join(root, track.relPath));
+
+      reply
+        .header('Accept-Ranges', 'bytes')
+        .header('Content-Type', 'audio/mpeg')
+        .header('Content-Disposition', `inline; filename="${filename.replace(/"/g, '')}"`);
+
+      // Single-range requests only (what <audio> seeking actually sends);
+      // anything unparsable falls through to a full 200 response.
+      const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+      let start = 0;
+      let end = size - 1;
+      if (range && (range[1] !== '' || range[2] !== '')) {
+        if (range[1] === '') {
+          // suffix form "bytes=-N": last N bytes
+          start = Math.max(0, size - Number(range[2]));
+        } else {
+          start = Number(range[1]);
+          if (range[2] !== '') end = Math.min(end, Number(range[2]));
+        }
+        if (start > end || start >= size) {
+          return reply.code(416).header('Content-Range', `bytes */${size}`).send();
+        }
+        reply.code(206).header('Content-Range', `bytes ${start}-${end}/${size}`);
+      }
+
+      const stream = createReadStream(filePath, { start, end });
       stream.on('error', (err) => {
         logError('GET /api/songs/:songKey/file stream failed', { songKey: req.params.songKey, err: String(err) });
       });
-      return reply
-        .header('Content-Type', 'audio/mpeg')
-        .header('Content-Disposition', `attachment; filename="${filename.replace(/"/g, '')}"`)
-        .send(stream);
+      return reply.header('Content-Length', end - start + 1).send(stream);
     } catch (err) {
       logError('GET /api/songs/:songKey/file failed', { songKey: req.params.songKey, err: String(err) });
       return reply.redirect(spootyFrontend, 302);
