@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { FilmCard } from '../components/FilmCard';
+import { DateGroupedList } from '../components/DateGroupedList';
 import { FilterPanel } from '../components/FilterPanel';
 import type { FilterSection } from '../components/FilterPanel';
 import { fetchFilms, patchFilmMeta, refreshFilmStreaming } from '../services/api';
@@ -250,6 +251,22 @@ export function FilmsPage() {
           </div>
         ) : visible.length === 0 ? (
           <div className="list-page-empty">{t.noFilmsYet}</div>
+        ) : sortMode === 'date' ? (
+          <DateGroupedList
+            items={visible}
+            pageSize={50}
+            getDate={(film) => (film.mentions[0] ? new Date(film.mentions[0].createdAt) : null)}
+            renderItem={(film) => (
+              <FilmCard
+                key={film.filmKey}
+                film={film}
+                onPatch={(patch) => {
+                  void applyPatch(film.filmKey, patch);
+                }}
+                onRefreshStreaming={() => refreshStreaming(film.filmKey)}
+              />
+            )}
+          />
         ) : (
           visible.map((film) => (
             <FilmCard

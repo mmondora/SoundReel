@@ -81,8 +81,8 @@ export function CompactCard({ entry, selected, onSelect }: CompactCardProps) {
           onError={() => setImgError(true)}
         />
       ) : (
-        <div className="compact-thumb-placeholder">
-          {getPlatformLabel(entry.sourcePlatform)}
+        <div className={`compact-thumb-placeholder ${entry.status === 'error' ? 'error' : ''}`}>
+          {entry.status === 'error' ? '⚠️' : getPlatformLabel(entry.sourcePlatform)}
         </div>
       )}
       <div className="compact-content">
@@ -112,7 +112,7 @@ export function CompactCard({ entry, selected, onSelect }: CompactCardProps) {
             )}
             {entry.status === 'processing' && <span className="compact-spinner" />}
             {entry.status === 'completed' && '●'}
-            {entry.status === 'error' && '●'}
+            {entry.status === 'error' && <span title={t.error}>⚠</span>}
           </span>
         </div>
       </div>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { SongCard } from '../components/SongCard';
+import { DateGroupedList } from '../components/DateGroupedList';
 import { FilterPanel } from '../components/FilterPanel';
 import type { FilterSection } from '../components/FilterPanel';
 import { fetchSongs, patchSongMeta } from '../services/api';
@@ -239,6 +240,21 @@ export function SongsPage() {
           </div>
         ) : visible.length === 0 ? (
           <div className="list-page-empty">{t.noSongsYet}</div>
+        ) : sortMode === 'date' ? (
+          <DateGroupedList
+            items={visible}
+            pageSize={50}
+            getDate={(song) => (song.mentions[0] ? new Date(song.mentions[0].createdAt) : null)}
+            renderItem={(song) => (
+              <SongCard
+                key={song.songKey}
+                song={song}
+                onPatch={(patch) => {
+                  void applyPatch(song.songKey, patch);
+                }}
+              />
+            )}
+          />
         ) : (
           visible.map((song) => (
             <SongCard
