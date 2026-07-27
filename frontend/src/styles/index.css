@@ -4075,9 +4075,33 @@ body {
   gap: 0.4rem;
 }
 
-.downloaded-audio {
-  width: 100%;
-  height: 32px;
+/* Compact custom controls row: ▶ button, thin seek bar, time, ⬇ download */
+.downloaded-player-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.downloaded-seek {
+  flex: 1;
+  height: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.downloaded-time {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The ⬇ in the row is an <a>: same round look as song-preview-btn, no underline */
+.downloaded-dl {
+  text-decoration: none;
+  color: var(--success);
+  flex-shrink: 0;
 }
 
 .downloaded-player-meta {

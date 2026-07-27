@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
 import { ratingFromScore } from '../utils/filmRating';
@@ -124,6 +124,14 @@ function subscribe(onStoreChange: () => void): () => void {
   return () => listeners.delete(onStoreChange);
 }
 
+/** mm:ss for the mini-player time label; NaN/Infinity (no metadata yet) → 0:00. */
+export function formatTrackTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 /** Exported for unit testing the leading-space trim when `artist` is empty. */
 export function youtubeSearchUrl(artist: string, title: string): string {
   return `https://youtube.com/results?search_query=${encodeURIComponent(`${artist} ${title}`.trim())}`;
@@ -141,6 +149,12 @@ export function SongCard({ song, onPatch }: SongCardProps) {
   // 'error' = fetch failed).
   const [playerOpen, setPlayerOpen] = useState(false);
   const [fileInfo, setFileInfo] = useState<SongFileInfo | 'error' | null>(null);
+  // Mini-player state for the downloaded track (custom compact controls
+  // instead of the browser's bulky native <audio controls> bar).
+  const trackAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [trackPlaying, setTrackPlaying] = useState(false);
+  const [trackTime, setTrackTime] = useState(0);
+  const [trackDuration, setTrackDuration] = useState(0);
 
   // If this card unmounts (filtered out, navigated away) while its own
   // preview is the one playing, stop it and release ownership — otherwise
@@ -169,6 +183,23 @@ export function SongCard({ song, onPatch }: SongCardProps) {
         .then(setFileInfo)
         .catch(() => setFileInfo('error'));
     }
+  }
+
+  function toggleTrack() {
+    const audio = trackAudioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      void audio.play().catch(() => setTrackPlaying(false));
+    } else {
+      audio.pause();
+    }
+  }
+
+  function seekTrack(seconds: number) {
+    const audio = trackAudioRef.current;
+    if (!audio) return;
+    audio.currentTime = seconds;
+    setTrackTime(seconds);
   }
 
   function commitSlider() {
@@ -328,20 +359,53 @@ export function SongCard({ song, onPatch }: SongCardProps) {
             {fileInfo != null && fileInfo !== 'error' && (
               fileInfo.inLibrary ? (
                 <>
-                  {/* Native controls: play/pause/seek/volume for free. Starting
-                      it pauses whichever 30s preview is playing so the two
+                  {/* Hidden element + compact custom controls: the native
+                      controls bar is visually huge in a card. Starting it
+                      pauses whichever 30s preview is playing so the two
                       audio sources never overlap. */}
                   <audio
-                    controls
+                    ref={trackAudioRef}
                     preload="none"
                     src={fileUrl}
-                    className="downloaded-audio"
-                    onPlay={() => sharedAudio?.pause()}
+                    onPlay={() => { sharedAudio?.pause(); setTrackPlaying(true); }}
+                    onPause={() => setTrackPlaying(false)}
+                    onEnded={() => setTrackPlaying(false)}
+                    onTimeUpdate={(e) => setTrackTime(e.currentTarget.currentTime)}
+                    onLoadedMetadata={(e) => setTrackDuration(e.currentTarget.duration)}
                   />
+                  <div className="downloaded-player-row">
+                    <button
+                      type="button"
+                      className={`song-preview-btn ${trackPlaying ? 'playing' : ''}`}
+                      title={t.songsPreview}
+                      onClick={toggleTrack}
+                    >
+                      {trackPlaying ? '⏸' : '▶'}
+                    </button>
+                    <input
+                      type="range"
+                      className="downloaded-seek"
+                      min={0}
+                      max={trackDuration || 0}
+                      step={1}
+                      value={Math.min(trackTime, trackDuration || 0)}
+                      aria-label={t.songsPreview}
+                      onChange={(e) => seekTrack(Number(e.target.value))}
+                    />
+                    <span className="downloaded-time">
+                      {formatTrackTime(trackTime)} / {formatTrackTime(trackDuration)}
+                    </span>
+                    <a
+                      className="song-preview-btn downloaded-dl"
+                      href={`${fileUrl}?download=1`}
+                      title={t.songsDownloadFile}
+                    >
+                      ⬇
+                    </a>
+                  </div>
                   <div className="downloaded-player-meta">
                     <span className="downloaded-path">📁 {fileInfo.absPath ?? fileInfo.relPath}</span>
                     <div className="list-item-badges">
-                      <a className="badge-link download" href={`${fileUrl}?download=1`}>{t.songsDownloadFile}</a>
                       <a className="badge-link spooty" href={fileInfo.spootyUrl} target="_blank" rel="noopener noreferrer">
                         {t.songsOpenSpooty}
                       </a>

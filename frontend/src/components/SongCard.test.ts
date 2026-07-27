@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   computeIsPlaying,
+  formatTrackTime,
   youtubeSearchUrl,
   _setSharedAudioForTest,
   _getSharedAudioKeyForTest,
@@ -110,5 +111,24 @@ describe('youtubeSearchUrl', () => {
     expect(youtubeSearchUrl('Queen', '')).toBe(
       `https://youtube.com/results?search_query=${encodeURIComponent('Queen')}`
     );
+  });
+});
+
+describe('formatTrackTime', () => {
+  it('formats whole minutes and zero-pads seconds', () => {
+    expect(formatTrackTime(0)).toBe('0:00');
+    expect(formatTrackTime(9)).toBe('0:09');
+    expect(formatTrackTime(65)).toBe('1:05');
+    expect(formatTrackTime(600)).toBe('10:00');
+  });
+
+  it('truncates fractional seconds', () => {
+    expect(formatTrackTime(59.9)).toBe('0:59');
+  });
+
+  it('falls back to 0:00 for NaN/Infinity (metadata not loaded yet) and negatives', () => {
+    expect(formatTrackTime(NaN)).toBe('0:00');
+    expect(formatTrackTime(Infinity)).toBe('0:00');
+    expect(formatTrackTime(-3)).toBe('0:00');
   });
 });
