@@ -35,7 +35,7 @@ export function filterSongs(songs: AggregatedSong[], opts: SongFilterOptions): A
       if (opts.downloaded === 'no' && downloaded) return false;
     }
     if (query) {
-      const haystack = [song.title, song.artist, song.album];
+      const haystack = [song.title, song.artist, song.album, song.meta?.album];
       if (!haystack.some((field) => field != null && field.toLowerCase().includes(query))) return false;
     }
     return true;

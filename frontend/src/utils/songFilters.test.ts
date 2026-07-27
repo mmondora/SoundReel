@@ -108,4 +108,32 @@ describe('filterSongs text search', () => {
     const out = filterSongs(TEXT_SONGS, { genres: [], listened: 'all', favorite: false, downloaded: 'all', text: 'imagine' });
     expect(out.map((s) => s.songKey)).toEqual(['s2']);
   });
+
+  it('matches enriched album (meta.album) when song.album is null', () => {
+    const enrichedSong = songWith({
+      songKey: 's3',
+      title: 'Debaser',
+      artist: 'Pixies',
+      album: null,
+      meta: {
+        songKey: 's3',
+        album: 'Surfer Rosa',
+        deezerId: null,
+        itunesId: null,
+        genres: [],
+        coverUrl: null,
+        previewUrl: null,
+        deezerUrl: null,
+        itunesUrl: null,
+        enrichedAt: null,
+        listened: false,
+        favorite: false,
+        downloaded: false,
+        rating: null,
+        score: null,
+      },
+    });
+    const out = filterSongs([enrichedSong], { genres: [], listened: 'all', favorite: false, downloaded: 'all', text: 'surfer' });
+    expect(out.map((s) => s.songKey)).toEqual(['s3']);
+  });
 });
