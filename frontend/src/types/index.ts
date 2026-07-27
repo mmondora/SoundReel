@@ -115,15 +115,41 @@ export interface AggregatedSong {
   meta: SongMetaRecord | null;
 }
 
+export interface NoteMetaRecord {
+  noteKey: string;
+  bookTitle: string | null;
+  bookAuthor: string | null;
+  bookYear: number | null;
+  coverUrl: string | null;
+  openlibraryUrl: string | null;
+  enrichedAt: string | null;
+}
+
+export interface NoteMention {
+  entryId: string;
+  createdAt: string;
+}
+
+export interface AggregatedNote {
+  noteKey: string;
+  text: string;
+  category: NoteCategory;
+  mentions: NoteMention[];
+  meta: NoteMetaRecord | null;
+}
+
 export interface ActionLogItem {
   action: string;
   details: Record<string, unknown>;
   timestamp: string;
 }
 
+export type NoteCategory =
+  | 'place' | 'event' | 'brand' | 'book' | 'product' | 'quote' | 'person' | 'other';
+
 export interface Note {
   text: string;
-  category: 'place' | 'event' | 'brand' | 'book' | 'product' | 'quote' | 'person' | 'other';
+  category: NoteCategory;
 }
 
 export type ExtractedLinkCategory =

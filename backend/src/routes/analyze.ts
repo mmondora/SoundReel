@@ -27,6 +27,7 @@ import { streamingConfigured } from '../services/streamingAvailability';
 import { refreshStreamingForFilm, isStale } from '../services/streamingRefresher';
 import { resolvedToSongs, appendSongsToEntry } from '../services/songPersistence';
 import { enqueueSongEnrichment } from '../services/songEnrichmentHook';
+import { enqueueNoteEnrichment } from '../services/noteEnrichmentHook';
 import { mergeResults } from '../services/resultMerger';
 import { downloadMedia } from '../services/_legacy/mediaDownloader';
 import { transcribeAudio as transcribeAudioLegacyStub } from '../services/_legacy/transcribeAudioStub';
@@ -902,6 +903,13 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         status: 'completed',
         results: results as unknown as Entry['results'],
       });
+
+      // Fire-and-forget: enrich every book-category note (OpenLibrary title,
+      // author, year, cover) skipping ones enriched within the TTL. Never
+      // delays the pipeline. Fired after results are persisted since,
+      // unlike songs, notes have no separate downstream step depending on
+      // this write completing first.
+      enqueueNoteEnrichment(notes);
 
       await appendActionLog(entryId, createActionLog('completed', {
         totalSongs: songs.length,
