@@ -298,6 +298,9 @@ export interface Translations {
   songsMarkFavorite: string;
   songsMarkDownloaded: string;
   songsDownloadedLink: string;
+  songsDownloadFile: string;
+  songsOpenSpooty: string;
+  songsFileMissing: string;
   songsPreview: string;
   songsMentions: string;
 
@@ -609,7 +612,10 @@ export const translations: Record<Language, Translations> = {
     songsMarkListened: 'Segna come ascoltata',
     songsMarkFavorite: 'Preferita',
     songsMarkDownloaded: 'Scaricata (Spooty)',
-    songsDownloadedLink: 'Scaricata — riproduci il file o apri Spooty',
+    songsDownloadedLink: 'Scaricata — apri il player',
+    songsDownloadFile: 'Scarica MP3',
+    songsOpenSpooty: 'Apri Spooty',
+    songsFileMissing: 'File non trovato nella libreria musicale',
     songsPreview: 'Anteprima',
     songsMentions: 'menzioni',
 
@@ -919,7 +925,10 @@ export const translations: Record<Language, Translations> = {
     songsMarkListened: 'Mark as listened',
     songsMarkFavorite: 'Favorite',
     songsMarkDownloaded: 'Downloaded (Spooty)',
-    songsDownloadedLink: 'Downloaded — play the file or open Spooty',
+    songsDownloadedLink: 'Downloaded — open the player',
+    songsDownloadFile: 'Download MP3',
+    songsOpenSpooty: 'Open Spooty',
+    songsFileMissing: 'File not found in the music library',
     songsPreview: 'Preview',
     songsMentions: 'mentions',
 

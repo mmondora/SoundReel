@@ -278,6 +278,55 @@ describe('GET /api/songs/:songKey/file', () => {
       expect(res.statusCode).toBe(200);
       expect(res.body).toBe('0123456789');
     });
+
+    it('?download=1 switches to attachment disposition (explicit download button)', async () => {
+      const res = await buildApp().inject({ method: 'GET', url: '/api/songs/kanye%20west%3A%3Arunaway/file?download=1' });
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-disposition']).toBe('attachment; filename="Kanye West - Runaway.mp3"');
+    });
+
+    it('file-info reports the library location and Spooty URL', async () => {
+      const res = await buildApp().inject({ method: 'GET', url: '/api/songs/kanye%20west%3A%3Arunaway/file-info' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({
+        inLibrary: true,
+        relPath: 'Kanye West - Runaway.mp3',
+        absPath: join(libraryDir, 'Kanye West - Runaway.mp3'),
+        spootyUrl: 'https://spooty.casamon.dev',
+      });
+    });
+  });
+
+  describe('GET /api/songs/:songKey/file-info without a library match', () => {
+    beforeEach(() => {
+      vi.mocked(listEntries).mockResolvedValue([
+        entry('e1', '2026-07-01T00:00:00Z', [{ title: 'Runaway', artist: 'Kanye West' }]),
+      ]);
+      vi.mocked(listSongMeta).mockResolvedValue(new Map());
+      vi.mocked(scanLibrary).mockResolvedValue([]);
+      vi.mocked(findLibraryTrack).mockReturnValue(null);
+    });
+
+    it('404s for an unknown song', async () => {
+      const res = await buildApp().inject({ method: 'GET', url: '/api/songs/nope%3A%3Anothing/file-info' });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('reports inLibrary=false with null paths but still hands out the Spooty URL', async () => {
+      process.env.MUSIC_LIBRARY_PATH = '/music';
+      try {
+        const res = await buildApp().inject({ method: 'GET', url: '/api/songs/kanye%20west%3A%3Arunaway/file-info' });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({
+          inLibrary: false,
+          relPath: null,
+          absPath: null,
+          spootyUrl: 'https://spooty.casamon.dev',
+        });
+      } finally {
+        delete process.env.MUSIC_LIBRARY_PATH;
+      }
+    });
   });
 });
 

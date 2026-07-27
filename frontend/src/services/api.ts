@@ -417,6 +417,20 @@ export async function fetchSongPreview(songKey: string): Promise<string> {
   return data.url;
 }
 
+export interface SongFileInfo {
+  inLibrary: boolean;
+  relPath: string | null;
+  absPath: string | null;
+  spootyUrl: string;
+}
+
+/** Where the downloaded track lives (music share path) and the Spooty URL,
+ * fetched lazily when the inline player panel is opened. */
+export async function fetchSongFileInfo(songKey: string): Promise<SongFileInfo> {
+  const res = await fetch(url(`/api/songs/${encodeURIComponent(songKey)}/file-info`));
+  return json<SongFileInfo>(res);
+}
+
 export async function patchSongMeta(
   songKey: string,
   patch: SongMetaPatchBody

@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
 import { ratingFromScore } from '../utils/filmRating';
 import type { AggregatedSong } from '../types';
-import type { SongMetaPatchBody } from '../services/api';
-import { fetchSongPreview } from '../services/api';
+import type { SongMetaPatchBody, SongFileInfo } from '../services/api';
+import { fetchSongPreview, fetchSongFileInfo } from '../services/api';
 
 interface SongCardProps {
   song: AggregatedSong;
@@ -136,6 +136,11 @@ export function SongCard({ song, onPatch }: SongCardProps) {
   // Slider position while dragging; null when idle (shows the stored score).
   const [sliderDraft, setSliderDraft] = useState<number | null>(null);
   const playing = useSyncExternalStore(subscribe, () => isPreviewPlaying(song.songKey));
+  // Inline player panel for the downloaded track: closed until the ⬇ toggle
+  // is clicked, then file location info is fetched lazily (null = loading,
+  // 'error' = fetch failed).
+  const [playerOpen, setPlayerOpen] = useState(false);
+  const [fileInfo, setFileInfo] = useState<SongFileInfo | 'error' | null>(null);
 
   // If this card unmounts (filtered out, navigated away) while its own
   // preview is the one playing, stop it and release ownership — otherwise
@@ -154,6 +159,17 @@ export function SongCard({ song, onPatch }: SongCardProps) {
 
   const sliderValue = sliderDraft ?? meta?.score ?? 50;
   const youtubeUrl = song.youtubeUrl || youtubeSearchUrl(song.artist, song.title);
+  const fileUrl = `/api/songs/${encodeURIComponent(song.songKey)}/file`;
+
+  function togglePlayerPanel() {
+    const opening = !playerOpen;
+    setPlayerOpen(opening);
+    if (opening && fileInfo == null) {
+      fetchSongFileInfo(song.songKey)
+        .then(setFileInfo)
+        .catch(() => setFileInfo('error'));
+    }
+  }
 
   function commitSlider() {
     if (sliderDraft == null) return;
@@ -291,21 +307,60 @@ export function SongCard({ song, onPatch }: SongCardProps) {
             {(sliderDraft != null || meta?.score != null) && '%'}
           </span>
           {meta?.downloaded && (
-            // Status indicator, not a toggle: the flag is set automatically
-            // (library sync / Spooty send). Clicking opens a tab that plays
-            // the MP3 from the music share (inline, seekable), or lands on
-            // the Spooty frontend when the file isn't there.
-            <a
-              className="watched-toggle active downloaded-link"
+            // The flag itself is set automatically (library sync / Spooty
+            // send); clicking toggles the inline player panel below with
+            // the track location, a download link and a Spooty jump.
+            <button
+              type="button"
+              className={`watched-toggle active downloaded-link ${playerOpen ? 'open' : ''}`}
               title={t.songsDownloadedLink}
-              href={`/api/songs/${encodeURIComponent(song.songKey)}/file`}
-              target="_blank"
-              rel="noopener noreferrer"
+              onClick={togglePlayerPanel}
             >
               ⬇
-            </a>
+            </button>
           )}
         </div>
+
+        {playerOpen && (
+          <div className="downloaded-player">
+            {fileInfo == null && <span className="list-item-muted">{t.loading}</span>}
+            {fileInfo === 'error' && <span className="list-item-muted">{t.errorGeneric}</span>}
+            {fileInfo != null && fileInfo !== 'error' && (
+              fileInfo.inLibrary ? (
+                <>
+                  {/* Native controls: play/pause/seek/volume for free. Starting
+                      it pauses whichever 30s preview is playing so the two
+                      audio sources never overlap. */}
+                  <audio
+                    controls
+                    preload="none"
+                    src={fileUrl}
+                    className="downloaded-audio"
+                    onPlay={() => sharedAudio?.pause()}
+                  />
+                  <div className="downloaded-player-meta">
+                    <span className="downloaded-path">📁 {fileInfo.absPath ?? fileInfo.relPath}</span>
+                    <div className="list-item-badges">
+                      <a className="badge-link download" href={`${fileUrl}?download=1`}>{t.songsDownloadFile}</a>
+                      <a className="badge-link spooty" href={fileInfo.spootyUrl} target="_blank" rel="noopener noreferrer">
+                        {t.songsOpenSpooty}
+                      </a>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="downloaded-player-meta">
+                  <span className="list-item-muted">{t.songsFileMissing}</span>
+                  <div className="list-item-badges">
+                    <a className="badge-link spooty" href={fileInfo.spootyUrl} target="_blank" rel="noopener noreferrer">
+                      {t.songsOpenSpooty}
+                    </a>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        )}
 
         <div className="list-item-badges">
           {meta?.deezerUrl && (

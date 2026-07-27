@@ -117,13 +117,40 @@ export function registerSongsRoutes(app: FastifyInstance): void {
     }
   });
 
+  // Backs the downloaded arrow's inline player: where the track lives on
+  // the music share (if it does) plus the Spooty frontend URL, so the card
+  // can show the location and offer a Spooty jump without a redirect dance.
+  app.get<{ Params: { songKey: string } }>('/api/songs/:songKey/file-info', async (req, reply) => {
+    const spootyUrl = process.env.SPOOTY_FRONTEND_URL || 'https://spooty.casamon.dev';
+    try {
+      const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listSongMeta()]);
+      const song = aggregateSongs(entries, metaMap).get(req.params.songKey);
+      if (!song) {
+        return reply.code(404).send({ error: 'song not found' });
+      }
+      const root = process.env.MUSIC_LIBRARY_PATH;
+      const track = root ? findLibraryTrack(await scanLibrary(), song.artist, song.title) : null;
+      return reply.send({
+        inLibrary: !!track,
+        relPath: track?.relPath ?? null,
+        // Absolute path on the host share — informational, shown in the UI.
+        absPath: track && root ? join(root, track.relPath) : null,
+        spootyUrl,
+      });
+    } catch (err) {
+      logError('GET /api/songs/:songKey/file-info failed', { songKey: req.params.songKey, err: String(err) });
+      return reply.code(500).send({ error: 'file info failed' });
+    }
+  });
+
   // The downloaded arrow in the UI: plays the matched MP3 from the music
-  // share in the browser (inline disposition + Range support so the native
-  // player can seek), else falls back to a redirect to the Spooty frontend
-  // (the song was queued on Spooty but the file isn't in the share, or the
+  // share in the browser (inline disposition + Range support so the inline
+  // player can seek; `?download=1` switches to attachment for an explicit
+  // download), else falls back to a redirect to the Spooty frontend (the
+  // song was queued on Spooty but the file isn't in the share, or the
   // share isn't mounted). The path served always comes from our own library
   // scan — never from user input — so no traversal surface.
-  app.get<{ Params: { songKey: string } }>('/api/songs/:songKey/file', async (req, reply) => {
+  app.get<{ Params: { songKey: string }; Querystring: { download?: string } }>('/api/songs/:songKey/file', async (req, reply) => {
     const spootyFrontend = process.env.SPOOTY_FRONTEND_URL || 'https://spooty.casamon.dev';
     try {
       const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listSongMeta()]);
@@ -143,10 +170,11 @@ export function registerSongsRoutes(app: FastifyInstance): void {
       const { size } = await stat(filePath);
       const filename = track.relPath.split('/').pop() ?? 'song.mp3';
 
+      const disposition = req.query.download === '1' ? 'attachment' : 'inline';
       reply
         .header('Accept-Ranges', 'bytes')
         .header('Content-Type', 'audio/mpeg')
-        .header('Content-Disposition', `inline; filename="${filename.replace(/"/g, '')}"`);
+        .header('Content-Disposition', `${disposition}; filename="${filename.replace(/"/g, '')}"`);
 
       // Single-range requests only (what <audio> seeking actually sends);
       // anything unparsable falls through to a full 200 response.

@@ -4062,3 +4062,36 @@ body {
   text-decoration: none;
   color: var(--success);
 }
+
+/* Inline player panel opened by the downloaded arrow */
+.downloaded-player {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input, #1a1a1a);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.downloaded-audio {
+  width: 100%;
+  height: 32px;
+}
+
+.downloaded-player-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+/* File location on the music share: secondary, wraps instead of overflowing */
+.downloaded-path {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.badge-link.download { background: var(--success); color: #000; }
+.badge-link.spooty { background: #0ea5a4; }
