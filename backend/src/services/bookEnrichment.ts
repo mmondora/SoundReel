@@ -29,9 +29,10 @@ interface OpenLibrarySearchResponse {
 const OPENLIBRARY_KEY_SHAPE = /^\/[A-Za-z0-9_/-]+$/;
 
 /** lowercase, strip punctuation, collapse whitespace — for loose comparison
- * between a candidate doc title and the (raw or cleaned) query text.
- * Exported so other providers (e.g. placeEnrichment) can share it rather
- * than duplicating. */
+ * between a candidate doc title and the (raw or cleaned) query text. Books
+ * only — placeEnrichment has its own normalizePlace that SPACES punctuation
+ * instead of deleting it, since place names carry hyphens/parentheses that
+ * would otherwise glue two words together (e.g. 'Naz-Sciaves'). */
 export function normalize(s: string): string {
   return s
     .toLowerCase()
@@ -52,9 +53,10 @@ export function normalize(s: string): string {
  * direction, since OpenLibrary titles are sometimes fuller/shorter than the
  * note text (subtitles, series info, etc).
  *
- * Exported: this containment/near-equality rule is domain-agnostic (it only
- * compares two strings) and is reused as-is by placeEnrichment's Nominatim
- * match verification.
+ * placeEnrichment applies the same ≤2-token-requires-equality rule via its
+ * own isPlaceMatch (built on normalizePlace rather than normalize above,
+ * and checked against multiple name/query variants) rather than reusing
+ * this function directly.
  */
 export function isAcceptedMatch(title: string, query: string): boolean {
   const normTitle = normalize(title);

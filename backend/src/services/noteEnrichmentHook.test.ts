@@ -96,15 +96,26 @@ describe('enqueueNoteEnrichment', () => {
     enqueueNoteEnrichment([{ category: 'book', text: 'Dune' }]);
     await flush();
     expect(enrichBook).toHaveBeenCalled();
-    expect(upsertNoteEnrichment).not.toHaveBeenCalled();
+    // Miss still persists an all-null row (TTL), it just doesn't carry book data.
+    expect(upsertNoteEnrichment).toHaveBeenCalledWith(expect.objectContaining({
+      noteKey: noteKey('book', 'Dune'),
+      bookTitle: null,
+    }));
   });
 
-  it('does not persist on an enrichment miss', async () => {
+  it('persists an all-null row (TTL) on an enrichment miss, instead of leaving it un-cached', async () => {
     vi.mocked(getNoteMeta).mockResolvedValue(null);
     vi.mocked(enrichBook).mockResolvedValue(null);
     enqueueNoteEnrichment([{ category: 'book', text: 'Unknown Obscure Book' }]);
     await flush();
-    expect(upsertNoteEnrichment).not.toHaveBeenCalled();
+    expect(upsertNoteEnrichment).toHaveBeenCalledWith({
+      noteKey: noteKey('book', 'Unknown Obscure Book'),
+      bookTitle: null,
+      bookAuthor: null,
+      bookYear: null,
+      coverUrl: null,
+      openlibraryUrl: null,
+    });
   });
 
   it('is fire-and-forget: returns synchronously without awaiting the enrichment', () => {
@@ -171,15 +182,26 @@ describe('enqueueNoteEnrichment', () => {
       enqueueNoteEnrichment([{ category: 'place', text: 'Bar Luce' }]);
       await flush();
       expect(enrichPlace).toHaveBeenCalled();
-      expect(upsertPlaceEnrichment).not.toHaveBeenCalled();
+      // Miss still persists an all-null row (TTL), it just doesn't carry place data.
+      expect(upsertPlaceEnrichment).toHaveBeenCalledWith(expect.objectContaining({
+        noteKey: noteKey('place', 'Bar Luce'),
+        placeName: null,
+      }));
     });
 
-    it('does not persist on a place enrichment miss', async () => {
+    it('persists an all-null row (TTL) on a place enrichment miss, instead of leaving it un-cached', async () => {
       vi.mocked(getNoteMeta).mockResolvedValue(null);
       vi.mocked(enrichPlace).mockResolvedValue(null);
       enqueueNoteEnrichment([{ category: 'place', text: 'Somewhere Obscure' }]);
       await flush();
-      expect(upsertPlaceEnrichment).not.toHaveBeenCalled();
+      expect(upsertPlaceEnrichment).toHaveBeenCalledWith({
+        noteKey: noteKey('place', 'Somewhere Obscure'),
+        placeName: null,
+        placeDisplayName: null,
+        placeLat: null,
+        placeLon: null,
+        osmUrl: null,
+      });
     });
 
     it('logs and swallows errors instead of throwing', async () => {

@@ -904,9 +904,10 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         results: results as unknown as Entry['results'],
       });
 
-      // Fire-and-forget: enrich every book-category note (OpenLibrary title,
-      // author, year, cover) skipping ones enriched within the TTL. Never
-      // delays the pipeline. Fired after results are persisted since,
+      // Fire-and-forget: enrich every book- and place-category note
+      // (OpenLibrary title/author/year/cover for books; Nominatim/OSM
+      // name/coordinates for places) skipping ones enriched within the TTL.
+      // Never delays the pipeline. Fired after results are persisted since,
       // unlike songs, notes have no separate downstream step depending on
       // this write completing first.
       enqueueNoteEnrichment(notes);

@@ -250,6 +250,13 @@ export function NotesPage() {
         ) : (
           visible.map((note) => <NoteRow key={note.noteKey} note={note} />)
         )}
+
+        <div className="data-attribution">
+          Place data{' '}
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>
+          {' · '}
+          <Link to="/licenses">{t.licensesLink}</Link>
+        </div>
       </div>
     </div>
   );

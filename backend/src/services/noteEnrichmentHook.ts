@@ -29,11 +29,34 @@ export function enqueueNoteEnrichment(notes: Array<{ text: string; category: str
         const enrichment = await enrichBook(note.text);
         if (enrichment) {
           await upsertNoteEnrichment({ noteKey: noteMetaKey, ...enrichment });
+        } else {
+          // Persist the miss (all-null fields, enriched_at=now()) so the TTL
+          // check above skips this note for NOTE_ENRICHMENT_TTL_DAYS instead
+          // of re-querying OpenLibrary on every mention until it happens to
+          // start matching.
+          await upsertNoteEnrichment({
+            noteKey: noteMetaKey,
+            bookTitle: null,
+            bookAuthor: null,
+            bookYear: null,
+            coverUrl: null,
+            openlibraryUrl: null,
+          });
         }
       } else {
         const enrichment = await enrichPlace(note.text);
         if (enrichment) {
           await upsertPlaceEnrichment({ noteKey: noteMetaKey, ...enrichment });
+        } else {
+          // Same TTL rationale as the book miss above, for Nominatim.
+          await upsertPlaceEnrichment({
+            noteKey: noteMetaKey,
+            placeName: null,
+            placeDisplayName: null,
+            placeLat: null,
+            placeLon: null,
+            osmUrl: null,
+          });
         }
       }
     })().catch((err) => logError('note enrichment failed', { err: String(err) }));

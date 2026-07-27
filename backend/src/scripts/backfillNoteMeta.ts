@@ -10,16 +10,25 @@
  * provider, and upserts results via the matching upsert (upsertNoteEnrichment
  * for book, upsertPlaceEnrichment for place — each only ever touches its own
  * columns). Respects a configurable TTL (default 30 days) to avoid
- * unnecessary calls for recently enriched notes.
+ * unnecessary calls for recently enriched notes. A clean miss (no accepted
+ * candidate) is persisted too — all-null fields, enriched_at=now() — so the
+ * TTL also caps retries for notes that just don't resolve, not only ones
+ * that did.
  *
  * Purely additive: it only upserts note_meta and never touches entries.
  *
  * Neither OpenLibrary nor Nominatim have an API key or a hard quota that
  * returns a clean abort signal. Nominatim's usage policy caps requests at
  * 1/s, so this script is polite (1.1s between requests, safely under that
- * cap) and, like backfillSongMeta, counts consecutive errors and aborts
- * after 10 in a row, on the assumption that's a systemic failure (network
- * down, DNS, etc.) rather than per-note misses.
+ * cap — on top of placeEnrichment's own 1.1s module-level throttle, which
+ * also covers the pipeline hook) and, like backfillSongMeta, counts
+ * consecutive errors and aborts after 10 in a row, on the assumption that's
+ * a systemic failure (network down, DNS, etc.) rather than per-note misses.
+ * For places this uses enrichPlaceDetailed so an HTTP/network failure
+ * ('error') can be told apart from an ordinary no-match ('miss') — only the
+ * former counts toward the abort threshold. Book misses/errors remain
+ * indistinguishable (enrichBook has no Detailed variant) and are both
+ * treated as a miss, matching this script's pre-existing behavior for books.
  *
  * Usage (inside the container):
  *   node dist/scripts/backfillNoteMeta.js --dry-run
@@ -34,7 +43,7 @@ import {
   upsertPlaceEnrichment,
 } from '../services/noteMeta';
 import { enrichBook } from '../services/bookEnrichment';
-import { enrichPlace } from '../services/placeEnrichment';
+import { enrichPlaceDetailed } from '../services/placeEnrichment';
 import { isStale } from '../services/streamingRefresher';
 
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -97,21 +106,49 @@ async function main(): Promise<void> {
           console.log(`[note-meta] OK    [book] ${key}`);
           enriched.book++;
         } else {
+          await upsertNoteEnrichment({
+            noteKey: key,
+            bookTitle: null,
+            bookAuthor: null,
+            bookYear: null,
+            coverUrl: null,
+            openlibraryUrl: null,
+          });
           console.log(`[note-meta] MISS  [book] ${key}`);
           miss.book++;
         }
+        consecutiveErrors = 0;
       } else {
-        const result = await enrichPlace(note.text);
-        if (result) {
-          await upsertPlaceEnrichment({ noteKey: key, ...result });
+        const outcome = await enrichPlaceDetailed(note.text);
+        if (outcome.status === 'hit') {
+          await upsertPlaceEnrichment({ noteKey: key, ...outcome.result });
           console.log(`[note-meta] OK    [place] ${key}`);
           enriched.place++;
-        } else {
+          consecutiveErrors = 0;
+        } else if (outcome.status === 'miss') {
+          await upsertPlaceEnrichment({
+            noteKey: key,
+            placeName: null,
+            placeDisplayName: null,
+            placeLat: null,
+            placeLon: null,
+            osmUrl: null,
+          });
           console.log(`[note-meta] MISS  [place] ${key}`);
           miss.place++;
+          consecutiveErrors = 0;
+        } else {
+          errors.place++;
+          consecutiveErrors++;
+          console.log(`[note-meta] ERROR [place] ${key}`);
+          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            console.log(`[note-meta] ${MAX_CONSECUTIVE_ERRORS} consecutive errors, aborting`);
+            logSummary(enriched, miss, errors);
+            await pool.end();
+            return;
+          }
         }
       }
-      consecutiveErrors = 0;
     } catch (err) {
       errors[note.category]++;
       consecutiveErrors++;
