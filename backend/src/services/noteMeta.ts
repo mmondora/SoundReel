@@ -105,6 +105,29 @@ export async function upsertPlaceEnrichment(input: {
   );
 }
 
+/**
+ * Records "checked, nothing found" without touching any book_ or place_
+ * column — unlike upsertNoteEnrichment/upsertPlaceEnrichment, which SET
+ * their columns unconditionally from EXCLUDED. Calling either of those with
+ * an all-null payload on a miss would silently wipe good data from a prior
+ * successful enrichment the next time a stale/never-refreshed note is
+ * re-checked and happens to miss (e.g. a transient Nominatim/OpenLibrary
+ * hiccup, or the note text drifting out of what the provider indexes).
+ * On a never-enriched note this still creates the row (timestamp-only, all
+ * display fields null) so the TTL check in the caller suppresses repeat
+ * lookups the same as before.
+ */
+export async function touchNoteEnrichedAt(noteKey: string): Promise<void> {
+  await query(
+    `INSERT INTO note_meta (note_key, enriched_at)
+     VALUES ($1, now())
+     ON CONFLICT (note_key) DO UPDATE SET
+       enriched_at = now(),
+       updated_at = now()`,
+    [noteKey]
+  );
+}
+
 export async function listNoteMeta(): Promise<Map<string, NoteMetaRecord>> {
   const rows = await query<NoteMetaRow>(`SELECT ${SELECT_COLS} FROM note_meta`);
   return new Map(rows.map((r) => [r.note_key, rowToRecord(r)]));

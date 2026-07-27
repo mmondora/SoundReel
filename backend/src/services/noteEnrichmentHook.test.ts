@@ -8,6 +8,7 @@ vi.mock('./noteMeta', async (importOriginal) => {
     getNoteMeta: vi.fn(),
     upsertNoteEnrichment: vi.fn(),
     upsertPlaceEnrichment: vi.fn(),
+    touchNoteEnrichedAt: vi.fn(),
   };
 });
 vi.mock('./bookEnrichment', () => ({ enrichBook: vi.fn() }));
@@ -16,7 +17,7 @@ vi.mock('./streamingRefresher', () => ({ isStale: vi.fn() }));
 vi.mock('../utils/logger', () => ({ logError: vi.fn() }));
 
 import { enqueueNoteEnrichment } from './noteEnrichmentHook';
-import { getNoteMeta, upsertNoteEnrichment, upsertPlaceEnrichment, noteKey } from './noteMeta';
+import { getNoteMeta, upsertNoteEnrichment, upsertPlaceEnrichment, touchNoteEnrichedAt, noteKey } from './noteMeta';
 import { enrichBook } from './bookEnrichment';
 import { enrichPlace } from './placeEnrichment';
 import { isStale } from './streamingRefresher';
@@ -96,26 +97,20 @@ describe('enqueueNoteEnrichment', () => {
     enqueueNoteEnrichment([{ category: 'book', text: 'Dune' }]);
     await flush();
     expect(enrichBook).toHaveBeenCalled();
-    // Miss still persists an all-null row (TTL), it just doesn't carry book data.
-    expect(upsertNoteEnrichment).toHaveBeenCalledWith(expect.objectContaining({
-      noteKey: noteKey('book', 'Dune'),
-      bookTitle: null,
-    }));
+    // Miss touches enriched_at (TTL) but must NOT go through the wiping
+    // upsert — a stale row here may hold GOOD data from a prior successful
+    // enrichment that a later miss shouldn't destroy.
+    expect(touchNoteEnrichedAt).toHaveBeenCalledWith(noteKey('book', 'Dune'));
+    expect(upsertNoteEnrichment).not.toHaveBeenCalled();
   });
 
-  it('persists an all-null row (TTL) on an enrichment miss, instead of leaving it un-cached', async () => {
+  it('touches enriched_at (TTL) on an enrichment miss, instead of leaving it un-cached — without wiping any existing data via upsert', async () => {
     vi.mocked(getNoteMeta).mockResolvedValue(null);
     vi.mocked(enrichBook).mockResolvedValue(null);
     enqueueNoteEnrichment([{ category: 'book', text: 'Unknown Obscure Book' }]);
     await flush();
-    expect(upsertNoteEnrichment).toHaveBeenCalledWith({
-      noteKey: noteKey('book', 'Unknown Obscure Book'),
-      bookTitle: null,
-      bookAuthor: null,
-      bookYear: null,
-      coverUrl: null,
-      openlibraryUrl: null,
-    });
+    expect(touchNoteEnrichedAt).toHaveBeenCalledWith(noteKey('book', 'Unknown Obscure Book'));
+    expect(upsertNoteEnrichment).not.toHaveBeenCalled();
   });
 
   it('is fire-and-forget: returns synchronously without awaiting the enrichment', () => {
@@ -182,26 +177,19 @@ describe('enqueueNoteEnrichment', () => {
       enqueueNoteEnrichment([{ category: 'place', text: 'Bar Luce' }]);
       await flush();
       expect(enrichPlace).toHaveBeenCalled();
-      // Miss still persists an all-null row (TTL), it just doesn't carry place data.
-      expect(upsertPlaceEnrichment).toHaveBeenCalledWith(expect.objectContaining({
-        noteKey: noteKey('place', 'Bar Luce'),
-        placeName: null,
-      }));
+      // Miss touches enriched_at (TTL) but must NOT go through the wiping
+      // upsert — same rationale as the book miss above.
+      expect(touchNoteEnrichedAt).toHaveBeenCalledWith(noteKey('place', 'Bar Luce'));
+      expect(upsertPlaceEnrichment).not.toHaveBeenCalled();
     });
 
-    it('persists an all-null row (TTL) on a place enrichment miss, instead of leaving it un-cached', async () => {
+    it('touches enriched_at (TTL) on a place enrichment miss, instead of leaving it un-cached — without wiping any existing data via upsert', async () => {
       vi.mocked(getNoteMeta).mockResolvedValue(null);
       vi.mocked(enrichPlace).mockResolvedValue(null);
       enqueueNoteEnrichment([{ category: 'place', text: 'Somewhere Obscure' }]);
       await flush();
-      expect(upsertPlaceEnrichment).toHaveBeenCalledWith({
-        noteKey: noteKey('place', 'Somewhere Obscure'),
-        placeName: null,
-        placeDisplayName: null,
-        placeLat: null,
-        placeLon: null,
-        osmUrl: null,
-      });
+      expect(touchNoteEnrichedAt).toHaveBeenCalledWith(noteKey('place', 'Somewhere Obscure'));
+      expect(upsertPlaceEnrichment).not.toHaveBeenCalled();
     });
 
     it('logs and swallows errors instead of throwing', async () => {

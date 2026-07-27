@@ -11,9 +11,10 @@
  * for book, upsertPlaceEnrichment for place — each only ever touches its own
  * columns). Respects a configurable TTL (default 30 days) to avoid
  * unnecessary calls for recently enriched notes. A clean miss (no accepted
- * candidate) is persisted too — all-null fields, enriched_at=now() — so the
- * TTL also caps retries for notes that just don't resolve, not only ones
- * that did.
+ * candidate) still stamps enriched_at=now() via touchNoteEnrichedAt — NOT
+ * the all-null upsert — so the TTL also caps retries for notes that just
+ * don't resolve, without wiping any GOOD data a prior successful enrichment
+ * left on that row (e.g. a transient provider hiccup on a stale re-check).
  *
  * Purely additive: it only upserts note_meta and never touches entries.
  *
@@ -41,6 +42,7 @@ import {
   listNoteMeta,
   upsertNoteEnrichment,
   upsertPlaceEnrichment,
+  touchNoteEnrichedAt,
 } from '../services/noteMeta';
 import { enrichBook } from '../services/bookEnrichment';
 import { enrichPlaceDetailed } from '../services/placeEnrichment';
@@ -106,14 +108,9 @@ async function main(): Promise<void> {
           console.log(`[note-meta] OK    [book] ${key}`);
           enriched.book++;
         } else {
-          await upsertNoteEnrichment({
-            noteKey: key,
-            bookTitle: null,
-            bookAuthor: null,
-            bookYear: null,
-            coverUrl: null,
-            openlibraryUrl: null,
-          });
+          // Touch enriched_at only — an all-null upsert would wipe a stale
+          // row's GOOD prior data on an ordinary re-check miss.
+          await touchNoteEnrichedAt(key);
           console.log(`[note-meta] MISS  [book] ${key}`);
           miss.book++;
         }
@@ -126,14 +123,8 @@ async function main(): Promise<void> {
           enriched.place++;
           consecutiveErrors = 0;
         } else if (outcome.status === 'miss') {
-          await upsertPlaceEnrichment({
-            noteKey: key,
-            placeName: null,
-            placeDisplayName: null,
-            placeLat: null,
-            placeLon: null,
-            osmUrl: null,
-          });
+          // Same rationale as the book miss above — touch only, never wipe.
+          await touchNoteEnrichedAt(key);
           console.log(`[note-meta] MISS  [place] ${key}`);
           miss.place++;
           consecutiveErrors = 0;

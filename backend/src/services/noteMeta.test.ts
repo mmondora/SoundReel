@@ -2,7 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../utils/db', () => ({ query: vi.fn() }));
 
-import { normalizeNoteCategory, noteKey, upsertNoteEnrichment, upsertPlaceEnrichment, listNoteMeta, getNoteMeta } from './noteMeta';
+import {
+  normalizeNoteCategory,
+  noteKey,
+  upsertNoteEnrichment,
+  upsertPlaceEnrichment,
+  touchNoteEnrichedAt,
+  listNoteMeta,
+  getNoteMeta,
+} from './noteMeta';
 import { query } from '../utils/db';
 
 describe('normalizeNoteCategory', () => {
@@ -158,6 +166,38 @@ describe('upsertPlaceEnrichment', () => {
     expect(sql).not.toMatch(/\bbook_year\b/);
     expect(sql).not.toMatch(/\bcover_url\b/);
     expect(sql).not.toMatch(/\bopenlibrary_url\b/);
+  });
+});
+
+describe('touchNoteEnrichedAt', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('sets enriched_at = now() (and updated_at = now()) keyed by note_key', async () => {
+    vi.mocked(query).mockResolvedValueOnce([]);
+    await touchNoteEnrichedAt('place::somewhere obscure');
+    const [sql, params] = vi.mocked(query).mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('enriched_at = now()');
+    expect(sql).toContain('updated_at = now()');
+    expect(sql).toContain('ON CONFLICT (note_key) DO UPDATE SET');
+    expect(params).toEqual(['place::somewhere obscure']);
+  });
+
+  it('touches ONLY the timestamp columns — never book_* or place_* data columns (the wipe-bug regression guard)', async () => {
+    vi.mocked(query).mockResolvedValueOnce([]);
+    await touchNoteEnrichedAt('book::unknown obscure book');
+    const sql = vi.mocked(query).mock.calls[0][0] as string;
+    expect(sql).not.toMatch(/\bbook_title\b/);
+    expect(sql).not.toMatch(/\bbook_author\b/);
+    expect(sql).not.toMatch(/\bbook_year\b/);
+    expect(sql).not.toMatch(/\bcover_url\b/);
+    expect(sql).not.toMatch(/\bopenlibrary_url\b/);
+    expect(sql).not.toMatch(/\bplace_name\b/);
+    expect(sql).not.toMatch(/\bplace_display_name\b/);
+    expect(sql).not.toMatch(/\bplace_lat\b/);
+    expect(sql).not.toMatch(/\bplace_lon\b/);
+    expect(sql).not.toMatch(/\bosm_url\b/);
   });
 });
 

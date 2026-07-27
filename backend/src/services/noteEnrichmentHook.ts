@@ -1,4 +1,11 @@
-import { noteKey, normalizeNoteCategory, getNoteMeta, upsertNoteEnrichment, upsertPlaceEnrichment } from './noteMeta';
+import {
+  noteKey,
+  normalizeNoteCategory,
+  getNoteMeta,
+  upsertNoteEnrichment,
+  upsertPlaceEnrichment,
+  touchNoteEnrichedAt,
+} from './noteMeta';
 import { enrichBook } from './bookEnrichment';
 import { enrichPlace } from './placeEnrichment';
 import { isStale } from './streamingRefresher';
@@ -30,33 +37,21 @@ export function enqueueNoteEnrichment(notes: Array<{ text: string; category: str
         if (enrichment) {
           await upsertNoteEnrichment({ noteKey: noteMetaKey, ...enrichment });
         } else {
-          // Persist the miss (all-null fields, enriched_at=now()) so the TTL
-          // check above skips this note for NOTE_ENRICHMENT_TTL_DAYS instead
-          // of re-querying OpenLibrary on every mention until it happens to
-          // start matching.
-          await upsertNoteEnrichment({
-            noteKey: noteMetaKey,
-            bookTitle: null,
-            bookAuthor: null,
-            bookYear: null,
-            coverUrl: null,
-            openlibraryUrl: null,
-          });
+          // Touch enriched_at only (never wipe with an all-null upsert — a
+          // stale row may hold GOOD data from a prior successful enrichment;
+          // this miss shouldn't destroy it). Still stamps a fresh
+          // enriched_at on a never-enriched note so the TTL check above
+          // skips it for NOTE_ENRICHMENT_TTL_DAYS instead of re-querying
+          // OpenLibrary on every mention until it happens to start matching.
+          await touchNoteEnrichedAt(noteMetaKey);
         }
       } else {
         const enrichment = await enrichPlace(note.text);
         if (enrichment) {
           await upsertPlaceEnrichment({ noteKey: noteMetaKey, ...enrichment });
         } else {
-          // Same TTL rationale as the book miss above, for Nominatim.
-          await upsertPlaceEnrichment({
-            noteKey: noteMetaKey,
-            placeName: null,
-            placeDisplayName: null,
-            placeLat: null,
-            placeLon: null,
-            osmUrl: null,
-          });
+          // Same rationale as the book miss above, for Nominatim.
+          await touchNoteEnrichedAt(noteMetaKey);
         }
       }
     })().catch((err) => logError('note enrichment failed', { err: String(err) }));
