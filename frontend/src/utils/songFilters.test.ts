@@ -61,3 +61,51 @@ describe('collectGenres', () => {
     expect(collectGenres(SONGS)).toEqual(['Pop', 'Rock']);
   });
 });
+
+function songWith(overrides: Partial<AggregatedSong> & { songKey: string }): AggregatedSong {
+  return {
+    songKey: overrides.songKey,
+    title: overrides.title ?? overrides.songKey,
+    artist: overrides.artist ?? 'Artist',
+    album: overrides.album ?? null,
+    youtubeUrl: null,
+    spotifyUrl: null,
+    mentions: [],
+    meta: overrides.meta ?? null,
+  };
+}
+
+const TEXT_SONGS = [
+  songWith({ songKey: 's1', title: 'Bohemian Rhapsody', artist: 'Queen', album: 'A Night at the Opera' }),
+  songWith({ songKey: 's2', title: 'Imagine', artist: 'John Lennon', album: 'Imagine' }),
+];
+
+describe('filterSongs text search', () => {
+  it('empty text matches everything', () => {
+    expect(filterSongs(TEXT_SONGS, { genres: [], listened: 'all', favorite: false, downloaded: 'all', text: '' })).toHaveLength(2);
+  });
+
+  it('matches title case-insensitively', () => {
+    const out = filterSongs(TEXT_SONGS, { genres: [], listened: 'all', favorite: false, downloaded: 'all', text: 'bohemian' });
+    expect(out.map((s) => s.songKey)).toEqual(['s1']);
+  });
+
+  it('matches artist', () => {
+    const out = filterSongs(TEXT_SONGS, { genres: [], listened: 'all', favorite: false, downloaded: 'all', text: 'lennon' });
+    expect(out.map((s) => s.songKey)).toEqual(['s2']);
+  });
+
+  it('matches album', () => {
+    const out = filterSongs(TEXT_SONGS, { genres: [], listened: 'all', favorite: false, downloaded: 'all', text: 'opera' });
+    expect(out.map((s) => s.songKey)).toEqual(['s1']);
+  });
+
+  it('no match returns empty', () => {
+    expect(filterSongs(TEXT_SONGS, { genres: [], listened: 'all', favorite: false, downloaded: 'all', text: 'nonexistent' })).toHaveLength(0);
+  });
+
+  it('combines with other filters (AND)', () => {
+    const out = filterSongs(TEXT_SONGS, { genres: [], listened: 'all', favorite: false, downloaded: 'all', text: 'imagine' });
+    expect(out.map((s) => s.songKey)).toEqual(['s2']);
+  });
+});

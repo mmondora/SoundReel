@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { FilmCard } from '../components/FilmCard';
+import { FilterPanel } from '../components/FilterPanel';
+import type { FilterSection } from '../components/FilterPanel';
 import { fetchFilms, patchFilmMeta, refreshFilmStreaming } from '../services/api';
 import type { FilmMetaPatchBody } from '../services/api';
 import { filterFilms, collectGenres } from '../utils/filmFilters';
@@ -58,9 +60,11 @@ export function FilmsPage() {
 
   const [films, setFilms] = useState<AggregatedFilm[]>([]);
   const [loading, setLoading] = useState(true);
+  const [textFilter, setTextFilter] = useState('');
   const [genreFilter, setGenreFilter] = useState<string[]>([]);
   const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>('all');
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>('all');
+  const [panelOpen, setPanelOpen] = useState(false);
   // Per-filmKey monotonic counter so a slow/out-of-order PATCH response (success
   // or failure) can never clobber a newer patch already applied to that film.
   const patchSeqRef = useRef(new Map<string, number>());
@@ -87,13 +91,29 @@ export function FilmsPage() {
 
   const genres = useMemo(() => collectGenres(sortedFilms), [sortedFilms]);
   const visible = useMemo(
-    () => filterFilms(sortedFilms, { genres: genreFilter, watched: watchedFilter, availability: availabilityFilter }),
-    [sortedFilms, genreFilter, watchedFilter, availabilityFilter]
+    () =>
+      filterFilms(sortedFilms, {
+        genres: genreFilter,
+        watched: watchedFilter,
+        availability: availabilityFilter,
+        text: textFilter,
+      }),
+    [sortedFilms, genreFilter, watchedFilter, availabilityFilter, textFilter]
   );
 
   function toggleGenre(genre: string) {
     setGenreFilter((prev) => (prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]));
   }
+
+  function resetFilters() {
+    setGenreFilter([]);
+    setWatchedFilter('all');
+    setAvailabilityFilter('all');
+  }
+
+  // Non-default filters count toward the "Filtri (n)" badge; text search is excluded on purpose.
+  const activeFilterCount =
+    genreFilter.length + (watchedFilter !== 'all' ? 1 : 0) + (availabilityFilter !== 'all' ? 1 : 0);
 
   // Optimistic patch: apply locally, PATCH, roll back on failure. Rollback and
   // the success write are both scoped to this one film's meta (never the whole
@@ -154,6 +174,15 @@ export function FilmsPage() {
     { key: 'notfree', label: t.filmsFilterNotFree },
   ];
 
+  const watchedLabel = watchedOptions.find((o) => o.key === watchedFilter)?.label ?? '';
+  const availabilityLabel = availabilityOptions.find((o) => o.key === availabilityFilter)?.label ?? '';
+
+  const filterSections: FilterSection[] = [
+    { kind: 'chips', label: t.genreSectionLabel, options: genres, selected: genreFilter, onToggle: toggleGenre },
+    { kind: 'radio', label: t.filmsWatchedFilterLabel, options: watchedOptions, value: watchedFilter, onChange: (v) => setWatchedFilter(v as WatchedFilter) },
+    { kind: 'radio', label: t.filmsAvailabilityFilterLabel, options: availabilityOptions, value: availabilityFilter, onChange: (v) => setAvailabilityFilter(v as AvailabilityFilter) },
+  ];
+
   return (
     <div className="list-page">
       <Header stats={stats} />
@@ -164,49 +193,50 @@ export function FilmsPage() {
         </div>
 
         {!loading && (
-          <div className="films-filter-bar">
-            {genres.map((genre) => (
-              <button
-                key={genre}
-                type="button"
-                className={`genre-chip ${genreFilter.includes(genre) ? 'active' : ''}`}
-                onClick={() => toggleGenre(genre)}
-              >
-                {genre}
+          <>
+            <div className="filter-topbar">
+              <input
+                type="text"
+                className="filter-search"
+                placeholder={`🔍 ${t.searchPlaceholder}`}
+                value={textFilter}
+                onChange={(e) => setTextFilter(e.target.value)}
+              />
+              <span className="filter-result-count">{visible.length}</span>
+              <button type="button" className="filter-open-btn" onClick={() => setPanelOpen(true)}>
+                {t.filtersButton}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
               </button>
-            ))}
-            <span className="filter-segment-group">
-              <span className="filter-segment-label">{t.filmsWatchedFilterLabel}</span>
-              <div className="filter-segment">
-                {watchedOptions.map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    className={watchedFilter === opt.key ? 'active' : ''}
-                    onClick={() => setWatchedFilter(opt.key)}
-                  >
-                    {opt.label}
+            </div>
+
+            {activeFilterCount > 0 && (
+              <div className="active-chips">
+                {genreFilter.map((genre) => (
+                  <button key={genre} type="button" className="genre-chip active" onClick={() => toggleGenre(genre)}>
+                    {genre} ×
                   </button>
                 ))}
-              </div>
-            </span>
-            <span className="filter-segment-group">
-              <span className="filter-segment-label">{t.filmsAvailabilityFilterLabel}</span>
-              <div className="filter-segment">
-                {availabilityOptions.map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    className={availabilityFilter === opt.key ? 'active' : ''}
-                    onClick={() => setAvailabilityFilter(opt.key)}
-                  >
-                    {opt.label}
+                {watchedFilter !== 'all' && (
+                  <button type="button" className="genre-chip active" onClick={() => setWatchedFilter('all')}>
+                    {watchedLabel} ×
                   </button>
-                ))}
+                )}
+                {availabilityFilter !== 'all' && (
+                  <button type="button" className="genre-chip active" onClick={() => setAvailabilityFilter('all')}>
+                    {availabilityLabel} ×
+                  </button>
+                )}
               </div>
-            </span>
-            <span className="filter-result-count">{visible.length}</span>
-          </div>
+            )}
+
+            <FilterPanel
+              open={panelOpen}
+              onClose={() => setPanelOpen(false)}
+              title={t.filtersTitle}
+              onReset={resetFilters}
+              resetLabel={t.filtersReset}
+              sections={filterSections}
+            />
+          </>
         )}
 
         {loading ? (

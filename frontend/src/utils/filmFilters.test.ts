@@ -77,3 +77,79 @@ describe('collectGenres', () => {
     expect(collectGenres(FILMS)).toEqual(['Fantascienza', 'Thriller']);
   });
 });
+
+function filmWith(overrides: Partial<AggregatedFilm> & { filmKey: string }): AggregatedFilm {
+  return {
+    filmKey: overrides.filmKey,
+    title: overrides.title ?? overrides.filmKey,
+    director: overrides.director ?? null,
+    year: null,
+    imdbUrl: null,
+    posterUrl: null,
+    streamingUrls: null,
+    mentions: [],
+    meta: overrides.meta ?? null,
+  };
+}
+
+const TEXT_FILMS = [
+  filmWith({
+    filmKey: 'matrix',
+    title: 'The Matrix',
+    director: 'Lana Wachowski',
+    meta: {
+      filmKey: 'matrix', tmdbId: null, overview: null, tmdbScore: null,
+      watched: false, rating: null, score: null, availability: {},
+      streamingOptions: null, streamingCheckedAt: null, watchmodeTitleId: null,
+      cast: ['Keanu Reeves', 'Laurence Fishburne'],
+      genres: ['Fantascienza', 'Azione'],
+    },
+  }),
+  filmWith({
+    filmKey: 'amelie',
+    title: 'Amélie',
+    director: 'Jean-Pierre Jeunet',
+    meta: {
+      filmKey: 'amelie', tmdbId: null, overview: null, tmdbScore: null,
+      watched: false, rating: null, score: null, availability: {},
+      streamingOptions: null, streamingCheckedAt: null, watchmodeTitleId: null,
+      cast: ['Audrey Tautou'],
+      genres: ['Commedia'],
+    },
+  }),
+];
+
+describe('filterFilms text search', () => {
+  it('empty text matches everything', () => {
+    expect(filterFilms(TEXT_FILMS, { genres: [], watched: 'all', availability: 'all', text: '' })).toHaveLength(2);
+  });
+
+  it('matches title case-insensitively', () => {
+    const out = filterFilms(TEXT_FILMS, { genres: [], watched: 'all', availability: 'all', text: 'matrix' });
+    expect(out.map((f) => f.filmKey)).toEqual(['matrix']);
+  });
+
+  it('matches director', () => {
+    const out = filterFilms(TEXT_FILMS, { genres: [], watched: 'all', availability: 'all', text: 'Jeunet' });
+    expect(out.map((f) => f.filmKey)).toEqual(['amelie']);
+  });
+
+  it('matches cast', () => {
+    const out = filterFilms(TEXT_FILMS, { genres: [], watched: 'all', availability: 'all', text: 'tautou' });
+    expect(out.map((f) => f.filmKey)).toEqual(['amelie']);
+  });
+
+  it('matches genres', () => {
+    const out = filterFilms(TEXT_FILMS, { genres: [], watched: 'all', availability: 'all', text: 'commedia' });
+    expect(out.map((f) => f.filmKey)).toEqual(['amelie']);
+  });
+
+  it('no match returns empty', () => {
+    expect(filterFilms(TEXT_FILMS, { genres: [], watched: 'all', availability: 'all', text: 'nonexistent' })).toHaveLength(0);
+  });
+
+  it('combines with other filters (AND)', () => {
+    const out = filterFilms(TEXT_FILMS, { genres: ['Commedia'], watched: 'all', availability: 'all', text: 'matrix' });
+    expect(out).toHaveLength(0);
+  });
+});

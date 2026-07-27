@@ -7,6 +7,8 @@ export interface FilmFilterOptions {
   genres: string[];
   watched: WatchedFilter;
   availability: AvailabilityFilter;
+  /** Case-insensitive containment search over title, director, cast, genres. Empty/omitted = no filtering. */
+  text?: string;
 }
 
 /**
@@ -38,6 +40,7 @@ function availabilitySignal(meta: FilmMetaRecord | null | undefined): { free: bo
 }
 
 export function filterFilms(films: AggregatedFilm[], opts: FilmFilterOptions): AggregatedFilm[] {
+  const query = opts.text?.trim().toLowerCase() ?? '';
   return films.filter((film) => {
     if (opts.genres.length > 0) {
       const genres = film.meta?.genres ?? [];
@@ -52,6 +55,15 @@ export function filterFilms(films: AggregatedFilm[], opts: FilmFilterOptions): A
       const { free, notfree } = availabilitySignal(film.meta);
       if (opts.availability === 'free' && !free) return false;
       if (opts.availability === 'notfree' && !notfree) return false;
+    }
+    if (query) {
+      const haystack = [
+        film.title,
+        film.director,
+        ...(film.meta?.cast ?? []),
+        ...(film.meta?.genres ?? []),
+      ];
+      if (!haystack.some((field) => field != null && field.toLowerCase().includes(query))) return false;
     }
     return true;
   });

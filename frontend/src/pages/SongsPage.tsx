@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { SongCard } from '../components/SongCard';
+import { FilterPanel } from '../components/FilterPanel';
+import type { FilterSection } from '../components/FilterPanel';
 import { fetchSongs, patchSongMeta } from '../services/api';
 import type { SongMetaPatchBody } from '../services/api';
 import { filterSongs, collectGenres } from '../utils/songFilters';
@@ -53,10 +55,12 @@ export function SongsPage() {
 
   const [songs, setSongs] = useState<AggregatedSong[]>([]);
   const [loading, setLoading] = useState(true);
+  const [textFilter, setTextFilter] = useState('');
   const [genreFilter, setGenreFilter] = useState<string[]>([]);
   const [listenedFilter, setListenedFilter] = useState<ListenedFilter>('all');
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [downloadedFilter, setDownloadedFilter] = useState<DownloadedFilter>('all');
+  const [panelOpen, setPanelOpen] = useState(false);
   // Per-songKey monotonic counter so a slow/out-of-order PATCH response
   // (success or failure) can never clobber a newer patch already applied to
   // that song.
@@ -90,13 +94,28 @@ export function SongsPage() {
         listened: listenedFilter,
         favorite: favoriteOnly,
         downloaded: downloadedFilter,
+        text: textFilter,
       }),
-    [sortedSongs, genreFilter, listenedFilter, favoriteOnly, downloadedFilter]
+    [sortedSongs, genreFilter, listenedFilter, favoriteOnly, downloadedFilter, textFilter]
   );
 
   function toggleGenre(genre: string) {
     setGenreFilter((prev) => (prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]));
   }
+
+  function resetFilters() {
+    setGenreFilter([]);
+    setListenedFilter('all');
+    setFavoriteOnly(false);
+    setDownloadedFilter('all');
+  }
+
+  // Non-default filters count toward the "Filtri (n)" badge; text search is excluded on purpose.
+  const activeFilterCount =
+    genreFilter.length +
+    (listenedFilter !== 'all' ? 1 : 0) +
+    (favoriteOnly ? 1 : 0) +
+    (downloadedFilter !== 'all' ? 1 : 0);
 
   // Optimistic patch: apply locally, PATCH, roll back on failure. Rollback and
   // the success write are both scoped to this one song's meta (never the
@@ -138,6 +157,16 @@ export function SongsPage() {
     { key: 'no', label: t.songsFilterNotDownloaded },
   ];
 
+  const listenedLabel = listenedOptions.find((o) => o.key === listenedFilter)?.label ?? '';
+  const downloadedLabel = downloadedOptions.find((o) => o.key === downloadedFilter)?.label ?? '';
+
+  const filterSections: FilterSection[] = [
+    { kind: 'chips', label: t.genreSectionLabel, options: genres, selected: genreFilter, onToggle: toggleGenre },
+    { kind: 'radio', label: t.songsListenedFilterLabel, options: listenedOptions, value: listenedFilter, onChange: (v) => setListenedFilter(v as ListenedFilter) },
+    { kind: 'toggle', label: `⭐ ${t.songsFilterFavorites}`, value: favoriteOnly, onChange: setFavoriteOnly },
+    { kind: 'radio', label: t.songsDownloadedFilterLabel, options: downloadedOptions, value: downloadedFilter, onChange: (v) => setDownloadedFilter(v as DownloadedFilter) },
+  ];
+
   return (
     <div className="list-page">
       <Header stats={stats} />
@@ -148,56 +177,55 @@ export function SongsPage() {
         </div>
 
         {!loading && (
-          <div className="films-filter-bar">
-            {genres.map((genre) => (
-              <button
-                key={genre}
-                type="button"
-                className={`genre-chip ${genreFilter.includes(genre) ? 'active' : ''}`}
-                onClick={() => toggleGenre(genre)}
-              >
-                {genre}
+          <>
+            <div className="filter-topbar">
+              <input
+                type="text"
+                className="filter-search"
+                placeholder={`🔍 ${t.searchPlaceholder}`}
+                value={textFilter}
+                onChange={(e) => setTextFilter(e.target.value)}
+              />
+              <span className="filter-result-count">{visible.length}</span>
+              <button type="button" className="filter-open-btn" onClick={() => setPanelOpen(true)}>
+                {t.filtersButton}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
               </button>
-            ))}
-            <span className="filter-segment-group">
-              <span className="filter-segment-label">{t.songsListenedFilterLabel}</span>
-              <div className="filter-segment">
-                {listenedOptions.map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    className={listenedFilter === opt.key ? 'active' : ''}
-                    onClick={() => setListenedFilter(opt.key)}
-                  >
-                    {opt.label}
+            </div>
+
+            {activeFilterCount > 0 && (
+              <div className="active-chips">
+                {genreFilter.map((genre) => (
+                  <button key={genre} type="button" className="genre-chip active" onClick={() => toggleGenre(genre)}>
+                    {genre} ×
                   </button>
                 ))}
-              </div>
-            </span>
-            <button
-              type="button"
-              className={`genre-chip ${favoriteOnly ? 'active' : ''}`}
-              onClick={() => setFavoriteOnly((v) => !v)}
-            >
-              ⭐ {t.songsFilterFavorites}
-            </button>
-            <span className="filter-segment-group">
-              <span className="filter-segment-label">{t.songsDownloadedFilterLabel}</span>
-              <div className="filter-segment">
-                {downloadedOptions.map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    className={downloadedFilter === opt.key ? 'active' : ''}
-                    onClick={() => setDownloadedFilter(opt.key)}
-                  >
-                    {opt.label}
+                {listenedFilter !== 'all' && (
+                  <button type="button" className="genre-chip active" onClick={() => setListenedFilter('all')}>
+                    {listenedLabel} ×
                   </button>
-                ))}
+                )}
+                {favoriteOnly && (
+                  <button type="button" className="genre-chip active" onClick={() => setFavoriteOnly(false)}>
+                    ⭐ {t.songsFilterFavorites} ×
+                  </button>
+                )}
+                {downloadedFilter !== 'all' && (
+                  <button type="button" className="genre-chip active" onClick={() => setDownloadedFilter('all')}>
+                    {downloadedLabel} ×
+                  </button>
+                )}
               </div>
-            </span>
-            <span className="filter-result-count">{visible.length}</span>
-          </div>
+            )}
+
+            <FilterPanel
+              open={panelOpen}
+              onClose={() => setPanelOpen(false)}
+              title={t.filtersTitle}
+              onReset={resetFilters}
+              resetLabel={t.filtersReset}
+              sections={filterSections}
+            />
+          </>
         )}
 
         {loading ? (
