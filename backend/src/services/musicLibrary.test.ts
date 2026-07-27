@@ -129,6 +129,10 @@ describe('normalizeForMatch', () => {
   it('does not strip a non-trailing parenthetical', () => {
     expect(normalizeForMatch('Song (feat. X) Extended')).toBe('song (feat. x) extended');
   });
+
+  it('does not strip a mismatched bracket pair', () => {
+    expect(normalizeForMatch('Weird (foo]')).toBe('weird (foo]');
+  });
 });
 
 describe('libraryHasSong', () => {
@@ -150,8 +154,18 @@ describe('libraryHasSong', () => {
     expect(libraryHasSong(tracks, 'Kanye West, Pusha T', 'Runaway')).toBe(true);
   });
 
-  it('matches when the file has no artist (title-only filename)', () => {
-    expect(libraryHasSong(tracks, 'Pixies', 'Where Is My Mind? (2007 Remaster)')).toBe(true);
+  it('does NOT match when the file artist is empty but the DB artist is present (no wildcard on the file side)', () => {
+    // A generic title-only file like 'Intro.mp3' must not flag every DB song titled 'Intro'.
+    expect(libraryHasSong(tracks, 'Pixies', 'Where Is My Mind? (2007 Remaster)')).toBe(false);
+  });
+
+  it('matches when both the file artist and the DB artist are empty', () => {
+    expect(libraryHasSong(tracks, '', 'Where Is My Mind? (2007 Remaster)')).toBe(true);
+  });
+
+  it('matches when the DB artist is empty but the file artist is present (wildcard on the DB side)', () => {
+    // AI couldn't attribute an artist; title match against a real file artist suffices.
+    expect(libraryHasSong(tracks, '', 'Runaway')).toBe(true);
   });
 
   it('does not match when the title differs', () => {

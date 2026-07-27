@@ -75,7 +75,7 @@ export function normalizeForMatch(s: string): string {
   let prev: string;
   do {
     prev = result;
-    result = result.replace(/\s*[([][^()[\]]*[)\]]$/, '').trim();
+    result = result.replace(/(\([^()]*\)|\[[^[\]]*\])$/, '').trim();
   } while (result !== prev);
 
   return result;
@@ -83,10 +83,15 @@ export function normalizeForMatch(s: string): string {
 
 /**
  * A song is considered present in the library when some track's title
- * matches (normalized) AND either artist is empty (unparsed filename, or
- * an unattributed DB mention) or the normalized artists contain one another
- * — handling multi-credit strings like 'Bedouin Burger, Zeid Hamdan' matching
- * a DB artist of just 'Bedouin Burger', in either direction.
+ * matches (normalized) AND the artists are compatible:
+ * - both non-empty: normalized containment either direction (handles
+ *   multi-credit strings like 'Bedouin Burger, Zeid Hamdan' matching a DB
+ *   artist of just 'Bedouin Burger', in either direction).
+ * - the FILE artist is empty (an unparsed filename, e.g. 'Intro.mp3'): NOT a
+ *   wildcard — only matches a DB mention that is *also* unattributed, so a
+ *   generic title-only file doesn't flag every DB song with that title.
+ * - the DB artist is empty (AI couldn't attribute it) but the file has an
+ *   artist: wildcard allowed, title match suffices.
  */
 export function libraryHasSong(tracks: LibraryTrack[], artist: string, title: string): boolean {
   const wantTitle = normalizeForMatch(title);
@@ -96,7 +101,8 @@ export function libraryHasSong(tracks: LibraryTrack[], artist: string, title: st
     if (normalizeForMatch(track.title) !== wantTitle) return false;
 
     const trackArtist = normalizeForMatch(track.artist);
-    if (trackArtist === '' || wantArtist === '') return true;
+    if (trackArtist === '') return wantArtist === '';
+    if (wantArtist === '') return true;
 
     return trackArtist.includes(wantArtist) || wantArtist.includes(trackArtist);
   });
