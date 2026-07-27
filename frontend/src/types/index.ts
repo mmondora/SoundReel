@@ -122,6 +122,11 @@ export interface NoteMetaRecord {
   bookYear: number | null;
   coverUrl: string | null;
   openlibraryUrl: string | null;
+  placeName: string | null;
+  placeDisplayName: string | null;
+  placeLat: number | null;
+  placeLon: number | null;
+  osmUrl: string | null;
   enrichedAt: string | null;
 }
 

@@ -10,7 +10,9 @@ function note(key: string, category: NoteCategory, text: string, meta: Partial<N
     mentions: [],
     meta: meta === null ? null : {
       noteKey: key, bookTitle: null, bookAuthor: null, bookYear: null,
-      coverUrl: null, openlibraryUrl: null, enrichedAt: null,
+      coverUrl: null, openlibraryUrl: null,
+      placeName: null, placeDisplayName: null, placeLat: null, placeLon: null, osmUrl: null,
+      enrichedAt: null,
       ...meta,
     },
   };
@@ -54,6 +56,12 @@ describe('filterNotes', () => {
   it('matches meta.bookAuthor', () => {
     const out = filterNotes(NOTES, { categories: [], text: 'harari' });
     expect(out.map((n) => n.noteKey)).toEqual(['b']);
+  });
+
+  it('matches meta.placeDisplayName', () => {
+    const placeNote = note('d', 'place', 'Brusaporto', { placeDisplayName: 'Via Cantalupa, Brusaporto' });
+    const out = filterNotes([...NOTES, placeNote], { categories: [], text: 'brusaporto' });
+    expect(out.map((n) => n.noteKey)).toEqual(['d']);
   });
 
   it('no match returns empty', () => {

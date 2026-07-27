@@ -28,6 +28,11 @@ interface NoteMetaRow {
   book_year: number | null;
   cover_url: string | null;
   openlibrary_url: string | null;
+  place_name: string | null;
+  place_display_name: string | null;
+  place_lat: number | null;
+  place_lon: number | null;
+  osm_url: string | null;
   enriched_at: Date | null;
 }
 
@@ -39,12 +44,20 @@ function rowToRecord(row: NoteMetaRow): NoteMetaRecord {
     bookYear: row.book_year,
     coverUrl: row.cover_url,
     openlibraryUrl: row.openlibrary_url,
+    placeName: row.place_name,
+    placeDisplayName: row.place_display_name,
+    placeLat: row.place_lat,
+    placeLon: row.place_lon,
+    osmUrl: row.osm_url,
     enrichedAt: row.enriched_at ? row.enriched_at.toISOString() : null,
   };
 }
 
-const SELECT_COLS = 'note_key, book_title, book_author, book_year, cover_url, openlibrary_url, enriched_at';
+const SELECT_COLS =
+  'note_key, book_title, book_author, book_year, cover_url, openlibrary_url, ' +
+  'place_name, place_display_name, place_lat, place_lon, osm_url, enriched_at';
 
+/** Upserts only the book_* / cover_url / openlibrary_url columns — never touches place_* / osm_url. */
 export async function upsertNoteEnrichment(input: {
   noteKey: string;
   bookTitle: string | null;
@@ -65,6 +78,53 @@ export async function upsertNoteEnrichment(input: {
        enriched_at = now(),
        updated_at = now()`,
     [input.noteKey, input.bookTitle, input.bookAuthor, input.bookYear, input.coverUrl, input.openlibraryUrl]
+  );
+}
+
+/** Upserts only the place_* / osm_url columns — never touches book_* / cover_url / openlibrary_url. */
+export async function upsertPlaceEnrichment(input: {
+  noteKey: string;
+  placeName: string | null;
+  placeDisplayName: string | null;
+  placeLat: number | null;
+  placeLon: number | null;
+  osmUrl: string | null;
+}): Promise<void> {
+  await query(
+    `INSERT INTO note_meta (note_key, place_name, place_display_name, place_lat, place_lon, osm_url, enriched_at)
+     VALUES ($1, $2, $3, $4, $5, $6, now())
+     ON CONFLICT (note_key) DO UPDATE SET
+       place_name = EXCLUDED.place_name,
+       place_display_name = EXCLUDED.place_display_name,
+       place_lat = EXCLUDED.place_lat,
+       place_lon = EXCLUDED.place_lon,
+       osm_url = EXCLUDED.osm_url,
+       enriched_at = now(),
+       updated_at = now()`,
+    [input.noteKey, input.placeName, input.placeDisplayName, input.placeLat, input.placeLon, input.osmUrl]
+  );
+}
+
+/**
+ * Records "checked, nothing found" without touching any book_ or place_
+ * column — unlike upsertNoteEnrichment/upsertPlaceEnrichment, which SET
+ * their columns unconditionally from EXCLUDED. Calling either of those with
+ * an all-null payload on a miss would silently wipe good data from a prior
+ * successful enrichment the next time a stale/never-refreshed note is
+ * re-checked and happens to miss (e.g. a transient Nominatim/OpenLibrary
+ * hiccup, or the note text drifting out of what the provider indexes).
+ * On a never-enriched note this still creates the row (timestamp-only, all
+ * display fields null) so the TTL check in the caller suppresses repeat
+ * lookups the same as before.
+ */
+export async function touchNoteEnrichedAt(noteKey: string): Promise<void> {
+  await query(
+    `INSERT INTO note_meta (note_key, enriched_at)
+     VALUES ($1, now())
+     ON CONFLICT (note_key) DO UPDATE SET
+       enriched_at = now(),
+       updated_at = now()`,
+    [noteKey]
   );
 }
 

@@ -3,7 +3,7 @@ import type { AggregatedNote, NoteCategory } from '../types';
 export interface NoteFilterOptions {
   /** OR across selected categories; empty = no filtering. */
   categories: NoteCategory[];
-  /** Case-insensitive containment search over note text + meta bookTitle/bookAuthor. Empty/omitted = no filtering. */
+  /** Case-insensitive containment search over note text + meta (bookTitle, bookAuthor, placeName, placeDisplayName). Empty/omitted = no filtering. */
   text?: string;
 }
 
@@ -12,7 +12,13 @@ export function filterNotes(notes: AggregatedNote[], opts: NoteFilterOptions): A
   return notes.filter((note) => {
     if (opts.categories.length > 0 && !opts.categories.includes(note.category)) return false;
     if (query) {
-      const haystack = [note.text, note.meta?.bookTitle, note.meta?.bookAuthor];
+      const haystack = [
+        note.text,
+        note.meta?.bookTitle,
+        note.meta?.bookAuthor,
+        note.meta?.placeName,
+        note.meta?.placeDisplayName,
+      ];
       if (!haystack.some((field) => field != null && field.toLowerCase().includes(query))) return false;
     }
     return true;

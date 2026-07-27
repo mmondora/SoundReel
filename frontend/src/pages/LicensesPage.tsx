@@ -33,6 +33,9 @@ export function LicensesPage() {
             Film metadata by{' '}
             <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">TMDb</a>
             {' '}(this product uses the TMDB API but is not endorsed or certified by TMDB)
+            {' · '}
+            Place data{' '}
+            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>
           </p>
         </div>
 

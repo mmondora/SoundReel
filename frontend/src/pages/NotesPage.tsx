@@ -36,8 +36,12 @@ function categoryLabel(category: NoteCategory, t: Translations): string {
   return map[category] || category;
 }
 
-/** Client-side Google Maps search link for a place note — no geocoding, just a search query. */
-function mapsSearchUrl(query: string): string {
+/** Client-side Google Maps search link for a place note — no geocoding, just a search query.
+ * When lat/lon are provided, use them; otherwise fall back to text search. */
+function mapsSearchUrl(query: string, lat?: number | null, lon?: number | null): string {
+  if (lat != null && lon != null) {
+    return `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+  }
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
@@ -62,6 +66,7 @@ function NoteRow({ note }: NoteRowProps) {
   const meta = note.meta;
   const bookInfo = note.category === 'book' ? meta : null;
   const bookByline = bookInfo ? buildBookByline(bookInfo.bookAuthor, bookInfo.bookYear) : '';
+  const placeInfo = note.category === 'place' ? meta : null;
 
   return (
     <div className="list-item-row">
@@ -79,13 +84,28 @@ function NoteRow({ note }: NoteRowProps) {
       <div className="list-item-content">
         <div className="list-item-title note-text">{note.text}</div>
         {bookByline && <div className="list-item-subtitle">{bookByline}</div>}
+        {placeInfo?.placeDisplayName && (
+          <div className="place-address" title={placeInfo.placeDisplayName}>
+            {placeInfo.placeDisplayName}
+          </div>
+        )}
         <div className="list-item-badges">
           <span className="note-category-badge">
             {CATEGORY_ICONS[note.category] || '📝'} {categoryLabel(note.category, t)}
           </span>
           {note.category === 'place' && (
-            <a href={mapsSearchUrl(note.text)} target="_blank" rel="noopener noreferrer" className="badge-link maps">
+            <a
+              href={mapsSearchUrl(note.text, placeInfo?.placeLat, placeInfo?.placeLon)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="badge-link maps"
+            >
               🗺 Maps
+            </a>
+          )}
+          {placeInfo?.osmUrl && (
+            <a href={placeInfo.osmUrl} target="_blank" rel="noopener noreferrer" className="badge-link osm">
+              OSM
             </a>
           )}
           {bookInfo?.openlibraryUrl && (
@@ -230,6 +250,13 @@ export function NotesPage() {
         ) : (
           visible.map((note) => <NoteRow key={note.noteKey} note={note} />)
         )}
+
+        <div className="data-attribution">
+          Place data{' '}
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>
+          {' · '}
+          <Link to="/licenses">{t.licensesLink}</Link>
+        </div>
       </div>
     </div>
   );

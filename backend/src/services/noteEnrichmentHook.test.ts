@@ -7,15 +7,19 @@ vi.mock('./noteMeta', async (importOriginal) => {
     normalizeNoteCategory: actual.normalizeNoteCategory,
     getNoteMeta: vi.fn(),
     upsertNoteEnrichment: vi.fn(),
+    upsertPlaceEnrichment: vi.fn(),
+    touchNoteEnrichedAt: vi.fn(),
   };
 });
 vi.mock('./bookEnrichment', () => ({ enrichBook: vi.fn() }));
+vi.mock('./placeEnrichment', () => ({ enrichPlace: vi.fn() }));
 vi.mock('./streamingRefresher', () => ({ isStale: vi.fn() }));
 vi.mock('../utils/logger', () => ({ logError: vi.fn() }));
 
 import { enqueueNoteEnrichment } from './noteEnrichmentHook';
-import { getNoteMeta, upsertNoteEnrichment, noteKey } from './noteMeta';
+import { getNoteMeta, upsertNoteEnrichment, upsertPlaceEnrichment, touchNoteEnrichedAt, noteKey } from './noteMeta';
 import { enrichBook } from './bookEnrichment';
+import { enrichPlace } from './placeEnrichment';
 import { isStale } from './streamingRefresher';
 import { logError } from '../utils/logger';
 
@@ -37,11 +41,14 @@ describe('enqueueNoteEnrichment', () => {
     expect(getNoteMeta).not.toHaveBeenCalled();
   });
 
-  it('skips non-book categories', async () => {
+  it('skips categories with no enrichment provider (not book or place)', async () => {
     enqueueNoteEnrichment([
-      { category: 'place', text: 'Eiffel Tower' },
       { category: 'quote', text: 'To be or not to be' },
       { category: 'other', text: 'Something else' },
+      { category: 'event', text: 'Some event' },
+      { category: 'brand', text: 'Some brand' },
+      { category: 'product', text: 'Some product' },
+      { category: 'person', text: 'Some person' },
     ]);
     await flush();
     expect(getNoteMeta).not.toHaveBeenCalled();
@@ -90,14 +97,19 @@ describe('enqueueNoteEnrichment', () => {
     enqueueNoteEnrichment([{ category: 'book', text: 'Dune' }]);
     await flush();
     expect(enrichBook).toHaveBeenCalled();
+    // Miss touches enriched_at (TTL) but must NOT go through the wiping
+    // upsert — a stale row here may hold GOOD data from a prior successful
+    // enrichment that a later miss shouldn't destroy.
+    expect(touchNoteEnrichedAt).toHaveBeenCalledWith(noteKey('book', 'Dune'));
     expect(upsertNoteEnrichment).not.toHaveBeenCalled();
   });
 
-  it('does not persist on an enrichment miss', async () => {
+  it('touches enriched_at (TTL) on an enrichment miss, instead of leaving it un-cached — without wiping any existing data via upsert', async () => {
     vi.mocked(getNoteMeta).mockResolvedValue(null);
     vi.mocked(enrichBook).mockResolvedValue(null);
     enqueueNoteEnrichment([{ category: 'book', text: 'Unknown Obscure Book' }]);
     await flush();
+    expect(touchNoteEnrichedAt).toHaveBeenCalledWith(noteKey('book', 'Unknown Obscure Book'));
     expect(upsertNoteEnrichment).not.toHaveBeenCalled();
   });
 
@@ -123,5 +135,83 @@ describe('enqueueNoteEnrichment', () => {
     ]);
     await flush();
     expect(getNoteMeta).toHaveBeenCalledTimes(2);
+  });
+
+  describe('place dispatch', () => {
+    it('looks up existing meta by noteKey(category, text) and enriches via enrichPlace when missing', async () => {
+      vi.mocked(getNoteMeta).mockResolvedValue(null);
+      vi.mocked(enrichPlace).mockResolvedValue({
+        placeName: 'Bar Luce', placeDisplayName: 'Bar Luce, Milano', placeLat: 45.44, placeLon: 9.19,
+        osmUrl: 'https://www.openstreetmap.org/node/123456',
+      });
+      enqueueNoteEnrichment([{ category: 'place', text: 'Bar Luce' }]);
+      await flush();
+      expect(getNoteMeta).toHaveBeenCalledWith(noteKey('place', 'Bar Luce'));
+      expect(enrichPlace).toHaveBeenCalledWith('Bar Luce');
+      expect(enrichBook).not.toHaveBeenCalled();
+      expect(upsertPlaceEnrichment).toHaveBeenCalledWith(expect.objectContaining({
+        noteKey: noteKey('place', 'Bar Luce'),
+        placeName: 'Bar Luce',
+      }));
+      expect(upsertNoteEnrichment).not.toHaveBeenCalled();
+    });
+
+    it('skips enrichment when existing place meta is fresh (not stale)', async () => {
+      vi.mocked(getNoteMeta).mockResolvedValue({
+        noteKey: noteKey('place', 'Bar Luce'),
+        enrichedAt: '2026-01-01T00:00:00.000Z',
+      } as never);
+      vi.mocked(isStale).mockReturnValue(false);
+      enqueueNoteEnrichment([{ category: 'place', text: 'Bar Luce' }]);
+      await flush();
+      expect(enrichPlace).not.toHaveBeenCalled();
+    });
+
+    it('re-enriches when existing place meta is stale', async () => {
+      vi.mocked(getNoteMeta).mockResolvedValue({
+        noteKey: noteKey('place', 'Bar Luce'),
+        enrichedAt: '2020-01-01T00:00:00.000Z',
+      } as never);
+      vi.mocked(isStale).mockReturnValue(true);
+      vi.mocked(enrichPlace).mockResolvedValue(null);
+      enqueueNoteEnrichment([{ category: 'place', text: 'Bar Luce' }]);
+      await flush();
+      expect(enrichPlace).toHaveBeenCalled();
+      // Miss touches enriched_at (TTL) but must NOT go through the wiping
+      // upsert — same rationale as the book miss above.
+      expect(touchNoteEnrichedAt).toHaveBeenCalledWith(noteKey('place', 'Bar Luce'));
+      expect(upsertPlaceEnrichment).not.toHaveBeenCalled();
+    });
+
+    it('touches enriched_at (TTL) on a place enrichment miss, instead of leaving it un-cached — without wiping any existing data via upsert', async () => {
+      vi.mocked(getNoteMeta).mockResolvedValue(null);
+      vi.mocked(enrichPlace).mockResolvedValue(null);
+      enqueueNoteEnrichment([{ category: 'place', text: 'Somewhere Obscure' }]);
+      await flush();
+      expect(touchNoteEnrichedAt).toHaveBeenCalledWith(noteKey('place', 'Somewhere Obscure'));
+      expect(upsertPlaceEnrichment).not.toHaveBeenCalled();
+    });
+
+    it('logs and swallows errors instead of throwing', async () => {
+      vi.mocked(getNoteMeta).mockRejectedValue(new Error('db down'));
+      enqueueNoteEnrichment([{ category: 'place', text: 'Bar Luce' }]);
+      await flush();
+      expect(logError).toHaveBeenCalledWith('note enrichment failed', expect.objectContaining({ err: expect.stringContaining('db down') }));
+    });
+
+    it('processes a mix of book and place notes independently, dispatching to the right provider', async () => {
+      vi.mocked(getNoteMeta).mockResolvedValue(null);
+      vi.mocked(enrichBook).mockResolvedValue(null);
+      vi.mocked(enrichPlace).mockResolvedValue(null);
+      enqueueNoteEnrichment([
+        { category: 'book', text: 'Dune' },
+        { category: 'place', text: 'Bar Luce' },
+      ]);
+      await flush();
+      expect(enrichBook).toHaveBeenCalledWith('Dune');
+      expect(enrichPlace).toHaveBeenCalledWith('Bar Luce');
+      expect(enrichBook).not.toHaveBeenCalledWith('Bar Luce');
+      expect(enrichPlace).not.toHaveBeenCalledWith('Dune');
+    });
   });
 });
