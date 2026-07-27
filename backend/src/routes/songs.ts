@@ -3,6 +3,7 @@ import { listEntries } from '../utils/db';
 import { songKey, listSongMeta, patchSongUserMeta, getSongMeta } from '../services/songMeta';
 import type { SongUserMetaPatch } from '../services/songMeta';
 import { resolveDeezerPreviewUrl } from '../services/songEnrichment';
+import { syncDownloadedFlags } from '../services/musicLibrary';
 import type { AggregatedSong, Entry, Song, SongMetaRecord } from '../types';
 import { logError } from '../utils/logger';
 
@@ -12,7 +13,25 @@ const RATINGS = new Set(['like', 'dislike']);
 // songs mentioned in older entries from this aggregation. This is a
 // single-user app with roughly a few hundred entries total today, so an
 // explicit high limit is cheap and keeps every entry's songs visible.
-const LIST_ENTRIES_LIMIT = 10000;
+export const LIST_ENTRIES_LIMIT = 10000;
+
+// GET /api/songs fires a background library sync on every request, but the
+// sync itself does a full directory walk + DB scan, so it's throttled to
+// once per this interval. Module-level state, reset via
+// _resetSyncThrottleForTest for test isolation.
+const SYNC_THROTTLE_MS = 10 * 60 * 1000;
+let lastSyncTriggeredAt = 0;
+
+export function _resetSyncThrottleForTest(): void {
+  lastSyncTriggeredAt = 0;
+}
+
+function maybeTriggerLibrarySync(): void {
+  const now = Date.now();
+  if (now - lastSyncTriggeredAt < SYNC_THROTTLE_MS) return;
+  lastSyncTriggeredAt = now;
+  void syncDownloadedFlags().catch((err) => logError('background music library sync failed', { err: String(err) }));
+}
 
 function isSongMention(value: unknown): value is Song {
   if (
@@ -36,7 +55,7 @@ function isSongMention(value: unknown): value is Song {
  * orders rows newest-first, and songs are visited in that same entry order,
  * so `mentions` come out newest-first without an extra sort.
  */
-function aggregateSongs(entries: Entry[], metaMap: Map<string, SongMetaRecord>): Map<string, AggregatedSong> {
+export function aggregateSongs(entries: Entry[], metaMap: Map<string, SongMetaRecord>): Map<string, AggregatedSong> {
   const byKey = new Map<string, AggregatedSong>();
   // Track the createdAt of the mention whose fields currently populate the
   // aggregate's display fields, so we can pick the most recent one regardless
@@ -84,6 +103,7 @@ function aggregateSongs(entries: Entry[], metaMap: Map<string, SongMetaRecord>):
 
 export function registerSongsRoutes(app: FastifyInstance): void {
   app.get('/api/songs', async (_req, reply) => {
+    maybeTriggerLibrarySync();
     try {
       const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listSongMeta()]);
       const byKey = aggregateSongs(entries, metaMap);
@@ -91,6 +111,17 @@ export function registerSongsRoutes(app: FastifyInstance): void {
     } catch (err) {
       logError('GET /api/songs failed', { err: String(err) });
       return reply.code(500).send({ error: 'songs aggregation failed' });
+    }
+  });
+
+  // Manual/UI-triggered sync, bypasses the throttle and awaits completion.
+  app.post('/api/songs/sync-library', async (_req, reply) => {
+    try {
+      const result = await syncDownloadedFlags();
+      return reply.send(result);
+    } catch (err) {
+      logError('POST /api/songs/sync-library failed', { err: String(err) });
+      return reply.code(500).send({ error: 'music library sync failed' });
     }
   });
 

@@ -12,12 +12,17 @@ vi.mock('../services/songMeta', async (importOriginal) => {
   };
 });
 vi.mock('../services/songEnrichment', () => ({ resolveDeezerPreviewUrl: vi.fn() }));
+vi.mock('../services/musicLibrary', () => ({
+  syncDownloadedFlags: vi.fn().mockResolvedValue({ scanned: 0, matched: 0, updated: 0 }),
+}));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logError: vi.fn() }));
 
-import { registerSongsRoutes } from './songs';
+import { registerSongsRoutes, _resetSyncThrottleForTest } from './songs';
 import { listEntries } from '../utils/db';
 import { listSongMeta, patchSongUserMeta, getSongMeta } from '../services/songMeta';
 import { resolveDeezerPreviewUrl } from '../services/songEnrichment';
+import { syncDownloadedFlags } from '../services/musicLibrary';
+import { logError } from '../utils/logger';
 import type { SongMetaRecord } from '../types';
 
 function buildApp() {
@@ -36,7 +41,11 @@ const BOHEMIAN = {
 };
 
 describe('GET /api/songs', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(syncDownloadedFlags).mockResolvedValue({ scanned: 0, matched: 0, updated: 0 });
+    _resetSyncThrottleForTest();
+  });
 
   it('dedups mentions of the same song across entries', async () => {
     vi.mocked(listEntries).mockResolvedValue([
@@ -118,6 +127,71 @@ describe('GET /api/songs', () => {
     vi.mocked(listSongMeta).mockResolvedValue(new Map());
     const res = await buildApp().inject({ method: 'GET', url: '/api/songs' });
     expect(res.statusCode).toBe(500);
+  });
+
+  it('fire-and-forget triggers a background library sync on request', async () => {
+    vi.mocked(listEntries).mockResolvedValue([]);
+    vi.mocked(listSongMeta).mockResolvedValue(new Map());
+    await buildApp().inject({ method: 'GET', url: '/api/songs' });
+    expect(syncDownloadedFlags).toHaveBeenCalledTimes(1);
+  });
+
+  it('throttles the background sync to once per 10 minutes', async () => {
+    vi.mocked(listEntries).mockResolvedValue([]);
+    vi.mocked(listSongMeta).mockResolvedValue(new Map());
+    const app = buildApp();
+
+    await app.inject({ method: 'GET', url: '/api/songs' });
+    await app.inject({ method: 'GET', url: '/api/songs' });
+    await app.inject({ method: 'GET', url: '/api/songs' });
+
+    expect(syncDownloadedFlags).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggers again once the throttle window is reset', async () => {
+    vi.mocked(listEntries).mockResolvedValue([]);
+    vi.mocked(listSongMeta).mockResolvedValue(new Map());
+    const app = buildApp();
+
+    await app.inject({ method: 'GET', url: '/api/songs' });
+    _resetSyncThrottleForTest();
+    await app.inject({ method: 'GET', url: '/api/songs' });
+
+    expect(syncDownloadedFlags).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not fail the request when the background sync rejects', async () => {
+    vi.mocked(listEntries).mockResolvedValue([]);
+    vi.mocked(listSongMeta).mockResolvedValue(new Map());
+    vi.mocked(syncDownloadedFlags).mockRejectedValue(new Error('scan failed'));
+
+    const res = await buildApp().inject({ method: 'GET', url: '/api/songs' });
+    expect(res.statusCode).toBe(200);
+    // let the fire-and-forget rejection's .catch handler run before asserting.
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(logError).toHaveBeenCalledWith('background music library sync failed', expect.objectContaining({ err: expect.any(String) }));
+  });
+});
+
+describe('POST /api/songs/sync-library', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(syncDownloadedFlags).mockResolvedValue({ scanned: 0, matched: 0, updated: 0 });
+    _resetSyncThrottleForTest();
+  });
+
+  it('awaits the sync and returns its counts', async () => {
+    vi.mocked(syncDownloadedFlags).mockResolvedValue({ scanned: 12, matched: 5, updated: 3 });
+    const res = await buildApp().inject({ method: 'POST', url: '/api/songs/sync-library' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ scanned: 12, matched: 5, updated: 3 });
+  });
+
+  it('500 and logs when the sync fails', async () => {
+    vi.mocked(syncDownloadedFlags).mockRejectedValue(new Error('scan failed'));
+    const res = await buildApp().inject({ method: 'POST', url: '/api/songs/sync-library' });
+    expect(res.statusCode).toBe(500);
+    expect(logError).toHaveBeenCalled();
   });
 });
 
