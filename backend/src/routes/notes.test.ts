@@ -86,6 +86,7 @@ describe('GET /api/notes', () => {
     const meta: NoteMetaRecord = {
       noteKey: 'book::dune', bookTitle: 'Dune', bookAuthor: 'Frank Herbert', bookYear: 1965,
       coverUrl: 'https://covers.openlibrary.org/b/id/1-M.jpg', openlibraryUrl: 'https://openlibrary.org/works/OL1W',
+      placeName: null, placeDisplayName: null, placeLat: null, placeLon: null, osmUrl: null,
       enrichedAt: '2026-07-01T00:00:00.000Z',
     };
     vi.mocked(listNoteMeta).mockResolvedValue(new Map([['book::dune', meta]]));

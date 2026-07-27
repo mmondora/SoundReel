@@ -192,6 +192,11 @@ CREATE TABLE IF NOT EXISTS note_meta (
   book_year INTEGER,
   cover_url TEXT,
   openlibrary_url TEXT,
+  place_name TEXT,
+  place_display_name TEXT,
+  place_lat DOUBLE PRECISION,
+  place_lon DOUBLE PRECISION,
+  osm_url TEXT,
   enriched_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -29,8 +29,10 @@ interface OpenLibrarySearchResponse {
 const OPENLIBRARY_KEY_SHAPE = /^\/[A-Za-z0-9_/-]+$/;
 
 /** lowercase, strip punctuation, collapse whitespace — for loose comparison
- * between a candidate doc title and the (raw or cleaned) query text. */
-function normalize(s: string): string {
+ * between a candidate doc title and the (raw or cleaned) query text.
+ * Exported so other providers (e.g. placeEnrichment) can share it rather
+ * than duplicating. */
+export function normalize(s: string): string {
   return s
     .toLowerCase()
     .replace(/[^a-z0-9à-ú\s]/g, '')
@@ -49,8 +51,12 @@ function normalize(s: string): string {
  * require near-equality instead. Longer queries use loose containment either
  * direction, since OpenLibrary titles are sometimes fuller/shorter than the
  * note text (subtitles, series info, etc).
+ *
+ * Exported: this containment/near-equality rule is domain-agnostic (it only
+ * compares two strings) and is reused as-is by placeEnrichment's Nominatim
+ * match verification.
  */
-function isAcceptedMatch(title: string, query: string): boolean {
+export function isAcceptedMatch(title: string, query: string): boolean {
   const normTitle = normalize(title);
   const normQuery = normalize(query);
   if (!normTitle || !normQuery) return false;
@@ -72,8 +78,11 @@ function selectMatch(docs: OpenLibraryDoc[], query: string): OpenLibraryDoc | nu
  * search often returns zero docs for even though the book exists. Strips
  * quoting, parentheticals, and everything after a ' - ' or ': ' separator to
  * recover a title-shaped query for a second pass.
+ *
+ * Exported so other providers (e.g. placeEnrichment) can share the same
+ * two-pass cleaning strategy rather than duplicating it.
  */
-function cleanQuery(text: string): string {
+export function cleanQuery(text: string): string {
   return text
     .replace(/[«»"'“”‘’]/g, '')
     .replace(/\([^)]*\)/g, '')

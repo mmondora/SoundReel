@@ -10,7 +10,9 @@ function note(key: string, category: NoteCategory, text: string, meta: Partial<N
     mentions: [],
     meta: meta === null ? null : {
       noteKey: key, bookTitle: null, bookAuthor: null, bookYear: null,
-      coverUrl: null, openlibraryUrl: null, enrichedAt: null,
+      coverUrl: null, openlibraryUrl: null,
+      placeName: null, placeDisplayName: null, placeLat: null, placeLon: null, osmUrl: null,
+      enrichedAt: null,
       ...meta,
     },
   };
