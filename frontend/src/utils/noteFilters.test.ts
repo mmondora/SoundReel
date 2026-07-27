@@ -58,6 +58,12 @@ describe('filterNotes', () => {
     expect(out.map((n) => n.noteKey)).toEqual(['b']);
   });
 
+  it('matches meta.placeDisplayName', () => {
+    const placeNote = note('d', 'place', 'Brusaporto', { placeDisplayName: 'Via Cantalupa, Brusaporto' });
+    const out = filterNotes([...NOTES, placeNote], { categories: [], text: 'brusaporto' });
+    expect(out.map((n) => n.noteKey)).toEqual(['d']);
+  });
+
   it('no match returns empty', () => {
     expect(filterNotes(NOTES, { categories: [], text: 'nonexistent' })).toHaveLength(0);
   });

@@ -1635,6 +1635,15 @@ body {
   flex-shrink: 0;
 }
 
+.place-address {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 /* ==================== RETRY & ENRICH BUTTONS ==================== */
 .retry-btn,
 .enrich-btn {
@@ -3833,6 +3842,7 @@ body {
 
 .badge-link.maps { background: var(--success); color: #000; }
 .badge-link.openlibrary { background: var(--border); color: var(--text-primary); }
+.badge-link.osm { background: #4ecdc4; color: #000; }
 
 /* Search */
 
