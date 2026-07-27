@@ -47,3 +47,34 @@ export function collectGenres(songs: AggregatedSong[]): string[] {
   for (const song of songs) for (const g of song.meta?.genres ?? []) set.add(g);
   return [...set].sort((a, b) => a.localeCompare(b));
 }
+
+export type SongSortMode = 'date' | 'mentions' | 'artist';
+
+function latestMentionTime(song: AggregatedSong): number {
+  return song.mentions[0] ? new Date(song.mentions[0].createdAt).getTime() : 0;
+}
+
+/**
+ * Sort modes: 'date' = most recent mention first (default); 'mentions' =
+ * mention count desc, ties by most recent mention; 'artist' = artist
+ * alphabetical (songs without an artist last), ties by most recent mention.
+ */
+export function sortSongs(songs: AggregatedSong[], mode: SongSortMode): AggregatedSong[] {
+  const byDate = (a: AggregatedSong, b: AggregatedSong) => latestMentionTime(b) - latestMentionTime(a);
+  const sorted = [...songs];
+  if (mode === 'mentions') {
+    sorted.sort((a, b) => b.mentions.length - a.mentions.length || byDate(a, b));
+  } else if (mode === 'artist') {
+    sorted.sort((a, b) => {
+      const aa = a.artist.trim();
+      const ba = b.artist.trim();
+      if (aa === '' && ba === '') return byDate(a, b);
+      if (aa === '') return 1;
+      if (ba === '') return -1;
+      return aa.localeCompare(ba) || byDate(a, b);
+    });
+  } else {
+    sorted.sort(byDate);
+  }
+  return sorted;
+}

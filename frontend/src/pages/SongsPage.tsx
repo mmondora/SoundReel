@@ -6,8 +6,8 @@ import { FilterPanel } from '../components/FilterPanel';
 import type { FilterSection } from '../components/FilterPanel';
 import { fetchSongs, patchSongMeta } from '../services/api';
 import type { SongMetaPatchBody } from '../services/api';
-import { filterSongs, collectGenres } from '../utils/songFilters';
-import type { ListenedFilter, DownloadedFilter } from '../utils/songFilters';
+import { filterSongs, collectGenres, sortSongs } from '../utils/songFilters';
+import type { ListenedFilter, DownloadedFilter, SongSortMode } from '../utils/songFilters';
 import { useAllEntries } from '../hooks/useJournal';
 import { useLanguage } from '../i18n';
 import type { AggregatedSong, SongMetaRecord, JournalStats } from '../types';
@@ -61,6 +61,7 @@ export function SongsPage() {
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [downloadedFilter, setDownloadedFilter] = useState<DownloadedFilter>('all');
   const [panelOpen, setPanelOpen] = useState(false);
+  const [sortMode, setSortMode] = useState<SongSortMode>('date');
   // Per-songKey monotonic counter so a slow/out-of-order PATCH response
   // (success or failure) can never clobber a newer patch already applied to
   // that song.
@@ -77,14 +78,7 @@ export function SongsPage() {
     totalNotes: entries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0),
   };
 
-  // Most recently mentioned song first (mentions are ordered newest-first by the backend).
-  const sortedSongs = useMemo(() => {
-    return [...songs].sort((a, b) => {
-      const aTime = a.mentions[0] ? new Date(a.mentions[0].createdAt).getTime() : 0;
-      const bTime = b.mentions[0] ? new Date(b.mentions[0].createdAt).getTime() : 0;
-      return bTime - aTime;
-    });
-  }, [songs]);
+  const sortedSongs = useMemo(() => sortSongs(songs, sortMode), [songs, sortMode]);
 
   const genres = useMemo(() => collectGenres(sortedSongs), [sortedSongs]);
   const visible = useMemo(
@@ -187,6 +181,16 @@ export function SongsPage() {
                 onChange={(e) => setTextFilter(e.target.value)}
               />
               <span className="filter-result-count">{visible.length}</span>
+              <select
+                className="sort-select"
+                value={sortMode}
+                aria-label={t.sortLabel}
+                onChange={(e) => setSortMode(e.target.value as SongSortMode)}
+              >
+                <option value="date">{t.sortByDate}</option>
+                <option value="mentions">{t.sortByMentions}</option>
+                <option value="artist">{t.sortByArtist}</option>
+              </select>
               <button type="button" className="filter-open-btn" onClick={() => setPanelOpen(true)}>
                 {t.filtersButton}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
               </button>

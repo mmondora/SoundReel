@@ -250,6 +250,11 @@ export interface Translations {
   filtersReset: string;
   filtersTitle: string;
   genreSectionLabel: string;
+  sortLabel: string;
+  sortByDate: string;
+  sortByMentions: string;
+  sortByDirector: string;
+  sortByArtist: string;
 
   // Films page filters & ratings
   filmsFilterAll: string;
@@ -546,6 +551,11 @@ export const translations: Record<Language, Translations> = {
     filtersReset: 'Azzera',
     filtersTitle: 'Filtri',
     genreSectionLabel: 'Genere',
+    sortLabel: 'Ordina per',
+    sortByDate: 'Data',
+    sortByMentions: 'Menzioni',
+    sortByDirector: 'Regista',
+    sortByArtist: 'Artista',
 
     filmsFilterAll: 'Tutti',
     filmsFilterWatched: 'Visti',
@@ -839,6 +849,11 @@ export const translations: Record<Language, Translations> = {
     filtersReset: 'Reset',
     filtersTitle: 'Filters',
     genreSectionLabel: 'Genre',
+    sortLabel: 'Sort by',
+    sortByDate: 'Date',
+    sortByMentions: 'Mentions',
+    sortByDirector: 'Director',
+    sortByArtist: 'Artist',
 
     filmsFilterAll: 'All',
     filmsFilterWatched: 'Watched',

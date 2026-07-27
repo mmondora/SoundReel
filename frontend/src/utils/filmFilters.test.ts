@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterFilms, collectGenres } from './filmFilters';
+import { filterFilms, collectGenres, sortFilms } from './filmFilters';
 import type { AggregatedFilm } from '../types';
 
 function film(key: string, meta: Partial<NonNullable<AggregatedFilm['meta']>> | null): AggregatedFilm {
@@ -151,5 +151,30 @@ describe('filterFilms text search', () => {
   it('combines with other filters (AND)', () => {
     const out = filterFilms(TEXT_FILMS, { genres: ['Commedia'], watched: 'all', availability: 'all', text: 'matrix' });
     expect(out).toHaveLength(0);
+  });
+});
+
+describe('sortFilms', () => {
+  const mk = (key: string, dates: string[], director: string | null): AggregatedFilm => ({
+    filmKey: key, title: key, director, year: null, imdbUrl: null, posterUrl: null,
+    streamingUrls: null, mentions: dates.map((d, i) => ({ entryId: `e${i}`, createdAt: d })), meta: null,
+  });
+  const older = mk('older', ['2026-01-01T00:00:00Z'], 'Zed Zulu');
+  const newest = mk('newest', ['2026-07-01T00:00:00Z'], null);
+  const popular = mk('popular', ['2026-03-01T00:00:00Z', '2026-02-01T00:00:00Z', '2026-01-15T00:00:00Z'], 'Anna Alpha');
+
+  it('date: most recent mention first', () => {
+    expect(sortFilms([older, popular, newest], 'date').map((f) => f.filmKey)).toEqual(['newest', 'popular', 'older']);
+  });
+  it('mentions: count desc, ties by date', () => {
+    expect(sortFilms([older, newest, popular], 'mentions').map((f) => f.filmKey)).toEqual(['popular', 'newest', 'older']);
+  });
+  it('director: alphabetical, missing director last', () => {
+    expect(sortFilms([older, newest, popular], 'director').map((f) => f.filmKey)).toEqual(['popular', 'older', 'newest']);
+  });
+  it('does not mutate the input array', () => {
+    const input = [older, newest];
+    sortFilms(input, 'date');
+    expect(input.map((f) => f.filmKey)).toEqual(['older', 'newest']);
   });
 });

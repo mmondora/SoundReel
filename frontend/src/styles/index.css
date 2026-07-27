@@ -4008,3 +4008,13 @@ body {
 .licenses-table a {
   color: var(--text-primary);
 }
+
+.sort-select {
+  background: var(--bg-input, #1a1a1a);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  padding: 0.25rem 0.4rem;
+  cursor: pointer;
+}

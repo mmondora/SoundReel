@@ -74,3 +74,32 @@ export function collectGenres(films: AggregatedFilm[]): string[] {
   for (const film of films) for (const g of film.meta?.genres ?? []) set.add(g);
   return [...set].sort((a, b) => a.localeCompare(b));
 }
+
+export type FilmSortMode = 'date' | 'mentions' | 'director';
+
+function latestMentionTime(film: AggregatedFilm): number {
+  return film.mentions[0] ? new Date(film.mentions[0].createdAt).getTime() : 0;
+}
+
+/**
+ * Sort modes: 'date' = most recent mention first (default); 'mentions' =
+ * mention count desc, ties by most recent mention; 'director' = director
+ * alphabetical (films without a director last), ties by most recent mention.
+ */
+export function sortFilms(films: AggregatedFilm[], mode: FilmSortMode): AggregatedFilm[] {
+  const byDate = (a: AggregatedFilm, b: AggregatedFilm) => latestMentionTime(b) - latestMentionTime(a);
+  const sorted = [...films];
+  if (mode === 'mentions') {
+    sorted.sort((a, b) => b.mentions.length - a.mentions.length || byDate(a, b));
+  } else if (mode === 'director') {
+    sorted.sort((a, b) => {
+      if (a.director == null && b.director == null) return byDate(a, b);
+      if (a.director == null) return 1;
+      if (b.director == null) return -1;
+      return a.director.localeCompare(b.director) || byDate(a, b);
+    });
+  } else {
+    sorted.sort(byDate);
+  }
+  return sorted;
+}

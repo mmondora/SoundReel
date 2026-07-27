@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterSongs, collectGenres } from './songFilters';
+import { filterSongs, collectGenres, sortSongs } from './songFilters';
 import type { AggregatedSong } from '../types';
 
 function song(key: string, meta: Partial<NonNullable<AggregatedSong['meta']>> | null): AggregatedSong {
@@ -135,5 +135,25 @@ describe('filterSongs text search', () => {
     });
     const out = filterSongs([enrichedSong], { genres: [], listened: 'all', favorite: false, downloaded: 'all', text: 'surfer' });
     expect(out.map((s) => s.songKey)).toEqual(['s3']);
+  });
+});
+
+describe('sortSongs', () => {
+  const mk = (key: string, dates: string[], artist: string): AggregatedSong => ({
+    songKey: key, title: key, artist, album: null, youtubeUrl: null, spotifyUrl: null,
+    mentions: dates.map((d, i) => ({ entryId: `e${i}`, createdAt: d })), meta: null,
+  });
+  const older = mk('older', ['2026-01-01T00:00:00Z'], 'Zucchero');
+  const newest = mk('newest', ['2026-07-01T00:00:00Z'], '');
+  const popular = mk('popular', ['2026-03-01T00:00:00Z', '2026-02-01T00:00:00Z'], 'Aphex Twin');
+
+  it('date: most recent mention first', () => {
+    expect(sortSongs([older, popular, newest], 'date').map((s) => s.songKey)).toEqual(['newest', 'popular', 'older']);
+  });
+  it('mentions: count desc, ties by date', () => {
+    expect(sortSongs([older, newest, popular], 'mentions').map((s) => s.songKey)).toEqual(['popular', 'newest', 'older']);
+  });
+  it('artist: alphabetical, empty artist last', () => {
+    expect(sortSongs([older, newest, popular], 'artist').map((s) => s.songKey)).toEqual(['popular', 'older', 'newest']);
   });
 });

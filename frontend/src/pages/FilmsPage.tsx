@@ -6,8 +6,8 @@ import { FilterPanel } from '../components/FilterPanel';
 import type { FilterSection } from '../components/FilterPanel';
 import { fetchFilms, patchFilmMeta, refreshFilmStreaming } from '../services/api';
 import type { FilmMetaPatchBody } from '../services/api';
-import { filterFilms, collectGenres } from '../utils/filmFilters';
-import type { WatchedFilter, AvailabilityFilter } from '../utils/filmFilters';
+import { filterFilms, collectGenres, sortFilms } from '../utils/filmFilters';
+import type { WatchedFilter, AvailabilityFilter, FilmSortMode } from '../utils/filmFilters';
 import { useAllEntries } from '../hooks/useJournal';
 import { useLanguage } from '../i18n';
 import type { AggregatedFilm, FilmMetaRecord, JournalStats, StreamingUrls } from '../types';
@@ -65,6 +65,7 @@ export function FilmsPage() {
   const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>('all');
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>('all');
   const [panelOpen, setPanelOpen] = useState(false);
+  const [sortMode, setSortMode] = useState<FilmSortMode>('date');
   // Per-filmKey monotonic counter so a slow/out-of-order PATCH response (success
   // or failure) can never clobber a newer patch already applied to that film.
   const patchSeqRef = useRef(new Map<string, number>());
@@ -80,14 +81,7 @@ export function FilmsPage() {
     totalNotes: entries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0),
   };
 
-  // Most recently mentioned film first (mentions are ordered newest-first by the backend).
-  const sortedFilms = useMemo(() => {
-    return [...films].sort((a, b) => {
-      const aTime = a.mentions[0] ? new Date(a.mentions[0].createdAt).getTime() : 0;
-      const bTime = b.mentions[0] ? new Date(b.mentions[0].createdAt).getTime() : 0;
-      return bTime - aTime;
-    });
-  }, [films]);
+  const sortedFilms = useMemo(() => sortFilms(films, sortMode), [films, sortMode]);
 
   const genres = useMemo(() => collectGenres(sortedFilms), [sortedFilms]);
   const visible = useMemo(
@@ -203,6 +197,16 @@ export function FilmsPage() {
                 onChange={(e) => setTextFilter(e.target.value)}
               />
               <span className="filter-result-count">{visible.length}</span>
+              <select
+                className="sort-select"
+                value={sortMode}
+                aria-label={t.sortLabel}
+                onChange={(e) => setSortMode(e.target.value as FilmSortMode)}
+              >
+                <option value="date">{t.sortByDate}</option>
+                <option value="mentions">{t.sortByMentions}</option>
+                <option value="director">{t.sortByDirector}</option>
+              </select>
               <button type="button" className="filter-open-btn" onClick={() => setPanelOpen(true)}>
                 {t.filtersButton}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
               </button>
