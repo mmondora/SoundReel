@@ -41,22 +41,38 @@ function mapsSearchUrl(query: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
+/** Joins author + year into a display byline, e.g. 'Frank Herbert (1965)'.
+ * Either part may be missing — parts are joined via array + filter so a
+ * missing author never leaves a stray leading space before '(1965)', and a
+ * missing year never leaves a stray trailing space after the author. */
+export function buildBookByline(author: string | null, year: number | null): string {
+  const parts: string[] = [];
+  if (author) parts.push(author);
+  if (year) parts.push(`(${year})`);
+  return parts.join(' ');
+}
+
 interface NoteRowProps {
   note: AggregatedNote;
 }
 
 function NoteRow({ note }: NoteRowProps) {
   const { t } = useLanguage();
+  const [coverError, setCoverError] = useState(false);
   const meta = note.meta;
   const bookInfo = note.category === 'book' ? meta : null;
-  const bookByline = bookInfo && (bookInfo.bookAuthor || bookInfo.bookYear)
-    ? `${bookInfo.bookAuthor ?? ''}${bookInfo.bookYear ? ` (${bookInfo.bookYear})` : ''}`
-    : null;
+  const bookByline = bookInfo ? buildBookByline(bookInfo.bookAuthor, bookInfo.bookYear) : '';
 
   return (
     <div className="list-item-row">
-      {bookInfo?.coverUrl ? (
-        <img src={bookInfo.coverUrl} alt="" className="note-cover" loading="lazy" />
+      {bookInfo?.coverUrl && !coverError ? (
+        <img
+          src={bookInfo.coverUrl}
+          alt=""
+          className="note-cover"
+          loading="lazy"
+          onError={() => setCoverError(true)}
+        />
       ) : (
         <div className="list-item-icon">{CATEGORY_ICONS[note.category] || '📝'}</div>
       )}
