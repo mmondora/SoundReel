@@ -4,12 +4,17 @@ import Fastify from 'fastify';
 vi.mock('../utils/db', () => ({ getEntry: vi.fn(), appendActionLog: vi.fn(), createActionLog: vi.fn() }));
 vi.mock('../services/musicListExtractor', () => ({ extractSongsFromUrl: vi.fn() }));
 vi.mock('../services/songResolver', () => ({ resolveSongs: vi.fn() }));
+vi.mock('../services/songPersistence', () => ({ resolvedToSongs: vi.fn(), appendSongsToEntry: vi.fn() }));
+vi.mock('../services/songEnrichmentHook', () => ({ enqueueSongEnrichment: vi.fn() }));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logError: vi.fn() }));
 
 import { registerMusicListRoute } from './musicList';
 import { getEntry, appendActionLog, createActionLog } from '../utils/db';
 import { extractSongsFromUrl } from '../services/musicListExtractor';
 import { resolveSongs } from '../services/songResolver';
+import { resolvedToSongs, appendSongsToEntry } from '../services/songPersistence';
+import { enqueueSongEnrichment } from '../services/songEnrichmentHook';
+import { logError } from '../utils/logger';
 
 function buildApp() {
   const app = Fastify();
@@ -55,12 +60,22 @@ describe('POST /api/music-list/process', () => {
   it('returns detected:true with resolved songs', async () => {
     vi.mocked(getEntry).mockResolvedValue(MOCK_ENTRY as never);
     vi.mocked(extractSongsFromUrl).mockResolvedValue([{ title: 'Abbey Road', artist: 'Beatles' }]);
-    vi.mocked(resolveSongs).mockResolvedValue([{
+    const resolved = [{
       title: 'Abbey Road', artist: 'Beatles',
       spotifyUrl: 'https://open.spotify.com/track/123', spotifyUri: 'spotify:track:123',
       youtubeUrl: 'https://youtube.com/results?search_query=Abbey+Road+Beatles',
       sentToSpooty: true,
-    }]);
+    }];
+    vi.mocked(resolveSongs).mockResolvedValue(resolved);
+    const mappedSongs = [{
+      title: 'Abbey Road', artist: 'Beatles', album: null, source: 'music_list',
+      spotifyUri: 'spotify:track:123', spotifyUrl: 'https://open.spotify.com/track/123',
+      youtubeUrl: 'https://youtube.com/results?search_query=Abbey+Road+Beatles',
+      soundcloudUrl: null, addedToPlaylist: false,
+    }];
+    vi.mocked(resolvedToSongs).mockReturnValue(mappedSongs as never);
+    vi.mocked(appendSongsToEntry).mockResolvedValue(1);
+
     const app = buildApp();
     const res = await app.inject({ method: 'POST', url: '/api/music-list/process', payload: { entryId: 'entry-1' } });
     expect(res.statusCode).toBe(200);
@@ -68,7 +83,39 @@ describe('POST /api/music-list/process', () => {
     expect(body.detected).toBe(true);
     expect(body.songs).toHaveLength(1);
     expect(body.spooty).toBe(1);
-    expect(appendActionLog).toHaveBeenCalled();
+
+    expect(resolvedToSongs).toHaveBeenCalledWith(resolved);
+    expect(appendSongsToEntry).toHaveBeenCalledWith('entry-1', mappedSongs);
+    expect(enqueueSongEnrichment).toHaveBeenCalledWith([{ artist: 'Beatles', title: 'Abbey Road' }]);
+
+    expect(appendActionLog).toHaveBeenCalledWith('entry-1', expect.objectContaining({}));
+    expect(createActionLog).toHaveBeenCalledWith('music_list_process', expect.objectContaining({
+      detected: true,
+      songsFound: 1,
+      songsResolved: 1,
+      sentToSpooty: 1,
+      songsPersisted: 1,
+    }));
+  });
+
+  it('logs songsPersisted: 0 and does not fail the request when persistence throws', async () => {
+    vi.mocked(getEntry).mockResolvedValue(MOCK_ENTRY as never);
+    vi.mocked(extractSongsFromUrl).mockResolvedValue([{ title: 'Abbey Road', artist: 'Beatles' }]);
+    vi.mocked(resolveSongs).mockResolvedValue([{
+      title: 'Abbey Road', artist: 'Beatles',
+      spotifyUrl: null, spotifyUri: null,
+      youtubeUrl: 'https://youtube.com/results?search_query=Abbey+Road+Beatles',
+      sentToSpooty: false,
+    }]);
+    vi.mocked(resolvedToSongs).mockReturnValue([] as never);
+    vi.mocked(appendSongsToEntry).mockRejectedValue(new Error('DB down'));
+
+    const app = buildApp();
+    const res = await app.inject({ method: 'POST', url: '/api/music-list/process', payload: { entryId: 'entry-1' } });
+    expect(res.statusCode).toBe(200);
+    expect(logError).toHaveBeenCalledWith('music-list persist failed', expect.objectContaining({ entryId: 'entry-1' }));
+    expect(createActionLog).toHaveBeenCalledWith('music_list_process', expect.objectContaining({ songsPersisted: 0 }));
+    expect(enqueueSongEnrichment).toHaveBeenCalled();
   });
 
   it('returns 500 on unexpected error', async () => {

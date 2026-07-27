@@ -2,7 +2,7 @@ export interface Song {
   title: string;
   artist: string;
   album: string | null;
-  source: 'audio_fingerprint' | 'ai_analysis' | 'both';
+  source: 'audio_fingerprint' | 'ai_analysis' | 'both' | 'music_list';
   spotifyUri: string | null;
   spotifyUrl: string | null;
   youtubeUrl: string | null;

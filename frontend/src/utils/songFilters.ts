@@ -9,9 +9,12 @@ export interface SongFilterOptions {
   /** true = show only favorites; false = no favorite filtering. */
   favorite: boolean;
   downloaded: DownloadedFilter;
+  /** Case-insensitive containment search over title, artist, album. Empty/omitted = no filtering. */
+  text?: string;
 }
 
 export function filterSongs(songs: AggregatedSong[], opts: SongFilterOptions): AggregatedSong[] {
+  const query = opts.text?.trim().toLowerCase() ?? '';
   return songs.filter((song) => {
     if (opts.genres.length > 0) {
       const genres = song.meta?.genres ?? [];
@@ -30,6 +33,10 @@ export function filterSongs(songs: AggregatedSong[], opts: SongFilterOptions): A
       const downloaded = song.meta?.downloaded ?? false;
       if (opts.downloaded === 'yes' && !downloaded) return false;
       if (opts.downloaded === 'no' && downloaded) return false;
+    }
+    if (query) {
+      const haystack = [song.title, song.artist, song.album, song.meta?.album];
+      if (!haystack.some((field) => field != null && field.toLowerCase().includes(query))) return false;
     }
     return true;
   });

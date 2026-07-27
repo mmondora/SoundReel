@@ -244,6 +244,13 @@ export interface Translations {
   noFilmsYet: string;
   noNotesYet: string;
 
+  // Compact filter bar & panel (shared by Films/Songs pages)
+  searchPlaceholder: string;
+  filtersButton: string;
+  filtersReset: string;
+  filtersTitle: string;
+  genreSectionLabel: string;
+
   // Films page filters & ratings
   filmsFilterAll: string;
   filmsFilterWatched: string;
@@ -534,6 +541,12 @@ export const translations: Record<Language, Translations> = {
     noFilmsYet: 'Nessun film trovato',
     noNotesYet: 'Nessuna nota trovata',
 
+    searchPlaceholder: 'Cerca...',
+    filtersButton: 'Filtri',
+    filtersReset: 'Azzera',
+    filtersTitle: 'Filtri',
+    genreSectionLabel: 'Genere',
+
     filmsFilterAll: 'Tutti',
     filmsFilterWatched: 'Visti',
     filmsFilterUnwatched: 'Non visti',
@@ -820,6 +833,12 @@ export const translations: Record<Language, Translations> = {
     noSongsYet: 'No songs found',
     noFilmsYet: 'No films found',
     noNotesYet: 'No notes found',
+
+    searchPlaceholder: 'Search...',
+    filtersButton: 'Filters',
+    filtersReset: 'Reset',
+    filtersTitle: 'Filters',
+    genreSectionLabel: 'Genre',
 
     filmsFilterAll: 'All',
     filmsFilterWatched: 'Watched',
