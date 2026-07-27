@@ -3,6 +3,8 @@ import { getEntry, appendActionLog, createActionLog } from '../utils/db';
 import { extractSongsFromUrl } from '../services/musicListExtractor';
 import { resolveSongs } from '../services/songResolver';
 import type { ResolvedSong } from '../services/songResolver';
+import { resolvedToSongs, appendSongsToEntry } from '../services/songPersistence';
+import { enqueueSongEnrichment } from '../services/songEnrichmentHook';
 import { logInfo, logError } from '../utils/logger';
 
 interface ProcessBody { entryId?: string; }
@@ -34,11 +36,20 @@ export function registerMusicListRoute(app: FastifyInstance): void {
       const resolved = await resolveSongs(extracted);
       const spooty = resolved.filter((s) => s.sentToSpooty).length;
 
+      let songsPersisted = 0;
+      try {
+        songsPersisted = await appendSongsToEntry(entryId, resolvedToSongs(resolved));
+      } catch (err) {
+        logError('music-list persist failed', { entryId, err: String(err) });
+      }
+      enqueueSongEnrichment(resolved.map((s) => ({ artist: s.artist, title: s.title })));
+
       await appendActionLog(entryId, createActionLog('music_list_process', {
         detected: true,
         songsFound: extracted.length,
         songsResolved: resolved.length,
         sentToSpooty: spooty,
+        songsPersisted,
       }));
 
       logInfo('music-list process done', { entryId, songsFound: extracted.length, spooty });
