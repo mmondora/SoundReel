@@ -27,13 +27,33 @@ export async function downloadWithInstaloader(
   url: string,
   entryId: string,
 ): Promise<InstaloaderDownload> {
+  return postDownload('/download', url, entryId);
+}
+
+/**
+ * Non-IG media download (YouTube incl. Shorts, TikTok) via the sidecar's
+ * yt-dlp endpoint. Same response shape as the Instagram download so the
+ * whole local pipeline (Whisper/OCR/vision/Shazam) reuses it unchanged.
+ */
+export async function downloadMediaWithYtdlp(
+  url: string,
+  entryId: string,
+): Promise<InstaloaderDownload> {
+  return postDownload('/download-media', url, entryId);
+}
+
+async function postDownload(
+  path: '/download' | '/download-media',
+  url: string,
+  entryId: string,
+): Promise<InstaloaderDownload> {
   const base = process.env.INSTALOADER_URL;
   if (!base) {
     logWarning('INSTALOADER_URL non configurato, skip');
     return { ...EMPTY, error: 'INSTALOADER_URL not set' };
   }
 
-  const endpoint = `${base.replace(/\/$/, '')}/download`;
+  const endpoint = `${base.replace(/\/$/, '')}${path}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 180_000);
 
@@ -50,12 +70,12 @@ export async function downloadWithInstaloader(
     try {
       data = JSON.parse(bodyText);
     } catch {
-      logWarning('Instaloader download: risposta non JSON', { preview: bodyText.substring(0, 500) });
+      logWarning(`Sidecar ${path}: risposta non JSON`, { preview: bodyText.substring(0, 500) });
       return { ...EMPTY, error: `invalid JSON response (HTTP ${response.status})` };
     }
 
     if (!response.ok || data.success === false) {
-      logWarning('Instaloader download error', {
+      logWarning(`Sidecar ${path} error`, {
         status: response.status,
         error: data.error,
       });
@@ -73,7 +93,7 @@ export async function downloadWithInstaloader(
       success: true,
     };
 
-    logInfo('Instaloader download ok', {
+    logInfo(`Sidecar ${path} ok`, {
       entryId,
       hasVideo: !!result.videoPath,
       hasAudio: !!result.audioPath,
@@ -85,10 +105,10 @@ export async function downloadWithInstaloader(
     return result;
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      logWarning('Instaloader download timeout', { entryId });
+      logWarning(`Sidecar ${path} timeout`, { entryId });
       return { ...EMPTY, error: 'timeout' };
     }
-    logError('Instaloader download network error', error);
+    logError(`Sidecar ${path} network error`, error);
     return { ...EMPTY, error: error instanceof Error ? error.message : String(error) };
   } finally {
     clearTimeout(timeout);

@@ -8,6 +8,11 @@ Endpoints:
                                         (i.instagram.com/api/v1/media/{id}/info/)
                                      2) Instaloader GraphQL as fallback
                                      3) ffmpeg for audio + frame sampling
+  POST /download-media {url, entryId} — yt-dlp download for non-Instagram
+                                     platforms (YouTube incl. Shorts, TikTok):
+                                     same on-disk layout and response shape
+                                     as /download so the backend pipeline
+                                     (Whisper/OCR/vision/Shazam) is reusable.
 
 Session login (for both endpoints):
   docker exec -it soundreel-instaloader instaloader -l <username>
@@ -488,6 +493,161 @@ def download() -> Any:
         bool(result.get("audioPath")),
         len(result.get("framePaths", [])),
         len(result.get("slidePaths", [])),
+        bool(result.get("musicInfo")),
+    )
+    return jsonify(result)
+
+
+# ---------------------------------------------------------------------------
+# yt-dlp generic media download (YouTube incl. Shorts, TikTok)
+# ---------------------------------------------------------------------------
+
+# Videos longer than this are refused: the pipeline is built for short-form
+# content, and Whisper/Shazam/gunicorn budgets (180-300s) don't survive a
+# 2-hour podcast.
+YTDLP_MAX_DURATION_SECONDS = int(os.environ.get("YTDLP_MAX_DURATION_SECONDS", "900"))
+YTDLP_TIMEOUT_SECONDS = int(os.environ.get("YTDLP_TIMEOUT_SECONDS", "150"))
+# 720p keeps Shorts/TikTok downloads small; frames for OCR/vision don't need more.
+YTDLP_FORMAT = "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b"
+
+
+def ytdlp_probe(url: str) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+    """Metadata-only probe (-J). Returns (info, error)."""
+    try:
+        result = subprocess.run(
+            ["yt-dlp", "-J", "--no-playlist", url],
+            capture_output=True, text=True, timeout=45,
+        )
+    except subprocess.TimeoutExpired:
+        return None, "probe timeout"
+    except Exception as exc:
+        return None, f"probe failed: {exc}"
+    if result.returncode != 0:
+        err = (result.stderr or "").strip().splitlines()
+        return None, err[-1] if err else f"yt-dlp exit {result.returncode}"
+    try:
+        import json as _json
+        return _json.loads(result.stdout), None
+    except ValueError:
+        return None, "probe returned invalid JSON"
+
+
+def download_with_ytdlp(url: str, entry_id: str) -> dict[str, Any]:
+    """Download a non-IG video via yt-dlp into MEDIA_ROOT/<entry_id>/ with the
+    same layout and response shape as the Instagram /download pipeline."""
+    info, probe_err = ytdlp_probe(url)
+    if info is None:
+        return {"error": probe_err, "success": False}
+    # Flat single-video info (noplaylist still yields playlist dict for some
+    # multi-video pages — take the first entry).
+    if info.get("_type") == "playlist":
+        entries = info.get("entries") or []
+        if not entries:
+            return {"error": "no video in page", "success": False}
+        info = entries[0]
+
+    duration = info.get("duration")
+    if duration and duration > YTDLP_MAX_DURATION_SECONDS:
+        return {
+            "error": f"video too long ({int(duration)}s > {YTDLP_MAX_DURATION_SECONDS}s)",
+            "success": False,
+        }
+
+    entry_dir = MEDIA_ROOT / entry_id
+    entry_dir.mkdir(parents=True, exist_ok=True)
+    # Same rationale as the IG path: backend (uid=node) writes thumbnail.jpg here.
+    os.chmod(entry_dir, 0o777)
+
+    video_path = entry_dir / "video.mp4"
+    try:
+        result = subprocess.run(
+            [
+                "yt-dlp", "--no-playlist",
+                "-f", YTDLP_FORMAT,
+                "--merge-output-format", "mp4",
+                "--max-filesize", "300M",
+                "--no-progress", "--no-warnings",
+                "-o", str(entry_dir / "video.%(ext)s"),
+                url,
+            ],
+            capture_output=True, text=True, timeout=YTDLP_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        shutil.rmtree(entry_dir, ignore_errors=True)
+        return {"error": "download timeout", "success": False}
+    if result.returncode != 0 or not video_path.exists():
+        shutil.rmtree(entry_dir, ignore_errors=True)
+        err = (result.stderr or "").strip().splitlines()
+        return {"error": err[-1] if err else "yt-dlp download failed", "success": False}
+
+    title = info.get("title") or None
+    description = info.get("description") or None
+    caption = "\n\n".join(x for x in (title, description) if x) or None
+
+    # yt-dlp exposes track/artist for content with music metadata (YT Music,
+    # some Shorts/TikTok audio) — same authority level as IG's music sticker.
+    track, artist = info.get("track"), info.get("artist")
+    music_info = {"title": track, "artist": artist} if track and artist else None
+
+    result_dict: dict[str, Any] = {
+        "caption": caption,
+        "musicInfo": music_info,
+        "videoPath": str(video_path),
+        "audioPath": None,
+        "thumbnailPath": None,
+        "slidePaths": [],
+        "framePaths": [],
+        "success": True,
+        "source": "ytdlp",
+    }
+
+    thumb_url = info.get("thumbnail")
+    if thumb_url:
+        thumb_path = entry_dir / "thumbnail-source.jpg"
+        if download_file(thumb_url, thumb_path):
+            os.chmod(thumb_path, 0o644)
+            result_dict["thumbnailPath"] = str(thumb_path)
+
+    audio_path = entry_dir / "audio.wav"
+    if ffmpeg_extract_audio(video_path, audio_path):
+        result_dict["audioPath"] = str(audio_path)
+
+    result_dict["framePaths"] = ffmpeg_sample_frames(video_path, entry_dir)
+    return result_dict
+
+
+@app.post("/download-media")
+def download_media() -> Any:
+    payload = request.get_json(silent=True) or {}
+    url = (payload.get("url") or "").strip()
+    entry_id = (payload.get("entryId") or "").strip()
+
+    if not url:
+        return jsonify({"error": "url required", "success": False}), 400
+    if not url.startswith(("http://", "https://")):
+        return jsonify({"error": "url invalid", "success": False}), 400
+    if not entry_id:
+        return jsonify({"error": "entryId required", "success": False}), 400
+    if not re.match(r"^[A-Za-z0-9_-]+$", entry_id):
+        return jsonify({"error": "entryId invalid", "success": False}), 400
+
+    try:
+        result = download_with_ytdlp(url, entry_id)
+    except Exception as exc:
+        log.error("ytdlp download pipeline failed for %s: %s", url, exc, exc_info=True)
+        shutil.rmtree(MEDIA_ROOT / entry_id, ignore_errors=True)
+        return jsonify({"error": str(exc), "success": False}), 500
+
+    if not result.get("success"):
+        log.warning("ytdlp download failed url=%s entryId=%s error=%s", url, entry_id, result.get("error"))
+        return jsonify(result), 502
+
+    log.info(
+        "download via ytdlp entryId=%s video=%s audio=%s frames=%d music=%s",
+        entry_id,
+        bool(result.get("videoPath")),
+        bool(result.get("audioPath")),
+        len(result.get("framePaths", [])),
         bool(result.get("musicInfo")),
     )
     return jsonify(result)

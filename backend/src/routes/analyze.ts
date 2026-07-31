@@ -290,9 +290,9 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           entryId?: string;
         } = { cobaltEnabled: featuresConfig.cobaltEnabled };
 
-        if (isInstagram) {
-          extractOptions.entryId = entryId;
-        }
+        // entryId enables the local-download paths (IG via instaloader,
+        // YouTube/TikTok via yt-dlp); other platforms just ignore it.
+        extractOptions.entryId = entryId;
 
         const content = await extractContent(normalizedUrl, extractOptions);
         log.info('Estrazione contenuto completata', {
@@ -332,17 +332,27 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           await appendActionLog(entryId, createActionLog('content_extracted', {
             hasAudio: content.hasAudio,
             hasCaption: content.hasCaption,
-            hasThumbnail: !!content.thumbnailUrl,
+            hasThumbnail: !!content.thumbnailUrl || !!content.localPaths?.thumbnailPath,
+            localMedia: !!(content.localPaths?.videoPath || content.localPaths?.audioPath),
+            frames: content.localPaths?.framePaths.length ?? 0,
           }));
         }
+
+        // yt-dlp gave YouTube/TikTok the same local layout as IG; when the
+        // download succeeded, run the full local pipeline instead of legacy.
+        const hasLocalMedia = !!(
+          content.localPaths &&
+          (content.localPaths.videoPath || content.localPaths.audioPath)
+        );
 
         // -------------------------------------------------------------------
         // Thumbnail persistence (both IG and legacy): download/copy to local
         // -------------------------------------------------------------------
         let persistentThumb: string | null = null;
 
-        if (isInstagram && content.localPaths?.thumbnailPath) {
-          // Already local — just resize in place via saveThumbnailLocal reading from disk
+        if (content.localPaths?.thumbnailPath) {
+          // Already local (IG or yt-dlp) — just resize in place via
+          // saveThumbnailLocal reading from disk
           persistentThumb = await persistThumbnail({
             source: 'local',
             entryId,
@@ -366,9 +376,10 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           mediaUrl: content.videoUrl || content.audioUrl || null,
         });
 
-        if (isInstagram) {
-          // ======= IG LOCAL PIPELINE =======
+        if (isInstagram || hasLocalMedia) {
+          // ======= LOCAL PIPELINE (IG + yt-dlp platforms) =======
           const localPaths = content.localPaths;
+          const metadataProvider = isInstagram ? 'instagram_metadata' : 'source_metadata';
 
           // Whisper ASR on local audio
           if (featuresConfig.transcriptionEnabled && localPaths?.audioPath) {
@@ -497,7 +508,8 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             aiResponse = { result: emptyMedia(), usageMetadata: null, fallback: null };
           }
 
-          // Music: musicInfo Instagram only (authoritative, no AudD)
+          // Music: source metadata is authoritative (IG music sticker, or
+          // yt-dlp track/artist fields) — no AudD on the local path
           if (content.musicInfo) {
             audioResult = {
               title: content.musicInfo.title,
@@ -505,16 +517,16 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
               album: null,
             };
             await appendActionLog(entryId, createActionLog('audio_analyzed', {
-              provider: 'instagram_metadata',
+              provider: metadataProvider,
               found: true,
               title: content.musicInfo.title,
               artist: content.musicInfo.artist,
             }));
           } else {
             await appendActionLog(entryId, createActionLog('audio_analyzed', {
-              provider: 'instagram_metadata',
+              provider: metadataProvider,
               found: false,
-              reason: 'no music_info in IG metadata',
+              reason: 'no music info in source metadata',
             }));
           }
           // Shazam multi-song scan on local audio
