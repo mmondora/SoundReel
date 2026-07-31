@@ -51,3 +51,4 @@ backend/tsconfig.tsbuildinfo
 frontend/tsconfig.tsbuildinfo
 .gstack/
 .worktrees/
+__pycache__/
