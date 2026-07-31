@@ -509,13 +509,18 @@ YTDLP_MAX_DURATION_SECONDS = int(os.environ.get("YTDLP_MAX_DURATION_SECONDS", "9
 YTDLP_TIMEOUT_SECONDS = int(os.environ.get("YTDLP_TIMEOUT_SECONDS", "150"))
 # 720p keeps Shorts/TikTok downloads small; frames for OCR/vision don't need more.
 YTDLP_FORMAT = "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b"
+# YouTube's SABR-only streaming experiment breaks the default (tv/web) client
+# with HTTP 403 on download (yt-dlp#12482); the android client still serves
+# plain https formats. Namespaced, so non-YouTube extractors ignore it.
+YTDLP_EXTRACTOR_ARGS = "youtube:player_client=android,default"
 
 
 def ytdlp_probe(url: str) -> tuple[Optional[dict[str, Any]], Optional[str]]:
     """Metadata-only probe (-J). Returns (info, error)."""
     try:
         result = subprocess.run(
-            ["yt-dlp", "-J", "--no-playlist", url],
+            ["yt-dlp", "-J", "--no-playlist",
+             "--extractor-args", YTDLP_EXTRACTOR_ARGS, url],
             capture_output=True, text=True, timeout=45,
         )
     except subprocess.TimeoutExpired:
@@ -564,6 +569,7 @@ def download_with_ytdlp(url: str, entry_id: str) -> dict[str, Any]:
             [
                 "yt-dlp", "--no-playlist",
                 "-f", YTDLP_FORMAT,
+                "--extractor-args", YTDLP_EXTRACTOR_ARGS,
                 "--merge-output-format", "mp4",
                 "--max-filesize", "300M",
                 "--no-progress", "--no-warnings",
