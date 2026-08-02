@@ -1,9 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import { listEntries } from '../utils/db';
-import { filmKey, listFilmMeta, patchFilmUserMeta } from '../services/filmMeta';
+import {
+  filmKey,
+  listFilmMeta,
+  patchFilmUserMeta,
+  upsertArchiveEnrichment,
+  setArchiveDownloadedPath,
+} from '../services/filmMeta';
 import type { FilmUserMetaPatch } from '../services/filmMeta';
 import { streamingConfigured } from '../services/streamingAvailability';
 import { refreshStreamingForFilm, extractImdbId } from '../services/streamingRefresher';
+import { enrichFilmFromArchive } from '../services/archiveEnrichment';
+import { downloadArchiveFilm } from '../services/archiveDownloader';
 import type { AggregatedFilm, Entry, Film, FilmMetaRecord } from '../types';
 import { logError } from '../utils/logger';
 
@@ -14,7 +22,7 @@ const AVAILABILITY = new Set(['free', 'paid', 'absent']);
 // films mentioned in older entries from this aggregation. This is a
 // single-user app with roughly a few hundred entries total today, so an
 // explicit high limit is cheap and keeps every entry's films visible.
-const LIST_ENTRIES_LIMIT = 10000;
+export const LIST_ENTRIES_LIMIT = 10000;
 
 function isFilm(value: unknown): value is Film {
   if (
@@ -39,7 +47,7 @@ function isFilm(value: unknown): value is Film {
  * /api/films and the refresh-streaming route, which both need to resolve a
  * film's current display fields (imdbUrl in particular) from entries.
  */
-function aggregateFilms(entries: Entry[], metaMap: Map<string, FilmMetaRecord>): Map<string, AggregatedFilm> {
+export function aggregateFilms(entries: Entry[], metaMap: Map<string, FilmMetaRecord>): Map<string, AggregatedFilm> {
   const byKey = new Map<string, AggregatedFilm>();
   // Track the createdAt of the mention whose fields currently populate the
   // aggregate's display fields, so we can pick the most recent one regardless
@@ -175,6 +183,68 @@ export function registerFilmsRoutes(app: FastifyInstance): void {
       } catch (err) {
         logError('POST /api/films/:filmKey/refresh-streaming failed', { filmKey: key, err: String(err) });
         return reply.code(500).send({ error: 'streaming refresh failed' });
+      }
+    }
+  );
+
+  app.post<{ Params: { filmKey: string } }>(
+    '/api/films/:filmKey/archive-lookup',
+    async (req, reply) => {
+      const key = req.params.filmKey;
+      try {
+        const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listFilmMeta()]);
+        const film = aggregateFilms(entries, metaMap).get(key);
+        if (!film) return reply.code(404).send({ error: 'film not found' });
+
+        const outcome = await enrichFilmFromArchive(film.title, film.year);
+        if (outcome.status === 'error') {
+          // A provider outage must not be recorded as "checked, not found":
+          // that would suppress the film from a later retry.
+          return reply.code(502).send({ error: 'archive lookup failed' });
+        }
+
+        await upsertArchiveEnrichment({
+          filmKey: key,
+          result: outcome.status === 'hit' ? outcome.result : null,
+        });
+
+        const freshMeta = (await listFilmMeta()).get(key) ?? null;
+        return reply.send({ meta: freshMeta });
+      } catch (err) {
+        logError('POST /api/films/:filmKey/archive-lookup failed', { filmKey: key, err: String(err) });
+        return reply.code(500).send({ error: 'archive lookup failed' });
+      }
+    }
+  );
+
+  app.post<{ Params: { filmKey: string } }>(
+    '/api/films/:filmKey/archive-download',
+    async (req, reply) => {
+      const key = req.params.filmKey;
+      try {
+        const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listFilmMeta()]);
+        const film = aggregateFilms(entries, metaMap).get(key);
+        if (!film) return reply.code(404).send({ error: 'film not found' });
+
+        const fileUrl = film.meta?.iaFileUrl ?? null;
+        if (!fileUrl) {
+          return reply.code(409).send({ error: 'film has no archive.org file' });
+        }
+
+        let path: string;
+        try {
+          path = await downloadArchiveFilm({ fileUrl, title: film.title, year: film.year });
+        } catch (err) {
+          logError('POST /api/films/:filmKey/archive-download failed', { filmKey: key, err: String(err) });
+          return reply.code(500).send({ error: 'archive download failed' });
+        }
+
+        await setArchiveDownloadedPath(key, path);
+        const freshMeta = (await listFilmMeta()).get(key) ?? null;
+        return reply.send({ meta: freshMeta });
+      } catch (err) {
+        logError('POST /api/films/:filmKey/archive-download failed', { filmKey: key, err: String(err) });
+        return reply.code(500).send({ error: 'archive download failed' });
       }
     }
   );

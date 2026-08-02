@@ -283,6 +283,11 @@ export interface Translations {
   filmsStreamSub: string;
   filmsStreamRent: string;
   filmsStreamBuy: string;
+  filmsArchiveBadge: string;
+  filmsArchiveLookup: string;
+  filmsArchiveDownload: string;
+  filmsArchiveDownloaded: string;
+  filmsArchiveNone: string;
 
   // Songs page filters & ratings
   songsFilterListened: string;
@@ -599,6 +604,11 @@ export const translations: Record<Language, Translations> = {
     filmsStreamSub: 'Abbonamento',
     filmsStreamRent: 'Noleggio',
     filmsStreamBuy: 'Acquisto',
+    filmsArchiveBadge: 'Archive',
+    filmsArchiveLookup: 'Cerca su Internet Archive',
+    filmsArchiveDownload: 'Scarica in archivio',
+    filmsArchiveDownloaded: 'Scaricato in archivio',
+    filmsArchiveNone: 'Nessuna copia di pubblico dominio trovata',
 
     songsFilterListened: 'Ascoltate',
     songsFilterUnlistened: 'Da ascoltare',
@@ -912,6 +922,11 @@ export const translations: Record<Language, Translations> = {
     filmsStreamSub: 'Subscription',
     filmsStreamRent: 'Rental',
     filmsStreamBuy: 'Purchase',
+    filmsArchiveBadge: 'Archive',
+    filmsArchiveLookup: 'Search Internet Archive',
+    filmsArchiveDownload: 'Download to archive',
+    filmsArchiveDownloaded: 'Downloaded to archive',
+    filmsArchiveNone: 'No public-domain copy found',
 
     songsFilterListened: 'Listened',
     songsFilterUnlistened: 'To listen',

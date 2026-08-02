@@ -1,5 +1,6 @@
 import { query } from '../utils/db';
 import type { FilmMetaRecord, FilmUserMeta, StreamingPlatformOption } from '../types';
+import type { ArchiveEnrichmentResult } from './archiveEnrichment';
 
 export function filmKey(title: string, year: string | number | null | undefined): string {
   const t = title.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -21,6 +22,13 @@ interface FilmMetaRow {
   streaming_options: StreamingPlatformOption[] | null;
   streaming_checked_at: Date | null;
   watchmode_title_id: number | null;
+  ia_identifier: string | null;
+  ia_title: string | null;
+  ia_year: string | null;
+  ia_page_url: string | null;
+  ia_file_url: string | null;
+  ia_checked_at: Date | null;
+  ia_downloaded_path: string | null;
 }
 
 function rowToRecord(row: FilmMetaRow): FilmMetaRecord {
@@ -38,12 +46,20 @@ function rowToRecord(row: FilmMetaRow): FilmMetaRecord {
     streamingOptions: row.streaming_options ?? null,
     streamingCheckedAt: row.streaming_checked_at ? row.streaming_checked_at.toISOString() : null,
     watchmodeTitleId: row.watchmode_title_id ?? null,
+    iaIdentifier: row.ia_identifier,
+    iaTitle: row.ia_title,
+    iaYear: row.ia_year,
+    iaPageUrl: row.ia_page_url,
+    iaFileUrl: row.ia_file_url,
+    iaCheckedAt: row.ia_checked_at ? row.ia_checked_at.toISOString() : null,
+    iaDownloadedPath: row.ia_downloaded_path,
   };
 }
 
 const SELECT_COLS =
   'film_key, tmdb_id, genres, overview, film_cast, tmdb_score, watched, rating, score, availability, ' +
-  'streaming_options, streaming_checked_at, watchmode_title_id';
+  'streaming_options, streaming_checked_at, watchmode_title_id, ' +
+  'ia_identifier, ia_title, ia_year, ia_page_url, ia_file_url, ia_checked_at, ia_downloaded_path';
 
 export async function upsertFilmEnrichment(input: {
   filmKey: string;
@@ -163,4 +179,44 @@ export async function listFilmMeta(): Promise<Map<string, FilmMetaRecord>> {
 export async function getFilmMeta(key: string): Promise<FilmMetaRecord | null> {
   const rows = await query<FilmMetaRow>(`SELECT ${SELECT_COLS} FROM film_meta WHERE film_key = $1`, [key]);
   return rows[0] ? rowToRecord(rows[0]) : null;
+}
+
+/**
+ * Writes the Internet Archive lookup outcome. `result: null` records a
+ * checked-and-not-found, so a backfill can skip re-querying it for a while.
+ * Deliberately never writes ia_downloaded_path: a later re-check must not
+ * erase a film already sitting on disk.
+ */
+export async function upsertArchiveEnrichment(input: {
+  filmKey: string;
+  result: ArchiveEnrichmentResult | null;
+}): Promise<void> {
+  await query(`INSERT INTO film_meta (film_key) VALUES ($1) ON CONFLICT (film_key) DO NOTHING`, [input.filmKey]);
+  await query(
+    `UPDATE film_meta SET
+       ia_identifier = $2,
+       ia_title = $3,
+       ia_year = $4,
+       ia_page_url = $5,
+       ia_file_url = $6,
+       ia_checked_at = now(),
+       updated_at = now()
+     WHERE film_key = $1`,
+    [
+      input.filmKey,
+      input.result?.identifier ?? null,
+      input.result?.title ?? null,
+      input.result?.year ?? null,
+      input.result?.pageUrl ?? null,
+      input.result?.fileUrl ?? null,
+    ]
+  );
+}
+
+/** Records where a downloaded public-domain film landed on disk. */
+export async function setArchiveDownloadedPath(filmKey: string, path: string | null): Promise<void> {
+  await query(
+    `UPDATE film_meta SET ia_downloaded_path = $2, updated_at = now() WHERE film_key = $1`,
+    [filmKey, path]
+  );
 }

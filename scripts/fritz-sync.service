@@ -1,0 +1,9 @@
+[Unit]
+Description=SoundReel media sync to FRITZ!Box USB storage
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+TimeoutStartSec=0
+ExecStart=/home/mike/works/Soundreel/scripts/fritz-sync.sh

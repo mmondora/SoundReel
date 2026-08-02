@@ -161,6 +161,13 @@ CREATE TABLE IF NOT EXISTS film_meta (
   streaming_options JSONB,
   streaming_checked_at TIMESTAMPTZ,
   watchmode_title_id INTEGER,
+  ia_identifier TEXT,
+  ia_title TEXT,
+  ia_year TEXT,
+  ia_page_url TEXT,
+  ia_file_url TEXT,
+  ia_checked_at TIMESTAMPTZ,
+  ia_downloaded_path TEXT,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

@@ -385,6 +385,25 @@ export async function refreshFilmStreaming(filmKey: string): Promise<FilmMetaRec
   return data.meta;
 }
 
+// Manual per-film Internet Archive actions. Both throw on non-2xx (409 when
+// the film has no archive file, 502 when Archive itself failed) — the caller
+// catches and surfaces it, per the pipeline resilience convention.
+export async function archiveLookupFilm(filmKey: string): Promise<FilmMetaRecord> {
+  const res = await fetch(url(`/api/films/${encodeURIComponent(filmKey)}/archive-lookup`), {
+    method: 'POST',
+  });
+  const data = await json<{ meta: FilmMetaRecord }>(res);
+  return data.meta;
+}
+
+export async function archiveDownloadFilm(filmKey: string): Promise<FilmMetaRecord> {
+  const res = await fetch(url(`/api/films/${encodeURIComponent(filmKey)}/archive-download`), {
+    method: 'POST',
+  });
+  const data = await json<{ meta: FilmMetaRecord }>(res);
+  return data.meta;
+}
+
 // --- Songs ---
 
 export interface SongMetaPatchBody {

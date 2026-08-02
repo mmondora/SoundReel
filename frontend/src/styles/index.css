@@ -3756,6 +3756,36 @@ body {
 .badge-link.manual-override-paid { background: var(--warning); color: #000; }
 .badge-link.manual-override-absent { background: var(--error); color: #fff; opacity: 0.5; }
 
+.badge-link.archive { background: #6b7280; }
+
+.archive-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 1.4rem;
+  height: 1.4rem;
+  font-size: 0.6rem;
+  line-height: 1;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.archive-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.archive-btn:disabled { opacity: 0.5; cursor: default; }
+
+.archive-downloaded {
+  font-size: 0.7rem;
+  color: var(--success);
+}
+
 .stream-refresh {
   background: none;
   border: 1px solid var(--border);

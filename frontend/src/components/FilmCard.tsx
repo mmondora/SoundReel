@@ -10,8 +10,11 @@ interface FilmCardProps {
   film: AggregatedFilm;
   onPatch: (patch: FilmMetaPatchBody) => void;
   onRefreshStreaming: () => Promise<void>;
+  onArchiveLookup: () => Promise<void>;
+  onArchiveDownload: () => Promise<void>;
 }
 
+// keep in sync with backend/src/services/watchlistExport.ts SERVICES
 const SERVICES: Array<{ key: keyof StreamingUrls; label: string; className: string }> = [
   { key: 'netflix', label: 'Netflix', className: 'netflix' },
   { key: 'primeVideo', label: 'Prime', className: 'prime' },
@@ -104,12 +107,13 @@ export function manualOnlyServices(
 }
 
 /** One deduplicated film row: poster, TMDb metadata, ratings and streaming availability. */
-export function FilmCard({ film, onPatch, onRefreshStreaming }: FilmCardProps) {
+export function FilmCard({ film, onPatch, onRefreshStreaming, onArchiveLookup, onArchiveDownload }: FilmCardProps) {
   const { t } = useLanguage();
   const meta = film.meta;
   // Slider position while dragging; null when idle (shows the stored score).
   const [sliderDraft, setSliderDraft] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [archiveBusy, setArchiveBusy] = useState(false);
 
   const sliderValue = sliderDraft ?? meta?.score ?? 50;
 
@@ -120,6 +124,16 @@ export function FilmCard({ film, onPatch, onRefreshStreaming }: FilmCardProps) {
       await onRefreshStreaming();
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function runArchiveAction(action: () => Promise<void>) {
+    if (archiveBusy) return;
+    setArchiveBusy(true);
+    try {
+      await action();
+    } finally {
+      setArchiveBusy(false);
     }
   }
 
@@ -295,6 +309,41 @@ export function FilmCard({ film, onPatch, onRefreshStreaming }: FilmCardProps) {
             </>
           ) : (
             SERVICES.map((svc) => renderSearchBadge(svc))
+          )}
+          {meta?.iaPageUrl ? (
+            <span className="film-service">
+              <a
+                href={meta.iaPageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="badge-link archive"
+              >
+                {t.filmsArchiveBadge}
+              </a>
+              {meta.iaDownloadedPath ? (
+                <span className="archive-downloaded" title={t.filmsArchiveDownloaded}>✓</span>
+              ) : meta.iaFileUrl ? (
+                <button
+                  type="button"
+                  className="archive-btn"
+                  title={t.filmsArchiveDownload}
+                  disabled={archiveBusy}
+                  onClick={() => runArchiveAction(onArchiveDownload)}
+                >
+                  ⬇
+                </button>
+              ) : null}
+            </span>
+          ) : (
+            <button
+              type="button"
+              className="archive-btn"
+              title={meta?.iaCheckedAt ? t.filmsArchiveNone : t.filmsArchiveLookup}
+              disabled={archiveBusy}
+              onClick={() => runArchiveAction(onArchiveLookup)}
+            >
+              {meta?.iaCheckedAt ? '∅' : '🔍'}
+            </button>
           )}
           <button
             type="button"

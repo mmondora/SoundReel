@@ -24,9 +24,11 @@ services:
       FRONTEND_URL: https://soundreel.casamon.dev
       SPOTIFY_REDIRECT_URI: https://oauth.casamon.dev/spotify/callback
       MUSIC_LIBRARY_PATH: /music
+      FILMS_LIBRARY_PATH: /films
     volumes:
       - soundreel_media:/data/media
       - /home/mike/Music:/music:ro
+      - /home/mike/Films:/films
     depends_on:
       soundreel-db:
         condition: service_healthy
