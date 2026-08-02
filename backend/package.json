@@ -1,6 +1,6 @@
 {
   "name": "soundreel-backend",
-  "version": "2.5.7",
+  "version": "2.6.0",
   "private": true,
   "main": "dist/server.js",
   "scripts": {
