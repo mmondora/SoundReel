@@ -11,6 +11,10 @@ set -euo pipefail
 ENV_FILE="${FRITZ_SYNC_ENV:-/etc/soundreel/fritz-sync.env}"
 LOG_FILE="${FRITZ_SYNC_LOG:-/var/log/soundreel/fritz-sync.log}"
 MOUNTPOINT="$(mktemp -d /tmp/fritz-sync.XXXXXX)"
+# Populated just before the mount call; declared here (empty) so the cleanup
+# trap can reference it safely under `set -u` even if the script exits before
+# that point.
+CRED_FILE=""
 
 log() {
   mkdir -p "$(dirname "$LOG_FILE")"
@@ -29,6 +33,9 @@ cleanup() {
     fi
   fi
   rmdir "$MOUNTPOINT" 2>/dev/null || true
+  # The CIFS credentials file must never survive a failed run either, hence
+  # this lives in the same trap rather than only after a successful mount.
+  rm -f "$CRED_FILE"
   [ $status -ne 0 ] && log "FAILED (exit $status)"
   exit $status
 }
@@ -45,8 +52,15 @@ fi
 : "${FRITZ_VOLUME:?}" "${MUSIC_SRC:?}" "${FILMS_SRC:?}"
 
 log "mounting //$FRITZ_HOST/$FRITZ_SHARE"
+# A password embedded in -o would show up in `ps` output for any local user,
+# and a comma inside it would silently truncate the rest of the option list.
+# A credentials= file avoids both: chmod 600 happens before anything is
+# written to it, and it is removed by the cleanup trap above.
+CRED_FILE="$(mktemp /tmp/fritz-sync-cred.XXXXXX)"
+chmod 600 "$CRED_FILE"
+printf 'username=%s\npassword=%s\n' "$FRITZ_USER" "$FRITZ_PASSWORD" > "$CRED_FILE"
 mount -t cifs "//$FRITZ_HOST/$FRITZ_SHARE" "$MOUNTPOINT" \
-  -o "username=$FRITZ_USER,password=$FRITZ_PASSWORD,vers=3.0,iocharset=utf8,uid=$(id -u),gid=$(id -g)"
+  -o "credentials=$CRED_FILE,vers=3.0,iocharset=utf8,uid=$(id -u),gid=$(id -g)"
 
 # A swapped or unplugged stick would leave the mount pointing at something
 # unexpected, and --delete would then act on the wrong tree. Refuse to
@@ -92,14 +106,18 @@ fi
 
 log "exporting watchlist"
 WATCHLIST_TMP="$(mktemp /tmp/watchlist.XXXXXX.html)"
+# Surfaced in the final OK line below: a permanently failing export must not
+# be able to hide behind a run that otherwise reports success every night.
+WATCHLIST_STATUS="ok"
 if docker exec soundreel npm run --silent export:watchlist -- /tmp/watchlist.html \
    && docker cp soundreel:/tmp/watchlist.html "$WATCHLIST_TMP"; then
   cp "$WATCHLIST_TMP" "$VOLUME_DIR/watchlist.html"
 else
+  WATCHLIST_STATUS="stale"
   log "WARN watchlist export failed, keeping the previous copy"
 fi
 rm -f "$WATCHLIST_TMP"
 
 MUSIC_COUNT=$(find "$MUSIC_DEST" -type f | wc -l)
 FILMS_COUNT=$(find "$FILMS_DEST" -type f | wc -l)
-log "OK music=$MUSIC_COUNT films=$FILMS_COUNT"
+log "OK music=$MUSIC_COUNT films=$FILMS_COUNT watchlist=$WATCHLIST_STATUS"
