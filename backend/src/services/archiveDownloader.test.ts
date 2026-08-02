@@ -5,7 +5,7 @@ import { join } from 'path';
 
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn() }));
 
-import { archiveFilmFilename, downloadArchiveFilm } from './archiveDownloader';
+import { archiveFilmFilename, downloadArchiveFilm, __setMaxBytesForTesting } from './archiveDownloader';
 
 const originalFetch = global.fetch;
 
@@ -15,6 +15,32 @@ function bodyResponse(bytes: Buffer, contentLength?: string) {
     status: 200,
     headers: { get: (h: string) => (h.toLowerCase() === 'content-length' ? contentLength ?? String(bytes.length) : null) },
     arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+  } as unknown as Response;
+}
+
+/** A response with a streamable body, for exercising the running-byte-count
+ * ceiling directly (as opposed to bodyResponse's arrayBuffer-only shape,
+ * which the downloader only falls back to when no stream is present). */
+function streamResponse(chunks: Buffer[], contentLength: string | null) {
+  let i = 0;
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: (h: string) => (h.toLowerCase() === 'content-length' ? contentLength : null) },
+    body: {
+      getReader: () => ({
+        read: async () => {
+          if (i < chunks.length) {
+            const value = chunks[i++];
+            return { done: false, value };
+          }
+          return { done: true, value: undefined };
+        },
+        cancel: async () => {},
+        releaseLock: () => {},
+      }),
+    },
+    arrayBuffer: async () => Buffer.concat(chunks).buffer,
   } as unknown as Response;
 }
 
@@ -29,6 +55,10 @@ describe('archiveFilmFilename', () => {
 
   it('strips path separators and control characters', () => {
     expect(archiveFilmFilename('A/B: the\\film', '1970')).toBe('A-B- the-film (1970).mp4');
+  });
+
+  it('replaces a raw control character with a dash', () => {
+    expect(archiveFilmFilename('Bad\x1BTitle', '1970')).toBe('Bad-Title (1970).mp4');
   });
 
   it('truncates an absurdly long title', () => {
@@ -50,6 +80,7 @@ describe('downloadArchiveFilm', () => {
   afterEach(async () => {
     global.fetch = originalFetch;
     delete process.env.FILMS_LIBRARY_PATH;
+    __setMaxBytesForTesting(null);
     await fs.rm(dir, { recursive: true, force: true });
   });
 
@@ -91,5 +122,27 @@ describe('downloadArchiveFilm', () => {
     await expect(
       downloadArchiveFilm({ fileUrl: 'https://evil.example.com/x.mp4', title: 'X', year: null })
     ).rejects.toThrow(/archive\.org/);
+  });
+
+  it('aborts a streamed body that exceeds the ceiling when Content-Length is absent, leaving no file', async () => {
+    __setMaxBytesForTesting(20);
+    global.fetch = vi.fn().mockResolvedValue(
+      streamResponse([Buffer.alloc(15, 'a'), Buffer.alloc(15, 'b')], null)
+    );
+    await expect(
+      downloadArchiveFilm({ fileUrl: 'https://archive.org/download/x/x.mp4', title: 'NoHeader', year: null })
+    ).rejects.toThrow(/too large/i);
+    expect(await fs.readdir(dir)).toEqual([]);
+  });
+
+  it('aborts a streamed body that exceeds the ceiling when Content-Length under-reports it, leaving no file', async () => {
+    __setMaxBytesForTesting(20);
+    global.fetch = vi.fn().mockResolvedValue(
+      streamResponse([Buffer.alloc(15, 'a'), Buffer.alloc(15, 'b')], '5')
+    );
+    await expect(
+      downloadArchiveFilm({ fileUrl: 'https://archive.org/download/x/x.mp4', title: 'UnderReport', year: null })
+    ).rejects.toThrow(/too large/i);
+    expect(await fs.readdir(dir)).toEqual([]);
   });
 });

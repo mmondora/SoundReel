@@ -7,12 +7,24 @@ import { logInfo, logError } from '../utils/logger';
 const MAX_BYTES = 8 * 1024 * 1024 * 1024;
 const MAX_FILENAME_LENGTH = 160;
 
+// Test-only seam: lets archiveDownloader.test.ts exercise the streaming size
+// ceiling (a response with no/under-reported Content-Length whose body still
+// exceeds the limit) without moving gigabytes of data through the test
+// process. Production code always uses MAX_BYTES.
+let maxBytesOverride: number | null = null;
+export function __setMaxBytesForTesting(bytes: number | null): void {
+  maxBytesOverride = bytes;
+}
+function effectiveMaxBytes(): number {
+  return maxBytesOverride ?? MAX_BYTES;
+}
+
 /** Filesystem-safe `Title (Year).mp4`. Path separators and control characters
  * become dashes so a hostile or merely odd Archive title cannot escape the
  * films directory. */
 export function archiveFilmFilename(title: string, year: string | null): string {
   const safeTitle = title
-    .replace(/[/\\:*?"<>|]/g, '-')
+    .replace(/[/\\:*?"<>|\x00-\x1F]/g, '-')
     .replace(/\s+/g, ' ')
     .trim();
   const suffix = year ? ` (${year})` : '';
@@ -24,6 +36,11 @@ export function archiveFilmFilename(title: string, year: string | null): string 
  * Downloads one Archive-hosted film into FILMS_LIBRARY_PATH and returns the
  * path written. Throws on any failure, leaving nothing behind — the caller
  * records the path in film_meta only on success.
+ *
+ * The response body is streamed to disk with a running byte counter rather
+ * than buffered into memory first: a mirror that omits Content-Length, or
+ * reports a smaller value than it actually sends, must not be able to force
+ * an unbounded in-memory buffer before the size check ever runs.
  */
 export async function downloadArchiveFilm(input: {
   fileUrl: string;
@@ -48,26 +65,57 @@ export async function downloadArchiveFilm(input: {
   const res = await fetch(input.fileUrl);
   if (!res.ok) throw new Error(`archive download failed: HTTP ${res.status}`);
 
+  const limit = effectiveMaxBytes();
+  // Cheap early exit when the server is honest about the size — avoids even
+  // opening a file for an obviously oversized item. Not trusted on its own:
+  // the running total below is what actually enforces the ceiling.
   const declared = Number(res.headers.get('content-length') ?? 0);
-  if (declared > MAX_BYTES) {
+  if (declared > limit) {
     throw new Error(`file too large: ${declared} bytes`);
-  }
-
-  const buffer = Buffer.from(await res.arrayBuffer());
-  if (buffer.byteLength > MAX_BYTES) {
-    throw new Error(`file too large: ${buffer.byteLength} bytes`);
   }
 
   await fs.mkdir(root, { recursive: true });
   const dest = join(root, archiveFilmFilename(input.title, input.year));
+
+  let total = 0;
+  const handle = await fs.open(dest, 'w');
   try {
-    await fs.writeFile(dest, buffer);
+    const body = res.body as ReadableStream<Uint8Array> | null | undefined;
+    if (body && typeof body.getReader === 'function') {
+      const reader = body.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          total += value.byteLength;
+          if (total > limit) {
+            await reader.cancel().catch(() => {});
+            throw new Error(`file too large: exceeds ${limit} bytes`);
+          }
+          await handle.write(value);
+        }
+      } finally {
+        reader.releaseLock?.();
+      }
+    } else {
+      // Fallback for a response with no streamable body (e.g. a minimal test
+      // double). Still enforced against the ceiling before writing.
+      const buffer = Buffer.from(await res.arrayBuffer());
+      total = buffer.byteLength;
+      if (total > limit) {
+        throw new Error(`file too large: ${total} bytes`);
+      }
+      await handle.write(buffer);
+    }
   } catch (err) {
+    await handle.close().catch(() => {});
     await fs.rm(dest, { force: true });
     logError('archive download: scrittura fallita', { dest, err: String(err) });
     throw err;
   }
 
-  logInfo('archive download ok', { dest, bytes: buffer.byteLength });
+  await handle.close();
+  logInfo('archive download ok', { dest, bytes: total });
   return dest;
 }
