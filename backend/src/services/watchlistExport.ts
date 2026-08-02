@@ -1,4 +1,5 @@
 import type { AggregatedFilm, StreamingUrls } from '../types';
+import { safeUrl } from './songEnrichment';
 
 /** Same service list and order as the FilmCard badges, so the exported page
  * and the app agree on what "where can I watch this" means. */
@@ -21,19 +22,25 @@ function escapeHtml(value: string): string {
 
 function renderCard(film: AggregatedFilm): string {
   const subtitle = [film.director, film.year].filter(Boolean).map(String).map(escapeHtml).join(' · ');
-  const poster = film.posterUrl
-    ? `<img src="${escapeHtml(film.posterUrl)}" alt="" loading="lazy">`
+  // safeUrl restricts to http(s) before anything reaches an href/src: entry
+  // JSONB is not schema-validated on write (see films.ts), so a value here
+  // cannot be trusted to be a safe scheme just because it "should" be a URL.
+  const posterUrl = safeUrl(film.posterUrl);
+  const poster = posterUrl
+    ? `<img src="${escapeHtml(posterUrl)}" alt="" loading="lazy">`
     : '<div class="noposter">🎬</div>';
 
   const links: string[] = [];
   if (film.streamingUrls) {
     for (const svc of SERVICES) {
-      const href = film.streamingUrls[svc.key];
+      const href = safeUrl(film.streamingUrls[svc.key]);
       if (href) links.push(`<a href="${escapeHtml(href)}">${svc.label}</a>`);
     }
   }
-  if (film.imdbUrl) links.push(`<a href="${escapeHtml(film.imdbUrl)}">IMDb</a>`);
-  if (film.meta?.iaPageUrl) links.push(`<a href="${escapeHtml(film.meta.iaPageUrl)}">Archive</a>`);
+  const imdbUrl = safeUrl(film.imdbUrl);
+  if (imdbUrl) links.push(`<a href="${escapeHtml(imdbUrl)}">IMDb</a>`);
+  const iaPageUrl = safeUrl(film.meta?.iaPageUrl);
+  if (iaPageUrl) links.push(`<a href="${escapeHtml(iaPageUrl)}">Archive</a>`);
 
   const downloaded = film.meta?.iaDownloadedPath ? '<span class="dl">✓ in archivio</span>' : '';
 

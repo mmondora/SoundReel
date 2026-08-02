@@ -81,4 +81,43 @@ describe('renderWatchlistHtml', () => {
     ]);
     expect(html.indexOf('Amarcord')).toBeLessThan(html.indexOf('Zabriskie Point'));
   });
+
+  it('rejects a javascript: poster URL and falls back to the no-poster placeholder', () => {
+    const html = renderWatchlistHtml([film({ posterUrl: 'javascript:alert(1)' })]);
+    expect(html).not.toContain('javascript:');
+    expect(html).toContain('<div class="noposter">');
+  });
+
+  it('omits imdbUrl and archive links entirely when they use a javascript: scheme', () => {
+    const html = renderWatchlistHtml([
+      film({
+        imdbUrl: 'javascript:alert(1)',
+        meta: { iaPageUrl: 'javascript:alert(1)' } as AggregatedFilm['meta'],
+      }),
+    ]);
+    expect(html).not.toContain('javascript:');
+    expect(html).not.toContain('>IMDb<');
+    expect(html).not.toContain('>Archive<');
+  });
+
+  it('neutralizes a quote-breakout payload in a URL without breaking out of the attribute', () => {
+    const payload = 'https://x/"><script>alert(1)</script>';
+    const html = renderWatchlistHtml([film({ posterUrl: payload })]);
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&quot;&gt;&lt;script&gt;');
+  });
+
+  it('still renders well-formed https URLs for poster, imdb and archive links', () => {
+    const html = renderWatchlistHtml([
+      film({
+        posterUrl: 'https://image.tmdb.org/t/p/w200/poster.jpg',
+        imdbUrl: 'https://www.imdb.com/title/tt0017136/',
+        meta: { iaPageUrl: 'https://archive.org/details/metropolis' } as AggregatedFilm['meta'],
+      }),
+    ]);
+    expect(html).toContain('src="https://image.tmdb.org/t/p/w200/poster.jpg"');
+    expect(html).toContain('>IMDb<');
+    expect(html).toContain('archive.org/details/metropolis');
+    expect(html).toContain('>Archive<');
+  });
 });
