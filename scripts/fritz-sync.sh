@@ -20,7 +20,13 @@ log() {
 cleanup() {
   local status=$?
   if mountpoint -q "$MOUNTPOINT"; then
-    umount "$MOUNTPOINT" || log "WARN umount failed"
+    if ! umount "$MOUNTPOINT"; then
+      log "WARN umount failed, retrying with lazy unmount (umount -l)"
+      if ! umount -l "$MOUNTPOINT"; then
+        log "ERROR could not unmount $MOUNTPOINT even with -l; failing the run so it is never mistaken for success"
+        status=1
+      fi
+    fi
   fi
   rmdir "$MOUNTPOINT" 2>/dev/null || true
   [ $status -ne 0 ] && log "FAILED (exit $status)"
@@ -55,6 +61,20 @@ MUSIC_DEST="$VOLUME_DIR/Music/SoundReel"
 FILMS_DEST="$VOLUME_DIR/Movies/SoundReel"
 mkdir -p "$MUSIC_DEST" "$FILMS_DEST"
 
+# True if the given directory has at least one entry. An rsync --delete
+# against a source that exists but is empty (stalled bind mount, container
+# hiccup around the Films volume, ...) would look like a legitimately empty
+# tree and silently wipe everything previously synced into the matching
+# SoundReel/ subtree. Every --delete sync below is gated on this.
+has_content() {
+  [ -n "$(find "$1" -mindepth 1 -maxdepth 1 -print -quit)" ]
+}
+
+if ! has_content "$MUSIC_SRC"; then
+  log "ERROR music source is empty, refusing to delete-sync: $MUSIC_SRC"
+  exit 1
+fi
+
 log "syncing music"
 # --no-perms --no-owner --no-group: a CIFS mount cannot represent POSIX
 # ownership, so without these flags rsync would see every file as changed
@@ -62,12 +82,12 @@ log "syncing music"
 rsync -a --delete --partial --no-perms --no-owner --no-group \
   "$MUSIC_SRC/" "$MUSIC_DEST/"
 
-if [ -d "$FILMS_SRC" ]; then
+if [ -d "$FILMS_SRC" ] && has_content "$FILMS_SRC"; then
   log "syncing films"
   rsync -a --delete --partial --no-perms --no-owner --no-group \
     "$FILMS_SRC/" "$FILMS_DEST/"
 else
-  log "films source missing, skipped: $FILMS_SRC"
+  log "films source missing or empty, skipped: $FILMS_SRC"
 fi
 
 log "exporting watchlist"
