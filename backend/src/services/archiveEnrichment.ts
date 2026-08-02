@@ -21,6 +21,10 @@ export type ArchiveEnrichmentOutcome =
 const SEARCH_ENDPOINT = 'https://archive.org/advancedsearch.php';
 const METADATA_ENDPOINT = 'https://archive.org/metadata';
 const REQUEST_TIMEOUT_MS = 15_000;
+/** Must match the `rows` value used in buildSearchUrl — selectDoc uses it to
+ * tell "the fetched docs are the whole result set" from "there could be more
+ * we never looked at" when disambiguating a no-year match. */
+const SEARCH_ROWS = 10;
 
 /** Archive.org asks identified traffic to carry a descriptive User-Agent with
  * a contact, same policy shape as Nominatim. */
@@ -54,8 +58,17 @@ function yearMatches(docYear: unknown, wanted: string | null): boolean {
  * it's unique within this pass's doc list — two or more title-accepted docs
  * is treated as ambiguous (miss for this pass, not a pick), same as zero.
  * When a year is supplied it remains the disambiguator and the first
- * accepted+year-matching doc is used, unchanged from before. */
-function selectDoc(docs: ArchiveDoc[], query: string, year: string | null): ArchiveDoc | null {
+ * accepted+year-matching doc is used, unchanged from before.
+ *
+ * Gated on falsy rather than strictly `=== null`: a legacy JSONB film record
+ * can carry `year: ''` (isFilm in films.ts accepts it, and it flows straight
+ * through from film.year), and that must take the same no-year branch as
+ * `null` — not the year-supplied branch, which would accept the first title
+ * match with no disambiguation. numFound is also inspected here: only the
+ * first `rows` docs are ever fetched, so a unique match among those tells us
+ * nothing when the true result set is wider — that's still ambiguous, not a
+ * pick. */
+function selectDoc(docs: ArchiveDoc[], query: string, year: string | null, numFound: number): ArchiveDoc | null {
   const candidates = docs.filter(
     (doc) =>
       typeof doc.title === 'string' &&
@@ -63,7 +76,8 @@ function selectDoc(docs: ArchiveDoc[], query: string, year: string | null): Arch
       isAcceptedMatch(doc.title, query) &&
       yearMatches(doc.year, year)
   );
-  if (year === null) {
+  if (!year) {
+    if (numFound > SEARCH_ROWS) return null;
     return candidates.length === 1 ? candidates[0] : null;
   }
   return candidates[0] ?? null;
@@ -89,7 +103,7 @@ function buildSearchUrl(title: string, year: string | null): string {
   if (year) clauses.push(`year:[${Number(year) - 1} TO ${Number(year) + 1}]`);
   const params = new URLSearchParams({
     q: clauses.join(' AND '),
-    rows: '10',
+    rows: String(SEARCH_ROWS),
     output: 'json',
   });
   params.append('fl[]', 'identifier');
@@ -112,10 +126,11 @@ function selectFileUrl(identifier: string, files: ArchiveFile[]): string | null 
 
 async function searchOnce(query: string, year: string | null): Promise<ArchiveDoc | null> {
   const payload = (await getJson(buildSearchUrl(query, year))) as {
-    response?: { docs?: ArchiveDoc[] };
+    response?: { docs?: ArchiveDoc[]; numFound?: number };
   };
   const docs = payload?.response?.docs ?? [];
-  return selectDoc(docs, query, year);
+  const numFound = payload?.response?.numFound ?? docs.length;
+  return selectDoc(docs, query, year, numFound);
 }
 
 /**

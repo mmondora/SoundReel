@@ -5,7 +5,12 @@ import { join } from 'path';
 
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn() }));
 
-import { archiveFilmFilename, downloadArchiveFilm, __setMaxBytesForTesting } from './archiveDownloader';
+import {
+  archiveFilmFilename,
+  downloadArchiveFilm,
+  __setMaxBytesForTesting,
+  __setDownloadTimeoutMsForTesting,
+} from './archiveDownloader';
 
 const originalFetch = global.fetch;
 
@@ -15,6 +20,30 @@ function bodyResponse(bytes: Buffer, contentLength?: string) {
     status: 200,
     headers: { get: (h: string) => (h.toLowerCase() === 'content-length' ? contentLength ?? String(bytes.length) : null) },
     arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+  } as unknown as Response;
+}
+
+/** A response whose body never delivers a chunk (simulating a stalled
+ * connection) until the given AbortSignal fires, at which point its pending
+ * read() rejects — mirroring how a real fetch's body reader behaves once the
+ * request is aborted. Lets the timeout/abort path be exercised without
+ * waiting out the real download budget. */
+function stallingStreamResponse(signal: AbortSignal) {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    body: {
+      getReader: () => ({
+        read: () =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+          }),
+        cancel: async () => {},
+        releaseLock: () => {},
+      }),
+    },
+    arrayBuffer: async () => Buffer.alloc(0).buffer,
   } as unknown as Response;
 }
 
@@ -81,6 +110,7 @@ describe('downloadArchiveFilm', () => {
     global.fetch = originalFetch;
     delete process.env.FILMS_LIBRARY_PATH;
     __setMaxBytesForTesting(null);
+    __setDownloadTimeoutMsForTesting(null);
     await fs.rm(dir, { recursive: true, force: true });
   });
 
@@ -145,4 +175,20 @@ describe('downloadArchiveFilm', () => {
     ).rejects.toThrow(/too large/i);
     expect(await fs.readdir(dir)).toEqual([]);
   });
+
+  it('aborts a stalled download once the timeout budget elapses and leaves no partial file', async () => {
+    __setDownloadTimeoutMsForTesting(20);
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) =>
+      Promise.resolve(stallingStreamResponse(init!.signal as AbortSignal))
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      downloadArchiveFilm({ fileUrl: 'https://archive.org/download/x/x.mp4', title: 'Stalled', year: null })
+    ).rejects.toThrow();
+    expect(await fs.readdir(dir)).toEqual([]);
+    // The AbortController's signal must actually reach fetch() — otherwise a
+    // stalled connection could never be interrupted.
+    expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+  }, 2000);
 });

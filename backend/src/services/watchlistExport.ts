@@ -3,6 +3,7 @@ import { safeUrl } from './songEnrichment';
 
 /** Same service list and order as the FilmCard badges, so the exported page
  * and the app agree on what "where can I watch this" means. */
+// keep in sync with FilmCard.tsx SERVICES
 const SERVICES: Array<{ key: keyof StreamingUrls; label: string }> = [
   { key: 'netflix', label: 'Netflix' },
   { key: 'primeVideo', label: 'Prime' },
@@ -31,7 +32,17 @@ function renderCard(film: AggregatedFilm): string {
     : '<div class="noposter">🎬</div>';
 
   const links: string[] = [];
-  if (film.streamingUrls) {
+  // The API-reported deep links (meta.streamingOptions) take precedence, same
+  // as FilmCard.tsx: they point straight at the title on that platform rather
+  // than a generic search page. Only fall back to the generic search links
+  // when the API has nothing for this film.
+  const streamingOptions = film.meta?.streamingOptions ?? [];
+  if (streamingOptions.length > 0) {
+    for (const option of streamingOptions) {
+      const href = safeUrl(option.url);
+      if (href) links.push(`<a href="${escapeHtml(href)}">${escapeHtml(option.platform)}</a>`);
+    }
+  } else if (film.streamingUrls) {
     for (const svc of SERVICES) {
       const href = safeUrl(film.streamingUrls[svc.key]);
       if (href) links.push(`<a href="${escapeHtml(href)}">${svc.label}</a>`);

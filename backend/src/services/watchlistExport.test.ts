@@ -107,6 +107,53 @@ describe('renderWatchlistHtml', () => {
     expect(html).toContain('&quot;&gt;&lt;script&gt;');
   });
 
+  it('renders deep links from meta.streamingOptions when present, in preference to the search links', () => {
+    const html = renderWatchlistHtml([
+      film({
+        meta: {
+          streamingOptions: [
+            {
+              platform: 'Netflix',
+              type: 'SUBSCRIPTION',
+              is_free: false,
+              price: null,
+              url: 'https://www.netflix.com/watch/12345',
+            },
+          ],
+        } as AggregatedFilm['meta'],
+      }),
+    ]);
+    expect(html).toContain('href="https://www.netflix.com/watch/12345"');
+    expect(html).toContain('>Netflix<');
+    expect(html).not.toContain('netflix.com/search?q=Metropolis');
+  });
+
+  it('falls back to the generic search links when meta.streamingOptions is empty', () => {
+    const html = renderWatchlistHtml([
+      film({ meta: { streamingOptions: [] } as unknown as AggregatedFilm['meta'] }),
+    ]);
+    expect(html).toContain('netflix.com/search?q=Metropolis');
+  });
+
+  it('falls back to the generic search links when meta is absent entirely', () => {
+    const html = renderWatchlistHtml([film({ meta: null })]);
+    expect(html).toContain('netflix.com/search?q=Metropolis');
+  });
+
+  it('rejects a javascript: URL carried by a streamingOptions entry', () => {
+    const html = renderWatchlistHtml([
+      film({
+        meta: {
+          streamingOptions: [
+            { platform: 'Evil', type: 'FREE', is_free: true, price: null, url: 'javascript:alert(1)' },
+          ],
+        } as AggregatedFilm['meta'],
+      }),
+    ]);
+    expect(html).not.toContain('javascript:');
+    expect(html).not.toContain('>Evil<');
+  });
+
   it('still renders well-formed https URLs for poster, imdb and archive links', () => {
     const html = renderWatchlistHtml([
       film({

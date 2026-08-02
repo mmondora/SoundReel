@@ -202,6 +202,65 @@ describe('enrichFilmFromArchive', () => {
     expect(fetchMock.mock.calls.length).toBe(3);
   });
 
+  it('treats an empty-string year the same as no year: two title matches are ambiguous (miss)', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(searchResponse([
+      { identifier: 'nosferatu_a', title: 'Nosferatu', year: '1922' },
+      { identifier: 'nosferatu_b', title: 'Nosferatu', year: '1922' },
+    ]));
+    global.fetch = fetchMock;
+
+    // The empty string is what a legacy JSONB film row carries instead of
+    // null (films.ts's isFilm accepts it and passes it straight through) —
+    // it must take the same ambiguity-checked branch as null, not the
+    // year-supplied "first match wins" branch.
+    const outcome = await enrichFilmFromArchive('Nosferatu', '');
+    expect(outcome.status).toBe('miss');
+    expect(fetchMock.mock.calls.length).toBe(1);
+  });
+
+  it('treats a title match beyond the fetched rows window as ambiguous when year is unknown (numFound > rows)', async () => {
+    const docs = [
+      { identifier: 'nosferatu', title: 'Nosferatu', year: '1922' },
+      ...Array.from({ length: 9 }, (_, i) => ({
+        identifier: `filler_${i}`,
+        title: 'Something Else Entirely',
+        year: '2000',
+      })),
+    ];
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ response: { numFound: 40, docs } }),
+    } as Response);
+    global.fetch = fetchMock;
+
+    // Only the first 10 docs (this pass's `rows`) are ever fetched. A unique
+    // accepted match among those tells us nothing when 40 uploads share the
+    // title — one of the other 30 could easily be a better/duplicate match.
+    const outcome = await enrichFilmFromArchive('Nosferatu', null);
+    expect(outcome.status).toBe('miss');
+    expect(fetchMock.mock.calls.length).toBe(1);
+  });
+
+  it('still accepts a unique no-year match when numFound is within the fetched rows window', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          response: {
+            numFound: 1,
+            docs: [{ identifier: 'noyear', title: 'Nosferatu', year: '1922' }],
+          },
+        }),
+      } as Response)
+      .mockResolvedValueOnce(metadataResponse([{ name: 'n.mp4', format: 'h.264', size: '5' }]));
+    global.fetch = fetchMock;
+
+    const outcome = await enrichFilmFromArchive('Nosferatu', null);
+    expect(outcome.status).toBe('hit');
+  });
+
   it('still returns a hit when two docs match and a year was supplied (ambiguity check only applies without a year)', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(searchResponse([
