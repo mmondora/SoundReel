@@ -33,27 +33,54 @@ They just land in the films directory by hand and get synced like anything else.
 ## 1. Architecture
 
 ```
-GEEKOM (source of truth)                    FRITZ!Box
-┌────────────────────────────┐              ┌──────────────────────┐
-│ /home/mike/Music     (ro)  │              │ USB storage          │
-│ /home/mike/Films     (rw)  │  rsync 04:00 │  ├── Music/          │
-│ SoundReel Postgres         │ ───────────► │  ├── Films/          │
-│   → watchlist.html         │   CIFS mount │  └── watchlist.html  │
-└────────────────────────────┘              │        ↓             │
-                                            │  DLNA media server   │
-                                            │        ↓             │
-                                            │  TV / VLC / phones   │
-                                            └──────────────────────┘
+GEEKOM (source of truth)                 FRITZ!Box 7530 — 192.168.178.10
+┌───────────────────────────┐            ┌────────────────────────────────┐
+│ /home/mike/Music    (ro)  │            │ //…/FRITZ.NAS                  │
+│ /home/mike/Films    (rw)  │ rsync 04:00│  └── TESLA_MEDIA/  (USB, ~100GB│
+│ SoundReel Postgres        │ ──────────►│       ├── Music/    free)      │
+│   → watchlist.html        │ CIFS SMB3  │       │    └── SoundReel/ ←     │
+└───────────────────────────┘            │       ├── Movies/              │
+                                         │       │    └── SoundReel/ ←    │
+                                         │       └── watchlist.html   ←   │
+                                         │              ↓                 │
+                                         │       DLNA media server        │
+                                         │              ↓                 │
+                                         │       TV / VLC / phones        │
+                                         └────────────────────────────────┘
 ```
 
 Outside the house the Fritz's own MyFRITZ!/VPN handles access — that is the
 Fritz's job and this design does not touch it.
 
-### Fritz-side prerequisites (manual, one-off, done by the user)
+### Verified environment (probed 2026-08-02)
 
-- USB storage attached with room for 2.3 GB of music plus films
-- Media server enabled: Heimnetz → Mediaserver, with the USB volume selected
-- A FRITZ!NAS user with a password, for the CIFS mount
+- The Fritz is **192.168.178.10**, not the default gateway: `192.168.178.1`
+  is a MikroTik router, and the name `fritz.box` resolves to an unreachable
+  public IPv6 address. The sync job must use the IP, never the hostname.
+- Firmware FRITZ!OS 8.02 on a FRITZ!Box 7530.
+- SMB exposes exactly one share, **`FRITZ.NAS`**, whose root holds both
+  volumes: `TESLA_MEDIA/` (the USB stick) and `FRITZ/` (small internal
+  storage — not a sync target). Dialect **SMB3**; SMB1 is disabled, so
+  `vers=3.0` is required on the mount.
+- Write access verified with user `geekom`: created a directory and a file
+  under `TESLA_MEDIA/` and removed both. ~100 GB free.
+- The stick is the car's Tesla media drive and already holds a `Music/` tree
+  of 737 artist folders plus `Movies/`, `Boombox/`, `LicensePlate/`.
+  **Consequence: never rsync onto `Music/` or `Movies/` directly** — with
+  `--delete` that would wipe the existing library. Everything this design
+  writes goes under a dedicated `SoundReel/` subdirectory of each, so the two
+  collections coexist and `--delete` only ever prunes our own files.
+
+### Fritz-side prerequisites (manual, one-off — done)
+
+- USB storage attached with free space
+- Media server enabled: Rete domestica → Mediaserver, with the USB volume
+  selected
+- SMB enabled: Rete domestica → Memoria (NAS) → *Accesso ai dati nella rete
+  domestica tramite SMB* (off by default on FRITZ!OS 8, and required in
+  addition to the per-user permission below)
+- A FRITZ!Box user with a password and *Accesso ai contenuti NAS* granted,
+  with write permission on the USB volume
 
 ## 2. Sync job
 
@@ -63,17 +90,26 @@ systemd timer at 04:00 daily.
 Steps, in order, each failing loudly and leaving the previous state intact:
 
 1. read credentials from `/etc/soundreel/fritz-sync.env` (root-owned, mode
-   0600, **never committed**: `FRITZ_HOST`, `FRITZ_SHARE`, `FRITZ_USER`,
-   `FRITZ_PASSWORD`)
-2. mount `//$FRITZ_HOST/$FRITZ_SHARE` on a temp mountpoint via CIFS
-3. `rsync -a --delete --partial` for `Music/` and `Films/`
-4. regenerate and copy `watchlist.html` (section 5)
+   0600, **never committed**: `FRITZ_HOST=192.168.178.10`,
+   `FRITZ_SHARE=FRITZ.NAS`, `FRITZ_USER`, `FRITZ_PASSWORD`)
+2. mount `//$FRITZ_HOST/$FRITZ_SHARE` on a temp mountpoint via CIFS with
+   `vers=3.0`
+3. `rsync -a --delete --partial`
+   `/home/mike/Music/` → `TESLA_MEDIA/Music/SoundReel/` and
+   `/home/mike/Films/` → `TESLA_MEDIA/Movies/SoundReel/`
+4. regenerate and copy `watchlist.html` into `TESLA_MEDIA/` (section 5)
 5. unmount, always, including on failure (trap)
 6. append a one-line summary to `/var/log/soundreel/fritz-sync.log`
 
 Properties that matter: idempotent (a re-run after a failure just resumes),
 one-directional (the Fritz copy is disposable; nothing flows back), and
-`--delete` so removing a file locally removes it from the archive.
+`--delete` scoped to the `SoundReel/` subdirectories so it prunes our own
+removed files without ever touching the existing Tesla library.
+
+Before syncing, the script asserts that the mountpoint really contains
+`TESLA_MEDIA/` and aborts otherwise. Without that check, a stick swapped or
+unplugged would leave the mount pointing somewhere unexpected and `--delete`
+would act on the wrong tree.
 
 Failure handling: any step failing aborts the run with a non-zero exit and a
 log line. No retry loop — the timer fires again the next night. A partial
