@@ -1,0 +1,28 @@
+# The ONE privileged step of the whole sync, done once with sudo. Everything
+# afterwards — the nightly mount included — runs as an unprivileged user.
+#
+# Why an fstab entry at all: mounting CIFS is privileged. mount.cifs is
+# setuid root, but it refuses a non-root caller unless the mount is declared
+# here with the `user` option. With that option in place, `mount <mountpoint>`
+# is permitted for the user who mounted it, and only that user can unmount it.
+#
+# Setup, once:
+#
+#   mkdir -p ~/.config/soundreel ~/.local/share/soundreel/fritz
+#   umask 077 && printf 'username=%s\npassword=%s\n' geekom 'YOUR-PASSWORD' \
+#     > ~/.config/soundreel/fritz-credentials
+#   chmod 600 ~/.config/soundreel/fritz-credentials
+#   sudo tee -a /etc/fstab < scripts/fritz-sync.fstab.example
+#
+# Adjust the paths and uid/gid below if your user is not mike (uid 1000).
+#
+# The hostname fritz.box is NOT usable: on this network it resolves to an
+# unreachable public IPv6, and 192.168.178.1 is a MikroTik router, not the
+# FRITZ!Box. SMB1 is disabled on the box, hence vers=3.0.
+#
+# noauto  — not mounted at boot; the sync script mounts it on demand
+# user    — permits the unprivileged mount, and restricts unmounting to the
+#           user who performed it
+# _netdev — never block boot waiting for the network
+
+//192.168.178.10/FRITZ.NAS /home/mike/.local/share/soundreel/fritz cifs noauto,user,_netdev,credentials=/home/mike/.config/soundreel/fritz-credentials,vers=3.0,iocharset=utf8,uid=1000,gid=1000 0 0

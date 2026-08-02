@@ -101,7 +101,7 @@ soundreel/
 - **TMDb**: GET a `https://api.themoviedb.org/3/search/movie`
 - **Telegram**: webhook, risposta inline nel messaggio
 - **cobalt.tools**: POST a `https://api.cobalt.tools/` per estrazione video — implementare SEMPRE fallback su OG scraping se cobalt fallisce
-- **FRITZ!Box**: `192.168.178.10` (share SMB3 `FRITZ.NAS`) — sync notturna della libreria via `scripts/fritz-sync.sh`, scrive SOLO in `TESLA_MEDIA/Music/SoundReel` e `TESLA_MEDIA/Movies/SoundReel` (la chiavetta è il drive media Tesla dell'auto, non toccare il resto)
+- **FRITZ!Box**: `192.168.178.10` (share SMB3 `FRITZ.NAS`) — sync notturna della libreria via `scripts/fritz-sync.sh`, scrive SOLO in `TESLA_MEDIA/Music/SoundReel` e `TESLA_MEDIA/Movies/SoundReel` (la chiavetta è il drive media Tesla dell'auto, non toccare il resto). Gira senza root: mount delegato a una riga `/etc/fstab` con opzione `user` (`scripts/fritz-sync.fstab.example`, unico passo con sudo, una tantum), config in `~/.config/soundreel/`, password solo nel file credenziali 0600 letto da mount.cifs
 
 ### Resilienza della pipeline
 La pipeline è progettata per essere resiliente:
@@ -153,9 +153,13 @@ docker compose logs -f soundreel
 # Restart container
 docker compose restart soundreel
 
-# Sync manuale della libreria verso la chiavetta del FRITZ!Box
-sudo ./scripts/fritz-sync.sh
-cat /var/log/soundreel/fritz-sync.log
+# Sync manuale della libreria verso la chiavetta del FRITZ!Box (nessun root:
+# il mount è delegato a una riga in /etc/fstab con opzione `user`)
+./scripts/fritz-sync.sh
+cat ~/.local/share/soundreel/fritz-sync.log
+
+# Timer utente (systemd --user, linger già attivo su questa macchina)
+systemctl --user list-timers fritz-sync.timer
 ```
 
 ## Cose da NON fare

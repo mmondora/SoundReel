@@ -2,19 +2,30 @@
 # Nightly one-way sync of the SoundReel media library to the FRITZ!Box USB
 # stick, where the box's own DLNA server picks it up for the TV.
 #
+# Runs entirely as an unprivileged user. Mounting a CIFS share is the one
+# privileged step, and it is delegated to a one-off /etc/fstab entry carrying
+# the `user` option (see fritz-sync.fstab.example): `mount <mountpoint>` with
+# no options is then permitted for the user who owns that entry, and
+# mount.cifs — which is setuid root — does the rest. Nothing here needs sudo.
+#
+# The credentials never pass through this script: fstab points mount.cifs at
+# a 0600 credentials file directly, so the password lives in exactly one
+# place and is read by the mount helper, not by us.
+#
 # The stick is the car's Tesla media drive and already holds its own Music/
 # and Movies/ trees, so everything written here lives under a dedicated
 # SoundReel/ subdirectory and --delete is scoped to those. Syncing onto the
 # parent directories would wipe that library.
 set -euo pipefail
 
-ENV_FILE="${FRITZ_SYNC_ENV:-/etc/soundreel/fritz-sync.env}"
-LOG_FILE="${FRITZ_SYNC_LOG:-/var/log/soundreel/fritz-sync.log}"
-MOUNTPOINT="$(mktemp -d /tmp/fritz-sync.XXXXXX)"
-# Populated just before the mount call; declared here (empty) so the cleanup
-# trap can reference it safely under `set -u` even if the script exits before
-# that point.
-CRED_FILE=""
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+ENV_FILE="${FRITZ_SYNC_ENV:-$CONFIG_HOME/soundreel/fritz-sync.env}"
+LOG_FILE="${FRITZ_SYNC_LOG:-$DATA_HOME/soundreel/fritz-sync.log}"
+
+# Set once the mount succeeds, so the cleanup trap unmounts only what this
+# run actually mounted — a share left mounted by hand stays mounted.
+MOUNTED_BY_US=0
 
 log() {
   mkdir -p "$(dirname "$LOG_FILE")"
@@ -23,7 +34,7 @@ log() {
 
 cleanup() {
   local status=$?
-  if mountpoint -q "$MOUNTPOINT"; then
+  if [ "$MOUNTED_BY_US" -eq 1 ] && mountpoint -q "$MOUNTPOINT"; then
     if ! umount "$MOUNTPOINT"; then
       log "WARN umount failed, retrying with lazy unmount (umount -l)"
       if ! umount -l "$MOUNTPOINT"; then
@@ -32,10 +43,6 @@ cleanup() {
       fi
     fi
   fi
-  rmdir "$MOUNTPOINT" 2>/dev/null || true
-  # The CIFS credentials file must never survive a failed run either, hence
-  # this lives in the same trap rather than only after a successful mount.
-  rm -f "$CRED_FILE"
   [ $status -ne 0 ] && log "FAILED (exit $status)"
   exit $status
 }
@@ -48,19 +55,25 @@ fi
 # shellcheck disable=SC1090
 . "$ENV_FILE"
 
-: "${FRITZ_HOST:?}" "${FRITZ_SHARE:?}" "${FRITZ_USER:?}" "${FRITZ_PASSWORD:?}"
-: "${FRITZ_VOLUME:?}" "${MUSIC_SRC:?}" "${FILMS_SRC:?}"
+: "${MOUNTPOINT:?}" "${FRITZ_VOLUME:?}" "${MUSIC_SRC:?}" "${FILMS_SRC:?}"
 
-log "mounting //$FRITZ_HOST/$FRITZ_SHARE"
-# A password embedded in -o would show up in `ps` output for any local user,
-# and a comma inside it would silently truncate the rest of the option list.
-# A credentials= file avoids both: chmod 600 happens before anything is
-# written to it, and it is removed by the cleanup trap above.
-CRED_FILE="$(mktemp /tmp/fritz-sync-cred.XXXXXX)"
-chmod 600 "$CRED_FILE"
-printf 'username=%s\npassword=%s\n' "$FRITZ_USER" "$FRITZ_PASSWORD" > "$CRED_FILE"
-mount -t cifs "//$FRITZ_HOST/$FRITZ_SHARE" "$MOUNTPOINT" \
-  -o "credentials=$CRED_FILE,vers=3.0,iocharset=utf8,uid=$(id -u),gid=$(id -g)"
+# The mountpoint must be the one named in the fstab entry, or `mount` with a
+# bare path has nothing to resolve.
+if [ ! -d "$MOUNTPOINT" ]; then
+  log "ERROR mountpoint does not exist: $MOUNTPOINT (create it, and add the fstab line from scripts/fritz-sync.fstab.example)"
+  exit 1
+fi
+
+if mountpoint -q "$MOUNTPOINT"; then
+  log "already mounted, reusing: $MOUNTPOINT"
+else
+  log "mounting $MOUNTPOINT (options come from /etc/fstab)"
+  if ! mount "$MOUNTPOINT"; then
+    log "ERROR mount failed — check the fstab entry has the 'user' option and that the credentials file is readable"
+    exit 1
+  fi
+  MOUNTED_BY_US=1
+fi
 
 # A swapped or unplugged stick would leave the mount pointing at something
 # unexpected, and --delete would then act on the wrong tree. Refuse to
@@ -105,7 +118,7 @@ else
 fi
 
 log "exporting watchlist"
-WATCHLIST_TMP="$(mktemp /tmp/watchlist.XXXXXX.html)"
+WATCHLIST_TMP="$(mktemp -t watchlist.XXXXXX.html)"
 # Surfaced in the final OK line below: a permanently failing export must not
 # be able to hide behind a run that otherwise reports success every night.
 WATCHLIST_STATUS="ok"

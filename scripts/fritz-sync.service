@@ -1,9 +1,11 @@
 [Unit]
 Description=SoundReel media sync to FRITZ!Box USB storage
-After=network-online.target docker.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
+# The default start timeout would SIGTERM a real multi-gigabyte sync
+# mid-transfer; the first run alone copies the whole music library.
 TimeoutStartSec=0
 ExecStart=/home/mike/works/Soundreel/scripts/fritz-sync.sh
