@@ -22,7 +22,7 @@ const AVAILABILITY = new Set(['free', 'paid', 'absent']);
 // films mentioned in older entries from this aggregation. This is a
 // single-user app with roughly a few hundred entries total today, so an
 // explicit high limit is cheap and keeps every entry's films visible.
-const LIST_ENTRIES_LIMIT = 10000;
+export const LIST_ENTRIES_LIMIT = 10000;
 
 function isFilm(value: unknown): value is Film {
   if (
@@ -47,7 +47,7 @@ function isFilm(value: unknown): value is Film {
  * /api/films and the refresh-streaming route, which both need to resolve a
  * film's current display fields (imdbUrl in particular) from entries.
  */
-function aggregateFilms(entries: Entry[], metaMap: Map<string, FilmMetaRecord>): Map<string, AggregatedFilm> {
+export function aggregateFilms(entries: Entry[], metaMap: Map<string, FilmMetaRecord>): Map<string, AggregatedFilm> {
   const byKey = new Map<string, AggregatedFilm>();
   // Track the createdAt of the mention whose fields currently populate the
   // aggregate's display fields, so we can pick the most recent one regardless
