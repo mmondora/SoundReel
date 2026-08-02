@@ -5,7 +5,7 @@ import { FilmCard } from '../components/FilmCard';
 import { DateGroupedList } from '../components/DateGroupedList';
 import { FilterPanel } from '../components/FilterPanel';
 import type { FilterSection } from '../components/FilterPanel';
-import { fetchFilms, patchFilmMeta, refreshFilmStreaming } from '../services/api';
+import { fetchFilms, patchFilmMeta, refreshFilmStreaming, archiveLookupFilm, archiveDownloadFilm } from '../services/api';
 import type { FilmMetaPatchBody } from '../services/api';
 import { filterFilms, collectGenres, sortFilms } from '../utils/filmFilters';
 import type { WatchedFilter, AvailabilityFilter, FilmSortMode } from '../utils/filmFilters';
@@ -145,6 +145,13 @@ export function FilmsPage() {
     }
   }
 
+  // Shared success-path merge for handlers that just replace a film's meta
+  // wholesale with whatever the server returned (refresh/lookup/download —
+  // none of them have a meaningful optimistic state to apply beforehand).
+  function applyServerMeta(filmKey: string, meta: FilmMetaRecord) {
+    setFilms((prev) => prev.map((f) => (f.filmKey === filmKey ? { ...f, meta } : f)));
+  }
+
   // On-demand streaming availability refresh. No optimistic change — nothing
   // local is known until the server responds — but still seq-guarded like
   // applyPatch so a slow response can't clobber a newer update for this film.
@@ -156,11 +163,31 @@ export function FilmsPage() {
     try {
       const serverMeta = await refreshFilmStreaming(filmKey);
       if (!isLatest()) return; // superseded by a later patch/refresh for this film
-      setFilms((prev) => prev.map((f) => (f.filmKey === filmKey ? { ...f, meta: serverMeta } : f)));
+      applyServerMeta(filmKey, serverMeta);
     } catch (err) {
       // Not configured (503), no IMDb id (404), or a provider error (500) —
       // all silently no-op per the pipeline resilience convention.
       console.warn('refresh streaming availability failed', filmKey, err);
+    }
+  }
+
+  // Manual per-film Internet Archive lookup/download. Same no-optimistic-state
+  // shape as refreshStreaming; errors are logged and leave the card usable.
+  async function archiveLookup(filmKey: string) {
+    try {
+      const serverMeta = await archiveLookupFilm(filmKey);
+      applyServerMeta(filmKey, serverMeta);
+    } catch (e) {
+      console.error('archive lookup failed', e);
+    }
+  }
+
+  async function archiveDownload(filmKey: string) {
+    try {
+      const serverMeta = await archiveDownloadFilm(filmKey);
+      applyServerMeta(filmKey, serverMeta);
+    } catch (e) {
+      console.error('archive download failed', e);
     }
   }
 
@@ -271,6 +298,8 @@ export function FilmsPage() {
                   void applyPatch(film.filmKey, patch);
                 }}
                 onRefreshStreaming={() => refreshStreaming(film.filmKey)}
+                onArchiveLookup={() => archiveLookup(film.filmKey)}
+                onArchiveDownload={() => archiveDownload(film.filmKey)}
               />
             )}
           />
@@ -283,6 +312,8 @@ export function FilmsPage() {
                 void applyPatch(film.filmKey, patch);
               }}
               onRefreshStreaming={() => refreshStreaming(film.filmKey)}
+              onArchiveLookup={() => archiveLookup(film.filmKey)}
+              onArchiveDownload={() => archiveDownload(film.filmKey)}
             />
           ))
         )}
