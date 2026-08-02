@@ -14,6 +14,7 @@ interface FilmCardProps {
   onArchiveDownload: () => Promise<void>;
 }
 
+// keep in sync with FilmCard.tsx SERVICES
 const SERVICES: Array<{ key: keyof StreamingUrls; label: string; className: string }> = [
   { key: 'netflix', label: 'Netflix', className: 'netflix' },
   { key: 'primeVideo', label: 'Prime', className: 'prime' },

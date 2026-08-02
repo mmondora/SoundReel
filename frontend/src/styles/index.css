@@ -3768,7 +3768,15 @@ body {
   line-height: 1;
   color: var(--text-secondary);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
+}
+
+.archive-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
 }
 
 .archive-btn:disabled { opacity: 0.5; cursor: default; }
