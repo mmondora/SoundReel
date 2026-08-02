@@ -170,4 +170,50 @@ describe('enrichFilmFromArchive', () => {
     // fl[]=year is always requested; what must be absent is the range filter.
     expect(firstUrl).not.toContain('year%3A%5B');
   });
+
+  it('returns a miss when the year is unknown and two docs both satisfy the title match (ambiguous, no metadata fetch)', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(searchResponse([
+      { identifier: 'nosferatu_a', title: 'Nosferatu', year: '1922' },
+      { identifier: 'nosferatu_b', title: 'Nosferatu', year: '1922' },
+    ]));
+    global.fetch = fetchMock;
+
+    const outcome = await enrichFilmFromArchive('Nosferatu', null);
+    expect(outcome.status).toBe('miss');
+    expect(fetchMock.mock.calls.length).toBe(1);
+  });
+
+  it('falls back to the cleaned-query pass when the raw pass is ambiguous, and accepts a unique match there', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(searchResponse([
+        { identifier: 'nosferatu_uncut_a', title: 'Nosferatu (Uncut Version)', year: '1922' },
+        { identifier: 'nosferatu_uncut_b', title: 'Nosferatu (Uncut Version)', year: '1922' },
+      ]))
+      .mockResolvedValueOnce(searchResponse([
+        { identifier: 'nosferatu', title: 'Nosferatu', year: '1922' },
+      ]))
+      .mockResolvedValueOnce(metadataResponse([{ name: 'nosferatu.mp4', format: 'h.264', size: '5' }]));
+    global.fetch = fetchMock;
+
+    const outcome = await enrichFilmFromArchive('Nosferatu (Uncut Version)', null);
+    expect(outcome.status).toBe('hit');
+    if (outcome.status !== 'hit') return;
+    expect(outcome.result.identifier).toBe('nosferatu');
+    expect(fetchMock.mock.calls.length).toBe(3);
+  });
+
+  it('still returns a hit when two docs match and a year was supplied (ambiguity check only applies without a year)', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(searchResponse([
+        { identifier: 'nold_a', title: 'Night of the Living Dead', year: '1968' },
+        { identifier: 'nold_b', title: 'Night of the Living Dead', year: '1968' },
+      ]))
+      .mockResolvedValueOnce(metadataResponse([{ name: 'film.mp4', format: 'h.264', size: '100' }]));
+    global.fetch = fetchMock;
+
+    const outcome = await enrichFilmFromArchive('Night of the Living Dead', '1968');
+    expect(outcome.status).toBe('hit');
+    if (outcome.status !== 'hit') return;
+    expect(outcome.result.identifier).toBe('nold_a');
+  });
 });

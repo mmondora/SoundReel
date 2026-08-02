@@ -49,16 +49,24 @@ function yearMatches(docYear: unknown, wanted: string | null): boolean {
   return Math.abs(a - b) <= 1;
 }
 
+/** With no year to disambiguate, a single title match could still be any of
+ * several unrelated same-titled uploads, so the match is only trusted when
+ * it's unique within this pass's doc list — two or more title-accepted docs
+ * is treated as ambiguous (miss for this pass, not a pick), same as zero.
+ * When a year is supplied it remains the disambiguator and the first
+ * accepted+year-matching doc is used, unchanged from before. */
 function selectDoc(docs: ArchiveDoc[], query: string, year: string | null): ArchiveDoc | null {
-  return (
-    docs.find(
-      (doc) =>
-        typeof doc.title === 'string' &&
-        typeof doc.identifier === 'string' &&
-        isAcceptedMatch(doc.title, query) &&
-        yearMatches(doc.year, year)
-    ) ?? null
+  const candidates = docs.filter(
+    (doc) =>
+      typeof doc.title === 'string' &&
+      typeof doc.identifier === 'string' &&
+      isAcceptedMatch(doc.title, query) &&
+      yearMatches(doc.year, year)
   );
+  if (year === null) {
+    return candidates.length === 1 ? candidates[0] : null;
+  }
+  return candidates[0] ?? null;
 }
 
 async function getJson(url: string): Promise<unknown> {
