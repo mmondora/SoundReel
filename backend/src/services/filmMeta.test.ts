@@ -2,7 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../utils/db', () => ({ query: vi.fn() }));
 
-import { filmKey, patchFilmUserMeta, upsertFilmEnrichment, upsertStreamingOptions, getFilmMeta } from './filmMeta';
+import {
+  filmKey,
+  patchFilmUserMeta,
+  upsertFilmEnrichment,
+  upsertStreamingOptions,
+  getFilmMeta,
+  upsertArchiveEnrichment,
+  setArchiveDownloadedPath,
+} from './filmMeta';
 import { query } from '../utils/db';
 
 describe('filmKey', () => {
@@ -197,5 +205,61 @@ describe('getFilmMeta', () => {
     vi.mocked(query).mockResolvedValueOnce([]);
     const rec = await getFilmMeta('nope::1999');
     expect(rec).toBeNull();
+  });
+});
+
+describe('upsertArchiveEnrichment', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('inserts the row then writes only ia_* columns', async () => {
+    await upsertArchiveEnrichment({
+      filmKey: 'metropolis::1927',
+      result: {
+        identifier: 'metropolis',
+        title: 'Metropolis',
+        year: '1927',
+        pageUrl: 'https://archive.org/details/metropolis',
+        fileUrl: 'https://archive.org/download/metropolis/m.mp4',
+      },
+    });
+
+    const [insertSql] = vi.mocked(query).mock.calls[0];
+    expect(insertSql).toContain('INSERT INTO film_meta');
+    expect(insertSql).toContain('ON CONFLICT (film_key) DO NOTHING');
+
+    const [updateSql, params] = vi.mocked(query).mock.calls[1];
+    expect(updateSql).toContain('ia_identifier');
+    expect(updateSql).toContain('ia_checked_at = now()');
+    // User state must never be touched by an enrichment write.
+    expect(updateSql).not.toContain('watched');
+    expect(updateSql).not.toContain('rating');
+    expect(updateSql).not.toContain('score');
+    expect(updateSql).not.toContain('availability');
+    expect(params).toContain('metropolis');
+  });
+
+  it('records a miss by stamping ia_checked_at with null identifiers', async () => {
+    await upsertArchiveEnrichment({ filmKey: 'nope::1999', result: null });
+
+    const [updateSql, params] = vi.mocked(query).mock.calls[1] as [string, unknown[]];
+    expect(updateSql).toContain('ia_checked_at = now()');
+    expect(params[1]).toBeNull();
+  });
+
+  it('never clears a downloaded path on re-check', async () => {
+    await upsertArchiveEnrichment({ filmKey: 'metropolis::1927', result: null });
+    const [updateSql] = vi.mocked(query).mock.calls[1];
+    expect(updateSql).not.toContain('ia_downloaded_path');
+  });
+});
+
+describe('setArchiveDownloadedPath', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('writes the path for the given film', async () => {
+    await setArchiveDownloadedPath('metropolis::1927', '/home/mike/Films/Metropolis (1927).mp4');
+    const [sql, params] = vi.mocked(query).mock.calls[0];
+    expect(sql).toContain('ia_downloaded_path');
+    expect(params).toEqual(['metropolis::1927', '/home/mike/Films/Metropolis (1927).mp4']);
   });
 });

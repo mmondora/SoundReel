@@ -28,6 +28,13 @@ function createDefaultMeta(filmKey: string): FilmMetaRecord {
     streamingOptions: null,
     streamingCheckedAt: null,
     watchmodeTitleId: null,
+    iaIdentifier: null,
+    iaTitle: null,
+    iaYear: null,
+    iaPageUrl: null,
+    iaFileUrl: null,
+    iaCheckedAt: null,
+    iaDownloadedPath: null,
   };
 }
 

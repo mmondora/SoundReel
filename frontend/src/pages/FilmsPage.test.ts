@@ -17,6 +17,13 @@ function meta(partial: Partial<FilmMetaRecord>): FilmMetaRecord {
     streamingOptions: null,
     streamingCheckedAt: null,
     watchmodeTitleId: null,
+    iaIdentifier: null,
+    iaTitle: null,
+    iaYear: null,
+    iaPageUrl: null,
+    iaFileUrl: null,
+    iaCheckedAt: null,
+    iaDownloadedPath: null,
     ...partial,
   };
 }
@@ -38,6 +45,13 @@ describe('mergePatch', () => {
       streamingOptions: null,
       streamingCheckedAt: null,
       watchmodeTitleId: null,
+      iaIdentifier: null,
+      iaTitle: null,
+      iaYear: null,
+      iaPageUrl: null,
+      iaFileUrl: null,
+      iaCheckedAt: null,
+      iaDownloadedPath: null,
     });
   });
 

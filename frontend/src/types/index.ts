@@ -57,6 +57,13 @@ export interface FilmMetaRecord extends FilmUserMeta {
   streamingOptions: StreamingPlatformOption[] | null;
   streamingCheckedAt: string | null;
   watchmodeTitleId: number | null;
+  iaIdentifier: string | null;
+  iaTitle: string | null;
+  iaYear: string | null;
+  iaPageUrl: string | null;
+  iaFileUrl: string | null;
+  iaCheckedAt: string | null;
+  iaDownloadedPath: string | null;
 }
 
 export interface FilmMention {
