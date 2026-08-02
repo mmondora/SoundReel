@@ -106,12 +106,15 @@ log "syncing music"
 # --no-perms --no-owner --no-group: a CIFS mount cannot represent POSIX
 # ownership, so without these flags rsync would see every file as changed
 # and re-copy the whole tree every night.
-rsync -a --delete --partial --no-perms --no-owner --no-group \
+# --no-links: nor can it represent symlinks — rsync aborts the entire run
+# with "Operation not supported (95)" on the first one it meets. Skipping
+# them is right for a media replica: a DLNA server plays files, not links.
+rsync -a --delete --partial --no-perms --no-owner --no-group --no-links \
   "$MUSIC_SRC/" "$MUSIC_DEST/"
 
 if [ -d "$FILMS_SRC" ] && has_content "$FILMS_SRC"; then
   log "syncing films"
-  rsync -a --delete --partial --no-perms --no-owner --no-group \
+  rsync -a --delete --partial --no-perms --no-owner --no-group --no-links \
     "$FILMS_SRC/" "$FILMS_DEST/"
 else
   log "films source missing or empty, skipped: $FILMS_SRC"
