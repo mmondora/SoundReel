@@ -210,7 +210,8 @@ describe('enrichFilmFromArchive', () => {
     const outcome = await enrichFilmFromArchive('Nosferatu', null);
     expect(outcome.status).toBe('hit');
     const firstUrl = String(fetchMock.mock.calls[0][0]);
-    expect(firstUrl).not.toContain('year');
+    // fl[]=year is always requested; what must be absent is the range filter.
+    expect(firstUrl).not.toContain('year%3A%5B');
   });
 });
 ```
