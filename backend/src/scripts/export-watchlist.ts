@@ -5,10 +5,10 @@
  *   npm run export:watchlist -- /tmp/watchlist.html
  */
 import { writeFileSync } from 'fs';
-import { listEntries } from '../src/utils/db';
-import { listFilmMeta } from '../src/services/filmMeta';
-import { aggregateFilms, LIST_ENTRIES_LIMIT } from '../src/routes/films';
-import { renderWatchlistHtml } from '../src/services/watchlistExport';
+import { listEntries } from '../utils/db';
+import { listFilmMeta } from '../services/filmMeta';
+import { aggregateFilms, LIST_ENTRIES_LIMIT } from '../routes/films';
+import { renderWatchlistHtml } from '../services/watchlistExport';
 
 async function main(): Promise<void> {
   const dest = process.argv[2];

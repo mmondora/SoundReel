@@ -8,7 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "migrate": "node dist/scripts/import-dump.js",
-    "export:watchlist": "tsx scripts/export-watchlist.ts",
+    "export:watchlist": "node dist/scripts/export-watchlist.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
