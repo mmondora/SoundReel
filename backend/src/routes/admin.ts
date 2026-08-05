@@ -159,6 +159,31 @@ interface PurgeBody {
 }
 
 export function registerAdminRoutes(app: FastifyInstance): void {
+  // Difesa in profondita' su tutte le route /api/admin/*.
+  //
+  // Authelia (middleware auth-family di Traefik) inietta Remote-User e
+  // Remote-Groups su ogni richiesta autenticata. Qui pretendiamo che ci
+  // siano: se il gate a monte venisse rimosso o bypassato, purge e
+  // cleanup-orphans restano comunque chiusi.
+  //
+  // Il 2026-08-05 e' successo esattamente questo: public:true in apps.yml
+  // metteva soundreel.casamon.dev in bypass Authelia totale, e
+  // POST /api/admin/purge — che cancella entry e directory media — era
+  // invocabile da internet senza credenziali. Il proxy non puo' essere
+  // l'unica difesa davanti a un'operazione distruttiva.
+  //
+  // Limite noto: l'header e' affidabile solo perche' Traefik lo riscrive su
+  // ogni richiesta proxata. Chi raggiunge il container direttamente sulla
+  // rete Docker puo' falsificarlo — questo alza il livello, non sostituisce
+  // l'isolamento di rete.
+  app.addHook('onRequest', async (req, reply) => {
+    if (!req.url.startsWith('/api/admin/')) return;
+    const user = String(req.headers['remote-user'] || '').trim();
+    if (!user) {
+      reply.code(401).send({ error: 'authentication required' });
+    }
+  });
+
   app.get('/api/admin/storage', async (_req, reply) => {
     const [total, perPlatform, perStatus, ageDist, dirStats] = await Promise.all([
       countEntries(),
