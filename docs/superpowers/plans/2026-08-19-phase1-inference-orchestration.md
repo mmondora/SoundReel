@@ -125,7 +125,6 @@ Crea `policy.py`:
 
 ```python
 from __future__ import annotations
-import json as _json
 import os
 
 DEFAULT_VISION_MODELS = "moondream"
@@ -307,7 +306,8 @@ Expected: FAIL con `ImportError: cannot import name 'apply_keep_alive'`
 
 - [ ] **Step 3: Scrivi l'implementazione minima**
 
-Aggiungi in fondo a `policy.py`:
+Aggiungi `import json as _json` in cima a `policy.py`, accanto a `import os`,
+poi aggiungi in fondo al file:
 
 ```python
 DEFAULT_UNLOAD_BACKENDS = "geekom"
@@ -821,7 +821,9 @@ if [ -f "$STAMPS" ]; then
 fi
 printf '%s' "$recent" > "$STAMPS"
 
-count=$(grep -c . "$STAMPS" 2>/dev/null || echo 0)
+# grep -c prints 0 AND exits 1 on no match, so `|| echo 0` would yield "0\n0"
+# and blow up the arithmetic below. Assign, then correct on failure.
+count=$(grep -c . "$STAMPS" 2>/dev/null) || count=0
 if [ "$count" -ge "$MAX_RECREATIONS" ]; then
     log "GPU Hang rilevato ma già $count ricreazioni nell'ultima ora: mi fermo"
     exit 0
@@ -981,16 +983,18 @@ describe('ollamaClient', () => {
       JSON.stringify({ error: 'vision model not available on local GPU' }),
       { status: 503, headers: { 'content-type': 'application/json' } }
     )));
-    vi.mock('fs', async () => {
-      const actual = await vi.importActual<typeof import('fs')>('fs');
-      return {
-        ...actual,
-        promises: { ...actual.promises, readFile: vi.fn(async () => Buffer.from('img')) },
-      };
-    });
+
+    // A real file, not a mocked fs: vi.mock() is hoisted out of the test body
+    // and would not apply here anyway.
+    const { mkdtemp, writeFile } = await import('fs/promises');
+    const { tmpdir } = await import('os');
+    const { join } = await import('path');
+    const dir = await mkdtemp(join(tmpdir(), 'ollama-test-'));
+    const frame = join(dir, 'frame1.jpg');
+    await writeFile(frame, Buffer.from([0xff, 0xd8, 0xff]));
 
     const { describeFramesWithVision } = await import('./ollamaClient');
-    await expect(describeFramesWithVision(['/tmp/frame1.jpg'])).resolves.toBeNull();
+    await expect(describeFramesWithVision([frame])).resolves.toBeNull();
   });
 });
 ```
