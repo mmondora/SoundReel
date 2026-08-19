@@ -103,6 +103,14 @@ In `app.py`, sostituisci `if not backends:` con il controllo sulla salute:
             )
 ```
 
+> **Emendato in review finale.** Questo predicato è necessario ma non
+> sufficiente: non basta che un backend vision-capable sia *sano*, deve anche
+> portare il modello. Il ripiego di tier del Task 2 è strutturalmente inerte
+> qui, perché `backends` è già stato ristretto al sottoinsieme vision-capable
+> prima di `select_backend`. La forma finale è
+> `if not any(b.healthy and (not b.models or model_family in b.models) for b in backends):`
+> — vedi la sezione 2b della spec.
+
 - [ ] **Step 4: Esegui il test e verifica che passi**
 
 Run: `cd /home/mike/works/geekom-hub/gpu-router && python3 -m pytest tests/test_app.py -v -k remote_is_down`
@@ -583,13 +591,60 @@ cd /home/mike/works/geekom-hub/gpu-router && python3 -m pytest tests/ -v
 
 - [ ] **Il router ricostruito rifiuta la vision con il messaggio giusto**
 
+> **Questo rebuild non è incrementale.** L'immagine in esecuzione è del
+> 2026-08-02 (`org.opencontainers.image.revision: unknown`): il restart porta
+> in produzione in un colpo solo i 13 commit di `gpu-router/` accumulati da
+> allora. Il **meccanismo di wake** e l'**iniezione di `keep_alive: 0`** non
+> hanno mai girato in produzione — vanno live per la prima volta in questo
+> stesso restart, insieme al re-tier, al guard vision e al connect timeout. Se
+> dopo il restart qualcosa si comporta in modo inatteso, il sospettato non è
+> per forza l'ultima modifica. Elenco esatto di ciò che si sta spedendo:
+>
+> ```bash
+> cd /home/mike/works/geekom-hub && git log --oneline \
+>   --since="$(docker image inspect gpu-router:local --format '{{.Created}}')" \
+>   -- gpu-router/
+> ```
+
 ```bash
 cd /home/mike/works/geekom-hub/gpu-router && docker compose up -d --build gpu-router
-sleep 5
+```
+
+**Non usare `sleep 5`.** Il rifiuto vision dipende da archipc marcato *down*, e
+la health loop non ci arriva in cinque secondi: dorme `HEALTH_CHECK_INTERVAL`
+(5s) prima del primo giro e servono `HEALTH_CHECK_FAILURES_BEFORE_DOWN` (2)
+fallimenti consecutivi, dove ogni fallimento è un connect verso una macchina
+spenta il cui MAC è ancora in ARP cache — quindi un timeout, non un refused.
+Convergenza misurata: ~18-20s. A t=5s archipc risulta ancora `healthy: true`,
+il guard lascia passare, la richiesta parte davvero verso la macchina spenta e
+il curl scade a vuoto. L'operatore riprova, la seconda volta passa, e non
+scopre mai la finestra. Aspettare la convergenza, non un tempo a caso:
+
+```bash
+archipc_healthy() {
+  curl -s -m 5 http://127.0.0.1:9001/router/backends \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(b["healthy"] for b in d["ollama"] if b["name"]=="archipc"))'
+}
+
+state=""
+for i in $(seq 1 40); do
+  state=$(archipc_healthy 2>/dev/null)
+  if [ "$state" = "False" ]; then echo "archipc marcato down dopo ${i}s"; break; fi
+  sleep 1
+done
+
+if [ "$state" != "False" ]; then
+  echo "FALLITO: archipc risulta ancora healthy=${state:-<nessuna risposta>} dopo 40s."
+  echo "Se la macchina è accesa, questa verifica non è applicabile: spegnila o salta al passo successivo."
+  echo "Se è spenta, la health loop non sta convergendo — indagare prima di proseguire."
+  echo "Non proseguire comunque: il curl qui sotto misurerebbe altro."
+  exit 1
+fi
+
 docker run --rm --network web curlimages/curl:latest -s -m 30 \
   http://gpu-router:9000/api/generate -d '{"model":"moondream:latest","prompt":"x"}'
 ```
-Expected: `{"error":"vision model not available on local GPU","model":"moondream"}` — con archipc spento. Prima di questo lavoro la stessa chiamata rispondeva `no healthy backends`.
+Expected: `{"error":"vision model not available on local GPU","model":"moondream"}` — con archipc spento, e in **meno di un secondo**, non dopo un timeout. Prima di questo lavoro la stessa chiamata rispondeva `no healthy backends`.
 
 - [ ] **Il testo continua a funzionare**
 
@@ -600,9 +655,46 @@ docker run --rm --network web curlimages/curl:latest -s -m 120 -o /dev/null -w "
 ```
 Expected: `200`, servito da geekom perché archipc è spento.
 
+- [ ] **Ridispiega SoundReel — senza questo, il passo successivo non può passare**
+
+L'immagine `soundreel` in esecuzione è del 2026-08-05: il suo
+`/app/dist/services/ollamaClient.js` non contiene né `VisionUnavailableError`
+né alcun ramo sul 503. Il commit che ha aggiunto lo skip pulito è mergiato ma
+non è mai stato deployato. Verificarlo prima, così il redeploy è una scelta e
+non un rito:
+
+```bash
+docker exec soundreel grep -c VisionUnavailableError /app/dist/services/ollamaClient.js
+```
+Expected **prima** del redeploy: `0` (grep esce 1). Se è già ≥1, il redeploy è
+superfluo e si può passare oltre.
+
+Deploy secondo la procedura documentata in `CLAUDE.md` (sistema
+`deploy-watcher`, file sentinel):
+
+```bash
+touch /home/mike/works/Soundreel/.rebuild
+
+# Esito dopo ~60s
+cat /home/mike/works/Soundreel/.rebuild-log
+
+# In alternativa, via API
+# curl -X POST https://console.casamon.dev/rebuild/soundreel
+# curl https://console.casamon.dev/deploy-status/soundreel
+```
+
+Poi riverificare, che è la condizione d'ingresso del passo successivo:
+
+```bash
+docker exec soundreel grep -c VisionUnavailableError /app/dist/services/ollamaClient.js
+```
+Expected: `≥1`. Finché è `0`, il log atteso sotto non può comparire e cercarlo
+è tempo perso.
+
 - [ ] **SoundReel registra lo skip, non un errore**
 
-Manda un reel con video al bot Telegram, poi:
+Solo dopo che il passo precedente ha dato `≥1`. Manda un reel con video al bot
+Telegram, poi:
 
 ```bash
 docker logs soundreel --since 10m 2>&1 | grep -i "vision"
@@ -615,4 +707,6 @@ Expected: compare `Vision describe saltata: backend vision non disponibile` a li
 /home/mike/works/geekom-hub/scripts/archi.sh ollama
 ssh mike@192.168.178.23 'ollama list' 2>/dev/null || docker run --rm --network web curlimages/curl:latest -s http://192.168.178.23:11434/api/tags
 ```
-Verifica quali modelli abbia davvero. Se `moondream` non c'è, la vision ripiegherebbe su geekom, che il guard blocca, quindi il risultato resta il 503 vision — corretto ma silenzioso sul perché. Installarlo lì è ciò che rende utile il wake.
+Verifica quali modelli abbia davvero. Se `moondream` non c'è, **non** c'è alcun ripiego su geekom: `app.py` restringe il pool al sottoinsieme vision-capable prima di `select_backend`, quindi per una richiesta vision non esiste un secondo tier. È il rifiuto stesso a essere model-aware — nessun backend vision-capable sano che porti il modello — e risponde 503 vision senza mandare nulla upstream. Corretto, ma silenzioso sul perché: dal 503 non si distingue "archipc spento" da "archipc acceso ma senza moondream", e solo `/router/status` (che espone `models` per backend) lo dice. Installarlo lì è ciò che rende utile il wake.
+
+Nota: il catalogo cachato dal router live indica che archipc ha già `moondream`, oltre a `qwen2.5`, `nomic-embed-text`, `qwen3` e `gemma4` — da confermare alla prima accensione.

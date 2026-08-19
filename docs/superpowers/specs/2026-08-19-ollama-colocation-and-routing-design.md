@@ -179,7 +179,8 @@ ripiega su tier 1 altrimenti. Quindi:
 |---|---|
 | archipc spento (abituale) | geekom |
 | archipc acceso | archipc |
-| archipc acceso, modello assente lì | geekom (vedi 2b) |
+| archipc acceso, modello di testo assente lì | geekom (vedi 2b) |
+| archipc acceso, modello **vision** assente lì | nessuno: 503 vision (vedi 2b) |
 
 I pesi diventano irrilevanti fra i due — restano a 100 entrambi perché il peso
 discrimina all'interno dello stesso tier, e qui ogni tier ha un solo backend.
@@ -199,11 +200,26 @@ quel modello, si scende al tier successivo e si riapplica il filtro. Se nessun
 tier ha il modello, si mantiene il comportamento attuale — instrada comunque e
 lascia parlare l'upstream — perché a quel punto il 404 è l'informazione corretta.
 
-Nota operativa: non è verificabile ora quali modelli abbia archipc, perché è
-spento. `moondream` in particolare potrebbe non essere installato sull'Ollama
-Windows. Con 2b in vigore l'assenza non è più un guasto: la vision ripiegherebbe
-su geekom — che però il guard blocca — quindi il risultato corretto resta il 503
-vision di 2c. Va verificato la prima volta che la macchina è accesa.
+**Il ripiego di tier non vale per le richieste vision.** `app.py` restringe
+`backends` al sottoinsieme vision-capable *prima* di chiamare `select_backend`,
+quindi per una richiesta vision non esiste un secondo tier su cui scendere: il
+ciclo di 2b non trova nulla, `_weighted_choice` prende comunque il tier
+preferito e la richiesta parte verso archipc. Il risultato sarebbe un 404
+upstream il cui corpo non contiene `vision model not available`, e SoundReel
+registrerebbe un errore generico invece dello skip pulito. 2b è
+strutturalmente inerte sul percorso vision.
+
+Perciò il rifiuto di 2c deve essere esso stesso model-aware: si rifiuta quando
+nessun backend vision-capable **sano** porta il modello richiesto. Un `models`
+vuoto significa "catalogo ignoto" (la health loop non ha ancora letto
+`/api/tags`) e continua a valere per tutto, esattamente come lo legge
+`select_backend`.
+
+Nota operativa: il catalogo cachato dal router live mostra che archipc ha
+davvero `moondream`, oltre a `qwen2.5`, `nomic-embed-text`, `qwen3` e `gemma4`.
+Il caso "modello vision assente su archipc" è quindi latente, non attivo — ma
+va coperto lo stesso, perché è il caso in cui una macchina accesa smette di
+servire vision senza dire perché.
 
 ### 2c. Il rifiuto vision guarda la salute, non la presenza
 
@@ -213,12 +229,18 @@ Il predicato cambia da "nessun backend vision-capable in configurazione" a
 ```python
 if is_vision_model(model_family):
     backends = [b for b in backends if vision_capable(b.name)]
-    if not any(b.healthy for b in backends):
+    if not any(
+        b.healthy and (not b.models or model_family in b.models)
+        for b in backends
+    ):
         return JSONResponse(
             {"error": "vision model not available on local GPU", "model": model_family},
             status_code=503,
         )
 ```
+
+Il predicato copre entrambi i casi di 2b: nessun backend vision-capable sano, e
+backend sano il cui catalogo non contiene il modello.
 
 Con archipc spento questo restituisce il messaggio vision invece di
 `no healthy backends`, quindi SoundReel solleva `VisionUnavailableError`, registra
@@ -233,7 +255,9 @@ Il messaggio resta invariato: SoundReel confronta la sottostringa
 - `select_backend`: archipc sano → archipc; archipc malato → geekom; archipc sano
   ma senza il modello → geekom; nessun tier con il modello → instrada comunque.
 - Rifiuto vision: archipc spento → 503 con il messaggio vision, **non**
-  `no healthy backends`; archipc acceso → instrada ad archipc.
+  `no healthy backends`; archipc acceso e con `moondream` → instrada ad archipc;
+  archipc acceso con catalogo ancora ignoto → instrada ad archipc; archipc
+  acceso ma senza `moondream` → 503 vision, e **niente** deve partire upstream.
 - Un test che costruisce il pool dalla stringa `OLLAMA_BACKENDS` reale del compose
   e verifica la tabella di 2a per intero. È la giuntura fra configurazione e
   codice, ed è esattamente dove si sono nascosti tre dei quattro difetti qui
@@ -255,6 +279,7 @@ Il messaggio resta invariato: SoundReel confronta la sottostringa
 |---|---|
 | I modelli spariscono nello spostamento | Il volume vecchio si cancella solo dopo aver verificato `ollama list` sul nuovo. Copia, non spostamento |
 | Il watchdog resta puntato alla directory vecchia | Modifica nello stesso commit dello spostamento; verifica esplicita dopo |
-| archipc acceso ma senza i modelli | 2b ripiega su geekom invece di 404; da verificare alla prima accensione |
+| archipc acceso ma senza i modelli di testo | 2b ripiega su geekom invece di 404 |
+| archipc acceso ma senza il modello vision | 2b non si applica (il guard ha già ristretto il pool): il rifiuto di 2c è model-aware e risponde 503 vision |
 | Ri-tierare cambia il routing per tutti i consumatori | È l'intento. I consumatori non cambiano codice: cambia solo quale macchina risponde |
 | Il traffico si sposta su archipc e i modelli su geekom si raffreddano | `keep_alive: 0` su geekom li scarica comunque dopo ogni uso: nessuna regressione |
