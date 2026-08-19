@@ -22,6 +22,18 @@ const OLLAMA_URL = process.env.OLLAMA_URL || 'http://ollama:11434';
 const TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || 'qwen2.5:3b';
 const VISION_MODEL = process.env.OLLAMA_VISION_MODEL || 'moondream:latest';
 
+/**
+ * The router refuses vision models when the only healthy backend is the local
+ * GPU, which hangs under ROCm vision inference. Not a failure: a capability
+ * that is not available right now.
+ */
+export class VisionUnavailableError extends Error {
+  constructor(message = 'vision model not available on local GPU') {
+    super(message);
+    this.name = 'VisionUnavailableError';
+  }
+}
+
 interface OllamaNativeResponse {
   response?: string;
   done?: boolean;
@@ -60,6 +72,10 @@ export async function generateText(
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
+      if (response.status === 503 && errText.includes('vision model not available')) {
+        logInfo('Vision non disponibile sul backend locale, salto', { model });
+        throw new VisionUnavailableError();
+      }
       logError('Ollama HTTP error', { status: response.status, body: errText.substring(0, 500) });
       throw new Error(`Ollama HTTP ${response.status}`);
     }
@@ -124,6 +140,10 @@ export async function describeFramesWithVision(framePaths: string[]): Promise<st
     logInfo('Vision describe ok', { frames: images.length, chars: text.length });
     return text;
   } catch (err) {
+    if (err instanceof VisionUnavailableError) {
+      logInfo('Vision describe saltata: backend vision non disponibile');
+      return null;
+    }
     logError('Vision describe failed', err);
     return null;
   }

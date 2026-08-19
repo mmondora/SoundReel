@@ -481,6 +481,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             const keyFrames = pickKeyFrames(localPaths.framePaths, KEY_FRAMES_COUNT);
             visualContext = await describeFramesWithVision(keyFrames);
             await appendActionLog(entryId, createActionLog('vision_describe', {
+              status: visualContext ? 'ok' : 'skipped',
               frames: keyFrames.length,
               chars: visualContext?.length || 0,
               provider: 'ollama-moondream',
