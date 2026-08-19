@@ -32,11 +32,17 @@ describe('ollamaClient', () => {
       .rejects.not.toBeInstanceOf(VisionUnavailableError);
   });
 
-  it('returns null from describeFramesWithVision when vision is unavailable', async () => {
+  it('treats an unavailable vision backend as a skip, not a failure', async () => {
+    // `null` alone proves nothing here: the pre-existing generic catch also
+    // returns null, so this test used to pass with the VisionUnavailableError
+    // branch deleted. What distinguishes the two is the log — an INFO "skip"
+    // instead of an ERROR "failed".
     vi.stubGlobal('fetch', vi.fn(async () => new Response(
       JSON.stringify({ error: 'vision model not available on local GPU' }),
       { status: 503, headers: { 'content-type': 'application/json' } }
     )));
+    const infoSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     // A real file, not a mocked fs: vi.mock() is hoisted out of the test body
     // and would not apply here anyway.
@@ -49,5 +55,11 @@ describe('ollamaClient', () => {
 
     const { describeFramesWithVision } = await import('./ollamaClient');
     await expect(describeFramesWithVision([frame])).resolves.toBeNull();
+
+    const infoMessages = infoSpy.mock.calls.map(([line]) => JSON.parse(String(line)).message);
+    expect(infoMessages).toContain('Vision describe saltata: backend vision non disponibile');
+
+    const errorMessages = errorSpy.mock.calls.map(([line]) => JSON.parse(String(line)).message);
+    expect(errorMessages).not.toContain('Vision describe failed');
   });
 });
