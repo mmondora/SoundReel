@@ -1186,5 +1186,19 @@ Expected: `0` per entrambi
 ```bash
 docker logs soundreel --since 10m 2>&1 | grep -c "Fallback Claude"
 ```
-Expected: `0` — l'analisi è tornata su Ollama, e la quota Max smette di essere
-consumata a ogni post
+Expected: **molto meno frequente di un post su uno — non zero.**
+
+Attenzione a non leggere un conteggio diverso da zero come una regressione.
+Il fallback non è innescato dall'hang della GPU: scatta ogni volta che
+`isEmptyAnalysis(ollamaResult)` è vera, e il commento in `aiAnalysis.ts` lo
+dice esplicitamente — «the local model returns nothing at all on a large share
+of entries even when handed a full caption + transcript + OCR payload». È una
+questione ortogonale alla fase 1. Anzi: rinunciare alla vision sul GPU locale
+rende l'estrazione vuota *marginalmente più probabile* sui reel video, perché
+il payload perde la descrizione dei frame.
+
+Quello che questa fase deve spostare è il caso in cui Ollama non risponde
+affatto (HTTP 500 dopo l'hang), non il caso in cui risponde a vuoto. Il
+segnale giusto è quindi il rapporto: prima il fallback partiva su
+*praticamente ogni* post, adesso deve restare confinato ai post con poco
+testo sorgente.
