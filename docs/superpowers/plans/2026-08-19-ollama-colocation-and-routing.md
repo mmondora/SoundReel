@@ -593,7 +593,7 @@ cd /home/mike/works/geekom-hub/gpu-router && python3 -m pytest tests/ -v
 
 > **Questo rebuild non è incrementale.** L'immagine in esecuzione è del
 > 2026-08-02 (`org.opencontainers.image.revision: unknown`): il restart porta
-> in produzione in un colpo solo i 13 commit di `gpu-router/` accumulati da
+> in produzione in un colpo solo i 16 commit di `gpu-router/` accumulati da
 > allora. Il **meccanismo di wake** e l'**iniezione di `keep_alive: 0`** non
 > hanno mai girato in produzione — vanno live per la prima volta in questo
 > stesso restart, insieme al re-tier, al guard vision e al connect timeout. Se
