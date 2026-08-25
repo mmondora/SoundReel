@@ -1864,3 +1864,241 @@ filesystem faked, so a regression that stops the pipeline enqueuing — or lets
 the second pass replace instead of merge — fails a test rather than reaching
 production."
 ```
+
+---
+
+### Task 8: Runner delle migration all'avvio
+
+**Aggiunto in corso d'opera.** Verificato in produzione: `job_queue` non ha
+`kind`, `priority` né `reanalyze`, e **non esiste alcun runner**. Deployare
+questo branch senza risolverlo significa che `enqueueJob` inserisce colonne
+inesistenti e **ogni contenuto inviato al bot fallisce** — non solo il backfill.
+
+Non è una novità di oggi: `place_meta` (006) e `film_archive` (008) non sono mai
+state applicate. Sono innocue perché nessuna riga di codice le usa, ma provano
+che il meccanismo manca da tempo e che finora è andata bene per caso.
+
+**Files:**
+- Create: `/home/mike/works/Soundreel/backend/src/db/runMigrations.ts`
+- Create: `/home/mike/works/Soundreel/backend/src/db/runMigrations.test.ts`
+- Modify: `/home/mike/works/Soundreel/backend/src/server.ts`
+- Modify: `/home/mike/works/Soundreel/Dockerfile`
+
+**Interfaces:**
+- Produces: `runMigrations(): Promise<string[]>` — restituisce i nomi applicati, in ordine
+
+- [ ] **Step 1: Il Dockerfile deve portarsi dietro le migration**
+
+Questo step va per primo perché senza di esso tutto il resto è inerte:
+**l'immagine di runtime oggi copia solo `init.sql`**, non la directory
+`migrations/`. Un runner che legge da lì non troverebbe nulla e non farebbe
+niente, senza errori.
+
+In `Dockerfile`, accanto alla riga `COPY backend/src/db/init.sql ./init.sql`:
+
+```dockerfile
+# The runner reads these at boot. Without this COPY it finds an empty directory
+# and silently applies nothing — worse than having no runner at all.
+COPY backend/src/db/migrations ./migrations
+```
+
+- [ ] **Step 2: Scrivi i test che falliscono**
+
+Crea `backend/src/db/runMigrations.test.ts`:
+
+```ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const queryMock = vi.fn();
+vi.mock('../utils/db', () => ({ query: (...a: unknown[]) => queryMock(...a) }));
+
+describe('runMigrations', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    queryMock.mockReset();
+    queryMock.mockResolvedValue([]);
+  });
+
+  async function withFiles(names: string[], contents: Record<string, string> = {}) {
+    vi.doMock('fs', async () => {
+      const actual = await vi.importActual<typeof import('fs')>('fs');
+      return {
+        ...actual,
+        promises: {
+          ...actual.promises,
+          readdir: vi.fn(async () => names),
+          readFile: vi.fn(async (p: string) => contents[String(p).split('/').pop() ?? ''] ?? 'SELECT 1;'),
+        },
+      };
+    });
+    const { runMigrations } = await import('./runMigrations');
+    return runMigrations();
+  }
+
+  it('applies migrations in filename order, not directory order', async () => {
+    const applied = await withFiles(['010_b.sql', '002_a.sql', '009_c.sql']);
+    expect(applied).toEqual(['002_a.sql', '009_c.sql', '010_b.sql']);
+  });
+
+  it('ignores files that are not .sql', async () => {
+    const applied = await withFiles(['001_a.sql', 'README.md', '.keep']);
+    expect(applied).toEqual(['001_a.sql']);
+  });
+
+  it('returns an empty list when the directory is missing', async () => {
+    vi.doMock('fs', async () => {
+      const actual = await vi.importActual<typeof import('fs')>('fs');
+      return {
+        ...actual,
+        promises: { ...actual.promises, readdir: vi.fn(async () => { throw new Error('ENOENT'); }) },
+      };
+    });
+    const { runMigrations } = await import('./runMigrations');
+    await expect(runMigrations()).resolves.toEqual([]);
+  });
+
+  it('throws on a failing migration rather than continuing', async () => {
+    queryMock.mockRejectedValueOnce(new Error('syntax error'));
+    await expect(withFiles(['001_broken.sql'])).rejects.toThrow(/001_broken\.sql/);
+  });
+
+  it('stops at the first failure instead of applying later ones', async () => {
+    queryMock.mockRejectedValueOnce(new Error('boom'));
+    await expect(withFiles(['001_a.sql', '002_b.sql'])).rejects.toThrow();
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+});
+```
+
+Esegui: `npx vitest run src/db/runMigrations.test.ts`
+Expected: FAIL, il modulo non esiste.
+
+- [ ] **Step 3: Implementa il runner**
+
+Crea `backend/src/db/runMigrations.ts`:
+
+```ts
+import { promises as fs } from 'fs';
+import path from 'path';
+import { query } from '../utils/db';
+
+/**
+ * Apply every migration file, in filename order, at boot.
+ *
+ * There is no tracking table and none is needed: every migration in this
+ * project is written with IF NOT EXISTS, so re-applying one is a no-op. That
+ * property is what keeps this honest — the day someone writes a migration that
+ * is not idempotent, this runner is the wrong tool and they must say so.
+ *
+ * A failure is fatal. A server that keeps running against a schema it could not
+ * finish shaping will fail later, further from the cause, on a request from a
+ * user rather than on a line in the boot log.
+ */
+export async function runMigrations(): Promise<string[]> {
+  const dir = process.env.MIGRATIONS_DIR
+    ?? path.join(__dirname, 'migrations');
+
+  let names: string[];
+  try {
+    names = await fs.readdir(dir);
+  } catch {
+    // Nothing to apply: a dev checkout without the directory, or an image that
+    // did not ship it. The Dockerfile COPY is what makes this branch not fire
+    // in production.
+    return [];
+  }
+
+  const sql = names.filter((n) => n.endsWith('.sql')).sort();
+  const applied: string[] = [];
+
+  for (const name of sql) {
+    const text = await fs.readFile(path.join(dir, name), 'utf8');
+    try {
+      await query(text);
+    } catch (err) {
+      throw new Error(`migration ${name} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    applied.push(name);
+  }
+
+  return applied;
+}
+```
+
+Nota sul percorso: in sviluppo `__dirname` è `src/db`, e le migration stanno in
+`src/db/migrations`. Nell'immagine il codice compilato sta in `dist/db` mentre
+il `COPY` dello Step 1 le mette in `/app/migrations`. **Verifica quale dei due
+percorsi risolve nel container** e, se non combaciano, imposta `MIGRATIONS_DIR`
+nel compose invece di indovinare.
+
+- [ ] **Step 4: Esegui i test e verifica che passino**
+
+Run: `cd /home/mike/works/Soundreel/backend && npx vitest run src/db/runMigrations.test.ts`
+Expected: PASS, 5 test.
+
+- [ ] **Step 5: Chiamalo all'avvio, prima del worker**
+
+In `server.ts`, prima di `startJobQueueWorker` e prima che qualunque rotta possa
+accettare traffico:
+
+```ts
+  const applied = await runMigrations();
+  if (applied.length) {
+    log.info(`Migration applicate: ${applied.join(', ')}`);
+  }
+```
+
+Se `runMigrations` lancia, l'avvio deve fallire. Non intercettare l'eccezione
+per proseguire: uno schema incompleto produce errori più tardi e più lontano
+dalla causa.
+
+- [ ] **Step 6: Verifica sul database vero, in locale**
+
+```bash
+cd /home/mike/works/Soundreel/backend
+npm run build
+MIGRATIONS_DIR=src/db/migrations DB_HOST=localhost DB_PORT=5432 node -e "
+require('./dist/db/runMigrations').runMigrations()
+  .then(a => { console.log('applicate:', a); process.exit(0); })
+  .catch(e => { console.error(e); process.exit(1); });
+"
+docker exec soundreel-db psql -U soundreel -d soundreel -t -c \
+  "SELECT column_name FROM information_schema.columns WHERE table_name='job_queue' ORDER BY ordinal_position;"
+```
+Expected: l'elenco delle migration applicate, e fra le colonne di `job_queue`
+compaiono `kind`, `priority` e `reanalyze`.
+
+**Se il comando fallisce sulla connessione**, il database non è raggiungibile da
+qui: riportalo invece di aggirarlo. Questo step serve proprio a provare che il
+runner tocca uno schema vero, non un mock.
+
+- [ ] **Step 7: Rieseguilo, per dimostrare che è idempotente**
+
+```bash
+MIGRATIONS_DIR=src/db/migrations DB_HOST=localhost DB_PORT=5432 node -e "
+require('./dist/db/runMigrations').runMigrations()
+  .then(a => { console.log('seconda esecuzione, applicate:', a); process.exit(0); })
+  .catch(e => { console.error(e); process.exit(1); });
+"
+```
+Expected: stessa lista, nessun errore. È la proprietà su cui si regge l'assenza
+di una tabella di tracking.
+
+- [ ] **Step 8: Commit**
+
+```bash
+cd /home/mike/works/Soundreel
+git add backend/src/db/runMigrations.ts backend/src/db/runMigrations.test.ts backend/src/server.ts Dockerfile
+git commit -m "feat(db): apply migrations at boot
+
+Production's job_queue had none of kind, priority or reanalyze, and nothing in
+this project ever applied a migration — 006 and 008 were never run either. They
+were harmless because no code uses their tables, but the mechanism has been
+missing for a long time and got away with it.
+
+Deploying the async-transcription work without this would have made every
+enqueue reference a column that does not exist.
+
+The runtime image shipped only init.sql, so the COPY matters as much as the
+runner: without it the directory is empty and nothing is applied, silently."
+```
