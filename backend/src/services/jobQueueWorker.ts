@@ -182,6 +182,13 @@ async function dispatch(job: JobQueueRow, onSettle: () => void): Promise<void> {
         url: job.sourceUrl,
         channel: 'telegram',
         user: job.inputUser,
+        // Read only on a re-analysis, and the reason it is sent at all: the
+        // route used to find the entry by re-normalising this URL, and 183 of
+        // the 882 stored source_urls predate the current normaliser and do not
+        // survive the round trip. Two of the 83 backfill candidates are among
+        // them — their transcript was written (that path uses entryId) and the
+        // second pass then 404'd. The id is what the job actually knows.
+        entryId: job.entryId,
         // Read off the job, never inferred from notify. Inferring it conflated
         // "merge instead of replace" with "never fetch", which turned every
         // repair run into a no-op: a repair exists because the download failed,

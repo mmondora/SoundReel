@@ -278,6 +278,14 @@ describe('reanalyze flag', () => {
   it('asks for a re-analysis only when the job carries the flag', async () => {
     expect((await analyzeBody({ ...IG_JOB, notify: false, reanalyze: true })).reanalyze).toBe(true);
   });
+
+  // The route used to find the entry by re-normalising this URL. 183 of the
+  // 882 stored source_urls predate the current normaliser and do not survive
+  // that round trip, so their second pass 404'd after the transcript had
+  // already been written. The job knows the id; send it.
+  it('carries the entry id so the route never re-derives it from the URL', async () => {
+    expect((await analyzeBody({ ...IG_JOB, reanalyze: true })).entryId).toBe('e1');
+  });
 });
 
 describe('dispatchTranscribe', () => {

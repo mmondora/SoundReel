@@ -77,7 +77,30 @@ interface AnalyzeRequestBody {
    * are merged into what is already there instead of replacing it.
    */
   reanalyze?: boolean;
+  /**
+   * Which entry the second pass belongs to. Only read when `reanalyze` is set.
+   *
+   * A re-analysis is always fired *about a row we already have* — the job that
+   * fires it carries that row's id — so resolving it by URL was an unnecessary
+   * round trip through `normalizeUrl`, and the round trip does not always come
+   * back: 183 of the 882 stored `source_url` values predate the current
+   * normaliser and do not re-normalise to themselves (a path that kept its
+   * trailing slash before the query string, an `igsh` value whose `==` is now
+   * re-encoded to `%3D%3D`). For those the lookup missed, the route answered
+   * 404, and a transcript that had already been written was never analysed.
+   *
+   * Resolving by id also removes a second, latent hazard: `findEntryByUrl`
+   * ends in `ORDER BY created_at DESC LIMIT 1`, so if duplicate URLs were ever
+   * allowed the pass could land on a different row than the one transcribed.
+   *
+   * Optional, and the URL lookup stays as the fallback, because jobs enqueued
+   * before this field existed are still sitting in `job_queue` and must keep
+   * working.
+   */
+  entryId?: string;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const KEY_FRAMES_COUNT = Number(process.env.KEY_FRAMES_COUNT || 5);
 
@@ -136,9 +159,18 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
     const channel = req.body?.channel ?? 'web';
     const user = req.body?.user ?? null;
     const reanalyze = req.body?.reanalyze === true;
+    const requestedEntryId = reanalyze ? req.body?.entryId : undefined;
 
     if (!url) {
       reply.code(400).send({ error: 'URL richiesto' });
+      return;
+    }
+
+    // `getEntry` parameterises the id straight into a `uuid` column, so a
+    // malformed one is a Postgres type error (a 500) rather than a miss.
+    // Reject it here, where it is a client mistake with a name.
+    if (requestedEntryId !== undefined && !UUID_RE.test(requestedEntryId)) {
+      reply.code(400).send({ success: false, error: 'entryId non valido' });
       return;
     }
 
@@ -168,9 +200,20 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         // A re-analysis never creates an entry and never returns early on a
         // `completed` one — that short-circuit is exactly what it exists to
         // bypass.
-        priorEntry = await findEntryByUrl(normalizedUrl);
+        //
+        // By id when the caller supplied one (every job does since the field
+        // was added), by URL only for jobs enqueued before that. See the
+        // `entryId` field's doc for why the URL route is not reliable.
+        priorEntry = requestedEntryId !== undefined
+          ? await getEntry(requestedEntryId)
+          : await findEntryByUrl(normalizedUrl);
         if (!priorEntry) {
-          log.warn('reanalyze su URL sconosciuto', { url: normalizedUrl });
+          // Both keys are logged: which one was used is the first thing worth
+          // knowing when a second pass 404s.
+          log.warn('reanalyze su entry sconosciuta', {
+            entryId: requestedEntryId ?? null,
+            url: normalizedUrl,
+          });
           reply.code(404).send({ success: false, error: 'reanalyze: entry non trovata' });
           return;
         }

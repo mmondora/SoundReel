@@ -292,4 +292,35 @@ describe('analyze route second pass', () => {
       onlyMatch(/notes\.filter\(\(n\) => !priorNoteKeys\.has\(noteKey\(n\.category, n\.text\)\)\)/);
     });
   });
+
+  /**
+   * The pass is fired about a row we already have, and the job that fires it
+   * carries that row's id. Resolving it by re-normalising the URL instead sent
+   * it through `normalizeUrl` a second time, and 183 of the 882 stored
+   * `source_url` values do not survive that round trip — two of them among the
+   * backfill candidates, whose transcript landed (that write uses the id) and
+   * whose second pass then 404'd.
+   */
+  describe('resolves the entry by id', () => {
+    it('reads entryId only on a second pass', () => {
+      onlyMatch(/const requestedEntryId = reanalyze \? req\.body\?\.entryId : undefined;/);
+    });
+
+    it('looks the entry up by id, and by URL only as the fallback', () => {
+      // Jobs enqueued before the field existed are still in job_queue and
+      // carry no entryId, so the URL lookup has to stay — but only as the
+      // second arm of this ternary, never as the primary path.
+      onlyMatch(
+        /priorEntry = requestedEntryId !== undefined\n\s*\? await getEntry\(requestedEntryId\)\n\s*: await findEntryByUrl\(normalizedUrl\);/
+      );
+    });
+
+    it('rejects a malformed entryId before it reaches the uuid column', () => {
+      // getEntry parameterises straight into `id uuid`; a non-uuid is a
+      // Postgres type error, i.e. a 500 on what is a client mistake.
+      const at = sites('UUID_RE.test(requestedEntryId)');
+      expect(at).toHaveLength(1);
+      expect(source.slice(at[0], at[0] + 200)).toContain("400");
+    });
+  });
 });
