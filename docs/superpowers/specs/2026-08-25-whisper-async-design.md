@@ -158,6 +158,31 @@ di centinaia di summary senza possibilità di confronto.
 **Nessun terzo giro.** Un job con `reanalyze` non accoda mai un `transcribe`,
 qualunque cosa trovi sul disco.
 
+**E soprattutto: nessun nuovo scaricamento.** `analyze.ts` chiama
+`extractContent()`, che scarica da Instagram *incondizionatamente* — non
+controlla se i file sono già in locale. Una seconda passata che lo attraversasse
+rifarebbe 488 download da Instagram, che è precisamente ciò che il `CLAUDE.md`
+vieta per non far bannare l'account.
+
+Quindi un job `reanalyze` **salta del tutto l'estrazione** e ricostruisce
+`ExtractedContentLocalPaths` da `/data/media/<entryId>/`, dove i file già sono:
+
+```
+audio.wav          → audioPath
+video.mp4          → videoPath
+thumbnail.jpg      → thumbnailPath
+frame-NNN.jpg      → framePaths
+slide-NNN.jpg      → slidePaths
+```
+
+La caption si rilegge dalla entry invece che dalla rete. La seconda passata non
+tocca alcun endpoint esterno di scaricamento: solo il disco e il modello.
+
+Se la directory non contiene nulla di utilizzabile — media cancellati a mano,
+per esempio — la ri-analisi non deve ripiegare sullo scaricamento: registra lo
+stato e termina. Meglio una entry senza seconda passata che un download non
+richiesto.
+
 `song_meta`, `film_meta` e `note_meta` non vengono invalidati: le loro chiavi
 derivano dal testo originale, che non cambia.
 
