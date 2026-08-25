@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import type { EntryResults } from '../types';
+import type { ActionLogItem, EntryResults } from '../types';
 
 export interface FakeJob {
   id: number;
@@ -21,7 +21,14 @@ export interface FakeEntry {
   id: string;
   sourceUrl: string;
   results: EntryResults;
-  actionLog: Array<{ action: string; data: Record<string, unknown> }>;
+  /**
+   * The production shape, not a convenient one. An earlier version of this
+   * harness recorded `{ action, data }` while `createActionLog` produces
+   * `{ action, details, timestamp }`; a test asserting `l.data.reason` then
+   * passed on a property only the mock had, and would have kept passing with
+   * the real `details` payload gone.
+   */
+  actionLog: ActionLogItem[];
 }
 
 /** Records every outbound attempt so a test can assert what the flow tried. */
@@ -115,7 +122,7 @@ export function installHarness(h: Harness, dbPath = '../utils/db', logPath = '..
         if (k === 'results.transcriptLanguage') e.results.transcriptLanguage = v as string;
       }
     }),
-    appendActionLog: vi.fn(async (id: string, entry: { action: string; data: Record<string, unknown> }) => {
+    appendActionLog: vi.fn(async (id: string, entry: ActionLogItem) => {
       h.entries.get(id)?.actionLog.push(entry);
     }),
     getEntry: vi.fn(async (id: string) => h.entries.get(id) ?? null),
@@ -124,7 +131,14 @@ export function installHarness(h: Harness, dbPath = '../utils/db', logPath = '..
   }));
 
   vi.doMock(logPath, () => ({
-    createActionLog: (action: string, data: Record<string, unknown>) => ({ action, data }),
+    // Mirrors utils/logger's createActionLog exactly — same three keys, same
+    // names. A mock that renames `details` to something friendlier makes every
+    // assertion about a log payload an assertion about the mock.
+    createActionLog: (action: string, details: Record<string, unknown> = {}): ActionLogItem => ({
+      action,
+      details,
+      timestamp: new Date().toISOString(),
+    }),
     logError: vi.fn(),
     logInfo: vi.fn(),
     logWarning: vi.fn(),

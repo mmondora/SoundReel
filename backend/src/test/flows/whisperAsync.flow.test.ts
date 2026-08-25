@@ -96,7 +96,7 @@ describe('flusso whisper asincrono', () => {
     expect(failed).toEqual([job.id]);
     expect(retried).toEqual([]);
     const log = h.entries.get('e3')?.actionLog ?? [];
-    expect(log.some((l) => l.data.reason === 'audio file missing')).toBe(true);
+    expect(log.some((l) => l.action === 'whisper_asr' && l.details.reason === 'audio file missing')).toBe(true);
   });
 
   it('la seconda passata fonde e non perde canzoni gia trovate', async () => {
