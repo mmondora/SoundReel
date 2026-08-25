@@ -1162,6 +1162,32 @@ describe('selectBackfillCandidates', () => {
     const rows = [{ id: 'audio-4', transcript: null, pendingTranscribe: true }];
     expect(selectBackfillCandidates(rows, hasAudio)).toEqual([]);
   });
+
+  it('bounds the wave when a limit is given', () => {
+    const rows = [
+      { id: 'audio-a', transcript: null, pendingTranscribe: false },
+      { id: 'audio-b', transcript: null, pendingTranscribe: false },
+      { id: 'audio-c', transcript: null, pendingTranscribe: false },
+    ];
+    expect(selectBackfillCandidates(rows, hasAudio, { limit: 2 })).toHaveLength(2);
+  });
+
+  it('puts the entries with the most to lose first', () => {
+    const rows = [
+      { id: 'audio-poor', transcript: null, pendingTranscribe: false, richness: 0 },
+      { id: 'audio-rich', transcript: null, pendingTranscribe: false, richness: 9 },
+    ];
+    expect(selectBackfillCandidates(rows, hasAudio, { richestFirst: true, limit: 1 }))
+      .toEqual(['audio-rich']);
+  });
+
+  it('keeps natural order when richestFirst is off', () => {
+    const rows = [
+      { id: 'audio-poor', transcript: null, pendingTranscribe: false, richness: 0 },
+      { id: 'audio-rich', transcript: null, pendingTranscribe: false, richness: 9 },
+    ];
+    expect(selectBackfillCandidates(rows, hasAudio)).toEqual(['audio-poor', 'audio-rich']);
+  });
 });
 ```
 
@@ -1181,8 +1207,16 @@ import { query } from '../utils/db';
 import { enqueueJob } from '../utils/jobQueue';
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || '/data/media';
-/** Two minutes apart, so Whisper is never saturated by history. */
-const STAGGER_MS = 2 * 60 * 1000;
+/**
+ * No spacing by default. Measured: 489 clips, 0.9GB of mono 16kHz WAV — 8.4
+ * hours of audio, about a minute each, which faster-whisper small clears in
+ * one or two hours on the 5900X. An earlier draft spaced these two minutes
+ * apart and would have spent sixteen hours waiting for ninety minutes of work,
+ * guarding against a saturation that does not exist: Whisper runs on a
+ * dedicated box with no rate limit, and BACKFILL_PRIORITY already keeps new
+ * content in front. Kept configurable for the rare case someone wants a trickle.
+ */
+const STAGGER_MS = Number(process.env.BACKFILL_STAGGER_MS || 0);
 /** Always behind anything the user just sent. */
 const BACKFILL_PRIORITY = 10;
 
@@ -1190,21 +1224,49 @@ export interface BackfillRow {
   id: string;
   transcript: string | null;
   pendingTranscribe: boolean;
+  /** How much this entry stands to lose if the merge is wrong. */
+  richness?: number;
+}
+
+export interface BackfillOptions {
+  /** Bound the wave. Undefined means every candidate. */
+  limit?: number;
+  /**
+   * Put the entries with the most to lose first. The trial wave exists to catch
+   * a merge that drops data, and only an entry that already carries songs,
+   * films, notes or a summary can reveal that — a bare one would pass whatever
+   * the merge did.
+   */
+  richestFirst?: boolean;
 }
 
 export function selectBackfillCandidates(
   rows: BackfillRow[],
-  hasAudio: (entryId: string) => boolean
+  hasAudio: (entryId: string) => boolean,
+  opts: BackfillOptions = {}
 ): string[] {
-  return rows
+  const eligible = rows
     .filter((r) => !r.transcript || r.transcript.trim().length === 0)
     .filter((r) => !r.pendingTranscribe)
-    .filter((r) => hasAudio(r.id))
-    .map((r) => r.id);
+    .filter((r) => hasAudio(r.id));
+
+  const ordered = opts.richestFirst
+    ? [...eligible].sort((a, b) => (b.richness ?? 0) - (a.richness ?? 0))
+    : eligible;
+
+  const bounded = opts.limit === undefined ? ordered : ordered.slice(0, opts.limit);
+  return bounded.map((r) => r.id);
 }
 
 async function main(): Promise<void> {
-  const rows = await query<{ id: string; source_url: string; transcript: string | null; pending: boolean }>(
+  const limitArg = process.argv.find((a) => a.startsWith('--limit='));
+  const limit = limitArg ? Number(limitArg.split('=')[1]) : undefined;
+  const richestFirst = process.argv.includes('--richest');
+
+  const rows = await query<{
+    id: string; source_url: string; transcript: string | null;
+    pending: boolean; richness: number;
+  }>(
     `SELECT e.id,
             e.source_url,
             e.results->>'transcript' AS transcript,
@@ -1212,7 +1274,12 @@ async function main(): Promise<void> {
               SELECT 1 FROM job_queue j
               WHERE j.entry_id = e.id AND j.kind = 'transcribe'
                 AND j.status IN ('queued','processing')
-            ) AS pending
+            ) AS pending,
+            -- how much this entry stands to lose if the merge is wrong
+            (jsonb_array_length(COALESCE(e.results->'songs','[]'::jsonb))
+             + jsonb_array_length(COALESCE(e.results->'films','[]'::jsonb))
+             + jsonb_array_length(COALESCE(e.results->'notes','[]'::jsonb))
+             + CASE WHEN COALESCE(e.results->>'summary','') <> '' THEN 1 ELSE 0 END) AS richness
        FROM entries e
       ORDER BY e.created_at DESC`
   );
@@ -1229,8 +1296,11 @@ async function main(): Promise<void> {
   }
 
   const candidates = selectBackfillCandidates(
-    rows.map((r) => ({ id: r.id, transcript: r.transcript, pendingTranscribe: r.pending })),
-    (id) => present.has(id)
+    rows.map((r) => ({
+      id: r.id, transcript: r.transcript, pendingTranscribe: r.pending, richness: Number(r.richness),
+    })),
+    (id) => present.has(id),
+    { limit, richestFirst }
   );
 
   let queued = 0;
@@ -1251,7 +1321,10 @@ async function main(): Promise<void> {
     queued++;
   }
 
-  console.log(`Accodate ${queued} trascrizioni storiche su ${rows.length} entry esaminate.`);
+  console.log(
+    `Accodate ${queued} trascrizioni storiche su ${rows.length} entry esaminate` +
+    (limit !== undefined ? ` (ondata limitata a ${limit}${richestFirst ? ', le più ricche' : ''}).` : '.')
+  );
 }
 
 if (require.main === module) {
@@ -1364,13 +1437,74 @@ docker exec soundreel-db psql -U soundreel -d soundreel -c "SELECT id, jsonb_arr
 Expected: il numero di canzoni non è mai diminuito e i summary preesistenti sono
 invariati.
 
-- [ ] **Solo allora, il backfill**
+- [ ] **Prima ondata: dieci entry, le più ricche**
+
+Da eseguire **soltanto** dopo che il punto precedente ha confermato il merge su
+contenuti nuovi.
+
+```bash
+docker exec soundreel node dist/scripts/backfillTranscripts.js --limit=10 --richest
+```
+
+Prima di lanciarlo, fotografa lo stato di quelle entry, perché è il confronto
+che rende utile l'ondata di prova:
+
+```bash
+docker exec soundreel-db psql -U soundreel -d soundreel -c "
+SELECT id,
+       jsonb_array_length(COALESCE(results->'songs','[]'::jsonb)) AS songs,
+       jsonb_array_length(COALESCE(results->'films','[]'::jsonb)) AS films,
+       jsonb_array_length(COALESCE(results->'notes','[]'::jsonb)) AS notes,
+       LEFT(COALESCE(results->>'summary',''), 50) AS summary
+  FROM entries
+ WHERE results->>'transcript' IS NULL
+ ORDER BY (jsonb_array_length(COALESCE(results->'songs','[]'::jsonb))
+         + jsonb_array_length(COALESCE(results->'films','[]'::jsonb))
+         + jsonb_array_length(COALESCE(results->'notes','[]'::jsonb))) DESC
+ LIMIT 10;" > /tmp/backfill-prima.txt
+cat /tmp/backfill-prima.txt
+```
+
+- [ ] **Verifica l'ondata di prova prima di proseguire**
+
+Attendi che i dieci job siano `done` e le rispettive seconde passate concluse,
+poi rilancia la stessa query sugli stessi id e confronta con `/tmp/backfill-prima.txt`.
+
+**Il conteggio di canzoni, film e note non deve essere diminuito su nessuna
+entry, e nessun summary preesistente deve essere cambiato.** Se anche una sola
+riga è peggiorata, fermati: il merge ha un difetto e le restanti 479 lo
+subirebbero tutte.
+
+```bash
+docker exec soundreel-db psql -U soundreel -d soundreel -c "
+SELECT id, jsonb_array_length(COALESCE(results->'songs','[]'::jsonb)) AS songs,
+       jsonb_array_length(COALESCE(results->'films','[]'::jsonb)) AS films,
+       jsonb_array_length(COALESCE(results->'notes','[]'::jsonb)) AS notes,
+       LEFT(COALESCE(results->>'summary',''), 50) AS summary,
+       LEFT(COALESCE(results->>'transcript',''), 40) AS transcript
+  FROM entries WHERE results->>'transcript' IS NOT NULL
+ ORDER BY created_at DESC LIMIT 10;"
+```
+
+- [ ] **Seconda ondata: tutto il resto**
+
+Solo dopo che il confronto è pulito.
 
 ```bash
 docker exec soundreel node dist/scripts/backfillTranscripts.js
 ```
-Expected: stampa quante ne accoda. Da eseguire **soltanto** dopo che il punto
-precedente ha confermato il merge sul campo.
+
+Nessuno scaglionamento: misurato, sono 8,4 ore di audio che `faster-whisper`
+`small` sul 5900X smaltisce in una o due ore. Archi-pc deve restare acceso per
+quel tempo; whisper lavora a pieno carico e le seconde passate seguono a ruota
+sullo stesso backend.
+
+Controlla l'avanzamento con:
+
+```bash
+docker exec soundreel-db psql -U soundreel -d soundreel -c "
+SELECT status, count(*) FROM job_queue WHERE kind='transcribe' GROUP BY status;"
+```
 
 ---
 
