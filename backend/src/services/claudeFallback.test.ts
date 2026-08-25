@@ -33,6 +33,7 @@ describe('runClaudePrompt', () => {
     process.env.CLAUDE_FALLBACK_ENABLED = 'true';
     delete process.env.CLAUDE_FALLBACK_MODEL;
     delete process.env.CLAUDE_FALLBACK_TIMEOUT_MS;
+    delete process.env.REANALYZE_FALLBACK_MODEL;
   });
 
   afterEach(() => {
@@ -212,5 +213,62 @@ describe('runClaudePrompt', () => {
     const res = await promise;
     expect(res.status).toBe('error');
     expect(res.reason).toContain('ENOENT');
+  });
+
+  describe('model choice', () => {
+    /** The --model argument the CLI was actually spawned with. */
+    function spawnedModel(): string {
+      const args = vi.mocked(spawn).mock.calls[0][1] as string[];
+      return args[args.indexOf('--model') + 1];
+    }
+
+    function run(opts?: { reanalyze?: boolean }) {
+      const child = makeFakeChild();
+      vi.mocked(spawn).mockReturnValue(child as never);
+      const promise = runClaudePrompt('x', opts);
+      child.stdout.emit('data', Buffer.from(cliPayload('{}')));
+      child.emit('close', 0);
+      return promise;
+    }
+
+    it('uses the heavy model for a first pass', async () => {
+      const res = await run();
+      expect(spawnedModel()).toBe('claude-opus-4-8');
+      expect(res.model).toBe('claude-opus-4-8');
+    });
+
+    // A second pass makes this fallback more likely, not less: the transcript
+    // pushes source text past the length threshold on entries that previously
+    // fell under it. A 488-entry backfill on the heavy model is hours of a
+    // subscription quota the user also needs for their own work.
+    it('drops to the light model for a second pass', async () => {
+      const res = await run({ reanalyze: true });
+      expect(spawnedModel()).toBe('haiku');
+      expect(res.model).toBe('haiku');
+    });
+
+    it('honours REANALYZE_FALLBACK_MODEL', async () => {
+      process.env.REANALYZE_FALLBACK_MODEL = 'sonnet';
+      await run({ reanalyze: true });
+      expect(spawnedModel()).toBe('sonnet');
+    });
+
+    it('leaves first-pass behaviour untouched when only the reanalyse model is set', async () => {
+      process.env.REANALYZE_FALLBACK_MODEL = 'sonnet';
+      await run();
+      expect(spawnedModel()).toBe('claude-opus-4-8');
+    });
+
+    it('keeps CLAUDE_FALLBACK_MODEL in charge of first passes', async () => {
+      process.env.CLAUDE_FALLBACK_MODEL = 'claude-custom';
+      await run();
+      expect(spawnedModel()).toBe('claude-custom');
+    });
+
+    it('does not let CLAUDE_FALLBACK_MODEL leak into a second pass', async () => {
+      process.env.CLAUDE_FALLBACK_MODEL = 'claude-custom';
+      await run({ reanalyze: true });
+      expect(spawnedModel()).toBe('haiku');
+    });
   });
 });

@@ -1,6 +1,6 @@
 import { basename } from 'node:path';
 import { generateText, describeFramesWithVision } from './ollamaClient';
-import { runClaudePrompt, logFallbackOutcome } from './claudeFallback';
+import { runClaudePrompt, logFallbackOutcome, type ClaudePromptOptions } from './claudeFallback';
 import { getPrompt, renderTemplate } from './promptLoader';
 import { isPlausibleUrl } from './linkValidation';
 import { isRealValue } from './placeholderFilter';
@@ -72,7 +72,10 @@ function parseLinks(raw: RawSlideResult['links']): SlideLink[] {
 }
 
 /** Analyse every slide of a carousel, returning one record per slide. */
-export async function analyzeSlides(input: SlideAnalysisInput): Promise<EntrySlide[]> {
+export async function analyzeSlides(
+  input: SlideAnalysisInput,
+  opts: ClaudePromptOptions = {}
+): Promise<EntrySlide[]> {
   if (!input.slidePaths.length) return [];
 
   // Base records first: even if every model call fails, the per-slide OCR text
@@ -122,7 +125,7 @@ export async function analyzeSlides(input: SlideAnalysisInput): Promise<EntrySli
 
   if (byIndex.size === 0) {
     logInfo('Ollama non ha prodotto risultati per le slide, provo Claude');
-    const fallback = await runClaudePrompt(prompt);
+    const fallback = await runClaudePrompt(prompt, opts);
     logFallbackOutcome(fallback);
     if (fallback.status === 'ok' && fallback.text) {
       byIndex = parseSlideResponse(fallback.text);

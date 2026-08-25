@@ -1,5 +1,10 @@
 import { generateText, OllamaImage } from './ollamaClient';
-import { runClaudePrompt, logFallbackOutcome, type ClaudeFallbackResult } from './claudeFallback';
+import {
+  runClaudePrompt,
+  logFallbackOutcome,
+  type ClaudeFallbackResult,
+  type ClaudePromptOptions,
+} from './claudeFallback';
 import { isRealValue } from './placeholderFilter';
 import { logInfo, logWarning, logError } from '../utils/logger';
 import { getPrompt, renderTemplate } from './promptLoader';
@@ -145,7 +150,10 @@ function sourceTextLength(input: AiAnalysisInput): number {
     .length;
 }
 
-export async function analyzeWithAi(input: AiAnalysisInput): Promise<AiAnalysisResponse> {
+export async function analyzeWithAi(
+  input: AiAnalysisInput,
+  opts: ClaudePromptOptions = {}
+): Promise<AiAnalysisResponse> {
   const hasAnyInput =
     !!input.caption ||
     !!input.musicInfo ||
@@ -193,7 +201,7 @@ export async function analyzeWithAi(input: AiAnalysisInput): Promise<AiAnalysisR
     let fallback: ClaudeFallbackResult | null = null;
     if (isEmptyAnalysis(ollamaResult) && sourceTextLength(input) >= MIN_SOURCE_TEXT_FOR_FALLBACK) {
       logInfo('Ollama non ha estratto nulla, provo il fallback Claude');
-      fallback = await runClaudePrompt(prompt);
+      fallback = await runClaudePrompt(prompt, opts);
       logFallbackOutcome(fallback);
 
       if (fallback.status === 'ok' && fallback.text) {

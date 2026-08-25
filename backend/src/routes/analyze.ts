@@ -263,6 +263,28 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         // ===================================================================
         setPageExtractorLogger(log);
         log.info('Page pipeline');
+
+        // A second pass never fetches, on this branch either. Unreachable today
+        // — only dispatchTranscribe sets the flag, and a page entry has no audio
+        // so never gets a transcribe job — but "never fetch on a reanalyse" must
+        // not be a guarantee that holds by accident of who happens to set the
+        // flag. Document ingestion is specced and will create entries from URLs.
+        //
+        // There is nothing to re-analyse from: unlike the media path, the page
+        // pipeline persists no local copy of what it fetched, so it abandons the
+        // way an Instagram pass with an empty media directory does — and never
+        // reaches the caption and thumbnail overwrite below.
+        if (reanalyze) {
+          await appendActionLog(entryId, createActionLog('reanalyze', {
+            status: 'skipped',
+            reason: 'page pipeline: nothing on disk to re-analyse',
+          }));
+          await updateEntry(entryId, { status: priorEntry?.status ?? 'error' });
+          const skipped = await getEntry(entryId);
+          reply.send({ success: false, entryId, entry: skipped, error: 'no local media' });
+          return;
+        }
+
         try {
           const page = await extractPage(normalizedUrl);
           pageMainText = page.mainText;
@@ -640,7 +662,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
                 slidePaths: pagePaths,
                 ocrPerSlide: ocr.perImage.slice(frameCount).map((r) => r.text ?? null),
                 caption: captionForEnrich,
-              });
+              }, { reanalyze });
               await appendActionLog(entryId, createActionLog('slides_analyzed', {
                 slides: entrySlides.length,
                 withOcr: entrySlides.filter((s) => s.ocrText).length,
@@ -691,7 +713,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
               visualContext,
               slidePaths: localPaths?.slidePaths ?? [],
               thumbnailPath: localPaths?.thumbnailPath ?? null,
-            });
+            }, { reanalyze });
           } else {
             aiResponse = { result: emptyMedia(), usageMetadata: null, fallback: null };
           }
@@ -825,7 +847,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
                   visualContext: null,
                   slidePaths: [],
                   thumbnailPath: null,
-                })
+                }, { reanalyze })
               : Promise.resolve({ result: emptyMedia(), usageMetadata: null, fallback: null }),
           ]);
 
@@ -1228,11 +1250,13 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
       try {
         const openaiConfig = await getOpenAIConfig();
-        // 'results.enrichments' is a whole-object overwrite, not a merge, so on
-        // a second pass it is treated like the summary: an existing enrichment
-        // is kept rather than replaced by one this pass might do worse.
-        const keepExistingEnrichment = reanalyze && !!finalResults.enrichments;
-        if (openaiConfig.apiKey && !keepExistingEnrichment) {
+        // Never on a second pass. Same rule as Shazam and the YouTube resolver:
+        // an external paid service, where a missing `results.enrichments` is not
+        // evidence enrichment never ran — it may have run and found nothing, or
+        // been disabled at the time. Firing once per entry regardless of whether
+        // the pass found anything is exactly the pattern removed everywhere
+        // else. It would also be a whole-object overwrite rather than a merge.
+        if (openaiConfig.apiKey && !reanalyze) {
           const enrichment = await enrichWithOpenAI(finalResults, captionForEnrich);
           if (enrichment.items.length > 0 || enrichment.verdict) {
             await updateEntry(entryId, { 'results.enrichments': enrichment });

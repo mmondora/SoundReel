@@ -16,6 +16,19 @@ import path from 'path';
 describe('analyze route second pass', () => {
   const source = readFileSync(path.join(__dirname, 'analyze.ts'), 'utf8');
 
+  /**
+   * Comments are dropped before every guard scan below. Each guarded call site
+   * carries a comment explaining its guard, and counting that prose as the
+   * guard would make these tests pass on code with the guard deleted — the one
+   * thing they exist to catch.
+   */
+  function codeOnly(text: string): string {
+    return text
+      .split('\n')
+      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+      .join('\n');
+  }
+
   /** Occurrences of `needle`, as indices into the source. */
   function sites(needle: string): number[] {
     const out: number[] = [];
@@ -55,19 +68,6 @@ describe('analyze route second pass', () => {
     // The rule that replaced per-operation gates. Gating them one at a time is
     // what let five of them go unguarded; a call site added later without a
     // guard is the regression this catches, whichever service it is.
-
-    /**
-     * Comments are dropped before every scan below. Each of these call sites
-     * carries a comment explaining its guard, and counting that prose as the
-     * guard would make these tests pass on code with the guard deleted — the
-     * one thing they exist to catch.
-     */
-    function codeOnly(text: string): string {
-      return text
-        .split('\n')
-        .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-        .join('\n');
-    }
 
     /** The whole statement a call sits in: previous `;`, `{` or `}` to next `;`. */
     function statementAround(at: number): string {
@@ -113,6 +113,22 @@ describe('analyze route second pass', () => {
       const found = sites('await addToPlaylist(');
       expect(found.length).toBeGreaterThan(0);
       for (const at of found) expect(statementAround(at)).toContain('spotifyResult');
+    });
+
+    it('never runs the OpenAI auto-enrichment on a second pass', () => {
+      // A missing `results.enrichments` is not evidence enrichment never ran.
+      expect(source).toMatch(/if \(openaiConfig\.apiKey && !reanalyze\)/);
+    });
+
+    it('never fetches a page on a second pass either', () => {
+      // Unreachable today, but the guarantee must not depend on who happens to
+      // set the flag: document ingestion is specced and creates entries from
+      // URLs. The page pipeline persists nothing locally, so it abandons.
+      const at = source.indexOf('await extractPage(normalizedUrl)');
+      expect(at).toBeGreaterThan(-1);
+      const before = codeOnly(source.slice(Math.max(0, at - 900), at));
+      expect(before).toContain('if (reanalyze) {');
+      expect(before).toContain('return;');
     });
 
     it('falls back to a locally built YouTube search URL rather than none', () => {
@@ -199,6 +215,16 @@ describe('analyze route second pass', () => {
       // content.videoUrl and content.audioUrl are null on the rebuilt path, so
       // writing them back would blank an archived entry's mediaUrl.
       expect(source).toMatch(/if \(!reanalyze\) \{\s*\n\s*\/\/ -+\s*\n\s*\/\/ Thumbnail persistence/);
+    });
+
+    it('tells both Claude fallbacks that this is a second pass', () => {
+      // The fallback gets *more* likely on a reanalyse, because the transcript
+      // pushes source text past the length threshold. Both call sites must hand
+      // the flag down so the cheap model is used.
+      expect(source).toMatch(/\}, \{ reanalyze \}\);/);
+      const threaded = (source.match(/\}, \{ reanalyze \}\)/g) ?? []).length;
+      // two analyzeWithAi call sites (local + legacy) and one analyzeSlides
+      expect(threaded).toBe(3);
     });
 
     it('does not re-enrich songs and notes the entry already carries', () => {

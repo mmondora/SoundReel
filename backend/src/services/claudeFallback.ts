@@ -11,6 +11,20 @@ export interface ClaudeFallbackResult {
 }
 
 const DEFAULT_MODEL = 'claude-opus-4-8';
+/**
+ * Second passes fall back on a light model.
+ *
+ * A reanalyse makes this fallback *more* likely, not less: it fires when Ollama
+ * comes back empty on a source text above a length threshold, and the whole
+ * point of the pass is that it adds a transcript — which pushes entries that
+ * previously fell under that threshold over it. A 488-entry backfill of
+ * claude-opus-4-8 at roughly thirteen seconds a call is hours of a subscription
+ * quota the user also needs for their own work.
+ *
+ * The fallback stays, because an entry where the local model stays silent is
+ * exactly the one a transcript was supposed to rescue. It just gets cheap.
+ */
+const DEFAULT_REANALYZE_MODEL = 'haiku';
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 /**
@@ -41,6 +55,19 @@ function getModel(): string {
   return process.env.CLAUDE_FALLBACK_MODEL || DEFAULT_MODEL;
 }
 
+function getReanalyzeModel(): string {
+  return process.env.REANALYZE_FALLBACK_MODEL || DEFAULT_REANALYZE_MODEL;
+}
+
+export interface ClaudePromptOptions {
+  /**
+   * This prompt belongs to a second analysis pass, so it runs on the light
+   * model. Callers say why rather than which: the choice of model lives here,
+   * where both env vars are read, so no call site can pick the wrong one.
+   */
+  reanalyze?: boolean;
+}
+
 function getTimeoutMs(): number {
   const raw = Number(process.env.CLAUDE_FALLBACK_TIMEOUT_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TIMEOUT_MS;
@@ -53,8 +80,11 @@ function getTimeoutMs(): number {
  * non-zero exit, timeout, unparseable output) resolves to a non-'ok' status so
  * callers can fall back to whatever they already had.
  */
-export async function runClaudePrompt(prompt: string): Promise<ClaudeFallbackResult> {
-  const model = getModel();
+export async function runClaudePrompt(
+  prompt: string,
+  opts: ClaudePromptOptions = {}
+): Promise<ClaudeFallbackResult> {
+  const model = opts.reanalyze ? getReanalyzeModel() : getModel();
   const started = Date.now();
 
   if (!isEnabled()) {

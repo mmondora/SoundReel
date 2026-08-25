@@ -181,8 +181,23 @@ describe('analyzeSlides', () => {
 
     const slides = await analyzeSlides(BASE);
 
-    expect(runClaudePrompt).toHaveBeenCalledWith('rendered prompt');
+    expect(runClaudePrompt).toHaveBeenCalledWith('rendered prompt', {});
     expect(slides[0].summary).toBe('recuperato da Claude');
+  });
+
+  // Slide analysis has its own fallback, one call per entry. It only runs on a
+  // second pass when the entry has no persisted slides, but when it does it
+  // must be as cheap as the content-analysis one.
+  it('runs its own Claude fallback cheap on a second pass', async () => {
+    vi.mocked(generateText).mockResolvedValue({ text: 'not json', usageMetadata: null });
+    vi.mocked(runClaudePrompt).mockResolvedValue({
+      status: 'ok', text: slidesPayload([{ index: 0, summary: 'recuperato' }]),
+      reason: null, durationMs: 1, model: 'haiku',
+    });
+
+    await analyzeSlides(BASE, { reanalyze: true });
+
+    expect(runClaudePrompt).toHaveBeenCalledWith('rendered prompt', { reanalyze: true });
   });
 
   it('returns an empty array when there are no slides', async () => {

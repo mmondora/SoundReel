@@ -154,10 +154,21 @@ describe('analyzeWithAi — Claude fallback cascade', () => {
 
     const res = await analyzeWithAi({ ...BASE_INPUT, caption: RICH_TEXT });
 
-    expect(runClaudePrompt).toHaveBeenCalledWith('rendered prompt');
+    expect(runClaudePrompt).toHaveBeenCalledWith('rendered prompt', {});
     expect(res.result.films).toHaveLength(1);
     expect(res.result.summary).toBe('Un post su Blade Runner.');
     expect(res.fallback?.status).toBe('ok');
+  });
+
+  // A second pass makes this fallback more likely, not less — the transcript
+  // pushes source text past the threshold — so it must run on the light model.
+  it('tells the fallback when the pass is a reanalyse, so it runs cheap', async () => {
+    vi.mocked(generateText).mockResolvedValue({ text: EMPTY_JSON, usageMetadata: null });
+    vi.mocked(runClaudePrompt).mockResolvedValue(okFallback(RICH_JSON));
+
+    await analyzeWithAi({ ...BASE_INPUT, caption: RICH_TEXT }, { reanalyze: true });
+
+    expect(runClaudePrompt).toHaveBeenCalledWith('rendered prompt', { reanalyze: true });
   });
 
   it('does not call Claude when there is too little source text to be worth it', async () => {
