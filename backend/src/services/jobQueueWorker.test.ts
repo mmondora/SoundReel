@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../utils/jobQueue', () => ({
   claimNextInstagramJob: vi.fn(),
@@ -251,6 +251,13 @@ describe('dispatchTranscribe', () => {
     vi.resetModules();
   });
 
+  afterEach(() => {
+    // vi.doMock('fs', ...) below persists past its own test (resetModules()
+    // clears the module cache, not the mock registrations) — unmock it here
+    // so a later test in this file can't silently inherit the ENOENT stub.
+    vi.doUnmock('fs');
+  });
+
   it('reschedules without burning an attempt when whisper is unreachable', async () => {
     const scheduleJobRetry = vi.fn();
     const transcribeLocal = vi.fn();
@@ -279,6 +286,7 @@ describe('dispatchTranscribe', () => {
   it('fails without retrying when the audio file is gone', async () => {
     const markJobFailed = vi.fn();
     const scheduleJobRetry = vi.fn();
+    const appendActionLog = vi.fn();
     vi.doMock('../utils/jobQueue', () => ({
       scheduleJobRetry, markJobDone: vi.fn(), markJobFailed,
       enqueueJob: vi.fn(), claimNextTranscribeJob: vi.fn(),
@@ -287,6 +295,19 @@ describe('dispatchTranscribe', () => {
     vi.doMock('./whisperClient', () => ({
       isWhisperReachable: vi.fn(async () => true),
       transcribeLocal: vi.fn(),
+    }));
+    // ../utils/db builds a real pg Pool at module load; leaving it unmocked
+    // makes appendActionLog attempt a real connection (repo convention is to
+    // always mock it — see songPersistence.test.ts, filmMeta.test.ts,
+    // telegram.test.ts).
+    vi.doMock('../utils/db', () => ({
+      updateEntry: vi.fn(),
+      appendActionLog,
+    }));
+    vi.doMock('../utils/logger', () => ({
+      createActionLog: vi.fn((action: string, details: Record<string, unknown>) => ({
+        action, details, timestamp: 'test',
+      })),
     }));
     vi.doMock('fs', async () => {
       const actual = await vi.importActual<typeof import('fs')>('fs');
@@ -298,5 +319,106 @@ describe('dispatchTranscribe', () => {
 
     expect(markJobFailed).toHaveBeenCalledWith(8);
     expect(scheduleJobRetry).not.toHaveBeenCalled();
+    // The journal UI reads the entry's action_log, not container stdout — a
+    // silently swallowed "why did this never transcribe?" is unanswerable
+    // for the user otherwise.
+    expect(appendActionLog).toHaveBeenCalledWith('gone', expect.objectContaining({
+      action: 'whisper_asr',
+      details: expect.objectContaining({ status: 'error', reason: 'audio file missing' }),
+    }));
+  });
+
+  it('persists the transcript and detected language, then re-enqueues analysis', async () => {
+    const updateEntry = vi.fn();
+    const enqueueJob = vi.fn();
+    const markJobDone = vi.fn();
+    vi.doMock('../utils/jobQueue', () => ({
+      scheduleJobRetry: vi.fn(), markJobDone, markJobFailed: vi.fn(),
+      enqueueJob, claimNextTranscribeJob: vi.fn(),
+      claimNextInstagramJob: vi.fn(), claimNextOtherJob: vi.fn(),
+    }));
+    vi.doMock('./whisperClient', () => ({
+      isWhisperReachable: vi.fn(async () => true),
+      transcribeLocal: vi.fn(async () => ({
+        text: 'ciao mondo', language: 'it', durationMs: 1234, status: 'ok',
+      })),
+    }));
+    vi.doMock('../utils/db', () => ({
+      updateEntry,
+      appendActionLog: vi.fn(),
+    }));
+    vi.doMock('../utils/logger', () => ({
+      createActionLog: vi.fn((action: string, details: Record<string, unknown>) => ({
+        action, details, timestamp: 'test',
+      })),
+    }));
+    vi.doMock('fs', async () => {
+      const actual = await vi.importActual<typeof import('fs')>('fs');
+      return { ...actual, promises: { ...actual.promises, access: vi.fn(async () => undefined) } };
+    });
+
+    const { dispatchTranscribe } = await import('./jobQueueWorker');
+    const job = {
+      id: 9, entryId: 'e9', attempts: 0, sourceUrl: 'https://x', platform: 'other',
+      chatId: 1, inputUser: null, priority: 0,
+    } as never;
+    await dispatchTranscribe(job);
+
+    // Two separate updateEntry calls, not one with both dotted keys: the real
+    // updateEntry rewrites each 'results.*' key into its own
+    // `results = jsonb_set(...)` SET clause, and Postgres rejects an UPDATE
+    // that assigns the same column twice.
+    expect(updateEntry).toHaveBeenCalledWith('e9', { 'results.transcript': 'ciao mondo' });
+    expect(updateEntry).toHaveBeenCalledWith('e9', { 'results.transcriptLanguage': 'it' });
+    expect(enqueueJob).toHaveBeenCalledWith(expect.objectContaining({
+      entryId: 'e9', kind: 'analyze', notify: false,
+    }));
+    expect(markJobDone).toHaveBeenCalledWith(9);
+  });
+
+  it('routes an unexpected failure (e.g. DB down) through handleFailure so the job is not stranded', async () => {
+    const scheduleJobRetry = vi.fn();
+    const markJobFailed = vi.fn();
+    vi.doMock('../utils/jobQueue', () => ({
+      scheduleJobRetry, markJobDone: vi.fn(), markJobFailed,
+      enqueueJob: vi.fn(), claimNextTranscribeJob: vi.fn(),
+      claimNextInstagramJob: vi.fn(), claimNextOtherJob: vi.fn(),
+    }));
+    vi.doMock('./whisperClient', () => ({
+      isWhisperReachable: vi.fn(async () => true),
+      transcribeLocal: vi.fn(async () => ({
+        text: 'hi', language: 'en', durationMs: 5, status: 'ok',
+      })),
+    }));
+    vi.doMock('../utils/db', () => ({
+      updateEntry: vi.fn(),
+      // Simulates the DB going away while recording the ASR result — the
+      // scenario the outer catch in dispatchTranscribe exists for.
+      appendActionLog: vi.fn(async () => { throw new Error('DB unreachable'); }),
+    }));
+    vi.doMock('../utils/logger', () => ({
+      createActionLog: vi.fn((action: string, details: Record<string, unknown>) => ({
+        action, details, timestamp: 'test',
+      })),
+    }));
+    vi.doMock('fs', async () => {
+      const actual = await vi.importActual<typeof import('fs')>('fs');
+      return { ...actual, promises: { ...actual.promises, access: vi.fn(async () => undefined) } };
+    });
+
+    const { dispatchTranscribe } = await import('./jobQueueWorker');
+    const job = {
+      id: 10, entryId: 'e10', attempts: 0, sourceUrl: 'https://x', platform: 'other',
+      chatId: 1, inputUser: null, priority: 0,
+    } as never;
+
+    // If the outer catch only logged (as it did before this fix), the job
+    // would be left at status='processing' with no retry scheduled —
+    // recoverable only by requeueStuckJobs() at the next server boot.
+    // Reaching scheduleJobRetry is evidence handleFailure ran instead.
+    await dispatchTranscribe(job);
+
+    expect(scheduleJobRetry).toHaveBeenCalledWith(10, 1, expect.any(Date));
+    expect(markJobFailed).not.toHaveBeenCalled();
   });
 });

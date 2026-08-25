@@ -118,6 +118,7 @@ export interface EntryResults {
   tags: string[];
   summary: string | null;
   transcript?: string | null;
+  transcriptLanguage?: string | null;
   enrichments?: EnrichmentResult;
   slides?: EntrySlide[];
   transcription?: string | null;

@@ -99,9 +99,16 @@ export async function dispatchTranscribe(job: JobQueueRow): Promise<void> {
       await fs.access(audioPath);
     } catch {
       // Retrying can't produce a file that isn't there — no scheduleJobRetry,
-      // no attempt burned, just a terminal failure.
+      // no attempt burned, just a terminal failure. Logged to the entry's
+      // actionLog (not just container logs) because that's what the journal
+      // UI shows the user to explain why transcription never happened.
       log.warn(`Job ${job.id}: audio mancante su disco (${audioPath})`);
       await markJobFailed(job.id);
+      await appendActionLog(job.entryId, createActionLog('whisper_asr', {
+        status: 'error',
+        reason: 'audio file missing',
+        path: audioPath,
+      }));
       return;
     }
 
@@ -122,7 +129,11 @@ export async function dispatchTranscribe(job: JobQueueRow): Promise<void> {
     }
 
     if (asr.text) {
+      // Two calls, not one with both dotted keys: updateEntry rewrites each
+      // 'results.*' key into its own `results = jsonb_set(...)` SET clause,
+      // and Postgres rejects an UPDATE that assigns the same column twice.
       await updateEntry(job.entryId, { 'results.transcript': asr.text });
+      await updateEntry(job.entryId, { 'results.transcriptLanguage': asr.language });
       await enqueueJob({
         entryId: job.entryId,
         sourceUrl: job.sourceUrl,
@@ -137,13 +148,21 @@ export async function dispatchTranscribe(job: JobQueueRow): Promise<void> {
 
     await markJobDone(job.id);
   } catch (err) {
-    // dispatchTranscribe is invoked fire-and-forget (`void dispatchTranscribe(...)`),
-    // so any unexpected failure here (e.g. DB unreachable while recording the
-    // result) must not become an unhandled promise rejection.
-    log.error(
-      `Job ${job.id}: dispatchTranscribe unexpected failure`,
-      err instanceof Error ? err : new Error(String(err))
-    );
+    // dispatchTranscribe is invoked fire-and-forget (`void dispatchTranscribe(...)`).
+    // An uncaught throw here (e.g. appendActionLog/updateEntry/markJobDone hitting a
+    // dead DB) must not just be logged: without a call to handleFailure the row is
+    // stranded at status='processing', with no retry scheduled — recoverable only by
+    // requeueStuckJobs() at the next server boot. Route it through the same failure
+    // handling dispatch() uses, and guard that call too so a failure *there* still
+    // cannot become an unhandled rejection.
+    try {
+      await handleFailure(job, err, log);
+    } catch (failureErr) {
+      log.error(
+        `Job ${job.id} failure handling itself failed`,
+        failureErr instanceof Error ? failureErr : new Error(String(failureErr))
+      );
+    }
   }
 }
 
