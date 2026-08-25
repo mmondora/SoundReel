@@ -173,7 +173,17 @@ async function dispatch(job: JobQueueRow, onSettle: () => void): Promise<void> {
     const res = await fetch(internalUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: job.sourceUrl, channel: 'telegram', user: job.inputUser }),
+      body: JSON.stringify({
+        url: job.sourceUrl,
+        channel: 'telegram',
+        user: job.inputUser,
+        // A second pass is distinguishable only by notify=false, which repair
+        // runs also carry. Treating a silent repair as a re-analysis is the
+        // deliberate choice: it merges instead of replacing, and reads the
+        // media off disk instead of downloading it again. Both are the safer
+        // half of the two behaviours to pick by mistake.
+        reanalyze: job.kind === 'analyze' && !job.notify,
+      }),
     });
     if (!res.ok) throw new Error(`analyze HTTP ${res.status}`);
     const result = (await res.json()) as AnalyzeResult;

@@ -28,6 +28,8 @@ import { resolvedToSongs, appendSongsToEntry } from '../services/songPersistence
 import { enqueueSongEnrichment } from '../services/songEnrichmentHook';
 import { enqueueNoteEnrichment } from '../services/noteEnrichmentHook';
 import { mergeResults } from '../services/resultMerger';
+import { mergeEntryResults, songKey } from '../services/entryMerge';
+import { rebuildLocalPaths } from '../services/localMedia';
 import { downloadMedia } from '../services/_legacy/mediaDownloader';
 import { transcribeAudio as transcribeAudioLegacyStub } from '../services/_legacy/transcribeAudioStub';
 import { enrichWithOpenAI } from '../services/openaiEnrich';
@@ -48,6 +50,8 @@ import { scanFullAudio, resolveYoutubeUrl } from '../services/shazamClient';
 import type { ShazamTrack } from '../services/shazamClient';
 import type {
   Entry,
+  EntryResults,
+  ExtractedContent,
   Song,
   Film,
   Note,
@@ -61,6 +65,16 @@ interface AnalyzeRequestBody {
   url?: string;
   channel?: 'web' | 'telegram' | 'ios';
   user?: string | null;
+  /**
+   * Second analysis pass over an entry that already has results — typically
+   * fired once a deferred transcription has landed.
+   *
+   * It changes three things: the idempotency short-circuit below is skipped
+   * (otherwise the pass would be a silent no-op on a `completed` entry), the
+   * media is rebuilt from disk instead of downloaded again, and the results
+   * are merged into what is already there instead of replacing it.
+   */
+  reanalyze?: boolean;
 }
 
 const KEY_FRAMES_COUNT = Number(process.env.KEY_FRAMES_COUNT || 5);
@@ -119,6 +133,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
     const url = req.body?.url;
     const channel = req.body?.channel ?? 'web';
     const user = req.body?.user ?? null;
+    const reanalyze = req.body?.reanalyze === true;
 
     if (!url) {
       reply.code(400).send({ error: 'URL richiesto' });
@@ -142,7 +157,23 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         pageExtractionEnabled: featuresConfig.pageExtractionEnabled,
       });
 
-      if (!featuresConfig.allowDuplicateUrls) {
+      // The entry as it stood before this pass. Only a re-analysis reads it:
+      // it supplies the caption and the transcript the pass must work from,
+      // and the status to restore if the pass is abandoned.
+      let priorEntry: Entry | null = null;
+
+      if (reanalyze) {
+        // A re-analysis never creates an entry and never returns early on a
+        // `completed` one — that short-circuit is exactly what it exists to
+        // bypass.
+        priorEntry = await findEntryByUrl(normalizedUrl);
+        if (!priorEntry) {
+          log.warn('reanalyze su URL sconosciuto', { url: normalizedUrl });
+          reply.code(404).send({ success: false, error: 'reanalyze: entry non trovata' });
+          return;
+        }
+        entryId = priorEntry.id;
+      } else if (!featuresConfig.allowDuplicateUrls) {
         const existingEntry = await findEntryByUrl(normalizedUrl);
         if (existingEntry) {
           if (existingEntry.status === 'completed') {
@@ -179,6 +210,15 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
       if (!entryId) {
         entryId = await createEntry(initialEntry);
+      } else if (reanalyze) {
+        // Deliberately does not write inputUser: a backfill job carries
+        // inputUser = null, which would blank whoever originally sent the URL.
+        await updateEntry(entryId, { status: 'processing' });
+        await appendActionLog(entryId, createActionLog('reanalyze_started', {
+          channel,
+          platform,
+          hasTranscript: !!priorEntry?.results?.transcript,
+        }));
       } else {
         await updateEntry(entryId, { status: 'processing', inputUser: user });
         await appendActionLog(entryId, createActionLog('url_received', { channel, user, platform, retry: true }));
@@ -187,6 +227,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       log.info('Entry creata', {
         entryId,
         path: isInstagram ? 'ig-local' : isPage ? 'page' : 'legacy',
+        reanalyze,
       });
       setContentExtractorLogger(log);
 
@@ -204,6 +245,14 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       let entrySlides: EntrySlide[] = [];
       // Hoisted so the fire-and-forget below can reuse mainText without re-fetching
       let pageMainText: string | null = null;
+
+      if (priorEntry) {
+        // The whole point of the second pass: feed the model the transcript the
+        // deferred job stored on the entry. Without this the pass would re-run
+        // the analysis with exactly the inputs the first one had.
+        transcript = priorEntry.results?.transcript ?? null;
+        transcriptLanguage = priorEntry.results?.transcriptLanguage ?? null;
+      }
 
       if (isPage) {
         // ===================================================================
@@ -294,7 +343,40 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         // YouTube/TikTok via yt-dlp); other platforms just ignore it.
         extractOptions.entryId = entryId;
 
-        const content = await extractContent(normalizedUrl, extractOptions);
+        let content: ExtractedContent;
+        if (reanalyze) {
+          // Never re-download. extractContent() calls downloadWithInstaloader
+          // unconditionally — it has no "already have it" branch — so routing
+          // a second pass through it would re-fetch the post from Instagram,
+          // which CLAUDE.md forbids precisely because it gets accounts banned.
+          // Everything the pass needs the first one already left on disk.
+          const local = await rebuildLocalPaths(entryId);
+          if (!local) {
+            // Abandon rather than fall back to downloading: better an entry
+            // without a second pass than an unrequested fetch.
+            await appendActionLog(entryId, createActionLog('reanalyze', {
+              status: 'skipped',
+              reason: 'no local media to re-analyse',
+            }));
+            await updateEntry(entryId, { status: priorEntry?.status ?? 'error' });
+            const skipped = await getEntry(entryId);
+            reply.send({ success: false, entryId, entry: skipped, error: 'no local media' });
+            return;
+          }
+          content = {
+            caption: priorEntry?.caption ?? null,
+            thumbnailUrl: null,
+            audioUrl: null,
+            videoUrl: null,
+            hasAudio: !!local.audioPath,
+            hasCaption: !!priorEntry?.caption,
+            musicInfo: null,
+            carouselUrls: [],
+            localPaths: local,
+          };
+        } else {
+          content = await extractContent(normalizedUrl, extractOptions);
+        }
         log.info('Estrazione contenuto completata', {
           hasCaption: content.hasCaption,
           hasAudio: content.hasAudio,
@@ -303,7 +385,18 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           frames: content.localPaths?.framePaths.length ?? 0,
         });
 
-        if (isInstagram) {
+        if (reanalyze) {
+          // Not an `instaloader_download` entry: nothing was downloaded, and
+          // the journal must not claim otherwise.
+          await appendActionLog(entryId, createActionLog('reanalyze_local_media', {
+            hasCaption: content.hasCaption,
+            hasVideo: !!content.localPaths?.videoPath,
+            hasAudio: !!content.localPaths?.audioPath,
+            hasThumbnail: !!content.localPaths?.thumbnailPath,
+            slides: content.localPaths?.slidePaths.length ?? 0,
+            frames: content.localPaths?.framePaths.length ?? 0,
+          }));
+        } else if (isInstagram) {
           const dlError = (content as { __downloadError?: string | null }).__downloadError;
           const downloadFailed = !!dlError;
           await appendActionLog(entryId, createActionLog('instaloader_download', {
@@ -345,36 +438,43 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           (content.localPaths.videoPath || content.localPaths.audioPath)
         );
 
-        // -------------------------------------------------------------------
-        // Thumbnail persistence (both IG and legacy): download/copy to local
-        // -------------------------------------------------------------------
-        let persistentThumb: string | null = null;
-
-        if (content.localPaths?.thumbnailPath) {
-          // Already local (IG or yt-dlp) — just resize in place via
-          // saveThumbnailLocal reading from disk
-          persistentThumb = await persistThumbnail({
-            source: 'local',
-            entryId,
-            pathOrUrl: content.localPaths.thumbnailPath,
-            fallbackToSource: false,
-          });
-        } else if (!isInstagram && content.thumbnailUrl) {
-          persistentThumb = await persistThumbnail({
-            source: 'remote',
-            entryId,
-            pathOrUrl: content.thumbnailUrl,
-            fallbackToSource: true,
-          });
-        }
-
         captionForEnrich = content.caption;
 
-        await updateEntry(entryId, {
-          caption: content.caption,
-          thumbnailUrl: persistentThumb,
-          mediaUrl: content.videoUrl || content.audioUrl || null,
-        });
+        // A re-analysis skips this block entirely. It has nothing new to write:
+        // the caption came from the entry itself, re-persisting the thumbnail
+        // would re-encode thumbnail.jpg from thumbnail.jpg for no gain, and
+        // mediaUrl would be blanked — content.videoUrl and content.audioUrl are
+        // null by construction on that path.
+        if (!reanalyze) {
+          // -----------------------------------------------------------------
+          // Thumbnail persistence (both IG and legacy): download/copy to local
+          // -----------------------------------------------------------------
+          let persistentThumb: string | null = null;
+
+          if (content.localPaths?.thumbnailPath) {
+            // Already local (IG or yt-dlp) — just resize in place via
+            // saveThumbnailLocal reading from disk
+            persistentThumb = await persistThumbnail({
+              source: 'local',
+              entryId,
+              pathOrUrl: content.localPaths.thumbnailPath,
+              fallbackToSource: false,
+            });
+          } else if (!isInstagram && content.thumbnailUrl) {
+            persistentThumb = await persistThumbnail({
+              source: 'remote',
+              entryId,
+              pathOrUrl: content.thumbnailUrl,
+              fallbackToSource: true,
+            });
+          }
+
+          await updateEntry(entryId, {
+            caption: content.caption,
+            thumbnailUrl: persistentThumb,
+            mediaUrl: content.videoUrl || content.audioUrl || null,
+          });
+        }
 
         if (isInstagram || hasLocalMedia) {
           // ======= LOCAL PIPELINE (IG + yt-dlp platforms) =======
@@ -385,13 +485,23 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           // machine that is powered off most of the time, so waiting bought
           // nothing; the entry completes now and the transcript arrives later
           // through a job, which then triggers a second analysis pass.
-          if (featuresConfig.transcriptionEnabled && localPaths?.audioPath) {
-            // Always 'other', never isInstagram ? 'instagram' : 'other': the
-            // worker serialises Instagram jobs with jitter and a longer
-            // backoff to avoid tripping IG's ban detection on download
-            // activity. This job only reads a .wav file already on local
-            // disk — it touches no Instagram endpoint — so it must not
-            // inherit that throttle.
+          //
+          // `!reanalyze` closes the loop: a second pass runs on an entry that
+          // already has its transcript, and audio.wav is still on disk. Without
+          // this guard it would queue another transcribe, which would queue
+          // another second pass, forever.
+          if (!reanalyze && featuresConfig.transcriptionEnabled && localPaths?.audioPath) {
+            // Always 'other', never isInstagram ? 'instagram' : 'other'.
+            // Not for the reason one might assume: `platform` does not decide
+            // which claim function picks the job up. claimNextInstagramJob
+            // filters on `kind = 'analyze'`, and claimNextTranscribeJob on
+            // `kind = 'transcribe'`, so this job never lands in the serialised,
+            // jittered Instagram lane whatever platform it carries.
+            // What `platform` does select is the retry table in
+            // computeBackoffMs: 'instagram' means three escalating retries up
+            // to seven minutes, tuned for a remote download that IG may be
+            // throttling. This job only reads a .wav already on local disk, so
+            // a failure here is local and the single 'other' retry is right.
             await enqueueJob({
               entryId,
               sourceUrl: normalizedUrl,
@@ -408,7 +518,9 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           } else {
             await appendActionLog(entryId, createActionLog('whisper_asr', {
               status: 'skipped',
-              reason: !featuresConfig.transcriptionEnabled ? 'disabled in settings' : 'no audio path',
+              reason: reanalyze
+                ? 'second pass: transcript already in hand'
+                : !featuresConfig.transcriptionEnabled ? 'disabled in settings' : 'no audio path',
             }));
           }
 
@@ -602,7 +714,11 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             }
           }
 
-          if (featuresConfig.transcriptionEnabled) {
+          // `!reanalyze` for two reasons: the transcript is already in hand
+          // (hydrated from the entry above), and this stub assigns to the same
+          // variable unconditionally — running it here would blank it before
+          // the model ever sees it.
+          if (!reanalyze && featuresConfig.transcriptionEnabled) {
             try {
               const tr = await transcribeAudioLegacyStub(media, content.audioUrl || content.videoUrl);
               transcript = tr.transcript;
@@ -617,7 +733,10 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
               await appendActionLog(entryId, createActionLog('transcribe', { status: 'error', error: String(e) }));
             }
           } else {
-            await appendActionLog(entryId, createActionLog('transcribe', { status: 'skipped', reason: 'disabled in settings' }));
+            await appendActionLog(entryId, createActionLog('transcribe', {
+              status: 'skipped',
+              reason: reanalyze ? 'second pass: transcript already in hand' : 'disabled in settings',
+            }));
           }
 
           // Legacy: AudD cloud + AI multimodal (without local OCR/vision)
@@ -692,12 +811,21 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       const slideSongs = slideItems.filter((i) => i.type === 'song' || i.type === 'album');
       const slideFilms = slideItems.filter((i) => i.type === 'film');
 
+      // Songs the entry already carried before this pass. A second pass
+      // re-finds most of them, and the merge below keeps the existing copy —
+      // so sending them to Spotify again would only add a duplicate track to
+      // the playlist, once per pass, for every reel with audio.
+      const priorSongKeys = new Set(
+        (priorEntry?.results?.songs ?? []).map((s) => songKey(s.title, s.artist))
+      );
+
       const songs: Song[] = [];
       for (const songData of merged.songs) {
+        const alreadyOnEntry = priorSongKeys.has(songKey(songData.title, songData.artist));
         const spotifyResult = await searchTrack(songData.title, songData.artist);
         let addedToPlaylist = false;
         if (spotifyResult) {
-          addedToPlaylist = await addToPlaylist(spotifyResult.uri);
+          if (!alreadyOnEntry) addedToPlaylist = await addToPlaylist(spotifyResult.uri);
           await appendActionLog(entryId, createActionLog('spotify_search', {
             query: `${songData.title} — ${songData.artist}`,
             found: true,
@@ -706,6 +834,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             uri: spotifyResult.uri,
             url: spotifyResult.url,
             addedToPlaylist,
+            ...(alreadyOnEntry ? { skippedPlaylist: 'already on this entry' } : {}),
           }));
         } else {
           await appendActionLog(entryId, createActionLog('spotify_search', {
@@ -733,10 +862,11 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       }
 
       for (const slideSong of slideSongs) {
+        const slideAlreadyOnEntry = priorSongKeys.has(songKey(slideSong.title, slideSong.artist ?? ''));
         const spotifyResult = await searchTrack(slideSong.title, slideSong.artist ?? '');
         let addedToPlaylist = false;
         if (spotifyResult) {
-          addedToPlaylist = await addToPlaylist(spotifyResult.uri);
+          if (!slideAlreadyOnEntry) addedToPlaylist = await addToPlaylist(spotifyResult.uri);
           await appendActionLog(entryId, createActionLog('spotify_search', {
             query: `${slideSong.title} — ${slideSong.artist ?? ''}`,
             source: 'carousel_slide',
@@ -923,9 +1053,21 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       if (visualContextOut) results.visualContext = visualContextOut;
       if (overlayText) results.overlayText = overlayText;
 
+      let finalResults = results as unknown as EntryResults;
+      if (reanalyze) {
+        // Additive, never subtractive. Hundreds of archived entries carry
+        // enrichment — Spotify links, TMDb metadata, book and place lookups —
+        // keyed off their original text. Writing `results` straight over them
+        // would drop everything this pass happened not to find again, and none
+        // of it can be recovered. Re-read the entry rather than trusting
+        // priorEntry: the pipeline above has been writing to it for minutes.
+        const before = await getEntry(entryId);
+        if (before) finalResults = mergeEntryResults(before.results, finalResults);
+      }
+
       await updateEntry(entryId, {
         status: 'completed',
-        results: results as unknown as Entry['results'],
+        results: finalResults,
       });
 
       // Fire-and-forget: enrich every book- and place-category note
@@ -936,20 +1078,26 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       // this write completing first.
       enqueueNoteEnrichment(notes);
 
+      // Counted off what was actually persisted, not off this pass alone: on a
+      // second pass the two differ by everything the merge preserved.
       await appendActionLog(entryId, createActionLog('completed', {
-        totalSongs: songs.length,
-        totalFilms: films.length,
-        totalNotes: notes.length,
-        totalLinks: links.length,
-        totalTags: tags.length,
-        addedToPlaylist: songs.filter((s) => s.addedToPlaylist).length,
+        totalSongs: finalResults.songs.length,
+        totalFilms: finalResults.films.length,
+        totalNotes: finalResults.notes.length,
+        totalLinks: finalResults.links.length,
+        totalTags: finalResults.tags.length,
+        addedToPlaylist: finalResults.songs.filter((s) => s.addedToPlaylist).length,
+        ...(reanalyze ? { reanalyze: true, foundThisPass: songs.length } : {}),
       }));
 
       try {
         const openaiConfig = await getOpenAIConfig();
-        if (openaiConfig.apiKey) {
-          const entryResults = { songs, films, notes, links, tags, summary: summary ?? null };
-          const enrichment = await enrichWithOpenAI(entryResults, captionForEnrich);
+        // 'results.enrichments' is a whole-object overwrite, not a merge, so on
+        // a second pass it is treated like the summary: an existing enrichment
+        // is kept rather than replaced by one this pass might do worse.
+        const keepExistingEnrichment = reanalyze && !!finalResults.enrichments;
+        if (openaiConfig.apiKey && !keepExistingEnrichment) {
+          const enrichment = await enrichWithOpenAI(finalResults, captionForEnrich);
           if (enrichment.items.length > 0 || enrichment.verdict) {
             await updateEntry(entryId, { 'results.enrichments': enrichment });
             await appendActionLog(entryId, createActionLog('auto_enriched', {

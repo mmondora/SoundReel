@@ -246,6 +246,35 @@ describe('notify flag', () => {
   });
 });
 
+describe('reanalyze flag', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ success: true, entryId: 'e1', entry: {} }),
+    }));
+    vi.mocked(claimNextOtherJob).mockResolvedValue(null);
+  });
+
+  async function analyzeBody(job: JobQueueRow): Promise<Record<string, unknown>> {
+    vi.mocked(claimNextInstagramJob).mockResolvedValue(job);
+    await tick(createInitialWorkerState());
+    await flush();
+    const call = vi.mocked(fetch).mock.calls[0];
+    return JSON.parse((call[1] as { body: string }).body) as Record<string, unknown>;
+  }
+
+  it('does not ask for a re-analysis on a job the user is waiting for', async () => {
+    expect((await analyzeBody(IG_JOB)).reanalyze).toBe(false);
+  });
+
+  // A silent analyze job is either the second pass after a transcript landed
+  // or a repair run. Both are safer merged than replaced, so both get the flag.
+  it('asks for a re-analysis on a silent job', async () => {
+    expect((await analyzeBody({ ...IG_JOB, notify: false })).reanalyze).toBe(true);
+  });
+});
+
 describe('dispatchTranscribe', () => {
   beforeEach(() => {
     vi.resetModules();
