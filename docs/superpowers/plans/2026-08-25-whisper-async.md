@@ -1874,9 +1874,15 @@ production."
 questo branch senza risolverlo significa che `enqueueJob` inserisce colonne
 inesistenti e **ogni contenuto inviato al bot fallisce** — non solo il backfill.
 
-Non è una novità di oggi: `place_meta` (006) e `film_archive` (008) non sono mai
-state applicate. Sono innocue perché nessuna riga di codice le usa, ma provano
-che il meccanismo manca da tempo e che finora è andata bene per caso.
+Correzione a una prima stesura di questo task: avevo scritto che le migration
+006 e 008 non erano mai state applicate, deducendolo dall'assenza di tabelle
+`place_meta` e `film_archive`. Sbagliato — quei file non creano tabelle, fanno
+`ALTER TABLE` su `note_meta` e `film_meta`, e le colonne ci sono. Erano state
+applicate a mano, o sono arrivate da `init.sql` che porta lo stesso DDL.
+
+Il fatto che resta, ed è quello che conta: **non esiste un meccanismo**. Finora
+ha funzionato perché qualcuno se n'è ricordato ogni volta. La 009 e la 010 sono
+la prima volta che nessuno se n'è ricordato.
 
 **Files:**
 - Create: `/home/mike/works/Soundreel/backend/src/db/runMigrations.ts`
