@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "migrate": "node dist/scripts/import-dump.js",
     "export:watchlist": "node dist/scripts/export-watchlist.js",
+    "backfill:transcripts": "node dist/scripts/backfillTranscripts.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
