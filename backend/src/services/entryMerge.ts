@@ -20,6 +20,17 @@ function isBlank(value: string | null | undefined): boolean {
 }
 
 /**
+ * `results` is JSONB, so its shape is a convention rather than a guarantee.
+ * Every row written by this codebase has all five collections, but the route
+ * now merges on *every* analysis, not only a second pass — so one malformed
+ * row would turn into a 500 on the whole pipeline instead of a lost merge.
+ * A missing collection is read as an empty one.
+ */
+function list<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+/**
  * Fold a second analysis pass into an entry that already has results.
  *
  * Additive by design: this runs over hundreds of archived entries whose songs,
@@ -32,9 +43,9 @@ function isBlank(value: string | null | undefined): boolean {
  * second pass produces, and there is no way to compare hundreds of them.
  */
 export function mergeEntryResults(existing: EntryResults, incoming: EntryResults): EntryResults {
-  const songs = [...existing.songs];
+  const songs = [...list(existing.songs)];
   const seenSongs = new Set(songs.map((s) => songKey(s.title, s.artist)));
-  for (const s of incoming.songs) {
+  for (const s of list(incoming.songs)) {
     const k = songKey(s.title, s.artist);
     if (!seenSongs.has(k)) {
       seenSongs.add(k);
@@ -42,9 +53,9 @@ export function mergeEntryResults(existing: EntryResults, incoming: EntryResults
     }
   }
 
-  const films = [...existing.films];
+  const films = [...list(existing.films)];
   const seenFilms = new Set(films.map((f) => filmKey(f.title)));
-  for (const f of incoming.films) {
+  for (const f of list(incoming.films)) {
     const k = filmKey(f.title);
     if (!seenFilms.has(k)) {
       seenFilms.add(k);
@@ -52,9 +63,9 @@ export function mergeEntryResults(existing: EntryResults, incoming: EntryResults
     }
   }
 
-  const notes = [...existing.notes];
+  const notes = [...list(existing.notes)];
   const seenNotes = new Set(notes.map((n) => noteKey(n.category, n.text)));
-  for (const n of incoming.notes) {
+  for (const n of list(incoming.notes)) {
     const k = noteKey(n.category, n.text);
     if (!seenNotes.has(k)) {
       seenNotes.add(k);
@@ -62,9 +73,9 @@ export function mergeEntryResults(existing: EntryResults, incoming: EntryResults
     }
   }
 
-  const links = [...existing.links];
+  const links = [...list(existing.links)];
   const seenLinks = new Set(links.map((l) => l.url));
-  for (const l of incoming.links) {
+  for (const l of list(incoming.links)) {
     if (!seenLinks.has(l.url)) {
       seenLinks.add(l.url);
       links.push(l);
@@ -77,8 +88,19 @@ export function mergeEntryResults(existing: EntryResults, incoming: EntryResults
     films,
     notes,
     links,
-    tags: [...new Set([...existing.tags, ...incoming.tags])],
+    tags: [...new Set([...list(existing.tags), ...list(incoming.tags)])],
     summary: isBlank(existing.summary) ? incoming.summary : existing.summary,
     transcript: incoming.transcript ?? existing.transcript ?? null,
+    transcriptLanguage: incoming.transcriptLanguage ?? existing.transcriptLanguage ?? null,
+    // Existing wins, incoming fills. `...existing` alone silently threw these
+    // away: most archived entries predate the fields, so a second pass would
+    // pay for OCR, vision and slide analysis and then persist none of it.
+    // The transcript is the exception above — a later, better one supersedes.
+    transcription: existing.transcription ?? incoming.transcription ?? null,
+    visualContext: existing.visualContext ?? incoming.visualContext ?? null,
+    overlayText: existing.overlayText ?? incoming.overlayText ?? null,
+    // An array, so emptiness and absence both mean "nothing here": an entry
+    // stored with `slides: []` must still be fillable by a pass that found some.
+    slides: existing.slides?.length ? existing.slides : incoming.slides,
   };
 }

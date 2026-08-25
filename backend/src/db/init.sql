@@ -153,6 +153,13 @@ ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'analy
 -- priority first, so 10 always waits behind 0.
 ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0;
 
+-- A second analysis pass works from media the first pass already left on disk.
+-- The flag means exactly one thing: do not fetch anything. It is set only by
+-- dispatchTranscribe, never inferred from notify — a repair run is also silent,
+-- and a repair exists precisely because the download failed, so it must still
+-- be allowed to fetch.
+ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS reanalyze BOOLEAN NOT NULL DEFAULT false;
+
 CREATE INDEX IF NOT EXISTS idx_job_queue_dispatch ON job_queue (status, platform, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_job_queue_kind
   ON job_queue (kind, status, priority, next_attempt_at);

@@ -53,6 +53,29 @@ describe('analyze route second pass', () => {
     expect(source).toMatch(/mergeEntryResults\(before\.results, finalResults\)/);
   });
 
+  it('merges unconditionally, not only on a second pass', () => {
+    // The merge being flag-free is what lets `reanalyze` mean exactly one
+    // thing — the media is on disk, fetch nothing — so that a repair run keeps
+    // its download. It is a no-op when the existing results are empty.
+    const at = source.indexOf('mergeEntryResults(before.results, finalResults)');
+    expect(at).toBeGreaterThan(-1);
+    const preceding = source.slice(Math.max(0, at - 400), at);
+    expect(preceding).toContain('const before = await getEntry(entryId);');
+    expect(preceding).not.toContain('if (reanalyze) {');
+  });
+
+  it('does not re-scan Shazam on a second pass', () => {
+    // The audio has not changed and /shazam/scan-full hits an unofficial
+    // endpoint once per segment.
+    expect(source).toMatch(/const shazamNeeded = !reanalyze &&/);
+  });
+
+  it('leaves the entry status untouched when a second pass throws', () => {
+    // Flipping an archived `completed` entry to `error` degrades the archive
+    // and feeds it back to requeueErrors.
+    expect(source).toMatch(/reanalyze \? \(priorEntry\?\.status \?\? 'error'\) : 'error'/);
+  });
+
   it('does not send a song the entry already had to the playlist again', () => {
     // Every reel with audio gets a second pass, and the merge keeps the song
     // that is already there — re-adding it only duplicates the Spotify track.

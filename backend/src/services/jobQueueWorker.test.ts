@@ -52,7 +52,7 @@ const IG_JOB: JobQueueRow = {
   id: 1, entryId: 'e1', sourceUrl: 'https://instagram.com/reel/x', platform: 'instagram',
   chatId: 42, inputUser: '@mike', status: 'processing', attempts: 0,
   nextAttemptAt: '', createdAt: '', updatedAt: '', notify: true,
-  kind: 'analyze', priority: 0,
+  kind: 'analyze', priority: 0, reanalyze: false,
 };
 
 describe('computeJitterDelayMs', () => {
@@ -264,14 +264,19 @@ describe('reanalyze flag', () => {
     return JSON.parse((call[1] as { body: string }).body) as Record<string, unknown>;
   }
 
-  it('does not ask for a re-analysis on a job the user is waiting for', async () => {
+  it('does not ask for a re-analysis on an ordinary job', async () => {
     expect((await analyzeBody(IG_JOB)).reanalyze).toBe(false);
   });
 
-  // A silent analyze job is either the second pass after a transcript landed
-  // or a repair run. Both are safer merged than replaced, so both get the flag.
-  it('asks for a re-analysis on a silent job', async () => {
-    expect((await analyzeBody({ ...IG_JOB, notify: false })).reanalyze).toBe(true);
+  // The regression this pins: inferring the flag from notify made every repair
+  // run skip its download, and a repair exists precisely because the download
+  // failed. Silence and "media already on disk" are unrelated properties.
+  it('leaves a silent repair free to download', async () => {
+    expect((await analyzeBody({ ...IG_JOB, notify: false })).reanalyze).toBe(false);
+  });
+
+  it('asks for a re-analysis only when the job carries the flag', async () => {
+    expect((await analyzeBody({ ...IG_JOB, notify: false, reanalyze: true })).reanalyze).toBe(true);
   });
 });
 
@@ -399,8 +404,10 @@ describe('dispatchTranscribe', () => {
     // that assigns the same column twice.
     expect(updateEntry).toHaveBeenCalledWith('e9', { 'results.transcript': 'ciao mondo' });
     expect(updateEntry).toHaveBeenCalledWith('e9', { 'results.transcriptLanguage': 'it' });
+    // reanalyze: true is set here and nowhere else — it is what tells the
+    // route the media is already on disk and nothing may be fetched.
     expect(enqueueJob).toHaveBeenCalledWith(expect.objectContaining({
-      entryId: 'e9', kind: 'analyze', notify: false,
+      entryId: 'e9', kind: 'analyze', notify: false, reanalyze: true,
     }));
     expect(markJobDone).toHaveBeenCalledWith(9);
   });

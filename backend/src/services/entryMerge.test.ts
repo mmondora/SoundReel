@@ -134,6 +134,80 @@ describe('mergeEntryResults', () => {
     expect(mergeEntryResults(existing, incoming).transcript).toBe('testo trascritto');
   });
 
+  it('fills vision, OCR and slide fields the existing entry never had', () => {
+    // 815, 641 and 575 of 877 live rows lack visualContext, overlayText and
+    // slides respectively. Spreading `...existing` alone meant a second pass
+    // paid for OCR, vision and slide analysis and then persisted none of it.
+    const incoming: EntryResults = {
+      ...empty(),
+      transcription: 'parlato',
+      visualContext: 'una cucina',
+      overlayText: 'RICETTA',
+      slides: [{ index: 0, imageUrl: null, ocrText: 'testo', visualDescription: null, summary: null, links: [] }],
+      transcriptLanguage: 'it',
+    };
+    const out = mergeEntryResults(empty(), incoming);
+    expect(out.transcription).toBe('parlato');
+    expect(out.visualContext).toBe('una cucina');
+    expect(out.overlayText).toBe('RICETTA');
+    expect(out.slides).toHaveLength(1);
+    expect(out.transcriptLanguage).toBe('it');
+  });
+
+  it('does not let the second pass overwrite vision, OCR or slides it already had', () => {
+    const existing: EntryResults = {
+      ...empty(),
+      visualContext: 'descrizione originale',
+      overlayText: 'ORIGINALE',
+      slides: [{ index: 0, imageUrl: null, ocrText: 'originale', visualDescription: null, summary: null, links: [] }],
+    };
+    const incoming: EntryResults = {
+      ...empty(),
+      visualContext: 'nuova',
+      overlayText: 'NUOVO',
+      slides: [
+        { index: 0, imageUrl: null, ocrText: 'a', visualDescription: null, summary: null, links: [] },
+        { index: 1, imageUrl: null, ocrText: 'b', visualDescription: null, summary: null, links: [] },
+      ],
+    };
+    const out = mergeEntryResults(existing, incoming);
+    expect(out.visualContext).toBe('descrizione originale');
+    expect(out.overlayText).toBe('ORIGINALE');
+    expect(out.slides).toHaveLength(1);
+  });
+
+  it('treats an empty slide array as absent so a later pass can fill it', () => {
+    const existing: EntryResults = { ...empty(), slides: [] };
+    const incoming: EntryResults = {
+      ...empty(),
+      slides: [{ index: 0, imageUrl: null, ocrText: 'testo', visualDescription: null, summary: null, links: [] }],
+    };
+    expect(mergeEntryResults(existing, incoming).slides).toHaveLength(1);
+  });
+
+  it('is a no-op on an entry with no results yet', () => {
+    // The route merges unconditionally, so a first pass runs through here too:
+    // everything the pass found must come out unchanged.
+    const incoming: EntryResults = {
+      ...empty(),
+      songs: [song('Roma', 'Baustelle')],
+      films: [film('Amarcord')],
+      notes: [{ text: 'Trattoria da Elio', category: 'place' }],
+      links: [{ url: 'https://a.test', label: 'A' }],
+      tags: ['#roma'],
+      summary: 'riassunto',
+      visualContext: 'una cucina',
+    };
+    const out = mergeEntryResults(empty(), incoming);
+    expect(out.songs).toEqual(incoming.songs);
+    expect(out.films).toEqual(incoming.films);
+    expect(out.notes).toEqual(incoming.notes);
+    expect(out.links).toEqual(incoming.links);
+    expect(out.tags).toEqual(incoming.tags);
+    expect(out.summary).toBe('riassunto');
+    expect(out.visualContext).toBe('una cucina');
+  });
+
   it('preserves fields the second pass never produces', () => {
     // enrichments, slides and transcriptLanguage are written by other steps;
     // a second pass that dropped them would lose OpenAI enrichment outright.
@@ -147,6 +221,19 @@ describe('mergeEntryResults', () => {
     expect(out.transcriptLanguage).toBe('it');
     expect(out.enrichments?.items).toHaveLength(1);
     expect(out.slides).toHaveLength(1);
+  });
+
+  it('survives a results object missing its collections', () => {
+    // results is JSONB and the route now merges on every analysis, so one
+    // malformed row must cost a merge, not the whole pipeline.
+    const broken = { summary: null } as unknown as EntryResults;
+    const incoming: EntryResults = { ...empty(), songs: [song('Roma', 'Baustelle')], tags: ['#roma'] };
+    const out = mergeEntryResults(broken, incoming);
+    expect(out.songs).toHaveLength(1);
+    expect(out.films).toEqual([]);
+    expect(out.notes).toEqual([]);
+    expect(out.links).toEqual([]);
+    expect(out.tags).toEqual(['#roma']);
   });
 
   it('never mutates the entry it was given', () => {

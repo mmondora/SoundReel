@@ -21,6 +21,14 @@ export interface JobQueueRow {
   kind: JobKind;
   /** Lower runs first. Backfilled history uses 10 so it yields to new content. */
   priority: number;
+  /**
+   * The media is already on disk; the analysis must not fetch anything.
+   *
+   * Set only by dispatchTranscribe. Deliberately not inferred from
+   * `notify === false`: a repair run is silent too, and a repair exists
+   * precisely because the download failed, so it must keep its download.
+   */
+  reanalyze: boolean;
 }
 
 interface JobQueueDbRow {
@@ -38,6 +46,7 @@ interface JobQueueDbRow {
   notify: boolean;
   kind: string;
   priority: number;
+  reanalyze: boolean;
 }
 
 function rowToJob(row: JobQueueDbRow): JobQueueRow {
@@ -56,6 +65,7 @@ function rowToJob(row: JobQueueDbRow): JobQueueRow {
     notify: row.notify ?? true,
     kind: (row.kind as JobKind) ?? 'analyze',
     priority: row.priority ?? 0,
+    reanalyze: row.reanalyze ?? false,
   };
 }
 
@@ -73,14 +83,16 @@ export async function enqueueJob(job: {
   kind?: JobKind;
   /** Lower runs first; defaults to 0. */
   priority?: number;
+  /** Work from the media already on disk and fetch nothing. Defaults to false. */
+  reanalyze?: boolean;
 }): Promise<number> {
   const rows = await query<{ id: number }>(
-    `INSERT INTO job_queue (entry_id, source_url, platform, chat_id, input_user, notify, next_attempt_at, kind, priority)
-     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7, NOW()),$8,$9)
+    `INSERT INTO job_queue (entry_id, source_url, platform, chat_id, input_user, notify, next_attempt_at, kind, priority, reanalyze)
+     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7, NOW()),$8,$9,$10)
      RETURNING id`,
     [job.entryId, job.sourceUrl, job.platform, job.chatId, job.inputUser,
      job.notify ?? true, job.nextAttemptAt ?? null,
-     job.kind ?? 'analyze', job.priority ?? 0]
+     job.kind ?? 'analyze', job.priority ?? 0, job.reanalyze ?? false]
   );
   return rows[0].id;
 }

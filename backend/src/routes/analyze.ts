@@ -143,6 +143,11 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
     const normalizedUrl = normalizeUrl(url);
 
     let entryId: string | null = null;
+    // The entry as it stood before this pass. Only a re-analysis reads it: it
+    // supplies the caption and the transcript the pass must work from, and the
+    // status to put back if the pass is abandoned or throws. Declared out here
+    // so the catch at the bottom can reach it.
+    let priorEntry: Entry | null = null;
     try {
       log.startTimer();
       log.info('Inizio analisi URL', { url: normalizedUrl, channel });
@@ -156,11 +161,6 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         aiAnalysisEnabled: featuresConfig.aiAnalysisEnabled,
         pageExtractionEnabled: featuresConfig.pageExtractionEnabled,
       });
-
-      // The entry as it stood before this pass. Only a re-analysis reads it:
-      // it supplies the caption and the transcript the pass must work from,
-      // and the status to restore if the pass is abandoned.
-      let priorEntry: Entry | null = null;
 
       if (reanalyze) {
         // A re-analysis never creates an entry and never returns early on a
@@ -656,7 +656,14 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           // Shazam multi-song scan on local audio
           // Skip when musicInfo already present and multi-song scan not enabled
           // (Shazam on actual audio would find a different song than the IG music sticker)
-          const shazamNeeded = featuresConfig.shazamEnabled && localPaths?.audioPath &&
+          //
+          // `!reanalyze` because the audio has not changed since the first pass
+          // scanned it, and /shazam/scan-full segments the file and calls an
+          // unofficial endpoint once per segment. Re-running it on every second
+          // pass — and hundreds of times over a backfill — is the same risk
+          // class as re-downloading from Instagram, for nothing: the merge is
+          // additive, so pass 1's tracks are still there.
+          const shazamNeeded = !reanalyze && featuresConfig.shazamEnabled && localPaths?.audioPath &&
             (!content.musicInfo || featuresConfig.multiSongScanEnabled);
           if (shazamNeeded) {
             try {
@@ -688,7 +695,9 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           } else {
             await appendActionLog(entryId, createActionLog('shazam_scan', {
               status: 'skipped',
-              reason: !featuresConfig.shazamEnabled ? 'disabled' : 'no audioPath',
+              reason: reanalyze
+                ? 'second pass: audio unchanged, already scanned'
+                : !featuresConfig.shazamEnabled ? 'disabled' : 'no audioPath',
             }));
           }
         } else {
@@ -1053,17 +1062,23 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       if (visualContextOut) results.visualContext = visualContextOut;
       if (overlayText) results.overlayText = overlayText;
 
+      // Additive, never subtractive — and unconditional. Hundreds of archived
+      // entries carry enrichment (Spotify links, TMDb metadata, book and place
+      // lookups) keyed off their original text; writing `results` straight over
+      // them would drop everything this pass happened not to find again, and
+      // none of it can be recovered.
+      //
+      // Not gated on `reanalyze`: on a first pass the existing results are
+      // empty, so the merge is a no-op, and on a repair of a half-finished
+      // entry keeping what is already there is the safer default. Making it
+      // unconditional is what lets `reanalyze` mean one single thing — the
+      // media is on disk, fetch nothing — instead of two.
+      //
+      // Re-read the entry rather than trusting priorEntry: the pipeline above
+      // has been writing to it for minutes.
       let finalResults = results as unknown as EntryResults;
-      if (reanalyze) {
-        // Additive, never subtractive. Hundreds of archived entries carry
-        // enrichment — Spotify links, TMDb metadata, book and place lookups —
-        // keyed off their original text. Writing `results` straight over them
-        // would drop everything this pass happened not to find again, and none
-        // of it can be recovered. Re-read the entry rather than trusting
-        // priorEntry: the pipeline above has been writing to it for minutes.
-        const before = await getEntry(entryId);
-        if (before) finalResults = mergeEntryResults(before.results, finalResults);
-      }
+      const before = await getEntry(entryId);
+      if (before) finalResults = mergeEntryResults(before.results, finalResults);
 
       await updateEntry(entryId, {
         status: 'completed',
@@ -1151,10 +1166,17 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       log.error('Errore durante analisi', error instanceof Error ? error : new Error(String(error)));
       if (entryId) {
         try {
-          await updateEntry(entryId, { status: 'error' });
+          // A second pass that throws — an Ollama flake, an OCR error — must
+          // leave the entry exactly as it found it. Flipping an archived
+          // `completed` entry to `error` degrades the archive on sight and
+          // feeds it straight back to requeueErrors, which would then try to
+          // repair an entry that was never broken.
+          const restoredStatus: Entry['status'] =
+            reanalyze ? (priorEntry?.status ?? 'error') : 'error';
+          await updateEntry(entryId, { status: restoredStatus });
           await appendActionLog(entryId, createActionLog('completed', {
-            status: 'error',
-            reason: 'unhandled_pipeline_error',
+            status: restoredStatus,
+            reason: reanalyze ? 'reanalyze_failed_status_restored' : 'unhandled_pipeline_error',
             error: error instanceof Error ? error.message : String(error),
           }));
         } catch { /* ignore cleanup errors */ }

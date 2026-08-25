@@ -143,6 +143,11 @@ export async function dispatchTranscribe(job: JobQueueRow): Promise<void> {
         notify: false,
         kind: 'analyze',
         priority: job.priority,
+        // The only place this is ever set. The media this pass needs is the
+        // media the first pass downloaded, and it is still on disk — so the
+        // pass must fetch nothing. Anything else queuing a silent analyze job
+        // (a repair) leaves it false and keeps its download.
+        reanalyze: true,
       });
     }
 
@@ -177,12 +182,13 @@ async function dispatch(job: JobQueueRow, onSettle: () => void): Promise<void> {
         url: job.sourceUrl,
         channel: 'telegram',
         user: job.inputUser,
-        // A second pass is distinguishable only by notify=false, which repair
-        // runs also carry. Treating a silent repair as a re-analysis is the
-        // deliberate choice: it merges instead of replacing, and reads the
-        // media off disk instead of downloading it again. Both are the safer
-        // half of the two behaviours to pick by mistake.
-        reanalyze: job.kind === 'analyze' && !job.notify,
+        // Read off the job, never inferred from notify. Inferring it conflated
+        // "merge instead of replace" with "never fetch", which turned every
+        // repair run into a no-op: a repair exists because the download failed,
+        // so there is nothing on disk for it to work from. Merging is now
+        // unconditional in the route, so this flag carries only the second
+        // half of that meaning.
+        reanalyze: job.reanalyze,
       }),
     });
     if (!res.ok) throw new Error(`analyze HTTP ${res.status}`);
