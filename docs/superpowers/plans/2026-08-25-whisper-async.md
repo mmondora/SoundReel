@@ -839,6 +839,195 @@ export function mergeEntryResults(existing: EntryResults, incoming: EntryResults
 Run: `cd /home/mike/works/Soundreel/backend && npx vitest run src/services/entryMerge.test.ts`
 Expected: PASS, 9 test
 
+- [ ] **Step 4b: Ricostruisci i percorsi locali senza scaricare nulla**
+
+**Questo step esiste perché senza di esso il backfill riscaricherebbe 488
+contenuti da Instagram.** `analyze.ts:297` chiama `extractContent()`, che alla
+riga 36 di `contentExtractor.ts` invoca `downloadWithInstaloader`
+**incondizionatamente**: non controlla mai se i file sono già in locale. È
+esattamente ciò che il `CLAUDE.md` vieta, per non far bannare l'account.
+
+Tutto ciò che serve è già su disco. Verificato su una directory reale:
+
+```
+audio.wav  frame-001.jpg … frame-007.jpg  thumbnail.jpg  thumbnail-source.jpg  video.mp4
+```
+
+Crea `backend/src/services/localMedia.ts`:
+
+```ts
+import { promises as fs } from 'fs';
+import path from 'path';
+import type { ExtractedContentLocalPaths } from '../types';
+
+const MEDIA_ROOT = process.env.MEDIA_ROOT || '/data/media';
+
+/**
+ * Rebuild the pipeline's local paths from what the first pass already left on
+ * disk, so a re-analysis never touches the network.
+ *
+ * extractContent() downloads unconditionally — it has no "already have it"
+ * branch — so routing a second pass through it would re-fetch hundreds of
+ * posts from Instagram and risk the account. Everything needed is here.
+ *
+ * Returns null when the directory holds nothing usable. The caller must then
+ * abandon the pass rather than fall back to downloading.
+ */
+export async function rebuildLocalPaths(entryId: string): Promise<ExtractedContentLocalPaths | null> {
+  const dir = path.join(MEDIA_ROOT, entryId);
+
+  let names: string[];
+  try {
+    names = await fs.readdir(dir);
+  } catch {
+    return null;
+  }
+
+  const pick = (name: string): string | null =>
+    names.includes(name) ? path.join(dir, name) : null;
+
+  const sortedMatching = (re: RegExp): string[] =>
+    names.filter((n) => re.test(n)).sort().map((n) => path.join(dir, n));
+
+  const paths: ExtractedContentLocalPaths = {
+    videoPath: pick('video.mp4'),
+    audioPath: pick('audio.wav'),
+    thumbnailPath: pick('thumbnail.jpg') ?? pick('thumbnail-source.jpg'),
+    slidePaths: sortedMatching(/^slide-\d+\.(jpg|jpeg|png|webp)$/i),
+    framePaths: sortedMatching(/^frame-\d+\.(jpg|jpeg|png|webp)$/i),
+  };
+
+  const hasSomething =
+    paths.videoPath || paths.audioPath || paths.thumbnailPath ||
+    paths.slidePaths.length > 0 || paths.framePaths.length > 0;
+
+  return hasSomething ? paths : null;
+}
+```
+
+Crea `backend/src/services/localMedia.test.ts`:
+
+```ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+describe('rebuildLocalPaths', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.MEDIA_ROOT = '/data/media';
+  });
+
+  async function withDir(names: string[]) {
+    vi.doMock('fs', async () => {
+      const actual = await vi.importActual<typeof import('fs')>('fs');
+      return {
+        ...actual,
+        promises: { ...actual.promises, readdir: vi.fn(async () => names) },
+      };
+    });
+    const { rebuildLocalPaths } = await import('./localMedia');
+    return rebuildLocalPaths('e1');
+  }
+
+  it('maps a full directory onto the pipeline shape', async () => {
+    const out = await withDir([
+      'audio.wav', 'video.mp4', 'thumbnail.jpg', 'thumbnail-source.jpg',
+      'frame-001.jpg', 'frame-002.jpg',
+    ]);
+    expect(out?.audioPath).toBe('/data/media/e1/audio.wav');
+    expect(out?.videoPath).toBe('/data/media/e1/video.mp4');
+    expect(out?.thumbnailPath).toBe('/data/media/e1/thumbnail.jpg');
+    expect(out?.framePaths).toHaveLength(2);
+    expect(out?.slidePaths).toEqual([]);
+  });
+
+  it('orders frames numerically, not by discovery order', async () => {
+    const out = await withDir(['frame-010.jpg', 'frame-002.jpg', 'frame-001.jpg']);
+    expect(out?.framePaths).toEqual([
+      '/data/media/e1/frame-001.jpg',
+      '/data/media/e1/frame-002.jpg',
+      '/data/media/e1/frame-010.jpg',
+    ]);
+  });
+
+  it('falls back to the source thumbnail when the resized one is gone', async () => {
+    const out = await withDir(['thumbnail-source.jpg']);
+    expect(out?.thumbnailPath).toBe('/data/media/e1/thumbnail-source.jpg');
+  });
+
+  it('returns null for an empty directory rather than an empty shape', async () => {
+    expect(await withDir([])).toBeNull();
+  });
+
+  it('returns null when the directory does not exist', async () => {
+    vi.doMock('fs', async () => {
+      const actual = await vi.importActual<typeof import('fs')>('fs');
+      return {
+        ...actual,
+        promises: { ...actual.promises, readdir: vi.fn(async () => { throw new Error('ENOENT'); }) },
+      };
+    });
+    const { rebuildLocalPaths } = await import('./localMedia');
+    expect(await rebuildLocalPaths('gone')).toBeNull();
+  });
+
+  it('ignores files that are not media', async () => {
+    const out = await withDir(['audio.wav', 'notes.txt', 'frame-x.jpg']);
+    expect(out?.framePaths).toEqual([]);
+  });
+});
+```
+
+Esegui: `cd /home/mike/works/Soundreel/backend && npx vitest run src/services/localMedia.test.ts`
+Expected: prima FAIL (il modulo non esiste), poi PASS con 6 test.
+
+- [ ] **Step 4c: Salta l'estrazione quando `reanalyze` è vero**
+
+In `analyze.ts`, attorno alla chiamata `extractContent(normalizedUrl, extractOptions)`
+alla riga ~297, inserisci il ramo alternativo:
+
+```ts
+        let content: ExtractedContent;
+        if (reanalyze) {
+          // Never re-download: extractContent() has no "already have it" branch,
+          // so going through it would re-fetch this post from Instagram.
+          const local = await rebuildLocalPaths(entryId);
+          if (!local) {
+            await appendActionLog(entryId, createActionLog('reanalyze', {
+              status: 'skipped',
+              reason: 'no local media to re-analyse',
+            }));
+            reply.send({ success: false, entryId, error: 'no local media' });
+            return;
+          }
+          const prior = await getEntry(entryId);
+          content = {
+            caption: prior?.caption ?? null,
+            thumbnailUrl: null,
+            audioUrl: null,
+            videoUrl: null,
+            musicInfo: null,
+            carouselUrls: [],
+            localPaths: local,
+          };
+        } else {
+          content = await extractContent(normalizedUrl, extractOptions);
+        }
+```
+
+Adatta i nomi (`content`, `extractOptions`) a quelli realmente in scope, e
+sposta la dichiarazione di `content` se era un `const` dell'assegnazione
+originale.
+
+**Verifica meccanicamente che il divieto tenga**, perché è la garanzia che il
+backfill non contatti Instagram:
+
+```bash
+cd /home/mike/works/Soundreel/backend
+npx vitest run src/services/localMedia.test.ts
+grep -n "extractContent" src/routes/analyze.ts
+```
+La chiamata a `extractContent` deve comparire **solo** dentro il ramo `else`.
+
 - [ ] **Step 5: Aggiungi il flag `reanalyze` alla rotta**
 
 In `analyze.ts`, il corpo della richiesta accetta un campo opzionale
