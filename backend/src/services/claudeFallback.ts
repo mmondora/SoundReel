@@ -17,9 +17,13 @@ const DEFAULT_MODEL = 'claude-opus-4-8';
  * A reanalyse makes this fallback *more* likely, not less: it fires when Ollama
  * comes back empty on a source text above a length threshold, and the whole
  * point of the pass is that it adds a transcript — which pushes entries that
- * previously fell under that threshold over it. A 488-entry backfill of
- * claude-opus-4-8 at roughly thirteen seconds a call is hours of a subscription
- * quota the user also needs for their own work.
+ * previously fell under that threshold over it. An 83-entry backfill of
+ * claude-opus-4-8 at roughly thirteen seconds a call is still tens of minutes
+ * of a subscription quota the user also needs for their own work — the count
+ * was corrected down from 488 (that figure counted every media dir with audio,
+ * not the ones actually missing a transcript) and the decision is unchanged,
+ * because the cheap model costs nothing to prefer and the backfill is not the
+ * only thing that fires this path.
  *
  * The fallback stays, because an entry where the local model stays silent is
  * exactly the one a transcript was supposed to rescue. It just gets cheap.

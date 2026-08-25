@@ -28,10 +28,32 @@ questo copre solo il caso in cui archi-pc si accende per altri motivi.
 
 ### Il fatto che rende possibile il design
 
-I media sopravvivono all'analisi. Sul disco ci sono **677 directory** sotto
-`/data/media/<entryId>/`, e **488 contengono `audio.wav`**. Il percorso è
+I media sopravvivono all'analisi. Sul disco ci sono **683 directory** sotto
+`/data/media/<entryId>/`, e **494 contengono `audio.wav`**. Il percorso è
 deterministico: un job differito ritrova l'audio dall'`entryId`, senza doverlo
 trasportare, e lo storico non trascritto è recuperabile.
+
+### Ma le entry da recuperare sono 83, non 494
+
+Una prima stesura di questo documento contava le directory con `audio.wav` e si
+fermava lì, arrivando a 489. È il numero sbagliato, di sei volte. Whisper ha
+funzionato per mesi e si è rotto solo di recente: di quelle 494 directory,
+**410 appartengono a entry che un transcript ce l'hanno già** e una non ha più
+una entry corrispondente. L'insieme che conta è l'intersezione — audio sul
+disco **e** nessun transcript.
+
+| Misura | Valore |
+|---|---|
+| directory media con `audio.wav` | 494 |
+| entry con transcript | 454 |
+| entry senza transcript | 428 |
+| **intersezione: audio sul disco, nessun transcript** | **83** |
+
+Lo script di backfill calcola questo insieme a tempo di esecuzione, quindi non
+è mai esistito un difetto funzionale: era il documento a promettere sei volte
+il lavoro reale. Un operatore che avesse seguito il runbook e ne avesse visto
+accodare 83 dove il testo ne prometteva 479 avrebbe avuto tutte le ragioni per
+fermarsi e sospettare che qualcosa stesse scartando entry in silenzio.
 
 ## Obiettivi
 
@@ -39,7 +61,7 @@ trasportare, e lo storico non trascritto è recuperabile.
   subito, il transcript arriva dopo.
 - I job di trascrizione sopravvivono ad archi-pc spento e si smaltiscono da soli
   quando torna disponibile.
-- Le 488 entry storiche con audio ma senza transcript vengono recuperate.
+- Le 83 entry storiche con audio ma senza transcript vengono recuperate.
 - Nessun risultato già arricchito viene peggiorato dal recupero.
 
 ## Non obiettivi
@@ -124,13 +146,21 @@ Uno script `backfillTranscripts.ts` accoda le entry che hanno
 appena inviato.
 
 **Nessuno scaglionamento per difetto.** Una prima stesura di questa spec
-distanziava i job di due minuti. Misurato: 489 file, 0,9 GB, WAV mono 16 kHz —
-cioè **8,4 ore di audio**, circa un minuto a clip. Con `faster-whisper` `small`
-su un 5900X sono una o due ore di elaborazione, mentre lo scaglionamento ne
-avrebbe imposte sedici di sola attesa. Proteggeva da una saturazione che non
-esiste: whisper gira su una macchina dedicata, senza rate limit da rispettare, e
-la priorità basta già a non far aspettare i contenuti nuovi. Lo scaglionamento
-resta disponibile come opzione, ma vale zero per difetto.
+distanziava i job di due minuti. Misurato **sulle 83 candidate** (non sulle 494
+directory con audio, che è l'errore della prima stesura): 137 MB di WAV mono
+16 kHz a 16 bit — cioè **1,25 ore di audio**, 75 minuti in tutto, circa 54
+secondi a clip. Con `faster-whisper` `small` su un 5900X sono dieci-venti
+minuti di elaborazione, mentre lo scaglionamento avrebbe imposto 83 × 2 = 166
+minuti, quasi tre ore, di sola attesa.
+
+*La correzione del numero rafforza questa decisione invece di indebolirla.* Il
+lavoro reale è sei volte più piccolo di quanto si credesse, ma l'attesa che lo
+scaglionamento impone resta proporzionale al numero di job: il rapporto fra le
+due passa da sedici ore contro una-due a tre ore contro venti minuti, cioè
+peggiora. Proteggeva da una saturazione che non esiste: whisper gira su una
+macchina dedicata, senza rate limit da rispettare, e la priorità basta già a non
+far aspettare i contenuti nuovi. Lo scaglionamento resta disponibile come
+opzione, ma vale zero per difetto.
 
 **Il recupero avviene in due ondate**, e la sicurezza sta nel controllo, non
 nella lentezza. La prima accoda un numero limitato di entry — scelte fra quelle
@@ -144,7 +174,7 @@ pendente. Stampa quante ne accoda e si ferma, senza eseguire nulla.
 
 ## 5. La seconda passata arricchisce, non sostituisce
 
-È la parte con più rischio: 488 entry storiche già arricchite.
+È la parte con più rischio: 83 entry storiche già arricchite.
 
 Il job `analyze` di ri-analisi porta un flag `reanalyze` che impone quattro
 regole.
@@ -186,9 +216,16 @@ Il confine è netto e sta sui **servizi esterni**: Shazam e la risoluzione
 YouTube non vengono mai eseguiti in una seconda passata, nemmeno quando il
 risultato manca. L'assenza di un risultato non dimostra che il servizio non sia
 mai stato interrogato — un'entry senza canzoni può semplicemente essere una in
-cui Shazam non ha trovato nulla — e 146 entry senza canzoni significherebbero
-146 scansioni verso un endpoint non ufficiale per riottenere lo stesso silenzio.
-Un eventuale recupero di Shazam sullo storico è uno script separato e opt-in.
+cui Shazam non ha trovato nulla — e **48 delle 83 candidate non hanno canzoni**,
+cioè 48 scansioni verso un endpoint non ufficiale per riottenere lo stesso
+silenzio. Un eventuale recupero di Shazam sullo storico è uno script separato e
+opt-in.
+
+*Il cancello resta chiuso anche col numero corretto.* La cifra di partenza era
+146 su un insieme di 489; ricontata sulle 83 reali diventa 48. È un terzo delle
+scansioni, ma l'argomento non era mai stato di volume: è che una scansione non
+richiesta verso un endpoint non ufficiale è indesiderabile a prescindere da
+quante ne sono, e 48 sono comunque ampiamente sufficienti a farsi notare.
 
 Questo sostituisce l'approccio a cancelli per singola operazione. Ogni cancello
 dimenticato sarebbe stato un servizio esterno colpito centinaia di volte, e il
@@ -200,8 +237,9 @@ qualunque cosa trovi sul disco.
 **E soprattutto: nessun nuovo scaricamento.** `analyze.ts` chiama
 `extractContent()`, che scarica da Instagram *incondizionatamente* — non
 controlla se i file sono già in locale. Una seconda passata che lo attraversasse
-rifarebbe 488 download da Instagram, che è precisamente ciò che il `CLAUDE.md`
-vieta per non far bannare l'account.
+rifarebbe 83 download da Instagram, che è precisamente ciò che il `CLAUDE.md`
+vieta per non far bannare l'account. Il divieto non dipende dal numero: 83
+download non richiesti in sequenza verso Instagram bastano da soli.
 
 Quindi un job `reanalyze` **salta del tutto l'estrazione** e ricostruisce
 `ExtractedContentLocalPaths` da `/data/media/<entryId>/`, dove i file già sono:
@@ -260,7 +298,7 @@ inviate settimane fa.
 5. Script di backfill.
 
 I punti 1-4 valgono per i contenuti nuovi e sono verificabili da soli. Il punto 5
-si esegue solo dopo che i primi quattro sono verdi in produzione: accodare 488
+si esegue solo dopo che i primi quattro sono verdi in produzione: accodare 83
 job su un merge non ancora provato è il modo più rapido per rovinare lo storico.
 
 ## Rischi

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Togliere la trascrizione dal percorso sincrono della pipeline e farla svolgere da un job dedicato che sopravvive ad archi-pc spento, recuperando anche le 488 entry storiche con audio ma senza transcript.
+**Goal:** Togliere la trascrizione dal percorso sincrono della pipeline e farla svolgere da un job dedicato che sopravvive ad archi-pc spento, recuperando anche le **83** entry storiche che hanno audio sul disco e nessun transcript.
 
 **Architecture:** `job_queue` guadagna una colonna `kind` (`analyze` | `transcribe`) e una `priority`. La pipeline accoda un `transcribe` invece di attendere whisper. Il worker, prima di tentare, verifica che whisper risponda: se non risponde rimette in coda con backoff lungo senza consumare tentativi e **senza svegliare nessuno**. A trascrizione ottenuta accoda una seconda passata di analisi che fonde i risultati invece di sostituirli.
 
@@ -671,7 +671,7 @@ the pipeline minutes and returned nothing."
 - Consumes: `normalizeSongKey`, `normalizeFilmKey` da `resultMerger.ts`; `noteKey` da `noteMeta.ts`
 - Produces: `mergeEntryResults(existing: EntryResults, incoming: EntryResults): EntryResults`
 
-**Il cuore del rischio.** 488 entry storiche già arricchite passeranno di qui.
+**Il cuore del rischio.** 83 entry storiche già arricchite passeranno di qui.
 
 - [ ] **Step 1: Scrivi i test che falliscono**
 
@@ -841,7 +841,7 @@ Expected: PASS, 9 test
 
 - [ ] **Step 4b: Ricostruisci i percorsi locali senza scaricare nulla**
 
-**Questo step esiste perché senza di esso il backfill riscaricherebbe 488
+**Questo step esiste perché senza di esso il backfill riscaricherebbe 83
 contenuti da Instagram.** `analyze.ts:297` chiama `extractContent()`, che alla
 riga 36 di `contentExtractor.ts` invoca `downloadWithInstaloader`
 **incondizionatamente**: non controlla mai se i file sono già in locale. È
@@ -1041,18 +1041,41 @@ In `analyze.ts`, il corpo della richiesta accetta un campo opzionale
 ```
 
 e quando `reanalyze` è vero, l'`entryId` va risolto dall'entry esistente invece
-di generarne uno nuovo:
+di generarne uno nuovo — **per id, non per URL**:
 
 ```ts
+      const requestedEntryId = reanalyze ? req.body?.entryId : undefined;
+      ...
       if (reanalyze) {
-        const existingEntry = await findEntryByUrl(normalizedUrl);
-        if (!existingEntry) {
+        // Per URL solo per i job accodati prima che il campo esistesse.
+        priorEntry = requestedEntryId !== undefined
+          ? await getEntry(requestedEntryId)
+          : await findEntryByUrl(normalizedUrl);
+        if (!priorEntry) {
           reply.code(404).send({ success: false, error: 'reanalyze: entry non trovata' });
           return;
         }
-        entryId = existingEntry.id;
+        entryId = priorEntry.id;
       }
 ```
+
+`dispatch()` in `jobQueueWorker.ts` mette `entryId: job.entryId` nel corpo.
+
+**Perché non per URL.** La rotta ri-normalizza `url` con `normalizeUrl` prima di
+cercarlo, e **183 degli 882 `source_url` archiviati non sopravvivono a quel
+giro**: sono anteriori all'attuale normalizzatore (una path che ha ancora lo
+slash finale prima della query string, un valore `igsh` il cui `==` oggi
+diventa `%3D%3D`). Due delle 83 candidate al backfill sono fra questi: il loro
+transcript viene scritto correttamente — quella scrittura usa `job.entryId` —
+e poi la seconda passata prende `404 reanalyze: entry non trovata`, riprova una
+volta e fallisce. Il transcript atterra e non viene mai analizzato.
+
+Risolvere per id toglie di mezzo la dipendenza dal round trip, e chiude anche un
+problema latente: `findEntryByUrl` finisce con
+`ORDER BY created_at DESC LIMIT 1`, quindi con URL duplicati abilitati la
+passata potrebbe atterrare su una riga diversa da quella trascritta. Un
+`entryId` malformato viene respinto con 400 prima di arrivare alla colonna
+`uuid`, dove sarebbe un errore di tipo (500) invece che un miss.
 
 Senza questo, `analyze.ts:148` restituirebbe la entry già `completed` e la
 seconda passata non farebbe nulla.
@@ -1143,7 +1166,7 @@ that cannot be recovered, so the merge only ever adds."
 
 **Non eseguire lo script.** Questo task lo scrive e lo testa. L'esecuzione
 avviene solo dopo che i Task 1-5 sono verdi **in produzione** sui contenuti
-nuovi: accodare 488 job su un merge non ancora provato sul campo è il modo più
+nuovi: accodare 83 job su un merge non ancora provato sul campo è il modo più
 rapido di rovinare lo storico, e non è reversibile.
 
 - [ ] **Step 1: Scrivi il test che fallisce**
@@ -1225,10 +1248,12 @@ import { enqueueJob } from '../utils/jobQueue';
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || '/data/media';
 /**
- * No spacing by default. Measured: 489 clips, 0.9GB of mono 16kHz WAV — 8.4
- * hours of audio, about a minute each, which faster-whisper small clears in
- * one or two hours on the 5900X. An earlier draft spaced these two minutes
- * apart and would have spent sixteen hours waiting for ninety minutes of work,
+ * No spacing by default. Measured over the 83 candidates (not over all 494
+ * dirs with audio, which is what the earlier 489/8.4-hour figure counted):
+ * 137MB of 16-bit mono 16kHz WAV — 1.25 hours of audio, about 54 seconds a
+ * clip, which faster-whisper small clears in ten to twenty minutes on the
+ * 5900X. An earlier draft spaced these two minutes apart and would have spent
+ * 166 minutes waiting for a quarter of an hour of work,
  * guarding against a saturation that does not exist: Whisper runs on a
  * dedicated box with no rate limit, and BACKFILL_PRIORITY already keeps new
  * content in front. Kept configurable for the rare case someone wants a trickle.
@@ -1379,7 +1404,7 @@ cd /home/mike/works/Soundreel
 git add backend/src/scripts/backfillTranscripts.ts backend/src/scripts/backfillTranscripts.test.ts backend/package.json
 git commit -m "feat(scripts): queue transcription for archived entries
 
-Not run yet: 488 second passes over already-enriched entries wait until the
+Not run yet: 83 second passes over already-enriched entries wait until the
 merge has proven itself in production on new content."
 ```
 
@@ -1410,9 +1435,13 @@ grep -rn "archi.wake\|WAKE_SENTINEL" /home/mike/works/Soundreel/backend/src/ || 
 ```bash
 touch /home/mike/works/Soundreel/.rebuild
 sleep 90 && head -3 /home/mike/works/Soundreel/.rebuild-log
-docker exec soundreel-db psql -U soundreel -d soundreel -c "\d job_queue" | grep -E "kind|priority"
+docker exec soundreel-db psql -U soundreel -d soundreel -c "\d job_queue" | grep -E "kind|priority|reanalyze"
 ```
-Expected: `status: ok`, e le due colonne presenti.
+Expected: `status: ok`, e le **tre** colonne presenti. `reanalyze` è arrivata
+dopo `kind` e `priority` (migration 010) ed è quella che tiene separati
+"la media è sul disco" e "non notificare": senza, ogni repair run diventa un
+no-op. Un grep che non la cerca lascia passare esattamente il caso in cui la
+migration successiva non è stata applicata.
 
 - [ ] **Un reel con audio accoda invece di attendere**
 
@@ -1444,27 +1473,44 @@ docker logs soundreel --since 30m 2>&1 | grep -iE "whisper_asr|reanalyze"
 ```
 Expected: job `done`, transcript salvato, e un job `analyze` silenzioso accodato.
 
-- [ ] **Il merge non ha rimosso nulla**
+- [ ] **Fotografa lo stato PRIMA di qualunque ondata**
 
-Prendi una entry che aveva canzoni prima della seconda passata e confronta:
+Questo passo viene per primo e non è facoltativo: senza una fotografia
+precedente **non esiste modo di accorgersi di una perdita**. Una versione
+precedente di questo runbook cercava di verificare il merge con una query sola,
+`WHERE results->>'transcript' IS NOT NULL ORDER BY created_at DESC LIMIT 5` —
+che restituisce entry il cui transcript è antecedente a questo branch, senza
+niente con cui confrontarle. Non poteva fallire, quindi non verificava nulla.
 
-```bash
-docker exec soundreel-db psql -U soundreel -d soundreel -c "SELECT id, jsonb_array_length(results->'songs') AS songs, LEFT(results->>'summary', 60) AS summary FROM entries WHERE results->>'transcript' IS NOT NULL ORDER BY created_at DESC LIMIT 5;"
-```
-Expected: il numero di canzoni non è mai diminuito e i summary preesistenti sono
-invariati.
-
-- [ ] **Prima ondata: dieci entry, le più ricche**
-
-Da eseguire **soltanto** dopo che il punto precedente ha confermato il merge su
-contenuti nuovi.
+Fotografa tutte e 83 le candidate (non solo le dieci dell'ondata di prova: così
+qualunque sottoinsieme il backfill scelga è già coperto):
 
 ```bash
-docker exec soundreel node dist/scripts/backfillTranscripts.js --limit=10 --richest
+docker exec soundreel-db psql -U soundreel -d soundreel -tAF'|' -c "
+SELECT id,
+       jsonb_array_length(COALESCE(results->'songs','[]'::jsonb)) AS songs,
+       jsonb_array_length(COALESCE(results->'films','[]'::jsonb)) AS films,
+       jsonb_array_length(COALESCE(results->'notes','[]'::jsonb)) AS notes,
+       md5(COALESCE(results->>'summary','')) AS summary_md5
+  FROM entries
+ WHERE COALESCE(trim(results->>'transcript'),'') = ''
+ ORDER BY id;" > /tmp/backfill-prima.txt
+wc -l /tmp/backfill-prima.txt
 ```
+Expected: **428 righe** — tutte le entry senza transcript, non solo le 83.
+La query non può guardare il filesystem, quindi non sa quali abbiano
+`audio.wav`; fotografarle tutte è un sovrainsieme deliberato, costa nulla e
+garantisce che qualunque entry il backfill scelga sia già coperta. Le righe in
+più semplicemente non cambieranno.
 
-Prima di lanciarlo, fotografa lo stato di quelle entry, perché è il confronto
-che rende utile l'ondata di prova:
+- [ ] **Il merge non ha rimosso nulla — sui contenuti nuovi**
+
+Da fare dopo che la seconda passata del reel di prova qui sopra è conclusa, e
+**prima** di qualunque ondata di backfill.
+
+La selezione è per `action_log`, non per `created_at`: solo le entry che questo
+branch ha davvero ri-analizzato portano `reanalyze_started`, e sono le uniche
+su cui una perdita di merge possa manifestarsi.
 
 ```bash
 docker exec soundreel-db psql -U soundreel -d soundreel -c "
@@ -1472,49 +1518,70 @@ SELECT id,
        jsonb_array_length(COALESCE(results->'songs','[]'::jsonb)) AS songs,
        jsonb_array_length(COALESCE(results->'films','[]'::jsonb)) AS films,
        jsonb_array_length(COALESCE(results->'notes','[]'::jsonb)) AS notes,
-       LEFT(COALESCE(results->>'summary',''), 50) AS summary
+       LEFT(COALESCE(results->>'summary',''), 60) AS summary,
+       LEFT(COALESCE(results->>'transcript',''), 40) AS transcript
   FROM entries
- WHERE results->>'transcript' IS NULL
- ORDER BY (jsonb_array_length(COALESCE(results->'songs','[]'::jsonb))
-         + jsonb_array_length(COALESCE(results->'films','[]'::jsonb))
-         + jsonb_array_length(COALESCE(results->'notes','[]'::jsonb))) DESC
- LIMIT 10;" > /tmp/backfill-prima.txt
-cat /tmp/backfill-prima.txt
+ WHERE action_log @> '[{\"action\": \"reanalyze_started\"}]'
+ ORDER BY created_at DESC;"
+```
+Expected: compare il reel di prova, con il transcript popolato, e canzoni /
+film / note **non** diminuiti rispetto a quello che aveva mostrato in journal
+dopo la prima passata. Se la query non restituisce righe, la seconda passata
+non è mai partita: non è una verifica passata, è una verifica non eseguita.
+
+- [ ] **Prima ondata: dieci entry, le più ricche**
+
+Da eseguire **soltanto** dopo che i due punti precedenti sono verdi: la
+fotografia esiste e il merge si è comportato bene su contenuto nuovo.
+
+```bash
+docker exec soundreel node dist/scripts/backfillTranscripts.js --limit=10 --richest
 ```
 
 - [ ] **Verifica l'ondata di prova prima di proseguire**
 
-Attendi che i dieci job siano `done` e le rispettive seconde passate concluse,
-poi rilancia la stessa query sugli stessi id e confronta con `/tmp/backfill-prima.txt`.
-
-**Il conteggio di canzoni, film e note non deve essere diminuito su nessuna
-entry, e nessun summary preesistente deve essere cambiato.** Se anche una sola
-riga è peggiorata, fermati: il merge ha un difetto e le restanti 479 lo
-subirebbero tutte.
+Attendi che i dieci job `transcribe` siano `done` e le rispettive seconde
+passate concluse, poi rilancia **esattamente la query della fotografia** e
+confronta i due file. È un `diff`, non una lettura a occhio:
 
 ```bash
-docker exec soundreel-db psql -U soundreel -d soundreel -c "
-SELECT id, jsonb_array_length(COALESCE(results->'songs','[]'::jsonb)) AS songs,
+docker exec soundreel-db psql -U soundreel -d soundreel -tAF'|' -c "
+SELECT id,
+       jsonb_array_length(COALESCE(results->'songs','[]'::jsonb)) AS songs,
        jsonb_array_length(COALESCE(results->'films','[]'::jsonb)) AS films,
        jsonb_array_length(COALESCE(results->'notes','[]'::jsonb)) AS notes,
-       LEFT(COALESCE(results->>'summary',''), 50) AS summary,
-       LEFT(COALESCE(results->>'transcript',''), 40) AS transcript
-  FROM entries WHERE results->>'transcript' IS NOT NULL
- ORDER BY created_at DESC LIMIT 10;"
+       md5(COALESCE(results->>'summary','')) AS summary_md5
+  FROM entries
+ WHERE id IN (SELECT id FROM entries WHERE action_log @> '[{\"action\": \"reanalyze_started\"}]')
+ ORDER BY id;" > /tmp/backfill-dopo.txt
+
+# Solo le righe toccate dall'ondata, confrontate con com'erano prima.
+join -t'|' -j1 <(sort /tmp/backfill-prima.txt) <(sort /tmp/backfill-dopo.txt) \
+  | awk -F'|' '$2>$6 || $3>$7 || $4>$8 || ($5!=$9 && $5!="d41d8cd98f00b204e9800998ecf8427e")'
 ```
+Expected: **nessuna riga in output.** Ogni riga stampata è una perdita: un
+conteggio sceso, o un summary preesistente riscritto (l'md5 della stringa vuota
+è escluso perché un summary che *nasce* è esattamente ciò che la passata deve
+poter fare).
+
+**Se anche una sola riga compare, fermati**: il merge ha un difetto e le
+restanti 73 lo subirebbero tutte.
 
 - [ ] **Seconda ondata: tutto il resto**
 
-Solo dopo che il confronto è pulito.
+Solo dopo che il confronto è pulito. Restano 73 entry.
 
 ```bash
 docker exec soundreel node dist/scripts/backfillTranscripts.js
 ```
 
-Nessuno scaglionamento: misurato, sono 8,4 ore di audio che `faster-whisper`
-`small` sul 5900X smaltisce in una o due ore. Archi-pc deve restare acceso per
-quel tempo; whisper lavora a pieno carico e le seconde passate seguono a ruota
-sullo stesso backend.
+Nessuno scaglionamento: misurato sulle 83 candidate, sono **1,25 ore di audio**
+(137 MB di WAV mono 16 kHz a 16 bit, ~54 secondi a clip) che `faster-whisper`
+`small` sul 5900X smaltisce in dieci-venti minuti. Il numero corretto **non**
+cambia la decisione, la rafforza: lo scaglionamento a due minuti costerebbe
+comunque 166 minuti di sola attesa per venti minuti di lavoro. Archi-pc deve
+restare acceso per quel tempo; whisper lavora a pieno carico e le seconde
+passate seguono a ruota sullo stesso backend.
 
 Controlla l'avanzamento con:
 
@@ -1553,7 +1620,7 @@ veri, che è tutto il punto dell'esercizio.
 
 ```ts
 import { vi } from 'vitest';
-import type { EntryResults } from '../types';
+import type { ActionLogItem, EntryResults } from '../types';
 
 export interface FakeJob {
   id: number;
@@ -1575,7 +1642,8 @@ export interface FakeEntry {
   id: string;
   sourceUrl: string;
   results: EntryResults;
-  actionLog: Array<{ action: string; data: Record<string, unknown> }>;
+  /** La forma di produzione: `{ action, details, timestamp }`, non una comoda. */
+  actionLog: ActionLogItem[];
 }
 
 /** Records every outbound attempt so a test can assert what the flow tried. */
@@ -1661,7 +1729,7 @@ export function installHarness(h: Harness, dbPath = '../../utils/db', logPath = 
         if (k === 'results.transcript') e.results.transcript = v as string;
       }
     }),
-    appendActionLog: vi.fn(async (id: string, entry: { action: string; data: Record<string, unknown> }) => {
+    appendActionLog: vi.fn(async (id: string, entry: ActionLogItem) => {
       h.entries.get(id)?.actionLog.push(entry);
     }),
     getEntry: vi.fn(async (id: string) => h.entries.get(id) ?? null),
@@ -1670,7 +1738,14 @@ export function installHarness(h: Harness, dbPath = '../../utils/db', logPath = 
   }));
 
   vi.doMock(logPath, () => ({
-    createActionLog: (action: string, data: Record<string, unknown>) => ({ action, data }),
+    // Rispecchia createActionLog di utils/logger: stesse tre chiavi, stessi nomi.
+    // Un mock che ribattezza `details` rende ogni asserzione sul payload di un
+    // log un'asserzione sul mock.
+    createActionLog: (action: string, details: Record<string, unknown> = {}): ActionLogItem => ({
+      action,
+      details,
+      timestamp: new Date().toISOString(),
+    }),
     logError: vi.fn(),
     logInfo: vi.fn(),
     logWarning: vi.fn(),
@@ -1806,7 +1881,7 @@ describe('flusso whisper asincrono', () => {
     expect(failed).toEqual([job.id]);
     expect(retried).toEqual([]);
     const log = h.entries.get('e3')?.actionLog ?? [];
-    expect(log.some((l) => l.data.reason === 'audio file missing')).toBe(true);
+    expect(log.some((l) => l.action === 'whisper_asr' && l.details.reason === 'audio file missing')).toBe(true);
   });
 
   it('la seconda passata fonde e non perde canzoni gia trovate', async () => {
@@ -1908,7 +1983,11 @@ In `Dockerfile`, accanto alla riga `COPY backend/src/db/init.sql ./init.sql`:
 ```dockerfile
 # The runner reads these at boot. Without this COPY it finds an empty directory
 # and silently applies nothing — worse than having no runner at all.
-COPY backend/src/db/migrations ./migrations
+#
+# La destinazione deve stare **accanto al runner compilato**
+# (`dist/db/runMigrations.js`), perché è lì che il suo default
+# `path.join(__dirname, 'migrations')` risolve.
+COPY backend/src/db/migrations ./dist/db/migrations
 ```
 
 - [ ] **Step 2: Scrivi i test che falliscono**
@@ -2034,16 +2113,30 @@ export async function runMigrations(): Promise<string[]> {
 }
 ```
 
-Nota sul percorso: in sviluppo `__dirname` è `src/db`, e le migration stanno in
-`src/db/migrations`. Nell'immagine il codice compilato sta in `dist/db` mentre
-il `COPY` dello Step 1 le mette in `/app/migrations`. **Verifica quale dei due
-percorsi risolve nel container** e, se non combaciano, imposta `MIGRATIONS_DIR`
-nel compose invece di indovinare.
+Nota sul percorso — **è il punto in cui questo task si è quasi rotto in
+silenzio.** In sviluppo `__dirname` è `src/db` e le migration stanno in
+`src/db/migrations`: combaciano. Nell'immagine il codice compilato sta in
+`dist/db`, e una prima stesura copiava le migration in `/app/migrations`: non
+combaciavano, e a tenere insieme le due metà era solo `MIGRATIONS_DIR` nel
+`docker-compose.yml`. Un container avviato a mano, un compose diverso, o una
+futura estrazione del servizio avrebbero perso quella variabile; `readdir`
+avrebbe lanciato, il `catch` avrebbe restituito la lista vuota, e il boot
+sarebbe **riuscito** contro uno schema senza `kind`, `priority` né
+`reanalyze` — con ogni `enqueueJob` a fallire poi con
+`column "kind" does not exist`, tre strati lontano dalla causa.
+
+La regola: **il default deve essere quello giusto.** Il `COPY` va in
+`./dist/db/migrations`, `MIGRATIONS_DIR` resta un override e la riga sparisce
+dal compose. Non impostare una variabile d'ambiente per far combaciare due
+percorsi che possono combaciare da soli.
 
 - [ ] **Step 4: Esegui i test e verifica che passino**
 
 Run: `cd /home/mike/works/Soundreel/backend && npx vitest run src/db/runMigrations.test.ts`
-Expected: PASS, 5 test.
+Expected: PASS, 8 test — i cinque sul comportamento del runner più tre che
+inchiodano l'accordo fra il default e l'immagine: che il default sia la
+directory accanto al runner, che il `COPY` del Dockerfile punti proprio lì, e
+che il compose **non** imposti `MIGRATIONS_DIR`.
 
 - [ ] **Step 5: Chiamalo all'avvio, prima del worker**
 

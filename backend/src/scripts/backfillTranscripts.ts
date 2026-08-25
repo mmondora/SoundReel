@@ -2,11 +2,19 @@
  * One-off backfill: queue a transcription job for every archived entry that
  * already has `audio.wav` on disk but no transcript. Whisper moved into its
  * own deferred job (kind: 'transcribe'); entries analysed before that only
- * ever went through the synchronous path, so 489 of them never got a
- * transcript even though the audio is sitting right there.
+ * ever went through the synchronous path.
+ *
+ * The candidate set is **83**, measured twice. An earlier draft said 489, which
+ * was the count of media directories containing audio.wav — but Whisper worked
+ * for months and only broke recently, so 410 of those directories belong to
+ * entries that already have a transcript (and one has no entry row at all).
+ * 494 dirs with audio, 454 entries with a transcript, 428 without; the
+ * intersection of "has audio" and "has no transcript" is 83. The query below
+ * has always computed that intersection at run time, so the wrong number was
+ * only ever in the prose.
  *
  * NOT run as part of this task. See the guard in main() and the commit
- * message: 489 second analysis passes over already-enriched entries wait
+ * message: 83 second analysis passes over already-enriched entries wait
  * until the additive merge (mergeAdditive-style) has proven itself in
  * production on new content first.
  *
@@ -22,14 +30,18 @@ import { enqueueJob } from '../utils/jobQueue';
 const MEDIA_ROOT = process.env.MEDIA_ROOT || '/data/media';
 
 /**
- * No spacing by default. Measured: 489 clips, 0.9GB of mono 16kHz WAV — 8.4
- * hours of audio, about a minute each, which faster-whisper small clears in
- * one or two hours on the 5900X. An earlier draft spaced these two minutes
- * apart and would have spent sixteen hours waiting for ninety minutes of
- * work, guarding against a saturation that does not exist: Whisper runs on a
- * dedicated box with no rate limit, and BACKFILL_PRIORITY already keeps new
- * content in front. Kept configurable for the rare case someone wants a
- * trickle.
+ * No spacing by default. Measured over the 83 candidates (not over all 494
+ * dirs with audio, which is what the earlier 489/8.4-hour figure counted):
+ * 137MB of 16-bit mono 16kHz WAV — 1.25 hours of audio, 75 minutes in total,
+ * about 54 seconds a clip, which faster-whisper small clears in ten to twenty
+ * minutes on the 5900X. An earlier draft spaced these two minutes apart and
+ * would have spent 83 x 2 = 166 minutes waiting for a quarter of an hour of
+ * work. The smaller number strengthens the case rather than weakening it: the
+ * work shrank sixfold, the imposed wait scales with the job count, so the
+ * ratio got worse. It guarded against a saturation that does not exist anyway:
+ * Whisper runs on a dedicated box with no rate limit, and BACKFILL_PRIORITY
+ * already keeps new content in front. Kept configurable for the rare case
+ * someone wants a trickle.
  */
 const STAGGER_MS = Number(process.env.BACKFILL_STAGGER_MS || 0);
 
