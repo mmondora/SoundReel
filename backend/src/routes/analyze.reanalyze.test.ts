@@ -29,6 +29,44 @@ describe('analyze route second pass', () => {
       .join('\n');
   }
 
+  /**
+   * The `if (...)` condition governing the statement at `at`.
+   *
+   * Walks back over whole lines rather than to the nearest `if (` substring, so
+   * an `if (` mentioned inside a comment cannot be mistaken for the guard.
+   */
+  function enclosingIf(at: number): string {
+    const lines = source.slice(0, at).split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (/^\s*(\} else )?if \(/.test(lines[i])) {
+        // The condition may wrap; take lines until the one closing with `) {`.
+        const out = [lines[i]];
+        for (let j = i; !/\)\s*\{\s*$/.test(lines[j]) && j < lines.length - 1; j++) out.push(lines[j + 1]);
+        return out.join('\n');
+      }
+    }
+    return '';
+  }
+
+  /**
+   * Assert that `pattern` identifies exactly one place in the file, and return
+   * that place.
+   *
+   * The lesson of this file, learned three times over: a source-text assertion
+   * that can be satisfied from more than one location is not an assertion about
+   * the location you mean. `never queues a third pass` used to match
+   * `/if \(!reanalyze && featuresConfig\.transcriptionEnabled/`, which the
+   * unrelated legacy-stub guard further down the file also satisfies — so the
+   * suite stayed green with the real guard deleted. Counting the matches is
+   * what turns a pattern into a pin, and it catches an accidental second copy
+   * of the construct as well as the loss of the first.
+   */
+  function onlyMatch(pattern: RegExp): string {
+    const all = source.match(new RegExp(pattern.source, pattern.flags.replace('g', '') + 'g'));
+    expect(all ?? []).toHaveLength(1);
+    return (all as string[])[0];
+  }
+
   /** Occurrences of `needle`, as indices into the source. */
   function sites(needle: string): number[] {
     const out: number[] = [];
@@ -52,7 +90,7 @@ describe('analyze route second pass', () => {
     });
 
     it('rebuilds the media from disk instead', () => {
-      expect(source).toMatch(/await rebuildLocalPaths\(entryId\)/);
+      onlyMatch(/await rebuildLocalPaths\(entryId\)/);
     });
 
     it('abandons the pass when the disk holds nothing, without downloading', () => {
@@ -117,7 +155,7 @@ describe('analyze route second pass', () => {
 
     it('never runs the OpenAI auto-enrichment on a second pass', () => {
       // A missing `results.enrichments` is not evidence enrichment never ran.
-      expect(source).toMatch(/if \(openaiConfig\.apiKey && !reanalyze\)/);
+      onlyMatch(/if \(openaiConfig\.apiKey && !reanalyze\)/);
     });
 
     it('never fetches a page on a second pass either', () => {
@@ -141,12 +179,12 @@ describe('analyze route second pass', () => {
 
   describe('recomputes only what is missing, and only locally', () => {
     it('reads the derivations the first pass persisted off the entry', () => {
-      expect(source).toMatch(/const reusedOverlayText = priorResults\?\.overlayText \?\? null;/);
-      expect(source).toMatch(/const reusedVisualContext = priorResults\?\.visualContext \?\? null;/);
+      onlyMatch(/const reusedOverlayText = priorResults\?\.overlayText \?\? null;/);
+      onlyMatch(/const reusedVisualContext = priorResults\?\.visualContext \?\? null;/);
     });
 
     it('treats an empty slide array as absent, as the merge does', () => {
-      expect(source).toMatch(/const reusedSlides = priorResults\?\.slides\?\.length \? priorResults\.slides : null;/);
+      onlyMatch(/const reusedSlides = priorResults\?\.slides\?\.length \? priorResults\.slides : null;/);
     });
 
     it('reuses persisted slides instead of re-analysing them', () => {
@@ -175,11 +213,11 @@ describe('analyze route second pass', () => {
     });
 
     it('runs OCR again when a carousel still needs its per-image split', () => {
-      expect(source).toMatch(/const carouselSlidesPending = !reusedSlides && slides\.length > 0;/);
+      onlyMatch(/const carouselSlidesPending = !reusedSlides && slides\.length > 0;/);
     });
 
     it('does not re-derive carousel items already folded into the entry', () => {
-      expect(source).toMatch(/if \(!reanalyze && featuresConfig\.carouselStructuredExtraction/);
+      onlyMatch(/if \(!reanalyze && featuresConfig\.carouselStructuredExtraction/);
     });
   });
 
@@ -187,11 +225,29 @@ describe('analyze route second pass', () => {
     it('never queues a third pass', () => {
       // transcribe → reanalyse → transcribe → ... is an infinite loop, and
       // audio.wav is still on disk when the second pass runs.
-      expect(source).toMatch(/if \(!reanalyze && featuresConfig\.transcriptionEnabled/);
+      //
+      // Anchored on the enqueue itself rather than on the shape of the guard.
+      // The previous version matched a pattern the unrelated legacy-stub guard
+      // also satisfied, so deleting the real guard left the suite green.
+      const enqueues = sites("kind: 'transcribe'");
+      expect(enqueues).toHaveLength(1);
+      const guard = enclosingIf(enqueues[0]);
+      expect(guard).toContain('!reanalyze');
+      // Tied to this site specifically: no other guard in the file mentions it.
+      expect(guard).toContain('localPaths?.audioPath');
+    });
+
+    it('does not let the legacy stub blank the transcript it was handed', () => {
+      // The legacy branch assigns transcribeAudioLegacyStub's result to the
+      // same `transcript` variable the pass hydrated from the entry, so running
+      // it would erase the transcript before the model ever sees it.
+      const at = sites('transcribeAudioLegacyStub(');
+      expect(at).toHaveLength(1);
+      expect(enclosingIf(at[0])).toContain('!reanalyze');
     });
 
     it('merges the results instead of replacing them', () => {
-      expect(source).toMatch(/mergeEntryResults\(before\.results, finalResults\)/);
+      onlyMatch(/mergeEntryResults\(before\.results, finalResults\)/);
     });
 
     it('merges unconditionally, not only on a second pass', () => {
@@ -208,7 +264,7 @@ describe('analyze route second pass', () => {
     it('leaves the entry status untouched when a second pass throws', () => {
       // Flipping an archived `completed` entry to `error` degrades the archive
       // and feeds it back to requeueErrors.
-      expect(source).toMatch(/reanalyze \? \(priorEntry\?\.status \?\? 'error'\) : 'error'/);
+      onlyMatch(/reanalyze \? \(priorEntry\?\.status \?\? 'error'\) : 'error'/);
     });
 
     it('keeps the entry caption, thumbnail and mediaUrl out of the second pass', () => {
@@ -217,19 +273,23 @@ describe('analyze route second pass', () => {
       expect(source).toMatch(/if \(!reanalyze\) \{\s*\n\s*\/\/ -+\s*\n\s*\/\/ Thumbnail persistence/);
     });
 
-    it('tells both Claude fallbacks that this is a second pass', () => {
+    it('tells every Claude fallback that this is a second pass', () => {
       // The fallback gets *more* likely on a reanalyse, because the transcript
-      // pushes source text past the length threshold. Both call sites must hand
-      // the flag down so the cheap model is used.
-      expect(source).toMatch(/\}, \{ reanalyze \}\);/);
+      // pushes source text past the length threshold, so each call site must
+      // hand the flag down for the cheap model to be used.
+      //
+      // The expected count is derived from the call sites rather than written
+      // as a literal: a new analyzeWithAi or analyzeSlides added without the
+      // flag then fails here instead of quietly running on the heavy model.
+      const callSites = sites('analyzeWithAi(').length + sites('analyzeSlides(').length;
+      expect(callSites).toBeGreaterThan(0);
       const threaded = (source.match(/\}, \{ reanalyze \}\)/g) ?? []).length;
-      // two analyzeWithAi call sites (local + legacy) and one analyzeSlides
-      expect(threaded).toBe(3);
+      expect(threaded).toBe(callSites);
     });
 
     it('does not re-enrich songs and notes the entry already carries', () => {
-      expect(source).toMatch(/\.filter\(\(s\) => !priorSongKeys\.has\(songKey\(s\.title, s\.artist\)\)\)/);
-      expect(source).toMatch(/notes\.filter\(\(n\) => !priorNoteKeys\.has\(noteKey\(n\.category, n\.text\)\)\)/);
+      onlyMatch(/\.filter\(\(s\) => !priorSongKeys\.has\(songKey\(s\.title, s\.artist\)\)\)/);
+      onlyMatch(/notes\.filter\(\(n\) => !priorNoteKeys\.has\(noteKey\(n\.category, n\.text\)\)\)/);
     });
   });
 });
