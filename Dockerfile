@@ -63,7 +63,15 @@ COPY backend/src/db/init.sql ./init.sql
 
 # The runner reads these at boot. Without this COPY it finds an empty directory
 # and silently applies nothing — worse than having no runner at all.
-COPY backend/src/db/migrations ./migrations
+#
+# The destination must stay next to the compiled runner (`dist/db/runMigrations.js`),
+# because that is what its default `path.join(__dirname, 'migrations')` resolves
+# to. They used to disagree — files here, runner looking in `dist/db` — and only
+# MIGRATIONS_DIR in docker-compose.yml bridged the gap, which made a hand-run
+# container or a second compose file boot *successfully* against a schema with
+# no `kind`, `priority` or `reanalyze` column. MIGRATIONS_DIR is now an
+# override, not the thing that makes it work.
+COPY backend/src/db/migrations ./dist/db/migrations
 
 EXPOSE 8080
 

@@ -15,6 +15,12 @@ import { query } from '../utils/db';
  * user rather than on a line in the boot log.
  */
 export async function runMigrations(): Promise<string[]> {
+  // The default is the path that works with no configuration at all: the
+  // Dockerfile COPYs the .sql files to `dist/db/migrations`, right next to this
+  // compiled module. MIGRATIONS_DIR is an override for anyone who needs one,
+  // not the thing that makes a normal boot correct — it used to be, and an
+  // image run without it booted successfully against a schema it had never
+  // migrated, failing hours later on `column "kind" does not exist`.
   const dir = process.env.MIGRATIONS_DIR
     ?? path.join(__dirname, 'migrations');
 

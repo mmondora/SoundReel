@@ -16,10 +16,6 @@ services:
       DB_PORT: 5432
       DB_NAME: soundreel
       DB_USER: soundreel
-      # Compiled code lives at /app/dist/db, but the Dockerfile COPYs
-      # migrations to /app/migrations — the two do not line up, so this
-      # points the runner at the real path instead of guessing.
-      MIGRATIONS_DIR: /app/migrations
       OLLAMA_URL: http://gpu-router:9000
       INSTALOADER_URL: http://soundreel-instaloader:5000
       # Whisper remoto su archi-pc (CPU 5900X, servizio nativo — vedi geekom-hub/docs/machines.md).
