@@ -4,6 +4,7 @@ import { recognizeAudio } from '../services/_legacy/audioRecognition';
 import { analyzeWithAi, extractFromSlides, AiAnalysisResponse } from '../services/aiAnalysis';
 import type { SlideItem } from '../services/aiAnalysis';
 import { ocrImages } from '../services/ocrClient';
+import type { OcrResult } from '../services/ocrClient';
 import { pickKeyFrames } from '../services/frameSelector';
 import { describeFramesWithVision } from '../services/ollamaClient';
 import { saveThumbnailLocal } from '../services/thumbnailSaver';
@@ -27,8 +28,9 @@ import { refreshStreamingForFilm, isStale } from '../services/streamingRefresher
 import { resolvedToSongs, appendSongsToEntry } from '../services/songPersistence';
 import { enqueueSongEnrichment } from '../services/songEnrichmentHook';
 import { enqueueNoteEnrichment } from '../services/noteEnrichmentHook';
+import { noteKey } from '../services/noteMeta';
 import { mergeResults } from '../services/resultMerger';
-import { mergeEntryResults, songKey } from '../services/entryMerge';
+import { mergeEntryResults, songKey, filmTitleKey } from '../services/entryMerge';
 import { rebuildLocalPaths } from '../services/localMedia';
 import { downloadMedia } from '../services/_legacy/mediaDownloader';
 import { transcribeAudio as transcribeAudioLegacyStub } from '../services/_legacy/transcribeAudioStub';
@@ -534,17 +536,66 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           const ocrPaths = frames.length || slides.length
             ? [...frames, ...slides]
             : (localPaths?.thumbnailPath ? [localPaths.thumbnailPath] : []);
-          const ocr = await ocrImages(ocrPaths);
-          await appendActionLog(entryId, createActionLog('ocr_extract', {
-            status: ocr.status,
-            reason: ocr.reason || null,
-            imagesSent: ocrPaths.length,
-            withText: ocr.perImage.filter((r) => r.text).length,
-            mergedChars: ocr.merged.length,
-          }));
+
+          // -----------------------------------------------------------------
+          // A second pass re-runs the model, not the pipeline.
+          //
+          // OCR, vision and slide analysis read the same local files the first
+          // pass read, so they cannot reach a different answer: whatever the
+          // entry already carries is reused. Where a derivation is missing and
+          // its inputs are on disk it is computed — an entry archived before
+          // OCR existed gains OCR — because those reach only our own
+          // containers, soundreel-ocr and Ollama through the router.
+          //
+          // External services are never called on a second pass, missing result
+          // or not: absence is not evidence the service was ever asked. An
+          // entry with no songs may simply be one where Shazam found nothing,
+          // and re-learning that silence would cost one scan of an unofficial
+          // endpoint per entry. See the Shazam and YouTube guards below.
+          // -----------------------------------------------------------------
+          const priorResults = reanalyze ? priorEntry?.results : undefined;
+          const reusedOverlayText = priorResults?.overlayText ?? null;
+          const reusedVisualContext = priorResults?.visualContext ?? null;
+          // An empty array counts as absent, exactly as in mergeEntryResults:
+          // an entry stored with `slides: []` must still be fillable.
+          const reusedSlides = priorResults?.slides?.length ? priorResults.slides : null;
+
+          // The merged OCR text is reusable; the per-image split is not, and a
+          // carousel whose slides still have to be analysed needs that split.
+          // A single page is reconstructible from the merge, so only a real
+          // carousel forces OCR to run again.
+          const carouselSlidesPending = !reusedSlides && slides.length > 0;
+          let ocr: OcrResult;
+          if (reusedOverlayText !== null && !carouselSlidesPending) {
+            ocr = {
+              perImage: [{ path: localPaths?.thumbnailPath ?? '', text: reusedOverlayText }],
+              merged: reusedOverlayText,
+              status: 'ok',
+              reason: 'reused from entry',
+            };
+            await appendActionLog(entryId, createActionLog('ocr_extract', {
+              status: 'reused',
+              reason: 'second pass: overlayText already on the entry',
+              mergedChars: ocr.merged.length,
+            }));
+          } else {
+            ocr = await ocrImages(ocrPaths);
+            await appendActionLog(entryId, createActionLog('ocr_extract', {
+              status: ocr.status,
+              reason: ocr.reason || null,
+              imagesSent: ocrPaths.length,
+              withText: ocr.perImage.filter((r) => r.text).length,
+              mergedChars: ocr.merged.length,
+            }));
+          }
 
           // Per-slide structured extraction for carousels
-          if (featuresConfig.carouselStructuredExtraction && (localPaths?.slidePaths?.length ?? 0) > 0) {
+          //
+          // Skipped on a second pass: it reads the same slide OCR, so it yields
+          // the same items — and those are already folded into the entry's
+          // songs and films, which the merge preserves. Re-deriving them would
+          // only spend a Spotify and a TMDb lookup each to be thrown away.
+          if (!reanalyze && featuresConfig.carouselStructuredExtraction && (localPaths?.slidePaths?.length ?? 0) > 0) {
             const frameCount = localPaths?.framePaths?.length ?? 0;
             const slideOcrTexts = ocr.perImage
               .slice(frameCount)
@@ -574,7 +625,14 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             : (ocr.merged.trim().length >= SINGLE_IMAGE_OCR_MIN_CHARS && localPaths?.thumbnailPath
                 ? [localPaths.thumbnailPath]
                 : []);
-          if (pagePaths.length > 0) {
+          if (reusedSlides) {
+            entrySlides = reusedSlides;
+            await appendActionLog(entryId, createActionLog('slides_analyzed', {
+              status: 'reused',
+              reason: 'second pass: slides already on the entry',
+              slides: entrySlides.length,
+            }));
+          } else if (pagePaths.length > 0) {
             try {
               const frameCount = slides.length ? (localPaths?.framePaths?.length ?? 0) : 0;
               entrySlides = await analyzeSlides({
@@ -599,8 +657,14 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           }
 
           // Vision describe on key frames (only if mediaAnalysisEnabled + frames present)
-          let visualContext: string | null = null;
-          if (featuresConfig.mediaAnalysisEnabled && localPaths?.framePaths.length) {
+          let visualContext: string | null = reusedVisualContext;
+          if (visualContext) {
+            await appendActionLog(entryId, createActionLog('vision_describe', {
+              status: 'reused',
+              reason: 'second pass: visualContext already on the entry',
+              chars: visualContext.length,
+            }));
+          } else if (featuresConfig.mediaAnalysisEnabled && localPaths?.framePaths.length) {
             const keyFrames = pickKeyFrames(localPaths.framePaths, KEY_FRAMES_COUNT);
             visualContext = await describeFramesWithVision(keyFrames);
             await appendActionLog(entryId, createActionLog('vision_describe', {
@@ -820,21 +884,40 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       const slideSongs = slideItems.filter((i) => i.type === 'song' || i.type === 'album');
       const slideFilms = slideItems.filter((i) => i.type === 'film');
 
-      // Songs the entry already carried before this pass. A second pass
-      // re-finds most of them, and the merge below keeps the existing copy —
-      // so sending them to Spotify again would only add a duplicate track to
-      // the playlist, once per pass, for every reel with audio.
+      // What the entry already carried before this pass.
+      //
+      // The merge below keeps the existing copy of anything already here, so
+      // every external lookup spent on one of these items is spent on a result
+      // that is then discarded — and on a second pass most items are already
+      // here. Skipping them is what keeps a backfill from firing hundreds of
+      // Spotify, TMDb, Watchmode, OpenLibrary and Nominatim calls to re-derive
+      // enrichment the entry already has. Anything genuinely new that the
+      // transcript revealed is still enriched: that is the point of the pass.
       const priorSongKeys = new Set(
         (priorEntry?.results?.songs ?? []).map((s) => songKey(s.title, s.artist))
+      );
+      const priorFilmKeys = new Set(
+        (priorEntry?.results?.films ?? []).map((f) => filmTitleKey(f.title))
+      );
+      const priorNoteKeys = new Set(
+        (priorEntry?.results?.notes ?? []).map((n) => noteKey(n.category, n.text))
       );
 
       const songs: Song[] = [];
       for (const songData of merged.songs) {
+        // The merge keeps the copy already on the entry, links and all, so
+        // both the lookup and the playlist add would be thrown away.
         const alreadyOnEntry = priorSongKeys.has(songKey(songData.title, songData.artist));
-        const spotifyResult = await searchTrack(songData.title, songData.artist);
+        const spotifyResult = alreadyOnEntry ? null : await searchTrack(songData.title, songData.artist);
         let addedToPlaylist = false;
-        if (spotifyResult) {
-          if (!alreadyOnEntry) addedToPlaylist = await addToPlaylist(spotifyResult.uri);
+        if (alreadyOnEntry) {
+          await appendActionLog(entryId, createActionLog('spotify_search', {
+            query: `${songData.title} — ${songData.artist}`,
+            status: 'skipped',
+            reason: 'second pass: song already on the entry',
+          }));
+        } else if (spotifyResult) {
+          addedToPlaylist = await addToPlaylist(spotifyResult.uri);
           await appendActionLog(entryId, createActionLog('spotify_search', {
             query: `${songData.title} — ${songData.artist}`,
             found: true,
@@ -843,7 +926,6 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             uri: spotifyResult.uri,
             url: spotifyResult.url,
             addedToPlaylist,
-            ...(alreadyOnEntry ? { skippedPlaylist: 'already on this entry' } : {}),
           }));
         } else {
           await appendActionLog(entryId, createActionLog('spotify_search', {
@@ -872,10 +954,12 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
 
       for (const slideSong of slideSongs) {
         const slideAlreadyOnEntry = priorSongKeys.has(songKey(slideSong.title, slideSong.artist ?? ''));
-        const spotifyResult = await searchTrack(slideSong.title, slideSong.artist ?? '');
+        const spotifyResult = slideAlreadyOnEntry
+          ? null
+          : await searchTrack(slideSong.title, slideSong.artist ?? '');
         let addedToPlaylist = false;
         if (spotifyResult) {
-          if (!slideAlreadyOnEntry) addedToPlaylist = await addToPlaylist(spotifyResult.uri);
+          addedToPlaylist = await addToPlaylist(spotifyResult.uri);
           await appendActionLog(entryId, createActionLog('spotify_search', {
             query: `${slideSong.title} — ${slideSong.artist ?? ''}`,
             source: 'carousel_slide',
@@ -894,7 +978,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             found: false,
           }));
         }
-        const ytUrl = featuresConfig.youtubeDirect
+        const ytUrl = !reanalyze && featuresConfig.youtubeDirect
           ? await resolveYoutubeUrl(slideSong.artist ?? '', slideSong.title)
           : generateYoutubeSearchUrl(slideSong.title, slideSong.artist ?? '');
         songs.push({
@@ -911,8 +995,15 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         });
       }
 
-      // Resolve direct YouTube URLs for songs missing one
-      if (featuresConfig.youtubeDirect) {
+      // Resolve direct YouTube URLs for songs missing one.
+      //
+      // `!reanalyze` because this is yt-dlp against YouTube — an external
+      // service, and the rule holds even though the URL is missing: a song
+      // without one may simply be a song yt-dlp could not resolve, so a
+      // backfill would re-learn hundreds of the same failures. The fallback
+      // below builds a search URL locally, which is what CLAUDE.md prescribes
+      // anyway, so a genuinely new song still gets a working link.
+      if (!reanalyze && featuresConfig.youtubeDirect) {
         await Promise.allSettled(
           songs.map(async (song, i) => {
             if (!song.youtubeUrl) {
@@ -927,26 +1018,51 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           })
         );
       } else {
-        // Fallback to search URL when youtubeDirect disabled
+        // Fallback to search URL when youtubeDirect is disabled, or when this
+        // is a second pass and the direct resolver is off limits.
         songs.forEach((song, i) => {
           if (!song.youtubeUrl) {
             songs[i] = { ...song, youtubeUrl: generateYoutubeSearchUrl(song.title, song.artist) };
           }
         });
+        if (reanalyze && featuresConfig.youtubeDirect) {
+          await appendActionLog(entryId, createActionLog('youtube_resolve', {
+            status: 'skipped',
+            reason: 'second pass: external resolver never runs, using search URLs',
+            songs: songs.length,
+          }));
+        }
       }
 
       // Fire-and-forget: enrich every song with title in the merged result set
       // (Deezer/iTunes cover, genres, direct links) skipping ones enriched
       // within the TTL. Never delays the pipeline.
-      enqueueSongEnrichment(songs.map((s) => ({ artist: s.artist, title: s.title })));
+      //
+      // Songs already on the entry are left out on a second pass: their meta
+      // row exists, and for an archived entry the TTL has long expired, so
+      // including them would mean a Deezer and an iTunes call each to rebuild
+      // what is already there.
+      enqueueSongEnrichment(
+        songs
+          .filter((s) => !priorSongKeys.has(songKey(s.title, s.artist)))
+          .map((s) => ({ artist: s.artist, title: s.title }))
+      );
 
       const films: Film[] = [];
       for (const filmData of merged.films) {
-        const tmdbResult = await searchFilm(filmData.title, filmData.year);
+        // As with songs: the merge keeps the copy already on the entry, so the
+        // TMDb lookup would be spent on a result that is discarded. A null
+        // tmdbResult also carries the rest of the loop — the film_meta upsert
+        // and the Watchmode refresh both already require one — so the entry's
+        // existing enrichment is left alone rather than refetched.
+        const filmAlreadyOnEntry = priorFilmKeys.has(filmTitleKey(filmData.title));
+        const tmdbResult = filmAlreadyOnEntry ? null : await searchFilm(filmData.title, filmData.year);
         await appendActionLog(entryId, createActionLog('film_found', {
           title: filmData.title,
           provider: 'tmdb',
-          found: !!tmdbResult,
+          ...(filmAlreadyOnEntry
+            ? { status: 'skipped', reason: 'second pass: film already on the entry' }
+            : { found: !!tmdbResult }),
         }));
         const filmYear = resolveFilmYear(filmData.year, tmdbResult?.releaseDate);
         const filmMetaKey = filmKey(filmData.title, filmYear);
@@ -985,7 +1101,10 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       }
 
       for (const slideFilm of slideFilms) {
-        const tmdbResult = await searchFilm(slideFilm.title, slideFilm.year?.toString() ?? null);
+        const slideFilmAlreadyOnEntry = priorFilmKeys.has(filmTitleKey(slideFilm.title));
+        const tmdbResult = slideFilmAlreadyOnEntry
+          ? null
+          : await searchFilm(slideFilm.title, slideFilm.year?.toString() ?? null);
         const slideFilmYear = resolveFilmYear(slideFilm.year?.toString() ?? null, tmdbResult?.releaseDate);
         const slideFilmMetaKey = filmKey(slideFilm.title, slideFilmYear);
         if (hasEnrichmentData(tmdbResult)) {
@@ -1091,7 +1210,9 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       // Never delays the pipeline. Fired after results are persisted since,
       // unlike songs, notes have no separate downstream step depending on
       // this write completing first.
-      enqueueNoteEnrichment(notes);
+      // Same rule as the songs above: a note already on the entry keeps its
+      // existing OpenLibrary / Nominatim enrichment through the merge.
+      enqueueNoteEnrichment(notes.filter((n) => !priorNoteKeys.has(noteKey(n.category, n.text))));
 
       // Counted off what was actually persisted, not off this pass alone: on a
       // second pass the two differ by everything the merge preserved.

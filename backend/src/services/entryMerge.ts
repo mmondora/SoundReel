@@ -11,7 +11,15 @@ export function songKey(title: string, artist: string): string {
   return `${title.toLowerCase().trim()}::${artist.toLowerCase().trim()}`;
 }
 
-function filmKey(title: string): string {
+/**
+ * Identity of a film inside an entry. Exported for the same reason as songKey:
+ * the route asks "is this already on the entry?" before spending an external
+ * lookup on something the merge is going to discard.
+ *
+ * Named for the title to avoid colliding with filmMeta's `filmKey`, which also
+ * takes a year and keys a different table.
+ */
+export function filmTitleKey(title: string): string {
   return title.toLowerCase().trim();
 }
 
@@ -54,9 +62,9 @@ export function mergeEntryResults(existing: EntryResults, incoming: EntryResults
   }
 
   const films = [...list(existing.films)];
-  const seenFilms = new Set(films.map((f) => filmKey(f.title)));
+  const seenFilms = new Set(films.map((f) => filmTitleKey(f.title)));
   for (const f of list(incoming.films)) {
-    const k = filmKey(f.title);
+    const k = filmTitleKey(f.title);
     if (!seenFilms.has(k)) {
       seenFilms.add(k);
       films.push(f);
