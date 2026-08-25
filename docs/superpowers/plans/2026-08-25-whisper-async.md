@@ -1073,25 +1073,42 @@ dell'analisi. Quando `reanalyze` è vero, prima di scrivere:
 
 Adatta il nome della variabile dei risultati a quello realmente usato nel file.
 
-- [ ] **Step 7: Il worker passa il flag**
+- [ ] **Step 7: Il worker passa il flag, che ha una colonna sua**
 
-In `jobQueueWorker.ts`, `dispatch` invia al body anche `reanalyze` quando il job
-lo richiede. Poiché il job di seconda passata è distinguibile solo dal fatto che
-`notify` è falso — che vale anche per i repair — aggiungi un campo esplicito al
-body:
+Una prima stesura ricavava `reanalyze` da `kind === 'analyze' && !job.notify`,
+trattando ogni repair silenzioso come ri-analisi perché fondere è più sicuro che
+sostituire. Quel ragionamento reggeva finché `reanalyze` significava solo
+"fondi". Non regge più ora che significa anche "non scaricare mai":
+`scripts/requeueErrors.ts:105` accoda proprio con `notify: false`, e **95 delle
+96 entry in errore hanno la directory media vuota** — lo strumento di
+riparazione sarebbe diventato inutile per l'intero arretrato.
+
+Le due proprietà vanno separate.
+
+Il merge diventa **incondizionato** al punto di scrittura: su risultati esistenti
+vuoti è un'operazione nulla, che è esattamente il caso della riparazione, quindi
+l'intento originale è soddisfatto senza alcun flag.
+
+`reanalyze` diventa una colonna di `job_queue` (migration `010_job_reanalyze.sql`
+più il DDL corrispondente in `init.sql`, stessa convenzione della 009), scritta
+**solo** da `dispatchTranscribe`, con un unico significato: *i media sono su
+disco, non scaricare niente*.
 
 ```ts
       body: JSON.stringify({
         url: job.sourceUrl,
         channel: 'telegram',
         user: job.inputUser,
-        reanalyze: job.kind === 'analyze' && !job.notify,
+        reanalyze: job.reanalyze,
       }),
 ```
 
-Questo è volutamente conservativo: un repair silenzioso viene trattato come una
-ri-analisi, cioè fonde invece di sostituire. È il comportamento più sicuro dei
-due.
+Nessun nuovo `kind`: `kind` è portante nelle query di claim, e una corsia in più
+rischierebbe job che nessuna funzione riesce a prendere.
+
+Servono due test alle estremità della catena: che un repair silenzioso resti
+`reanalyze: false` e quindi conservi il suo download, e che un job accodato da
+`dispatchTranscribe` arrivi con `reanalyze: true`.
 
 - [ ] **Step 8: Typecheck e suite completa**
 
