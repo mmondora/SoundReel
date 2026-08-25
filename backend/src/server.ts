@@ -21,6 +21,7 @@ import { registerSongsRoutes } from './routes/songs';
 import { registerNotesRoutes } from './routes/notes';
 import { requeueStuckJobs } from './utils/jobQueue';
 import { startJobQueueWorker } from './services/jobQueueWorker';
+import { runMigrations } from './db/runMigrations';
 
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 8080);
@@ -66,11 +67,16 @@ async function bootstrap(): Promise<void> {
 
   app.get('/health', async () => ({ ok: true }));
 
-  await app.listen({ host: HOST, port: PORT });
-  app.log.info(`SoundReel backend listening on ${HOST}:${PORT}`);
-
   await query('SELECT 1');
   app.log.info('Postgres connection verified');
+
+  const applied = await runMigrations();
+  if (applied.length) {
+    app.log.info(`Migration applicate: ${applied.join(', ')}`);
+  }
+
+  await app.listen({ host: HOST, port: PORT });
+  app.log.info(`SoundReel backend listening on ${HOST}:${PORT}`);
 
   const requeuedCount = await requeueStuckJobs();
   if (requeuedCount > 0) {

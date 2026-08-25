@@ -16,9 +16,15 @@ services:
       DB_PORT: 5432
       DB_NAME: soundreel
       DB_USER: soundreel
+      # Compiled code lives at /app/dist/db, but the Dockerfile COPYs
+      # migrations to /app/migrations — the two do not line up, so this
+      # points the runner at the real path instead of guessing.
+      MIGRATIONS_DIR: /app/migrations
       OLLAMA_URL: http://gpu-router:9000
       INSTALOADER_URL: http://soundreel-instaloader:5000
-      WHISPER_URL: http://soundreel-whisper:9000
+      # Whisper remoto su archi-pc (CPU 5900X, servizio nativo — vedi geekom-hub/docs/machines.md).
+      # Fallback locale: WHISPER_URL=http://soundreel-whisper:9000 + `docker compose --profile local-whisper up -d`
+      WHISPER_URL: ${WHISPER_URL:-http://192.168.178.23:9000}
       OCR_URL: http://soundreel-ocr:5001
       MEDIA_ROOT: /data/media
       FRONTEND_URL: https://soundreel.casamon.dev
@@ -33,8 +39,6 @@ services:
       soundreel-db:
         condition: service_healthy
       soundreel-instaloader:
-        condition: service_started
-      soundreel-whisper:
         condition: service_started
       soundreel-ocr:
         condition: service_started
@@ -85,6 +89,7 @@ services:
   soundreel-whisper:
     image: onerahmet/openai-whisper-asr-webservice:latest
     container_name: soundreel-whisper
+    profiles: [local-whisper]
     environment:
       ASR_MODEL: ${WHISPER_MODEL:-small}
       ASR_ENGINE: faster_whisper

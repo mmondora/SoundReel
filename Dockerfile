@@ -61,6 +61,10 @@ COPY backend/prompts ./prompts
 # DB schema
 COPY backend/src/db/init.sql ./init.sql
 
+# The runner reads these at boot. Without this COPY it finds an empty directory
+# and silently applies nothing — worse than having no runner at all.
+COPY backend/src/db/migrations ./migrations
+
 EXPOSE 8080
 
 USER node
