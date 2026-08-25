@@ -101,3 +101,25 @@ export async function transcribeLocal(audioPath: string | null): Promise<Whisper
     };
   }
 }
+
+/**
+ * Cheap liveness probe. The transcription job uses it to tell "whisper is not
+ * there" from "whisper failed": the first costs no attempt, the second does.
+ * Kept separate from transcribeLocal, which by the time it can tell has
+ * already read a multi-megabyte audio file into memory.
+ */
+export async function isWhisperReachable(): Promise<boolean> {
+  const base = process.env.WHISPER_URL;
+  if (!base) return false;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3_000);
+  try {
+    const res = await fetch(`${base.replace(/\/$/, '')}/`, { signal: controller.signal });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
