@@ -1182,3 +1182,345 @@ docker exec soundreel node dist/scripts/backfillTranscripts.js
 ```
 Expected: stampa quante ne accoda. Da eseguire **soltanto** dopo che il punto
 precedente ha confermato il merge sul campo.
+
+---
+
+### Task 7: Impalcatura e test funzionali del flusso
+
+**Aggiunto in corso d'opera su richiesta esplicita.** I 612 test esistenti sono
+tutti unitari con mock: verificano i pezzi, non l'orchestrazione. Le regressioni
+che questo task previene sono quelle che nessun test unitario vede — "la
+pipeline ha smesso di accodare", "un job di trascrizione è finito su
+`/api/analyze`", "la seconda passata sostituisce invece di fondere".
+
+L'impalcatura è deliberatamente riusabile: un piano successivo estenderà la
+copertura funzionale alla pipeline di analisi esistente appoggiandosi a questa,
+invece di costruirne un'altra.
+
+**Files:**
+- Create: `/home/mike/works/Soundreel/backend/src/test/harness.ts`
+- Create: `/home/mike/works/Soundreel/backend/src/test/flows/whisperAsync.flow.test.ts`
+
+**Interfaces:**
+- Consumes: `dispatchTranscribe`, `TRANSCRIBE_RETRY_MS` (Task 3); `enqueueJob` (Task 1); `mergeEntryResults` (Task 5)
+- Produces: `createHarness()`, `installHarness()`, `emptyResults()` — riusabili dal piano successivo
+
+- [ ] **Step 1: Scrivi l'impalcatura**
+
+Crea `backend/src/test/harness.ts`. L'archivio è in memoria; solo i confini
+esterni — rete e filesystem — sono finti. Worker, coda e merge restano quelli
+veri, che è tutto il punto dell'esercizio.
+
+```ts
+import { vi } from 'vitest';
+import type { EntryResults } from '../types';
+
+export interface FakeJob {
+  id: number;
+  entryId: string;
+  sourceUrl: string;
+  platform: 'instagram' | 'other';
+  chatId: number;
+  inputUser: string | null;
+  status: 'queued' | 'processing' | 'done' | 'failed';
+  attempts: number;
+  notify: boolean;
+  kind: 'analyze' | 'transcribe';
+  priority: number;
+}
+
+export interface FakeEntry {
+  id: string;
+  sourceUrl: string;
+  results: EntryResults;
+  actionLog: Array<{ action: string; data: Record<string, unknown> }>;
+}
+
+/** Records every outbound attempt so a test can assert what the flow tried. */
+export interface ExternalCalls {
+  analyze: Array<Record<string, unknown>>;
+  whisperProbe: number;
+  whisperTranscribe: string[];
+  telegram: Array<{ chatId: number; text: string }>;
+}
+
+export interface Harness {
+  jobs: FakeJob[];
+  entries: Map<string, FakeEntry>;
+  calls: ExternalCalls;
+  whisperUp: boolean;
+  whisperText: string;
+  /** Entry ids whose audio.wav is on disk. */
+  audioPresent: Set<string>;
+  nextJobId: number;
+  addEntry(id: string, results?: Partial<EntryResults>): FakeEntry;
+  addJob(job: Partial<FakeJob> & { entryId: string }): FakeJob;
+}
+
+export function emptyResults(): EntryResults {
+  return { songs: [], films: [], notes: [], links: [], tags: [], summary: null };
+}
+
+export function createHarness(): Harness {
+  const h: Harness = {
+    jobs: [],
+    entries: new Map(),
+    calls: { analyze: [], whisperProbe: 0, whisperTranscribe: [], telegram: [] },
+    whisperUp: false,
+    whisperText: 'testo trascritto',
+    audioPresent: new Set(),
+    nextJobId: 1,
+    addEntry(id, results) {
+      const e: FakeEntry = {
+        id,
+        sourceUrl: `https://example.test/${id}`,
+        results: { ...emptyResults(), ...results },
+        actionLog: [],
+      };
+      h.entries.set(id, e);
+      return e;
+    },
+    addJob(job) {
+      const j: FakeJob = {
+        id: h.nextJobId++,
+        sourceUrl: `https://example.test/${job.entryId}`,
+        platform: 'other',
+        chatId: 1,
+        inputUser: null,
+        status: 'queued',
+        attempts: 0,
+        notify: true,
+        kind: 'analyze',
+        priority: 0,
+        ...job,
+      };
+      h.jobs.push(j);
+      return j;
+    },
+  };
+  return h;
+}
+
+/**
+ * Swap the db layer, the filesystem probe and the network for the harness.
+ *
+ * Paths are relative to the file that calls this, so they are the fragile part:
+ * a path that does not match what the worker imports leaves the real module in
+ * place and the test passes for the wrong reason. Step 4 of this task exists to
+ * rule that out.
+ */
+export function installHarness(h: Harness, dbPath = '../../utils/db', logPath = '../../utils/logger'): void {
+  vi.doMock(dbPath, () => ({
+    updateEntry: vi.fn(async (id: string, patch: Record<string, unknown>) => {
+      const e = h.entries.get(id);
+      if (!e) return;
+      for (const [k, v] of Object.entries(patch)) {
+        if (k === 'results.transcript') e.results.transcript = v as string;
+      }
+    }),
+    appendActionLog: vi.fn(async (id: string, entry: { action: string; data: Record<string, unknown> }) => {
+      h.entries.get(id)?.actionLog.push(entry);
+    }),
+    getEntry: vi.fn(async (id: string) => h.entries.get(id) ?? null),
+    findEntryByUrl: vi.fn(async (url: string) =>
+      [...h.entries.values()].find((e) => e.sourceUrl === url) ?? null),
+  }));
+
+  vi.doMock(logPath, () => ({
+    createActionLog: (action: string, data: Record<string, unknown>) => ({ action, data }),
+    logError: vi.fn(),
+    logInfo: vi.fn(),
+    logWarning: vi.fn(),
+  }));
+
+  vi.doMock('fs', async () => {
+    const actual = await vi.importActual<typeof import('fs')>('fs');
+    return {
+      ...actual,
+      promises: {
+        ...actual.promises,
+        access: vi.fn(async (p: string) => {
+          const id = String(p).split('/').slice(-2)[0];
+          if (!h.audioPresent.has(id)) throw new Error('ENOENT');
+        }),
+      },
+    };
+  });
+
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes('/api/analyze')) {
+      h.calls.analyze.push(JSON.parse(String(init?.body ?? '{}')));
+      return new Response(JSON.stringify({ success: true, entryId: 'x' }), { status: 200 });
+    }
+    if (url.includes('api.telegram.org')) {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { chat_id: number; text: string };
+      h.calls.telegram.push({ chatId: body.chat_id, text: body.text });
+      return new Response('{"ok":true}', { status: 200 });
+    }
+    if (url.includes('whisper')) {
+      const isProbe = /\/?$/.test(url) && !url.includes('asr');
+      if (isProbe) {
+        h.calls.whisperProbe++;
+        return new Response('', { status: h.whisperUp ? 200 : 502 });
+      }
+      h.calls.whisperTranscribe.push(url);
+      if (!h.whisperUp) throw new TypeError('fetch failed');
+      return new Response(JSON.stringify({ text: h.whisperText, language: 'it' }), { status: 200 });
+    }
+    throw new Error(`harness: unexpected fetch to ${url}`);
+  }));
+}
+```
+
+- [ ] **Step 2: Scrivi i test di flusso che falliscono**
+
+Crea `backend/src/test/flows/whisperAsync.flow.test.ts`:
+
+```ts
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createHarness, installHarness, type Harness } from '../harness';
+
+const WHISPER = 'http://whisper.test:9000';
+
+describe('flusso whisper asincrono', () => {
+  let h: Harness;
+
+  beforeEach(() => {
+    vi.resetModules();
+    h = createHarness();
+    process.env.WHISPER_URL = WHISPER;
+    process.env.MEDIA_ROOT = '/data/media';
+  });
+
+  it('con whisper spento rimanda senza consumare tentativi', async () => {
+    h.whisperUp = false;
+    h.addEntry('e1');
+    h.audioPresent.add('e1');
+    const job = h.addJob({ entryId: 'e1', kind: 'transcribe', attempts: 2 });
+
+    const scheduled: Array<{ attempts: number; when: Date }> = [];
+    vi.doMock('../../utils/jobQueue', () => ({
+      scheduleJobRetry: vi.fn(async (_id: number, attempts: number, when: Date) => {
+        scheduled.push({ attempts, when });
+      }),
+      markJobDone: vi.fn(), markJobFailed: vi.fn(), enqueueJob: vi.fn(),
+      claimNextTranscribeJob: vi.fn(), claimNextInstagramJob: vi.fn(), claimNextOtherJob: vi.fn(),
+    }));
+    installHarness(h);
+
+    const { dispatchTranscribe, TRANSCRIBE_RETRY_MS } = await import('../../services/jobQueueWorker');
+    await dispatchTranscribe(job as never);
+
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0].attempts).toBe(2);
+    expect(scheduled[0].when.getTime()).toBeGreaterThan(Date.now() + TRANSCRIBE_RETRY_MS - 5_000);
+    expect(h.calls.whisperTranscribe).toHaveLength(0);
+    expect(h.calls.analyze).toHaveLength(0);
+  });
+
+  it('con whisper acceso trascrive e accoda una seconda passata silenziosa', async () => {
+    h.whisperUp = true;
+    h.addEntry('e2');
+    h.audioPresent.add('e2');
+    const job = h.addJob({ entryId: 'e2', kind: 'transcribe' });
+
+    const enqueued: Array<Record<string, unknown>> = [];
+    vi.doMock('../../utils/jobQueue', () => ({
+      scheduleJobRetry: vi.fn(), markJobDone: vi.fn(), markJobFailed: vi.fn(),
+      enqueueJob: vi.fn(async (j: Record<string, unknown>) => { enqueued.push(j); return 99; }),
+      claimNextTranscribeJob: vi.fn(), claimNextInstagramJob: vi.fn(), claimNextOtherJob: vi.fn(),
+    }));
+    installHarness(h);
+
+    const { dispatchTranscribe } = await import('../../services/jobQueueWorker');
+    await dispatchTranscribe(job as never);
+
+    expect(h.entries.get('e2')?.results.transcript).toBe('testo trascritto');
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0].kind).toBe('analyze');
+    expect(enqueued[0].notify).toBe(false);
+  });
+
+  it('senza audio sul disco fallisce senza riprovare', async () => {
+    h.whisperUp = true;
+    h.addEntry('e3');
+    const job = h.addJob({ entryId: 'e3', kind: 'transcribe' });
+
+    const failed: number[] = [];
+    const retried: number[] = [];
+    vi.doMock('../../utils/jobQueue', () => ({
+      scheduleJobRetry: vi.fn(async (id: number) => { retried.push(id); }),
+      markJobDone: vi.fn(), markJobFailed: vi.fn(async (id: number) => { failed.push(id); }),
+      enqueueJob: vi.fn(),
+      claimNextTranscribeJob: vi.fn(), claimNextInstagramJob: vi.fn(), claimNextOtherJob: vi.fn(),
+    }));
+    installHarness(h);
+
+    const { dispatchTranscribe } = await import('../../services/jobQueueWorker');
+    await dispatchTranscribe(job as never);
+
+    expect(failed).toEqual([job.id]);
+    expect(retried).toEqual([]);
+    const log = h.entries.get('e3')?.actionLog ?? [];
+    expect(log.some((l) => l.data.reason === 'audio file missing')).toBe(true);
+  });
+
+  it('la seconda passata fonde e non perde canzoni gia trovate', async () => {
+    const { mergeEntryResults } = await import('../../services/entryMerge');
+    const existing = {
+      songs: [{ title: 'Roma', artist: 'Baustelle', album: null }],
+      films: [], notes: [], links: [], tags: [], summary: 'riassunto originale',
+    };
+    const incoming = {
+      songs: [], films: [], notes: [], links: [], tags: [],
+      summary: 'riassunto nuovo', transcript: 'testo',
+    };
+    const out = mergeEntryResults(existing as never, incoming as never);
+
+    expect(out.songs).toHaveLength(1);
+    expect(out.summary).toBe('riassunto originale');
+    expect(out.transcript).toBe('testo');
+  });
+});
+```
+
+- [ ] **Step 3: Esegui e verifica che falliscano**
+
+Run: `cd /home/mike/works/Soundreel/backend && npx vitest run src/test/flows/whisperAsync.flow.test.ts`
+Expected: FAIL — l'impalcatura o i percorsi dei mock non sono ancora a posto.
+
+- [ ] **Step 4: Fai passare i test, poi dimostra che valgono qualcosa**
+
+Aggiusta i percorsi relativi finché i mock intercettano davvero i moduli che il
+worker importa. Se un percorso non combacia il mock non si applica, il test
+chiama il codice vero e **può passare per il motivo sbagliato**: è la modalità
+di fallimento più insidiosa di questa impalcatura.
+
+Per escluderla, togli temporaneamente il ramo `isWhisperReachable` da
+`dispatchTranscribe` e verifica che il primo test **fallisca**. Poi rimettilo.
+Riporta l'output di entrambe le esecuzioni: un test di flusso che passa anche
+senza il codice che dovrebbe verificare non vale niente, e questa è l'unica
+prova che non sia così.
+
+- [ ] **Step 5: Esegui typecheck e suite completa**
+
+```bash
+cd /home/mike/works/Soundreel/backend
+npm run typecheck && npm test
+```
+Expected: PASS, con 4 test in più rispetto al conteggio precedente.
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd /home/mike/works/Soundreel
+git add backend/src/test/harness.ts backend/src/test/flows/whisperAsync.flow.test.ts
+git commit -m "test: cover the async transcription flow end to end
+
+The existing tests are all mocked units: they check the pieces, not how they
+fit together. These drive the real worker with only the network and the
+filesystem faked, so a regression that stops the pipeline enqueuing — or lets
+the second pass replace instead of merge — fails a test rather than reaching
+production."
+```
