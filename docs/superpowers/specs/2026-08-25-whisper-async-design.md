@@ -134,6 +134,13 @@ pendente. Stampa quante ne accoda e si ferma, senza eseguire nulla.
 Il job `analyze` di ri-analisi porta un flag `reanalyze` che impone quattro
 regole.
 
+Il flag serve anche a un secondo scopo, scoperto scrivendo il piano:
+`analyze.ts:148` restituisce immediatamente la entry quando la trova già
+`completed`, senza riprocessare. Senza un modo per scavalcare quel corto
+circuito la seconda passata sarebbe un no-op silenzioso. `reanalyze: true`
+viaggia nel corpo della richiesta e disattiva quel ritorno anticipato,
+mantenendo l'`entryId` esistente.
+
 **Canzoni e film si fondono per chiave.** Si riusa la normalizzazione di
 `resultMerger.ts` (`normalizeSongKey`, `normalizeFilmKey`). Un elemento già
 presente non viene toccato; uno nuovo viene aggiunto. **Nulla viene mai rimosso**,
