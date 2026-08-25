@@ -119,10 +119,25 @@ priorità 0; il backfill storico usa 10, quindi **cede sempre il passo ai
 contenuti nuovi**.
 
 Uno script `backfillTranscripts.ts` accoda le entry che hanno
-`/data/media/<entryId>/audio.wav` sul disco e `results.transcript` vuoto,
-con `priority = 10` e `next_attempt_at` scaglionato di 2 minuti l'uno dall'altro,
-così whisper non viene saturato e un reel appena mandato non aspetta mai dietro
-allo storico.
+`/data/media/<entryId>/audio.wav` sul disco e `results.transcript` vuoto, con
+`priority = 10`, che basta da solo a far passare davanti qualunque contenuto
+appena inviato.
+
+**Nessuno scaglionamento per difetto.** Una prima stesura di questa spec
+distanziava i job di due minuti. Misurato: 489 file, 0,9 GB, WAV mono 16 kHz —
+cioè **8,4 ore di audio**, circa un minuto a clip. Con `faster-whisper` `small`
+su un 5900X sono una o due ore di elaborazione, mentre lo scaglionamento ne
+avrebbe imposte sedici di sola attesa. Proteggeva da una saturazione che non
+esiste: whisper gira su una macchina dedicata, senza rate limit da rispettare, e
+la priorità basta già a non far aspettare i contenuti nuovi. Lo scaglionamento
+resta disponibile come opzione, ma vale zero per difetto.
+
+**Il recupero avviene in due ondate**, e la sicurezza sta nel controllo, non
+nella lentezza. La prima accoda un numero limitato di entry — scelte fra quelle
+con più arricchimenti da perdere, che sono le uniche capaci di rivelare un
+difetto del merge — e ci si ferma a verificare a mano che canzoni, film e note
+non siano diminuiti e che i riassunti preesistenti siano intatti. Solo dopo si
+accoda il resto.
 
 Lo script è idempotente: non accoda un'entry che ha già un job `transcribe`
 pendente. Stampa quante ne accoda e si ferma, senza eseguire nulla.
