@@ -1,6 +1,10 @@
+import { promises as fs } from 'fs';
+import path from 'path';
 import {
   claimNextInstagramJob,
   claimNextOtherJob,
+  claimNextTranscribeJob,
+  enqueueJob,
   markJobDone,
   markJobFailed,
   scheduleJobRetry,
@@ -9,6 +13,9 @@ import {
 } from '../utils/jobQueue';
 import { sendTelegramMessage, formatAnalysisError, formatTelegramResponse, type AnalyzeResult } from '../routes/telegram';
 import { Logger } from './debugLogger';
+import { isWhisperReachable, transcribeLocal } from './whisperClient';
+import { updateEntry, appendActionLog } from '../utils/db';
+import { createActionLog } from '../utils/logger';
 
 const OTHER_CONCURRENCY_CAP = 3;
 const IG_BACKOFF_MS = [60_000, 180_000, 420_000];
@@ -65,6 +72,79 @@ async function handleFailure(job: JobQueueRow, err: unknown, log: Logger): Promi
     return;
   }
   await scheduleJobRetry(job.id, attempts, new Date(Date.now() + backoff));
+}
+
+/**
+ * Whisper lives on a machine that is powered off most of the time, and we
+ * deliberately do not wake it for transcription — that is what the Ollama wake
+ * threshold exists to prevent. So an unreachable service is not a failure: the
+ * job simply waits half an hour and asks again.
+ */
+export const TRANSCRIBE_RETRY_MS = 30 * 60 * 1000;
+
+const MEDIA_ROOT = process.env.MEDIA_ROOT || '/data/media';
+
+export async function dispatchTranscribe(job: JobQueueRow): Promise<void> {
+  const log = new Logger('jobQueueWorker');
+
+  try {
+    if (!(await isWhisperReachable())) {
+      await scheduleJobRetry(job.id, job.attempts, new Date(Date.now() + TRANSCRIBE_RETRY_MS));
+      log.info(`Job ${job.id}: whisper non raggiungibile, riprovo fra 30 minuti`);
+      return;
+    }
+
+    const audioPath = path.join(MEDIA_ROOT, job.entryId, 'audio.wav');
+    try {
+      await fs.access(audioPath);
+    } catch {
+      // Retrying can't produce a file that isn't there — no scheduleJobRetry,
+      // no attempt burned, just a terminal failure.
+      log.warn(`Job ${job.id}: audio mancante su disco (${audioPath})`);
+      await markJobFailed(job.id);
+      return;
+    }
+
+    const asr = await transcribeLocal(audioPath);
+    await appendActionLog(job.entryId, createActionLog('whisper_asr', {
+      status: asr.status,
+      reason: asr.reason || null,
+      language: asr.language,
+      chars: asr.text?.length || 0,
+      durationMs: asr.durationMs,
+    }));
+
+    if (asr.status === 'error') {
+      // A service that answered and then failed is a real failure: let the
+      // existing backoff table count this attempt.
+      await handleFailure(job, new Error(asr.reason || 'whisper error'), log);
+      return;
+    }
+
+    if (asr.text) {
+      await updateEntry(job.entryId, { 'results.transcript': asr.text });
+      await enqueueJob({
+        entryId: job.entryId,
+        sourceUrl: job.sourceUrl,
+        platform: job.platform,
+        chatId: job.chatId,
+        inputUser: job.inputUser,
+        notify: false,
+        kind: 'analyze',
+        priority: job.priority,
+      });
+    }
+
+    await markJobDone(job.id);
+  } catch (err) {
+    // dispatchTranscribe is invoked fire-and-forget (`void dispatchTranscribe(...)`),
+    // so any unexpected failure here (e.g. DB unreachable while recording the
+    // result) must not become an unhandled promise rejection.
+    log.error(
+      `Job ${job.id}: dispatchTranscribe unexpected failure`,
+      err instanceof Error ? err : new Error(String(err))
+    );
+  }
 }
 
 async function dispatch(job: JobQueueRow, onSettle: () => void): Promise<void> {
@@ -134,6 +214,18 @@ export async function tick(state: WorkerState): Promise<void> {
       break;
     }
     void dispatch(job, () => {
+      state.otherInFlight--;
+    });
+  }
+
+  while (state.otherInFlight < OTHER_CONCURRENCY_CAP) {
+    state.otherInFlight++;
+    const job = await claimNextTranscribeJob();
+    if (!job) {
+      state.otherInFlight--;
+      break;
+    }
+    void dispatchTranscribe(job).finally(() => {
       state.otherInFlight--;
     });
   }

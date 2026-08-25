@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../utils/jobQueue', () => ({
   claimNextInstagramJob: vi.fn(),
   claimNextOtherJob: vi.fn(),
+  claimNextTranscribeJob: vi.fn(),
+  enqueueJob: vi.fn(),
   markJobDone: vi.fn(),
   markJobFailed: vi.fn(),
   scheduleJobRetry: vi.fn(),
@@ -241,5 +243,60 @@ describe('notify flag', () => {
     await tick(createInitialWorkerState());
     await flush();
     expect(sendTelegramMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('dispatchTranscribe', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('reschedules without burning an attempt when whisper is unreachable', async () => {
+    const scheduleJobRetry = vi.fn();
+    const transcribeLocal = vi.fn();
+    vi.doMock('../utils/jobQueue', () => ({
+      scheduleJobRetry, markJobDone: vi.fn(), markJobFailed: vi.fn(),
+      enqueueJob: vi.fn(), claimNextTranscribeJob: vi.fn(),
+      claimNextInstagramJob: vi.fn(), claimNextOtherJob: vi.fn(),
+    }));
+    vi.doMock('./whisperClient', () => ({
+      isWhisperReachable: vi.fn(async () => false),
+      transcribeLocal,
+    }));
+
+    const { dispatchTranscribe, TRANSCRIBE_RETRY_MS } = await import('./jobQueueWorker');
+    const job = { id: 7, entryId: 'e1', attempts: 2 } as never;
+    await dispatchTranscribe(job);
+
+    expect(transcribeLocal).not.toHaveBeenCalled();
+    expect(scheduleJobRetry).toHaveBeenCalledTimes(1);
+    // attempts unchanged — an absent service is not a failure
+    expect(scheduleJobRetry.mock.calls[0][1]).toBe(2);
+    const when = scheduleJobRetry.mock.calls[0][2] as Date;
+    expect(when.getTime()).toBeGreaterThan(Date.now() + TRANSCRIBE_RETRY_MS - 5_000);
+  });
+
+  it('fails without retrying when the audio file is gone', async () => {
+    const markJobFailed = vi.fn();
+    const scheduleJobRetry = vi.fn();
+    vi.doMock('../utils/jobQueue', () => ({
+      scheduleJobRetry, markJobDone: vi.fn(), markJobFailed,
+      enqueueJob: vi.fn(), claimNextTranscribeJob: vi.fn(),
+      claimNextInstagramJob: vi.fn(), claimNextOtherJob: vi.fn(),
+    }));
+    vi.doMock('./whisperClient', () => ({
+      isWhisperReachable: vi.fn(async () => true),
+      transcribeLocal: vi.fn(),
+    }));
+    vi.doMock('fs', async () => {
+      const actual = await vi.importActual<typeof import('fs')>('fs');
+      return { ...actual, promises: { ...actual.promises, access: vi.fn(async () => { throw new Error('ENOENT'); }) } };
+    });
+
+    const { dispatchTranscribe } = await import('./jobQueueWorker');
+    await dispatchTranscribe({ id: 8, entryId: 'gone', attempts: 0 } as never);
+
+    expect(markJobFailed).toHaveBeenCalledWith(8);
+    expect(scheduleJobRetry).not.toHaveBeenCalled();
   });
 });
