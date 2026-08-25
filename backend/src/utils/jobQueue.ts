@@ -2,6 +2,7 @@ import { query, withClient } from './db';
 
 export type JobPlatform = 'instagram' | 'other';
 export type JobStatus = 'queued' | 'processing' | 'done' | 'failed';
+export type JobKind = 'analyze' | 'transcribe';
 
 export interface JobQueueRow {
   id: number;
@@ -17,6 +18,9 @@ export interface JobQueueRow {
   updatedAt: string;
   /** False for repair runs, which must stay silent. */
   notify: boolean;
+  kind: JobKind;
+  /** Lower runs first. Backfilled history uses 10 so it yields to new content. */
+  priority: number;
 }
 
 interface JobQueueDbRow {
@@ -32,6 +36,8 @@ interface JobQueueDbRow {
   created_at: Date;
   updated_at: Date;
   notify: boolean;
+  kind: string;
+  priority: number;
 }
 
 function rowToJob(row: JobQueueDbRow): JobQueueRow {
@@ -48,6 +54,8 @@ function rowToJob(row: JobQueueDbRow): JobQueueRow {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     notify: row.notify ?? true,
+    kind: (row.kind as JobKind) ?? 'analyze',
+    priority: row.priority ?? 0,
   };
 }
 
@@ -61,13 +69,18 @@ export async function enqueueJob(job: {
   notify?: boolean;
   /** Earliest dispatch time; defaults to immediately. */
   nextAttemptAt?: Date;
+  /** Defaults to the analysis pass. */
+  kind?: JobKind;
+  /** Lower runs first; defaults to 0. */
+  priority?: number;
 }): Promise<number> {
   const rows = await query<{ id: number }>(
-    `INSERT INTO job_queue (entry_id, source_url, platform, chat_id, input_user, notify, next_attempt_at)
-     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7, NOW()))
+    `INSERT INTO job_queue (entry_id, source_url, platform, chat_id, input_user, notify, next_attempt_at, kind, priority)
+     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7, NOW()),$8,$9)
      RETURNING id`,
     [job.entryId, job.sourceUrl, job.platform, job.chatId, job.inputUser,
-     job.notify ?? true, job.nextAttemptAt ?? null]
+     job.notify ?? true, job.nextAttemptAt ?? null,
+     job.kind ?? 'analyze', job.priority ?? 0]
   );
   return rows[0].id;
 }
@@ -82,7 +95,7 @@ async function claimNext(platformClause: string): Promise<JobQueueRow | null> {
       const { rows } = await client.query<JobQueueDbRow>(
         `SELECT * FROM job_queue
          WHERE status = 'queued' AND ${platformClause} AND next_attempt_at <= NOW()
-         ORDER BY created_at ASC
+         ORDER BY priority ASC, created_at ASC
          LIMIT 1
          FOR UPDATE SKIP LOCKED`
       );
@@ -105,11 +118,15 @@ async function claimNext(platformClause: string): Promise<JobQueueRow | null> {
 }
 
 export function claimNextInstagramJob(): Promise<JobQueueRow | null> {
-  return claimNext(`platform = 'instagram'`);
+  return claimNext(`kind = 'analyze' AND platform = 'instagram'`);
 }
 
 export function claimNextOtherJob(): Promise<JobQueueRow | null> {
-  return claimNext(`platform <> 'instagram'`);
+  return claimNext(`kind = 'analyze' AND platform <> 'instagram'`);
+}
+
+export function claimNextTranscribeJob(): Promise<JobQueueRow | null> {
+  return claimNext(`kind = 'transcribe'`);
 }
 
 export async function markJobDone(jobId: number): Promise<void> {

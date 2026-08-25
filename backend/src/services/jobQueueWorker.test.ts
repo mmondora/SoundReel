@@ -50,6 +50,7 @@ const IG_JOB: JobQueueRow = {
   id: 1, entryId: 'e1', sourceUrl: 'https://instagram.com/reel/x', platform: 'instagram',
   chatId: 42, inputUser: '@mike', status: 'processing', attempts: 0,
   nextAttemptAt: '', createdAt: '', updatedAt: '', notify: true,
+  kind: 'analyze', priority: 0,
 };
 
 describe('computeJitterDelayMs', () => {
