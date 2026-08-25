@@ -1567,6 +1567,8 @@ export interface FakeJob {
   notify: boolean;
   kind: 'analyze' | 'transcribe';
   priority: number;
+  /** Set only by dispatchTranscribe. Means: the media is on disk, fetch nothing. */
+  reanalyze: boolean;
 }
 
 export interface FakeEntry {
@@ -1632,6 +1634,7 @@ export function createHarness(): Harness {
         notify: true,
         kind: 'analyze',
         priority: 0,
+        reanalyze: false,
         ...job,
       };
       h.jobs.push(j);
