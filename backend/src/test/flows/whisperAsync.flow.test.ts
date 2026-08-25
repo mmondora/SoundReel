@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createHarness, installHarness, type Harness } from '../harness';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createHarness, installHarness, resetHarness, type Harness } from '../harness';
 
 const WHISPER = 'http://whisper.test:9000';
 
@@ -9,8 +9,21 @@ describe('flusso whisper asincrono', () => {
   beforeEach(() => {
     vi.resetModules();
     h = createHarness();
-    process.env.WHISPER_URL = WHISPER;
-    process.env.MEDIA_ROOT = '/data/media';
+    vi.stubEnv('WHISPER_URL', WHISPER);
+    vi.stubEnv('MEDIA_ROOT', '/data/media');
+  });
+
+  afterEach(() => {
+    // resetModules() (above) clears the instantiated-module cache but not
+    // vi.doMock's registered factories, which live for the worker process's
+    // whole run, not per file — leaving these registered would let a later
+    // test file that dynamically imports the same module inherit this test's
+    // (by-then-stale) fakes instead of its own. See resetHarness's doc for how
+    // this was confirmed (`vitest run --no-isolate` reproduces cross-file
+    // bleed without it).
+    resetHarness();
+    vi.doUnmock('../../utils/jobQueue');
+    vi.unstubAllEnvs();
   });
 
   it('con whisper spento rimanda senza consumare tentativi', async () => {

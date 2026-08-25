@@ -93,10 +93,16 @@ export function createHarness(): Harness {
 /**
  * Swap the db layer, the filesystem probe and the network for the harness.
  *
- * Paths are relative to the file that calls this, so they are the fragile part:
- * a path that does not match what the worker imports leaves the real module in
- * place and the test passes for the wrong reason. Step 4 of this task exists to
- * rule that out.
+ * The default paths are relative to *this file* (`src/test/harness.ts`), not to
+ * whichever test calls `installHarness()` — `vi.doMock`'s specifier is resolved
+ * against the module that contains the literal call, and that call lives here.
+ * A path that does not match what the worker actually imports leaves the real
+ * module in place and the test passes for the wrong reason; Step 4 of this
+ * task's brief exists to rule that out for `../services/whisperClient`'s
+ * `isWhisperReachable` guard specifically, but it is a hazard for every path
+ * below. If this file ever moves, or a caller overrides `dbPath`/`logPath` for
+ * a module living somewhere else, re-derive the value relative to this file's
+ * own location, not the caller's.
  */
 export function installHarness(h: Harness, dbPath = '../utils/db', logPath = '../utils/logger'): void {
   vi.doMock(dbPath, () => ({
@@ -173,4 +179,32 @@ export function installHarness(h: Harness, dbPath = '../utils/db', logPath = '..
     }
     throw new Error(`harness: unexpected fetch to ${url}`);
   }));
+}
+
+/**
+ * Undo `installHarness`. Call this from `afterEach` in every test that calls
+ * `installHarness`.
+ *
+ * `vi.resetModules()` (already run in this suite's `beforeEach`) clears the
+ * *instantiated module* cache, forcing the next `import()` to re-resolve —
+ * but it does not clear `vi.doMock`'s *registered factories*. Those live in
+ * Vitest's module mocker, which is shared for the lifetime of the worker
+ * process, not per test file. A file that mocks `../utils/db`, `../utils/logger`
+ * or `fs` and never unmocks them leaves those factories (closed over that
+ * test's now-stale `Harness`) registered for whichever file the worker picks
+ * up next; if that file dynamically imports the same module without first
+ * re-mocking it itself, it silently inherits someone else's fake. Confirmed
+ * reproducible in this repo with `vitest run --no-isolate`: without this
+ * cleanup, unrelated test files elsewhere in the suite fail nondeterministically
+ * depending on file scheduling. `jobQueueWorker.test.ts`'s own
+ * `dispatchTranscribe` suite hit the same issue earlier (see its
+ * `afterEach(() => vi.doUnmock('fs'))`) — this generalizes that fix to every
+ * module this harness mocks, plus the global `fetch` stub, which is not a
+ * module mock and needs its own teardown call.
+ */
+export function resetHarness(dbPath = '../utils/db', logPath = '../utils/logger'): void {
+  vi.doUnmock(dbPath);
+  vi.doUnmock(logPath);
+  vi.doUnmock('fs');
+  vi.unstubAllGlobals();
 }
