@@ -170,6 +170,30 @@ quanto una seconda passata produca. Con il transcript il riassunto sarebbe
 spesso migliore, ma non abbastanza da giustificare la sovrascrittura in blocco
 di centinaia di summary senza possibilità di confronto.
 
+**Ricalcola solo ciò che manca, e mai da un servizio esterno.**
+
+La seconda passata non rifà la pipeline. Le derivazioni della prima sono già
+persistite — misurato: 236 entry hanno `overlayText`, 302 hanno `slides`, 62
+hanno `visualContext` — e vengono **riusate** invece che ricalcolate. Solo
+l'analisi AI viene rieseguita, con il transcript nuovo in aggiunta.
+
+Dove una derivazione **manca** e i suoi ingressi sono sul disco, viene calcolata:
+un'entry archiviata prima che l'OCR esistesse guadagna l'OCR. La regola è una
+sola e uniforme — *se non ce l'ho e posso ottenerlo in casa, lo ottengo* — non
+un elenco di eccezioni per operazione.
+
+Il confine è netto e sta sui **servizi esterni**: Shazam e la risoluzione
+YouTube non vengono mai eseguiti in una seconda passata, nemmeno quando il
+risultato manca. L'assenza di un risultato non dimostra che il servizio non sia
+mai stato interrogato — un'entry senza canzoni può semplicemente essere una in
+cui Shazam non ha trovato nulla — e 146 entry senza canzoni significherebbero
+146 scansioni verso un endpoint non ufficiale per riottenere lo stesso silenzio.
+Un eventuale recupero di Shazam sullo storico è uno script separato e opt-in.
+
+Questo sostituisce l'approccio a cancelli per singola operazione. Ogni cancello
+dimenticato sarebbe stato un servizio esterno colpito centinaia di volte, e il
+prossimo che tocca `analyze.ts` avrebbe dovuto ricordarseli tutti.
+
 **Nessun terzo giro.** Un job con `reanalyze` non accoda mai un `transcribe`,
 qualunque cosa trovi sul disco.
 
