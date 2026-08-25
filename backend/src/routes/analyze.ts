@@ -3,7 +3,6 @@ import { extractContent, detectPlatform, setLogger as setContentExtractorLogger 
 import { recognizeAudio } from '../services/_legacy/audioRecognition';
 import { analyzeWithAi, extractFromSlides, AiAnalysisResponse } from '../services/aiAnalysis';
 import type { SlideItem } from '../services/aiAnalysis';
-import { transcribeLocal } from '../services/whisperClient';
 import { ocrImages } from '../services/ocrClient';
 import { pickKeyFrames } from '../services/frameSelector';
 import { describeFramesWithVision } from '../services/ollamaClient';
@@ -43,6 +42,7 @@ import {
   getEntry,
 } from '../utils/db';
 import { createActionLog, logError } from '../utils/logger';
+import { enqueueJob } from '../utils/jobQueue';
 import { Logger } from '../services/debugLogger';
 import { scanFullAudio, resolveYoutubeUrl } from '../services/shazamClient';
 import type { ShazamTrack } from '../services/shazamClient';
@@ -381,19 +381,30 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           const localPaths = content.localPaths;
           const metadataProvider = isInstagram ? 'instagram_metadata' : 'source_metadata';
 
-          // Whisper ASR on local audio
+          // Transcription no longer blocks the pipeline. Whisper runs on a
+          // machine that is powered off most of the time, so waiting bought
+          // nothing; the entry completes now and the transcript arrives later
+          // through a job, which then triggers a second analysis pass.
           if (featuresConfig.transcriptionEnabled && localPaths?.audioPath) {
-            const asr = await transcribeLocal(localPaths.audioPath);
-            transcript = asr.text;
-            transcriptLanguage = asr.language;
+            // Always 'other', never isInstagram ? 'instagram' : 'other': the
+            // worker serialises Instagram jobs with jitter and a longer
+            // backoff to avoid tripping IG's ban detection on download
+            // activity. This job only reads a .wav file already on local
+            // disk — it touches no Instagram endpoint — so it must not
+            // inherit that throttle.
+            await enqueueJob({
+              entryId,
+              sourceUrl: normalizedUrl,
+              platform: 'other',
+              chatId: 0,
+              inputUser: user ?? null,
+              notify: false,
+              kind: 'transcribe',
+            });
             await appendActionLog(entryId, createActionLog('whisper_asr', {
-              status: asr.status,
-              reason: asr.reason || null,
-              language: asr.language,
-              chars: asr.text?.length || 0,
-              durationMs: asr.durationMs,
+              status: 'queued',
+              reason: null,
             }));
-            if (transcript) await updateEntry(entryId, { 'results.transcript': transcript });
           } else {
             await appendActionLog(entryId, createActionLog('whisper_asr', {
               status: 'skipped',
