@@ -290,6 +290,16 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       let entrySlides: EntrySlide[] = [];
       // Hoisted so the fire-and-forget below can reuse mainText without re-fetching
       let pageMainText: string | null = null;
+      // Hoisted because the transcribe job is enqueued after this pass's
+      // results are persisted (see below), by which point `localPaths` — set
+      // inside the IG/local-media branch — has gone out of scope. Carries
+      // only what that decision needs: whether a local .wav exists.
+      let transcribeAudioPath: string | null = null;
+      // Whether this pass ran the IG/local-media branch at all — the legacy
+      // and page pipelines never had a `whisper_asr` action (the legacy path
+      // logs its own `transcribe` action instead), and that must stay true
+      // regardless of where the enqueue decision itself is made.
+      let ranLocalMediaPipeline = false;
 
       if (priorEntry) {
         // The whole point of the second pass: feed the model the transcript the
@@ -553,43 +563,14 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           // nothing; the entry completes now and the transcript arrives later
           // through a job, which then triggers a second analysis pass.
           //
-          // `!reanalyze` closes the loop: a second pass runs on an entry that
-          // already has its transcript, and audio.wav is still on disk. Without
-          // this guard it would queue another transcribe, which would queue
-          // another second pass, forever.
-          if (!reanalyze && featuresConfig.transcriptionEnabled && localPaths?.audioPath) {
-            // Always 'other', never isInstagram ? 'instagram' : 'other'.
-            // Not for the reason one might assume: `platform` does not decide
-            // which claim function picks the job up. claimNextInstagramJob
-            // filters on `kind = 'analyze'`, and claimNextTranscribeJob on
-            // `kind = 'transcribe'`, so this job never lands in the serialised,
-            // jittered Instagram lane whatever platform it carries.
-            // What `platform` does select is the retry table in
-            // computeBackoffMs: 'instagram' means three escalating retries up
-            // to seven minutes, tuned for a remote download that IG may be
-            // throttling. This job only reads a .wav already on local disk, so
-            // a failure here is local and the single 'other' retry is right.
-            await enqueueJob({
-              entryId,
-              sourceUrl: normalizedUrl,
-              platform: 'other',
-              chatId: 0,
-              inputUser: user ?? null,
-              notify: false,
-              kind: 'transcribe',
-            });
-            await appendActionLog(entryId, createActionLog('whisper_asr', {
-              status: 'queued',
-              reason: null,
-            }));
-          } else {
-            await appendActionLog(entryId, createActionLog('whisper_asr', {
-              status: 'skipped',
-              reason: reanalyze
-                ? 'second pass: transcript already in hand'
-                : !featuresConfig.transcriptionEnabled ? 'disabled in settings' : 'no audio path',
-            }));
-          }
+          // The job itself is enqueued after this pass's results are written
+          // (see the completion write below) — enqueueing it here, while this
+          // pass is still running, let the transcribe job finish and fire a
+          // reanalyse before this pass had persisted anything for it to merge
+          // against. `localPaths` is captured now because it goes out of scope
+          // once this branch ends.
+          ranLocalMediaPipeline = true;
+          transcribeAudioPath = localPaths?.audioPath ?? null;
 
           // OCR on frames + slides
           const frames = localPaths?.framePaths ?? [];
@@ -1268,6 +1249,57 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         status: 'completed',
         results: finalResults,
       });
+
+      // Transcribe job for entries with audio, enqueued only now that the
+      // entry above carries this pass's results. The job saves the transcript
+      // and fires a second pass that merges into what is already there — if
+      // that pass started before this write landed, it would find nothing to
+      // merge against and would redo, concurrently, everything this pass just
+      // did (OCR, slide analysis, the AI call).
+      //
+      // Gated on `ranLocalMediaPipeline`: the legacy and page pipelines never
+      // had a `whisper_asr` action (legacy logs its own `transcribe` action,
+      // synchronously, a few lines above in that branch), and moving the
+      // enqueue down here must not hand them one.
+      if (ranLocalMediaPipeline) {
+        // `!reanalyze` closes the loop: a second pass runs on an entry that
+        // already has its transcript, and audio.wav is still on disk. Without
+        // this guard it would queue another transcribe, which would queue
+        // another second pass, forever.
+        if (!reanalyze && featuresConfig.transcriptionEnabled && transcribeAudioPath) {
+          // Always 'other', never isInstagram ? 'instagram' : 'other'.
+          // Not for the reason one might assume: `platform` does not decide
+          // which claim function picks the job up. claimNextInstagramJob
+          // filters on `kind = 'analyze'`, and claimNextTranscribeJob on
+          // `kind = 'transcribe'`, so this job never lands in the serialised,
+          // jittered Instagram lane whatever platform it carries.
+          // What `platform` does select is the retry table in
+          // computeBackoffMs: 'instagram' means three escalating retries up
+          // to seven minutes, tuned for a remote download that IG may be
+          // throttling. This job only reads a .wav already on local disk, so
+          // a failure here is local and the single 'other' retry is right.
+          await enqueueJob({
+            entryId,
+            sourceUrl: normalizedUrl,
+            platform: 'other',
+            chatId: 0,
+            inputUser: user ?? null,
+            notify: false,
+            kind: 'transcribe',
+          });
+          await appendActionLog(entryId, createActionLog('whisper_asr', {
+            status: 'queued',
+            reason: null,
+          }));
+        } else {
+          await appendActionLog(entryId, createActionLog('whisper_asr', {
+            status: 'skipped',
+            reason: reanalyze
+              ? 'second pass: transcript already in hand'
+              : !featuresConfig.transcriptionEnabled ? 'disabled in settings' : 'no audio path',
+          }));
+        }
+      }
 
       // Fire-and-forget: enrich every book- and place-category note
       // (OpenLibrary title/author/year/cover for books; Nominatim/OSM

@@ -234,7 +234,34 @@ describe('analyze route second pass', () => {
       const guard = enclosingIf(enqueues[0]);
       expect(guard).toContain('!reanalyze');
       // Tied to this site specifically: no other guard in the file mentions it.
-      expect(guard).toContain('localPaths?.audioPath');
+      // `transcribeAudioPath` — not `localPaths?.audioPath` directly — because
+      // the enqueue now happens after the completion write, by which point
+      // `localPaths` (branch-scoped, upstream) is out of scope; this hoisted
+      // variable carries the one bit the guard needs across that gap.
+      expect(guard).toContain('transcribeAudioPath');
+    });
+
+    it('enqueues the transcribe job only after this pass persists its results', () => {
+      // The race this guards against: the transcribe job used to be enqueued
+      // while the first pass was still running. It would finish, save the
+      // transcript and fire a second pass that read the entry before the
+      // first pass had written anything — merging against nothing, and
+      // redoing OCR/slides/AI concurrently with the pass already doing them.
+      // Enqueueing after `status: 'completed'` is written is what makes that
+      // ordering impossible: the job cannot exist before the results do.
+      const completedWriteAt = source.indexOf("status: 'completed',\n        results: finalResults,");
+      expect(completedWriteAt).toBeGreaterThan(-1);
+      const enqueueAt = sites("kind: 'transcribe'")[0];
+      expect(enqueueAt).toBeGreaterThan(completedWriteAt);
+    });
+
+    it('still runs the transcribe enqueue only for entries that went through the local-media branch', () => {
+      // Moving the enqueue into the shared completion code (reached by the
+      // page and legacy pipelines too) must not hand a `whisper_asr` action
+      // log to entries that never had one before.
+      const enqueueAt = sites("kind: 'transcribe'")[0];
+      const before = codeOnly(source.slice(Math.max(0, enqueueAt - 1500), enqueueAt));
+      expect(before).toContain('if (ranLocalMediaPipeline)');
     });
 
     it('does not let the legacy stub blank the transcript it was handed', () => {
