@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { UrlInput } from '../components/UrlInput';
@@ -205,9 +205,35 @@ export function Home() {
     }
   }, [isSearchMode, selectedEntryId]);
 
+  // Fallback fetch for a journal-mode selection that isn't in the currently
+  // loaded page — e.g. a Telegram deep link `?entry=<id>` pointing at an
+  // entry older than the first page. Mirrors the getEntry-on-select shape
+  // used above for search mode.
+  const [fetchedEntry, setFetchedEntry] = useState<Entry | null>(null);
+  const fetchedEntryIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (isSearchMode || !selectedEntryId || entries.some(e => e.id === selectedEntryId)) {
+      fetchedEntryIdRef.current = null;
+      setFetchedEntry(null);
+      return;
+    }
+    // Already attempted this id (success or failure) — don't refetch just
+    // because `entries` got a new reference from an SSE-triggered reload.
+    if (fetchedEntryIdRef.current === selectedEntryId) return;
+    fetchedEntryIdRef.current = selectedEntryId;
+    let cancelled = false;
+    getEntry(selectedEntryId)
+      .then((e) => { if (!cancelled) setFetchedEntry(e); })
+      // Missing/deleted entry: fall back to no selection rather than a
+      // spinner or an uncaught rejection.
+      .catch(() => { if (!cancelled) setFetchedEntry(null); });
+    return () => { cancelled = true; };
+  }, [isSearchMode, selectedEntryId, entries]);
+
   const selectedEntry = isSearchMode
     ? selectedSearchEntry
-    : (entries.find(e => e.id === selectedEntryId) || null);
+    : (entries.find(e => e.id === selectedEntryId) || fetchedEntry);
 
   const handleSubmit = async (url: string) => {
     clearError();
