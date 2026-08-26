@@ -187,11 +187,23 @@ export function Home() {
   const toggleCategory = useCallback((c: string) => setFilterCategory(prev => prev === c ? null : c), []);
   const toggleVerdict = useCallback((v: string) => setFilterVerdict(prev => prev === v ? null : v), []);
 
-  // Auto-select from query param ?entry=id
+  // Auto-select from query param ?entry=id. On mobile this must also open
+  // the inspector panel (CSS hides it behind `.mobile-visible` below 768px) —
+  // the same condition handleSelect/handleSearchSelect use on click, since a
+  // Telegram deep link never fires a click. Guarded by a ref keyed on the id
+  // so the panel opens once per deep link: `searchParams` is a new object
+  // whenever the URL's query string changes at all (e.g. the user starts a
+  // search while the entry is open), which would otherwise re-run this
+  // effect and reopen the panel after the user pressed "back".
+  const mobileInspectorOpenedForRef = useRef<string | null>(null);
   useEffect(() => {
     const entryParam = searchParams.get('entry');
     if (entryParam) {
       setSelectedEntryId(entryParam);
+      if (window.innerWidth < 768 && mobileInspectorOpenedForRef.current !== entryParam) {
+        mobileInspectorOpenedForRef.current = entryParam;
+        setMobileInspector(true);
+      }
     }
   }, [searchParams]);
 

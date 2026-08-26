@@ -122,4 +122,31 @@ describe('Home — ?entry= deep link', () => {
     // jsdom's default navigator.language ('en-US') resolves the app to English.
     expect(await screen.findByText(translations.en.selectEntry)).toBeTruthy();
   });
+
+  it('opens the mobile inspector panel for a deep link on a narrow screen', async () => {
+    // Regression: the entry loaded into the DOM fine, but on mobile the
+    // `.inspector-panel` is hidden by CSS (`display: none`) unless it also
+    // carries `.mobile-visible` — a class only the click handlers set. The
+    // ?entry= effect never triggered it, so a phone opening the Telegram
+    // link saw only the journal list. jsdom doesn't apply the stylesheet's
+    // media query, so this test must assert the class directly rather than
+    // just checking the inspector is present in the DOM.
+    const originalInnerWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 375 });
+    window.dispatchEvent(new Event('resize'));
+
+    try {
+      mockJournal([recentEntry]);
+      vi.mocked(api.getEntry).mockResolvedValue(oldEntry);
+
+      renderHomeAt(`/?entry=${OLD_ID}`);
+
+      await screen.findByText('OLD ENTRY DEEP LINK MARKER');
+      const panel = document.querySelector('.inspector-panel');
+      expect(panel).not.toBeNull();
+      expect(panel?.classList.contains('mobile-visible')).toBe(true);
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: originalInnerWidth });
+    }
+  });
 });
