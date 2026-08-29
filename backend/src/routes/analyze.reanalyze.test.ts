@@ -221,6 +221,32 @@ describe('analyze route second pass', () => {
     });
   });
 
+  /**
+   * 2026-08-29: a GPU Hang blamed on "vision inference hangs the gfx11 iGPU"
+   * turned out, on re-measurement, to come from *loading* a model onto the
+   * iGPU — provoked by OLLAMA_MAX_LOADED_MODELS=1 evicting and reloading on
+   * every switch between moondream and qwen. analyzeSlides() itself already
+   * runs its per-slide moondream calls before its one qwen call; the frame-
+   * level vision call used to run *after* analyzeSlides, forcing a
+   * moondream → qwen → moondream → qwen back-and-forth (three switches, and
+   * three full model loads on top of the per-slide ones) for every carousel.
+   * Running frame vision first keeps every moondream call contiguous —
+   * moondream (frames) → moondream×N (slides) → qwen (slides) → qwen
+   * (analysis), one switch — so the local backend loads each model once
+   * instead of bouncing between them. Nothing else would stop someone
+   * reverting the order the next time these two calls are touched.
+   */
+  describe('keeps moondream calls contiguous (fewer-model-loads)', () => {
+    it('runs frame-level vision before per-slide analysis', () => {
+      const visionAt = onlyMatch(/await describeFramesWithVision\(keyFrames\);/);
+      const visionIdx = source.indexOf(visionAt);
+      const slidesIdx = source.indexOf('await analyzeSlides(');
+      expect(visionIdx).toBeGreaterThan(-1);
+      expect(slidesIdx).toBeGreaterThan(-1);
+      expect(visionIdx).toBeLessThan(slidesIdx);
+    });
+  });
+
   describe('leaves the archive as it found it', () => {
     it('never queues a third pass', () => {
       // transcribe → reanalyse → transcribe → ... is an infinite loop, and

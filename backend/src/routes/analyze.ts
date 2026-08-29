@@ -671,6 +671,41 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             : (ocr.merged.trim().length >= SINGLE_IMAGE_OCR_MIN_CHARS && localPaths?.thumbnailPath
                 ? [localPaths.thumbnailPath]
                 : []);
+          // Vision describe on key frames (only if mediaAnalysisEnabled + frames present)
+          //
+          // Deliberately run *before* analyzeSlides: both this call and the
+          // per-slide loop inside analyzeSlides hit the moondream vision
+          // model, and analyzeSlides finishes with one qwen call. Keeping
+          // every moondream call contiguous means the local Ollama backend
+          // (OLLAMA_MAX_LOADED_MODELS=1) loads moondream once instead of
+          // bouncing between moondream and qwen on every call — see
+          // geekom-hub's 2026-08-29 remeasurement: the GPU Hang came from
+          // that reload churn, not from vision inference itself. Reordering
+          // these two calls is the whole point; do not let them drift apart
+          // again (see the ordering test in analyze.reanalyze.test.ts).
+          let visualContext: string | null = reusedVisualContext;
+          if (visualContext) {
+            await appendActionLog(entryId, createActionLog('vision_describe', {
+              status: 'reused',
+              reason: 'second pass: visualContext already on the entry',
+              chars: visualContext.length,
+            }));
+          } else if (featuresConfig.mediaAnalysisEnabled && localPaths?.framePaths.length) {
+            const keyFrames = pickKeyFrames(localPaths.framePaths, KEY_FRAMES_COUNT);
+            visualContext = await describeFramesWithVision(keyFrames);
+            await appendActionLog(entryId, createActionLog('vision_describe', {
+              status: visualContext ? 'ok' : 'skipped',
+              frames: keyFrames.length,
+              chars: visualContext?.length || 0,
+              provider: 'ollama-moondream',
+            }));
+          } else {
+            await appendActionLog(entryId, createActionLog('vision_describe', {
+              status: 'skipped',
+              reason: !featuresConfig.mediaAnalysisEnabled ? 'disabled in settings' : 'no frames',
+            }));
+          }
+
           if (reusedSlides) {
             entrySlides = reusedSlides;
             await appendActionLog(entryId, createActionLog('slides_analyzed', {
@@ -700,30 +735,6 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
                 status: 'error', error: String(e),
               }));
             }
-          }
-
-          // Vision describe on key frames (only if mediaAnalysisEnabled + frames present)
-          let visualContext: string | null = reusedVisualContext;
-          if (visualContext) {
-            await appendActionLog(entryId, createActionLog('vision_describe', {
-              status: 'reused',
-              reason: 'second pass: visualContext already on the entry',
-              chars: visualContext.length,
-            }));
-          } else if (featuresConfig.mediaAnalysisEnabled && localPaths?.framePaths.length) {
-            const keyFrames = pickKeyFrames(localPaths.framePaths, KEY_FRAMES_COUNT);
-            visualContext = await describeFramesWithVision(keyFrames);
-            await appendActionLog(entryId, createActionLog('vision_describe', {
-              status: visualContext ? 'ok' : 'skipped',
-              frames: keyFrames.length,
-              chars: visualContext?.length || 0,
-              provider: 'ollama-moondream',
-            }));
-          } else {
-            await appendActionLog(entryId, createActionLog('vision_describe', {
-              status: 'skipped',
-              reason: !featuresConfig.mediaAnalysisEnabled ? 'disabled in settings' : 'no frames',
-            }));
           }
 
           // Multimodal LLM analysis
