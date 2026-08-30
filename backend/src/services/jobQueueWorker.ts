@@ -121,6 +121,20 @@ export async function dispatchTranscribe(job: JobQueueRow): Promise<void> {
       durationMs: asr.durationMs,
     }));
 
+    if (asr.status === 'error' && asr.httpStatus === 503) {
+      // WHISPER_URL points at gpu-router now, and a 503 from a *router* is not
+      // a failure of this audio: it means "no transcription capacity right
+      // now" — not enough memory to start the local container, or it did not
+      // come up within the router's 60s budget. That is the same wait-and-retry
+      // condition isWhisperReachable already handles, so it must not count as
+      // an attempt: transcribe jobs are enqueued with platform 'other', whose
+      // backoff table is a single 60s retry, so treating this as a failure
+      // would destroy the entry's transcript within a minute.
+      await scheduleJobRetry(job.id, job.attempts, new Date(Date.now() + TRANSCRIBE_RETRY_MS));
+      log.info(`Job ${job.id}: whisper senza capacita' (503), riprovo fra 30 minuti`);
+      return;
+    }
+
     if (asr.status === 'error') {
       // A service that answered and then failed is a real failure: let the
       // existing backoff table count this attempt.
