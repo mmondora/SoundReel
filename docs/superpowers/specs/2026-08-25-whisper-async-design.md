@@ -272,12 +272,38 @@ secondo messaggio per la stessa entry sarebbe rumore.
 Il backfill storico è per definizione `notify = false`: quelle entry sono state
 inviate settimane fa.
 
+## Aggiornamento del 2026-08-30 — la trascrizione passa dal gpu-router
+
+`WHISPER_URL` non punta più ad archi-pc ma a `gpu-router:9000/whisper`, e la
+scelta di dove trascrivere è del router: archi-pc quando risponde, altrimenti
+accende lui un container locale. Spec:
+`geekom-hub/gpu-router/specs/2026-08-30-whisper-routing-and-on-demand-design.md`.
+
+Due cose scritte qui restano vere ma non bastano più.
+
+**La precondizione `isWhisperReachable` non è una formalità: è il cancello, e
+ha un budget di 3 secondi.** Puntata al router, cadeva sul ramo che accende il
+container locale — che di secondi ne chiede fino a 60 — quindi si arrendeva
+sempre, rimandava di 30 minuti senza consumare un tentativo, e lasciava acceso
+un container che moriva 15 minuti dopo. Con archi-pc spento nessuna
+trascrizione sarebbe mai uscita. La correzione sta nel router: una `GET` sulla
+radice del pool è una domanda di disponibilità e non accende niente. Misurata
+in produzione, risponde in 45ms.
+
+**Un 503 del router non è un fallimento dell'audio.** Significa "nessuna
+capacità di trascrizione adesso" — memoria insufficiente, o container non
+pronto in tempo. Prima finiva in `handleFailure`, e con `OTHER_BACKOFF_MS =
+[60_000]` bastava un tentativo per perdere la trascrizione di un entry in
+sessanta secondi. Ora viene rimandato come una irraggiungibilità.
+
 ## Test
 
 - `analyze.ts` non chiama più `transcribeLocal`; con `audioPath` presente accoda
   un `transcribe`, senza no.
 - Precondizione: whisper irraggiungibile → il job torna in coda con backoff
   lungo e `attempts` **invariato**; nessuna sentinella scritta.
+- Router che risponde 503 → stesso trattamento dell'irraggiungibilità, non un
+  fallimento. Vedi la nota sotto.
 - Audio mancante sul disco → `failed`, nessun retry.
 - La seconda passata fonde e non cancella: una canzone trovata al primo giro
   sopravvive anche se il secondo non la ritrova.
