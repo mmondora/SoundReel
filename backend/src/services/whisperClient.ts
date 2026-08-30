@@ -8,6 +8,13 @@ export interface WhisperResult {
   durationMs: number;
   status: 'ok' | 'skipped' | 'error';
   reason?: string;
+  /**
+   * Set only when the service answered with an HTTP status. WHISPER_URL now
+   * points at gpu-router, and a 503 from a router is not the same event as a
+   * 500 from Whisper: it means "no transcription capacity right now", which
+   * the caller must be able to tell apart without parsing `reason`.
+   */
+  httpStatus?: number;
 }
 
 interface WhisperApiResponse {
@@ -62,6 +69,7 @@ export async function transcribeLocal(audioPath: string | null): Promise<Whisper
           durationMs: Date.now() - start,
           status: 'error',
           reason: `HTTP ${response.status}`,
+          httpStatus: response.status,
         };
       }
 

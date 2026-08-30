@@ -92,7 +92,7 @@ soundreel/
 - Dark mode come default e unico tema
 
 ### API esterne
-- **Whisper**: HTTP verso archi-pc `192.168.178.23:9000` (servizio nativo CPU, avvio: `geekom-hub/scripts/archi.sh whisper`) — fallback locale: container `soundreel-whisper` dietro `--profile local-whisper` + `WHISPER_URL` in `.env`
+- **Whisper**: HTTP verso `gpu-router:9000/whisper` (env `WHISPER_URL`) — il router sceglie: archi-pc (`192.168.178.23:9000`, nativo CPU) quando risponde, altrimenti accende da sé il container locale `soundreel-whisper` scegliendo `tiny` o `small` secondo la RAM disponibile, e lo spegne dopo 15 minuti di inattività. Spec: `geekom-hub/gpu-router/specs/2026-08-30-whisper-routing-and-on-demand-design.md`
 - **Instaloader**: HTTP verso `soundreel-instaloader:5000` (include endpoint `/shazam/recognize`, `/shazam/scan-full`, `/yt/url`, `/download-media` per YouTube/TikTok via yt-dlp)
 - **OCR**: HTTP verso `soundreel-ocr:5001`
 - **Ollama**: HTTP verso `gpu-router:9000` (env `OLLAMA_URL`) — gpu-router fa load balancing tra archi-PC (`192.168.178.23:11434`) e ollama locale GEEKOM. Modelli: `OLLAMA_TEXT_MODEL` (default `qwen2.5:3b`), `OLLAMA_VISION_MODEL` (default `moondream:latest`)

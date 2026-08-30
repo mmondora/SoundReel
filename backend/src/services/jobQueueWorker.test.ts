@@ -420,6 +420,95 @@ describe('dispatchTranscribe', () => {
     expect(markJobDone).toHaveBeenCalledWith(9);
   });
 
+  it('defers without burning an attempt when the router answers 503', async () => {
+    const scheduleJobRetry = vi.fn();
+    const markJobFailed = vi.fn();
+    const appendActionLog = vi.fn();
+    vi.doMock('../utils/jobQueue', () => ({
+      scheduleJobRetry, markJobDone: vi.fn(), markJobFailed,
+      enqueueJob: vi.fn(), claimNextTranscribeJob: vi.fn(),
+      claimNextInstagramJob: vi.fn(), claimNextOtherJob: vi.fn(),
+    }));
+    vi.doMock('./whisperClient', () => ({
+      isWhisperReachable: vi.fn(async () => true),
+      transcribeLocal: vi.fn(async () => ({
+        text: null, language: null, durationMs: 12, status: 'error',
+        reason: 'HTTP 503', httpStatus: 503,
+      })),
+    }));
+    vi.doMock('../utils/db', () => ({ updateEntry: vi.fn(), appendActionLog }));
+    vi.doMock('../utils/logger', () => ({
+      createActionLog: vi.fn((action: string, details: Record<string, unknown>) => ({
+        action, details, timestamp: 'test',
+      })),
+    }));
+    vi.doMock('fs', async () => {
+      const actual = await vi.importActual<typeof import('fs')>('fs');
+      return { ...actual, promises: { ...actual.promises, access: vi.fn(async () => undefined) } };
+    });
+
+    const { dispatchTranscribe, TRANSCRIBE_RETRY_MS } = await import('./jobQueueWorker');
+    // attempts: 1 — one short of markJobFailed under OTHER_BACKOFF_MS, which
+    // is a single 60s retry. Routed through handleFailure this 503 would end
+    // the job permanently and lose the transcript.
+    const job = {
+      id: 11, entryId: 'e11', attempts: 1, sourceUrl: 'https://x', platform: 'other',
+      chatId: 1, inputUser: null, priority: 0,
+    } as never;
+    await dispatchTranscribe(job);
+
+    expect(markJobFailed).not.toHaveBeenCalled();
+    expect(scheduleJobRetry).toHaveBeenCalledTimes(1);
+    // attempts unchanged: no capacity right now is not a failure of this audio
+    expect(scheduleJobRetry.mock.calls[0][1]).toBe(1);
+    const when = scheduleJobRetry.mock.calls[0][2] as Date;
+    expect(when.getTime()).toBeGreaterThan(Date.now() + TRANSCRIBE_RETRY_MS - 5_000);
+    // The 503 is still on the record — a silent slip is unexplainable later.
+    expect(appendActionLog).toHaveBeenCalledWith('e11', expect.objectContaining({
+      action: 'whisper_asr',
+      details: expect.objectContaining({ status: 'error', reason: 'HTTP 503' }),
+    }));
+  });
+
+  it('still fails the job on a non-503 whisper error', async () => {
+    const scheduleJobRetry = vi.fn();
+    const markJobFailed = vi.fn();
+    vi.doMock('../utils/jobQueue', () => ({
+      scheduleJobRetry, markJobDone: vi.fn(), markJobFailed,
+      enqueueJob: vi.fn(), claimNextTranscribeJob: vi.fn(),
+      claimNextInstagramJob: vi.fn(), claimNextOtherJob: vi.fn(),
+    }));
+    vi.doMock('./whisperClient', () => ({
+      isWhisperReachable: vi.fn(async () => true),
+      transcribeLocal: vi.fn(async () => ({
+        text: null, language: null, durationMs: 12, status: 'error',
+        reason: 'HTTP 500', httpStatus: 500,
+      })),
+    }));
+    vi.doMock('../utils/db', () => ({ updateEntry: vi.fn(), appendActionLog: vi.fn() }));
+    vi.doMock('../utils/logger', () => ({
+      createActionLog: vi.fn((action: string, details: Record<string, unknown>) => ({
+        action, details, timestamp: 'test',
+      })),
+    }));
+    vi.doMock('fs', async () => {
+      const actual = await vi.importActual<typeof import('fs')>('fs');
+      return { ...actual, promises: { ...actual.promises, access: vi.fn(async () => undefined) } };
+    });
+
+    const { dispatchTranscribe } = await import('./jobQueueWorker');
+    const job = {
+      id: 12, entryId: 'e12', attempts: 1, sourceUrl: 'https://x', platform: 'other',
+      chatId: 1, inputUser: null, priority: 0,
+    } as never;
+    await dispatchTranscribe(job);
+
+    // Unchanged behaviour: a service that answered and then failed for any
+    // other reason is a real failure, and the backoff table ends it.
+    expect(markJobFailed).toHaveBeenCalledWith(12);
+    expect(scheduleJobRetry).not.toHaveBeenCalled();
+  });
+
   it('routes an unexpected failure (e.g. DB down) through handleFailure so the job is not stranded', async () => {
     const scheduleJobRetry = vi.fn();
     const markJobFailed = vi.fn();

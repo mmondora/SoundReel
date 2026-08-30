@@ -18,9 +18,10 @@ services:
       DB_USER: soundreel
       OLLAMA_URL: http://gpu-router:9000
       INSTALOADER_URL: http://soundreel-instaloader:5000
-      # Whisper remoto su archi-pc (CPU 5900X, servizio nativo — vedi geekom-hub/docs/machines.md).
-      # Fallback locale: WHISPER_URL=http://soundreel-whisper:9000 + `docker compose --profile local-whisper up -d`
-      WHISPER_URL: ${WHISPER_URL:-http://192.168.178.23:9000}
+      # Chi trascrive lo sceglie il gpu-router: archi-pc quando c'e', altrimenti
+      # accende il whisper locale. Puntare qui direttamente ad archi-pc
+      # significava dipendere da una macchina spenta quasi sempre.
+      WHISPER_URL: ${WHISPER_URL:-http://gpu-router:9000/whisper}
       OCR_URL: http://soundreel-ocr:5001
       MEDIA_ROOT: /data/media
       FRONTEND_URL: https://soundreel.casamon.dev
@@ -92,7 +93,13 @@ services:
     volumes:
       - soundreel_media:/data/media:ro
       - soundreel_whisper_models:/root/.cache/whisper
-    networks: [default]
+    # `web` serve al gpu-router per raggiungerlo: e' la rete su cui vive.
+    # Rischio presentato e accettato il 2026-08-30: qui dentro il servizio
+    # e' raggiungibile da ogni altro container su `web`, non solo dal
+    # router, ed e' un endpoint di trascrizione senza autenticazione.
+    # Nessuna porta viene pubblicata sull'host, quindi il perimetro esterno
+    # non cambia.
+    networks: [default, web]
     restart: unless-stopped
 
   soundreel-ocr:
