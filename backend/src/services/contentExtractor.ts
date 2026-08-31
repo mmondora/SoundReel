@@ -55,6 +55,9 @@ async function extractInstagramLocal(url: string, entryId: string): Promise<Extr
       slidePaths: dl.slidePaths,
       framePaths: dl.framePaths,
     },
+    subtitleText: dl.subtitleText,
+    subtitleLang: dl.subtitleLang,
+    subtitleKind: dl.subtitleKind,
     __downloadError: dl.success ? null : dl.error || 'unknown',
   };
 }
@@ -99,6 +102,9 @@ async function extractMediaLocal(
       slidePaths: dl.slidePaths,
       framePaths: dl.framePaths,
     },
+    subtitleText: dl.subtitleText,
+    subtitleLang: dl.subtitleLang,
+    subtitleKind: dl.subtitleKind,
   };
 }
 

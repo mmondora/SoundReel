@@ -8,6 +8,9 @@ export interface InstaloaderDownload {
   thumbnailPath: string | null;
   slidePaths: string[];
   framePaths: string[];
+  subtitleText: string | null;
+  subtitleLang: string | null;
+  subtitleKind: string | null;
   success: boolean;
   error?: string;
 }
@@ -20,6 +23,9 @@ const EMPTY: InstaloaderDownload = {
   thumbnailPath: null,
   slidePaths: [],
   framePaths: [],
+  subtitleText: null,
+  subtitleLang: null,
+  subtitleKind: null,
   success: false,
 };
 
@@ -90,6 +96,9 @@ async function postDownload(
       thumbnailPath: data.thumbnailPath ?? null,
       slidePaths: Array.isArray(data.slidePaths) ? data.slidePaths : [],
       framePaths: Array.isArray(data.framePaths) ? data.framePaths : [],
+      subtitleText: data.subtitleText ?? null,
+      subtitleLang: data.subtitleLang ?? null,
+      subtitleKind: data.subtitleKind ?? null,
       success: true,
     };
 

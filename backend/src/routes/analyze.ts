@@ -47,6 +47,7 @@ import {
 } from '../utils/db';
 import { createActionLog, logError } from '../utils/logger';
 import { enqueueJob } from '../utils/jobQueue';
+import { chooseTranscriptSource } from '../services/transcriptSource';
 import { Logger } from '../services/debugLogger';
 import { scanFullAudio, resolveYoutubeUrl } from '../services/shazamClient';
 import type { ShazamTrack } from '../services/shazamClient';
@@ -295,6 +296,10 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       // inside the IG/local-media branch — has gone out of scope. Carries
       // only what that decision needs: whether a local .wav exists.
       let transcribeAudioPath: string | null = null;
+      // Una traccia scritta che la sorgente portava gia' con se'. Catturata
+      // qui per la stessa ragione di `transcribeAudioPath`: `content` esce
+      // di scope prima che la decisione venga presa.
+      let sourceSubtitle: { text: string; lang: string | null; kind: string | null } | null = null;
       // Whether this pass ran the IG/local-media branch at all — the legacy
       // and page pipelines never had a `whisper_asr` action (the legacy path
       // logs its own `transcribe` action instead), and that must stay true
@@ -571,6 +576,13 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           // once this branch ends.
           ranLocalMediaPipeline = true;
           transcribeAudioPath = localPaths?.audioPath ?? null;
+          sourceSubtitle = content.subtitleText
+            ? {
+                text: content.subtitleText,
+                lang: content.subtitleLang ?? null,
+                kind: content.subtitleKind ?? null,
+              }
+            : null;
 
           // OCR on frames + slides
           const frames = localPaths?.framePaths ?? [];
@@ -1277,7 +1289,45 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         // already has its transcript, and audio.wav is still on disk. Without
         // this guard it would queue another transcribe, which would queue
         // another second pass, forever.
-        if (!reanalyze && featuresConfig.transcriptionEnabled && transcribeAudioPath) {
+        const transcriptSource = chooseTranscriptSource({
+          subtitleText: sourceSubtitle?.text ?? null,
+          subtitleLang: sourceSubtitle?.lang ?? null,
+          subtitleKind: sourceSubtitle?.kind ?? null,
+          audioPath: transcribeAudioPath,
+          transcriptionEnabled: featuresConfig.transcriptionEnabled,
+          reanalyze,
+        });
+
+        if (transcriptSource.kind === 'subtitles') {
+          // The text is already in hand, so nothing is queued for Whisper.
+          // Two updateEntry calls rather than one with both dotted keys:
+          // updateEntry rewrites each 'results.*' key into its own
+          // `results = jsonb_set(...)` SET clause, and Postgres rejects an
+          // UPDATE that assigns the same column twice.
+          await updateEntry(entryId, { 'results.transcript': transcriptSource.text });
+          await updateEntry(entryId, { 'results.transcriptLanguage': transcriptSource.lang });
+          await appendActionLog(entryId, createActionLog('whisper_asr', {
+            status: 'skipped',
+            reason: `subtitles: ${transcriptSource.subtitleKind}`,
+            language: transcriptSource.lang,
+            chars: transcriptSource.text.length,
+          }));
+          // The analysis above has already run, and it ran without this text.
+          // A transcript that arrives after the models have spoken has to be
+          // fed back the same way a late Whisper result is — through a second
+          // pass — or the words would sit in the entry without ever reaching
+          // the songs, notes and summary they were fetched for.
+          await enqueueJob({
+            entryId,
+            sourceUrl: normalizedUrl,
+            platform: 'other',
+            chatId: 0,
+            inputUser: user ?? null,
+            notify: false,
+            kind: 'analyze',
+            reanalyze: true,
+          });
+        } else if (transcriptSource.kind === 'whisper') {
           // Always 'other', never isInstagram ? 'instagram' : 'other'.
           // Not for the reason one might assume: `platform` does not decide
           // which claim function picks the job up. claimNextInstagramJob
@@ -1305,9 +1355,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         } else {
           await appendActionLog(entryId, createActionLog('whisper_asr', {
             status: 'skipped',
-            reason: reanalyze
-              ? 'second pass: transcript already in hand'
-              : !featuresConfig.transcriptionEnabled ? 'disabled in settings' : 'no audio path',
+            reason: transcriptSource.reason,
           }));
         }
       }

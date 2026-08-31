@@ -258,13 +258,33 @@ describe('analyze route second pass', () => {
       const enqueues = sites("kind: 'transcribe'");
       expect(enqueues).toHaveLength(1);
       const guard = enclosingIf(enqueues[0]);
-      expect(guard).toContain('!reanalyze');
-      // Tied to this site specifically: no other guard in the file mentions it.
+      // The `!reanalyze` test moved out of this file and into
+      // chooseTranscriptSource, which answers 'none' on a second pass — pinned
+      // there by a behavioural test, not by a source match, and verified by
+      // deleting the rule and watching that test go red. What has to stay true
+      // *here* is the wiring: this enqueue is reachable only through that
+      // decision, and the decision is actually told whether this is a second
+      // pass. Miss either half and the infinite loop comes back.
+      expect(guard).toContain("transcriptSource.kind === 'whisper'");
+      const decision = source.slice(source.indexOf('chooseTranscriptSource({'), enqueues[0]);
+      expect(decision).toContain('reanalyze,');
       // `transcribeAudioPath` — not `localPaths?.audioPath` directly — because
-      // the enqueue now happens after the completion write, by which point
+      // the enqueue happens after the completion write, by which point
       // `localPaths` (branch-scoped, upstream) is out of scope; this hoisted
-      // variable carries the one bit the guard needs across that gap.
-      expect(guard).toContain('transcribeAudioPath');
+      // variable carries the one bit the decision needs across that gap.
+      expect(decision).toContain('audioPath: transcribeAudioPath');
+    });
+
+    it('feeds a subtitle transcript back through a second pass', () => {
+      // Subtitles arrive *after* the models have already spoken, exactly as a
+      // late Whisper result does. Writing the text without queueing the second
+      // pass would leave it sitting in the entry, never reaching the songs,
+      // notes and summary it was fetched for.
+      const at = source.indexOf("transcriptSource.kind === 'subtitles'");
+      expect(at).toBeGreaterThan(-1);
+      const branch = source.slice(at, source.indexOf("transcriptSource.kind === 'whisper'", at));
+      expect(branch).toContain("'results.transcript'");
+      expect(branch).toContain('reanalyze: true');
     });
 
     it('enqueues the transcribe job only after this pass persists its results', () => {
@@ -286,7 +306,12 @@ describe('analyze route second pass', () => {
       // page and legacy pipelines too) must not hand a `whisper_asr` action
       // log to entries that never had one before.
       const enqueueAt = sites("kind: 'transcribe'")[0];
-      const before = codeOnly(source.slice(Math.max(0, enqueueAt - 1500), enqueueAt));
+      // Window widened from 1500: the subtitle branch now sits between the
+      // guard and this enqueue, and a fixed slice that no longer reaches back
+      // to the guard would fail for the wrong reason — or, worse, pass for the
+      // wrong reason if the guard were later deleted and something else moved
+      // into range.
+      const before = codeOnly(source.slice(Math.max(0, enqueueAt - 4000), enqueueAt));
       expect(before).toContain('if (ranLocalMediaPipeline)');
     });
 

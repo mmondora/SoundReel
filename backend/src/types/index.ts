@@ -181,6 +181,14 @@ export interface ExtractedContent {
   musicInfo: MusicMetadata | null;
   carouselUrls: string[];
   localPaths?: ExtractedContentLocalPaths;
+  /**
+   * A written track the source already carried (YouTube captions), when one
+   * existed. Preferred over Whisper: instant, free, and it never touches the
+   * GPU. `subtitleKind` says whether a person wrote it or a machine did.
+   */
+  subtitleText?: string | null;
+  subtitleLang?: string | null;
+  subtitleKind?: string | null;
 }
 
 export interface AiAnalysisResult {

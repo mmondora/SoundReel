@@ -23,6 +23,9 @@ const OK_DOWNLOAD: InstaloaderDownload = {
   thumbnailPath: '/data/media/e1/thumbnail-source.jpg',
   slidePaths: [],
   framePaths: ['/data/media/e1/frame-001.jpg'],
+  subtitleText: null,
+  subtitleLang: null,
+  subtitleKind: null,
   success: true,
 };
 
@@ -34,6 +37,9 @@ const FAILED_DOWNLOAD: InstaloaderDownload = {
   thumbnailPath: null,
   slidePaths: [],
   framePaths: [],
+  subtitleText: null,
+  subtitleLang: null,
+  subtitleKind: null,
   success: false,
   error: 'video too long (1200s > 900s)',
 };
