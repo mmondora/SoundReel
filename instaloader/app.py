@@ -37,6 +37,8 @@ import tempfile
 from flask import Flask, jsonify, request
 from shazamio import Shazam
 
+from subtitles import fetch_subtitle_text
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("instaloader-sidecar")
 
@@ -513,6 +515,10 @@ YTDLP_FORMAT = "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b"
 # with HTTP 403 on download (yt-dlp#12482); the android client still serves
 # plain https formats. Namespaced, so non-YouTube extractors ignore it.
 YTDLP_EXTRACTOR_ARGS = "youtube:player_client=android,default"
+# Un file di testo, non un video: se non arriva in mezzo minuto non
+# arrivera', e il video e' gia' scaricato — meglio proseguire verso
+# Whisper che tenere in attesa la pipeline.
+YTDLP_SUBTITLE_TIMEOUT_SECONDS = int(os.environ.get("YTDLP_SUBTITLE_TIMEOUT_SECONDS", "30"))
 
 
 def ytdlp_probe(url: str) -> tuple[Optional[dict[str, Any]], Optional[str]]:
@@ -535,6 +541,43 @@ def ytdlp_probe(url: str) -> tuple[Optional[dict[str, Any]], Optional[str]]:
         return _json.loads(result.stdout), None
     except ValueError:
         return None, "probe returned invalid JSON"
+
+
+def _ytdlp_fetch_subtitle(url: str):
+    """Il download vero della traccia, legato a questo URL.
+
+    Restituisce un callable perche' `fetch_subtitle_text` non deve sapere
+    nulla di yt-dlp: cosi' la scelta della traccia e la lettura del VTT si
+    provano senza rete.
+
+    `--skip-download` perche' il video e' gia' sul disco: qui serve solo il
+    file di testo.
+    """
+    def runner(lang: str, kind: str, dest_dir: Path) -> Optional[Path]:
+        flag = "--write-subs" if kind == "manual" else "--write-auto-subs"
+        base = dest_dir / "subtitle"
+        proc = subprocess.run(
+            [
+                "yt-dlp", "--no-playlist", "--skip-download",
+                "--extractor-args", YTDLP_EXTRACTOR_ARGS,
+                flag, "--sub-langs", lang, "--sub-format", "vtt",
+                "--no-progress", "--no-warnings",
+                "-o", str(base) + ".%(ext)s",
+                url,
+            ],
+            capture_output=True, text=True, timeout=YTDLP_SUBTITLE_TIMEOUT_SECONDS,
+        )
+        if proc.returncode != 0:
+            err = (proc.stderr or "").strip().splitlines()
+            log.warning("yt-dlp sottotitoli %s: %s", lang, err[-1] if err else "fallito")
+            return None
+        # yt-dlp decide da se' il suffisso esatto (`subtitle.it.vtt`,
+        # `subtitle.it-IT.vtt`): si prende quello che ha scritto invece di
+        # indovinarlo.
+        scritti = sorted(dest_dir.glob("subtitle*.vtt"))
+        return scritti[0] if scritti else None
+
+    return runner
 
 
 def download_with_ytdlp(url: str, entry_id: str) -> dict[str, Any]:
@@ -619,6 +662,20 @@ def download_with_ytdlp(url: str, entry_id: str) -> dict[str, Any]:
         result_dict["audioPath"] = str(audio_path)
 
     result_dict["framePaths"] = ffmpeg_sample_frames(video_path, entry_dir)
+
+    # Sottotitoli, se il video ne ha. Vengono dopo il video di proposito: se
+    # qualcosa qui va storto il download resta valido e si prosegue verso
+    # Whisper, che e' il ripiego e non il contrario.
+    sub = fetch_subtitle_text(info, entry_dir, _ytdlp_fetch_subtitle(url))
+    if sub:
+        result_dict["subtitleText"] = sub["text"]
+        result_dict["subtitleLang"] = sub["lang"]
+        result_dict["subtitleKind"] = sub["kind"]
+        log.info(
+            "sottotitoli presi entryId=%s lang=%s kind=%s chars=%d",
+            entry_id, sub["lang"], sub["kind"], len(sub["text"]),
+        )
+
     return result_dict
 
 
