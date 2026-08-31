@@ -48,6 +48,50 @@ export async function downloadMediaWithYtdlp(
   return postDownload('/download-media', url, entryId);
 }
 
+export interface YtSubtitles {
+  subtitleText: string | null;
+  subtitleLang: string | null;
+  subtitleKind: string | null;
+}
+
+/**
+ * Solo la traccia scritta, senza scaricare il video.
+ *
+ * Serve quando il download vero fallisce — tipicamente perche' il video
+ * supera il tetto di durata. Quel limite protegge dallo scaricare centinaia
+ * di megabyte; un file di sottotitoli sono poche decine di KB, e negarglielo
+ * toglieva il testo proprio ai video lunghi, dove Whisper costerebbe di piu'.
+ *
+ * Non fallisce mai in modo rumoroso: senza traccia si torna con tre null e la
+ * pipeline prosegue esattamente come prima.
+ */
+export async function fetchYtSubtitles(url: string): Promise<YtSubtitles> {
+  const vuoto: YtSubtitles = { subtitleText: null, subtitleLang: null, subtitleKind: null };
+  const base = process.env.INSTALOADER_URL;
+  if (!base) return vuoto;
+
+  try {
+    const response = await fetch(`${base.replace(/\/$/, '')}/yt/subtitles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    if (!response.ok) {
+      logWarning('Sottotitoli soli: HTTP non ok', { status: response.status });
+      return vuoto;
+    }
+    const data = (await response.json()) as Partial<YtSubtitles>;
+    return {
+      subtitleText: data.subtitleText ?? null,
+      subtitleLang: data.subtitleLang ?? null,
+      subtitleKind: data.subtitleKind ?? null,
+    };
+  } catch (err) {
+    logWarning('Sottotitoli soli non recuperati', { error: String(err) });
+    return vuoto;
+  }
+}
+
 async function postDownload(
   path: '/download' | '/download-media',
   url: string,

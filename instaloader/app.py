@@ -679,6 +679,52 @@ def download_with_ytdlp(url: str, entry_id: str) -> dict[str, Any]:
     return result_dict
 
 
+@app.post("/yt/subtitles")
+def yt_subtitles() -> Any:
+    """Solo la traccia scritta, senza scaricare il video.
+
+    Esiste per i video che il tetto di durata rifiuta: quel limite protegge
+    dallo scaricare centinaia di megabyte, ma un file di sottotitoli sono
+    poche decine di KB e non gli importa quanto dura il video. Senza questo
+    endpoint il tetto toglieva anche il testo, e proprio ai video lunghi —
+    dove Whisper costerebbe di piu' e le didascalie hanno piu' probabilita'
+    di esistere.
+    """
+    payload = request.get_json(silent=True) or {}
+    url = (payload.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "url required", "success": False}), 400
+    if not url.startswith(("http://", "https://")):
+        return jsonify({"error": "url invalid", "success": False}), 400
+
+    info, probe_err = ytdlp_probe(url)
+    if info is None:
+        return jsonify({"error": probe_err, "success": False}), 502
+    if info.get("_type") == "playlist":
+        entries = info.get("entries") or []
+        if not entries:
+            return jsonify({"error": "no video in page", "success": False}), 502
+        info = entries[0]
+
+    # Directory temporanea: qui non si tiene nulla su disco, il testo torna
+    # nella risposta e il .vtt non serve piu'.
+    with tempfile.TemporaryDirectory() as tmp:
+        sub = fetch_subtitle_text(info, Path(tmp), _ytdlp_fetch_subtitle(url))
+
+    if not sub:
+        return jsonify({"subtitleText": None, "subtitleLang": None,
+                        "subtitleKind": None, "success": True})
+
+    log.info("sottotitoli soli url=%s lang=%s kind=%s chars=%d",
+             url, sub["lang"], sub["kind"], len(sub["text"]))
+    return jsonify({
+        "subtitleText": sub["text"],
+        "subtitleLang": sub["lang"],
+        "subtitleKind": sub["kind"],
+        "success": True,
+    })
+
+
 @app.post("/download-media")
 def download_media() -> Any:
     payload = request.get_json(silent=True) or {}
