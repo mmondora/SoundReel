@@ -1,5 +1,5 @@
 import { Logger } from './debugLogger';
-import { downloadWithInstaloader, downloadMediaWithYtdlp } from './instaloaderLocal';
+import { downloadWithInstaloader, downloadMediaWithYtdlp, fetchYtSubtitles } from './instaloaderLocal';
 import {
   detectPlatform as detectPlatformLegacy,
   getPlatformConfig as getPlatformConfigLegacy,
@@ -83,7 +83,15 @@ async function extractMediaLocal(
 
   if (!dl.success || (!dl.videoPath && !dl.audioPath)) {
     log.warn('yt-dlp download fallito, fallback su legacy', { error: dl.error });
-    return extractContentLegacy(url, options);
+    // Il video non si scarica, ma la sua traccia scritta puo' esistere lo
+    // stesso — ed e' il caso dei video oltre il tetto di durata, cioe' le
+    // conferenze e i podcast lunghi: esattamente dove Whisper costerebbe di
+    // piu' e dove le didascalie hanno piu' probabilita' di esserci. Chiesta
+    // dopo il fallimento e non prima, cosi' un download riuscito non paga
+    // mai questa chiamata in piu'.
+    const subs = await fetchYtSubtitles(url);
+    const legacy = await extractContentLegacy(url, options);
+    return subs.subtitleText ? { ...legacy, ...subs } : legacy;
   }
 
   return {

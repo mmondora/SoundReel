@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('./instaloaderLocal', () => ({
   downloadWithInstaloader: vi.fn(),
   downloadMediaWithYtdlp: vi.fn(),
+  fetchYtSubtitles: vi.fn(),
 }));
 vi.mock('./_legacy/contentExtractorLegacy', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./_legacy/contentExtractorLegacy')>();
@@ -10,7 +11,7 @@ vi.mock('./_legacy/contentExtractorLegacy', async (importOriginal) => {
 });
 
 import { extractContent, YTDLP_PLATFORMS } from './contentExtractor';
-import { downloadWithInstaloader, downloadMediaWithYtdlp } from './instaloaderLocal';
+import { downloadWithInstaloader, downloadMediaWithYtdlp, fetchYtSubtitles } from './instaloaderLocal';
 import { extractContentLegacy } from './_legacy/contentExtractorLegacy';
 import type { InstaloaderDownload } from './instaloaderLocal';
 import type { ExtractedContent } from '../types';
@@ -59,6 +60,11 @@ describe('extractContent dispatch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(extractContentLegacy).mockResolvedValue(LEGACY_CONTENT);
+    vi.mocked(fetchYtSubtitles).mockResolvedValue({
+      subtitleText: null,
+      subtitleLang: null,
+      subtitleKind: null,
+    });
   });
 
   it('YTDLP_PLATFORMS covers youtube and tiktok only', () => {
@@ -106,6 +112,48 @@ describe('extractContent dispatch', () => {
 
     expect(extractContentLegacy).toHaveBeenCalled();
     expect(content).toEqual(LEGACY_CONTENT);
+  });
+
+  it('still gets the written track when the video is too long to download', async () => {
+    // The duration cap protects against pulling hundreds of megabytes. A
+    // subtitle file is tens of kilobytes and does not care how long the video
+    // is, so letting the cap take the text too lost it precisely on the long
+    // talks — where Whisper costs the most and captions are likeliest to exist.
+    vi.mocked(downloadMediaWithYtdlp).mockResolvedValue({
+      ...FAILED_DOWNLOAD,
+      error: 'video too long (2140s > 900s)',
+    });
+    vi.mocked(fetchYtSubtitles).mockResolvedValue({
+      subtitleText: 'il testo della traccia',
+      subtitleLang: 'it',
+      subtitleKind: 'auto',
+    });
+
+    const content = await extractContent('https://youtu.be/abc123', { entryId: 'e1' });
+
+    expect(fetchYtSubtitles).toHaveBeenCalledWith('https://youtu.be/abc123');
+    // The legacy extraction still supplies caption and thumbnail; the track is
+    // merged on top rather than replacing it.
+    expect(content).toMatchObject({
+      caption: LEGACY_CONTENT.caption,
+      subtitleText: 'il testo della traccia',
+      subtitleLang: 'it',
+      subtitleKind: 'auto',
+    });
+  });
+
+  it('leaves the legacy result untouched when there is no track either', async () => {
+    vi.mocked(downloadMediaWithYtdlp).mockResolvedValue(FAILED_DOWNLOAD);
+    const content = await extractContent('https://youtu.be/abc123', { entryId: 'e1' });
+    expect(content).toEqual(LEGACY_CONTENT);
+  });
+
+  it('does not ask for subtitles when the download worked', async () => {
+    // A successful download already carries the track; paying for a second
+    // round trip on every healthy video would be waste.
+    vi.mocked(downloadMediaWithYtdlp).mockResolvedValue(OK_DOWNLOAD);
+    await extractContent('https://www.youtube.com/shorts/abc123', { entryId: 'e1' });
+    expect(fetchYtSubtitles).not.toHaveBeenCalled();
   });
 
   it('YouTube without entryId keeps the legacy path (no sidecar call)', async () => {
