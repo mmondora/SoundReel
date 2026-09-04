@@ -154,19 +154,32 @@ def fetch_via_iphone_api(shortcode: str, loader: instaloader.Instaloader) -> Opt
 
 
 def extract_music_info_iphone(item: dict[str, Any]) -> Optional[dict[str, Any]]:
-    """Extract music info from iPhone API item."""
-    clips = item.get("clips_metadata") or {}
-    music = (clips.get("music_info") or {}).get("music_asset_info") or {}
-    title = music.get("title")
-    artist = music.get("display_artist")
-    if title and artist:
-        return {"title": title, "artist": artist}
+    """Extract music info from iPhone API item.
 
-    alt = (item.get("music_metadata") or {}).get("music_info", {}).get("music_asset_info") or {}
-    title = alt.get("title")
-    artist = alt.get("display_artist")
-    if title and artist:
-        return {"title": title, "artist": artist}
+    Never raises. The track name is a nice-to-have; the download around it is
+    not. A post whose `music_metadata` was present but null used to crash here
+    with AttributeError, and the caller answered by falling back to GraphQL —
+    the one path Instagram challenges — so a working iPhone-API download became
+    "Instagram richiede una nuova autorizzazione".
+    """
+    try:
+        clips = item.get("clips_metadata") or {}
+        music = (clips.get("music_info") or {}).get("music_asset_info") or {}
+        title = music.get("title")
+        artist = music.get("display_artist")
+        if title and artist:
+            return {"title": title, "artist": artist}
+
+        # `.get(key, {})` is not enough: the key is present with a null value on
+        # posts with no track, and a default only applies to a *missing* key.
+        alt_meta = item.get("music_metadata") or {}
+        alt = (alt_meta.get("music_info") or {}).get("music_asset_info") or {}
+        title = alt.get("title")
+        artist = alt.get("display_artist")
+        if title and artist:
+            return {"title": title, "artist": artist}
+    except Exception as exc:
+        log.warning("music_info iphone extract failed: %s", exc)
 
     return None
 
@@ -466,9 +479,16 @@ def download() -> Any:
             )
             return jsonify(result)
         except Exception as exc:
+            # No GraphQL fallback here, deliberately. The iPhone API answered,
+            # so the session is valid and the post is reachable: a crash after
+            # that point is our own bug. Retrying it through GraphQL — the one
+            # path Instagram challenges, and the one that risks the account —
+            # could only fail with `challenge_required`, which reached the user
+            # as "renew the session" and sent them chasing a session that was
+            # never the problem. Report what actually broke.
             log.error("iphone download pipeline failed for %s: %s", shortcode, exc, exc_info=True)
             shutil.rmtree(MEDIA_ROOT / entry_id, ignore_errors=True)
-            # Don't return yet — try GraphQL fallback
+            return jsonify({"error": f"iphone pipeline failed: {exc}", "success": False}), 500
 
     # Strategy 2: Instaloader GraphQL (legacy path, may hit challenge_required)
     try:
