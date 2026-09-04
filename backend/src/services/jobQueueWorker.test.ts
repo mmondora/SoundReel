@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../utils/jobQueue', () => ({
   claimNextInstagramJob: vi.fn(),
   claimNextOtherJob: vi.fn(),
+  claimNextReanalyzeJob: vi.fn(),
   claimNextTranscribeJob: vi.fn(),
   enqueueJob: vi.fn(),
   markJobDone: vi.fn(),
@@ -39,6 +40,7 @@ import {
 import {
   claimNextInstagramJob,
   claimNextOtherJob,
+  claimNextReanalyzeJob,
   claimNextTranscribeJob,
   markJobDone,
   markJobFailed,
@@ -55,7 +57,7 @@ const IG_JOB: JobQueueRow = {
   id: 1, entryId: 'e1', sourceUrl: 'https://instagram.com/reel/x', platform: 'instagram',
   chatId: 42, inputUser: '@mike', status: 'processing', attempts: 0,
   nextAttemptAt: '', createdAt: '', updatedAt: '', notify: true,
-  kind: 'analyze', priority: 0, reanalyze: false,
+  kind: 'analyze', priority: 0, reanalyze: false, skipAi: false,
 };
 
 describe('computeJitterDelayMs', () => {
@@ -722,5 +724,86 @@ describe('auth failures through the queue', () => {
     await runIgJob({});
 
     expect(scheduleJobRetry).toHaveBeenCalledWith(1, 1, expect.any(Date));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Batched AI pass
+//
+// ollama keeps a single model resident (MAX_LOADED_MODELS=1, KEEP_ALIVE=90s)
+// and every analysis uses two — moondream on the frames, then qwen on the
+// text. A repair batch spaced by tens of minutes (the spacing exists so
+// Instagram does not challenge the account) therefore means one GPU wake-up
+// and two model swaps per job: the queue teardown that hangs this APU.
+//
+// So the download pass makes no ollama call at all, and the analysis runs
+// afterwards in one hot, strictly serial batch.
+// ---------------------------------------------------------------------------
+describe('deferred AI pass', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: async () => ({ success: true, entryId: 'e1', entry: {} }),
+    }));
+    vi.mocked(claimNextInstagramJob).mockResolvedValue(null);
+    vi.mocked(claimNextOtherJob).mockResolvedValue(null);
+    vi.mocked(claimNextReanalyzeJob).mockResolvedValue(null);
+    vi.mocked(claimNextTranscribeJob).mockResolvedValue(null);
+  });
+
+  async function analyzeBodyFor(job: JobQueueRow): Promise<Record<string, unknown>> {
+    vi.mocked(claimNextInstagramJob).mockResolvedValue(job);
+    await tick(createInitialWorkerState());
+    await flush();
+    const call = vi.mocked(fetch).mock.calls[0];
+    return JSON.parse((call[1] as { body: string }).body) as Record<string, unknown>;
+  }
+
+  it('an ordinary job analyses inline', async () => {
+    expect((await analyzeBodyFor(IG_JOB)).skipAi).toBe(false);
+  });
+
+  it('a download-only job tells the route to make no ollama call', async () => {
+    expect((await analyzeBodyFor({ ...IG_JOB, skipAi: true })).skipAi).toBe(true);
+  });
+
+  // Silence and "skip the analysis" are unrelated properties — conflating them
+  // is the mistake already made once with `reanalyze` (see migration 010).
+  it('does not infer the skip from a silent repair job', async () => {
+    expect((await analyzeBodyFor({ ...IG_JOB, notify: false })).skipAi).toBe(false);
+  });
+
+  it('runs one re-analysis at a time', async () => {
+    const running = { ...IG_JOB, id: 9, reanalyze: true };
+    vi.mocked(claimNextReanalyzeJob).mockResolvedValue(running as JobQueueRow);
+    vi.mocked(fetch).mockImplementation(() => new Promise(() => {})); // never settles
+
+    const state = createInitialWorkerState();
+    await tick(state);
+    expect(state.reanalyzeBusy).toBe(true);
+
+    // A second tick while the first is still in flight must not claim another:
+    // two concurrent passes would swap the model in and out between calls.
+    await tick(state);
+    expect(claimNextReanalyzeJob).toHaveBeenCalledTimes(1);
+  });
+
+  // No jitter window either: the gap is what lets ollama unload the model.
+  it('takes the next one immediately, with no cooling-off window', async () => {
+    vi.mocked(claimNextReanalyzeJob).mockResolvedValue({ ...IG_JOB, id: 9, reanalyze: true } as JobQueueRow);
+
+    const state = createInitialWorkerState();
+    await tick(state);
+    await flush();
+
+    expect(state.reanalyzeBusy).toBe(false);
+    expect(state.igNextAllowedAt).toBe(0);
+  });
+
+  it('leaves the lane free when there is nothing to re-analyse', async () => {
+    const state = createInitialWorkerState();
+    await tick(state);
+    expect(state.reanalyzeBusy).toBe(false);
   });
 });

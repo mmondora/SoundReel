@@ -79,6 +79,18 @@ interface AnalyzeRequestBody {
    */
   reanalyze?: boolean;
   /**
+   * Download and extract, but make no ollama call: no vision pass, no AI
+   * analysis. A later batched pass does that work with the model already warm.
+   *
+   * A repair run is spaced by tens of minutes so Instagram does not challenge
+   * the account, while ollama keeps a single model resident for 90 seconds.
+   * Analysing inline therefore means one GPU wake-up and two model swaps per
+   * job — the queue teardown that hangs this APU (see the 2026-09-01
+   * MES investigation). Subtractive only: OCR, Shazam and the transcription
+   * queue are untouched, since none of them reach ollama.
+   */
+  skipAi?: boolean;
+  /**
    * Which entry the second pass belongs to. Only read when `reanalyze` is set.
    *
    * A re-analysis is always fired *about a row we already have* — the job that
@@ -160,6 +172,14 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
     const channel = req.body?.channel ?? 'web';
     const user = req.body?.user ?? null;
     const reanalyze = req.body?.reanalyze === true;
+    // Download only: leave every ollama call to a later batched pass.
+    //
+    // A repair batch is spaced by tens of minutes so Instagram does not
+    // challenge the account again, and ollama keeps one model resident for 90
+    // seconds with MAX_LOADED_MODELS=1. Analysing inline therefore wakes the
+    // GPU once per job and switches models twice — the queue teardown that
+    // hangs this APU. The deferred pass runs them back to back, hot.
+    const skipAi = req.body?.skipAi === true;
     const requestedEntryId = reanalyze ? req.body?.entryId : undefined;
 
     if (!url) {
@@ -187,7 +207,12 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       log.startTimer();
       log.info('Inizio analisi URL', { url: normalizedUrl, channel });
 
-      const featuresConfig = await getFeaturesConfig();
+      const storedFeatures = await getFeaturesConfig();
+      // `skipAi` only ever subtracts. Audio recognition and OCR stay on: they
+      // reach Shazam and the OCR sidecar, not ollama.
+      const featuresConfig = skipAi
+        ? { ...storedFeatures, aiAnalysisEnabled: false }
+        : storedFeatures;
       log.info('Features config', {
         cobaltEnabled: featuresConfig.cobaltEnabled,
         allowDuplicateUrls: featuresConfig.allowDuplicateUrls,
@@ -714,7 +739,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
               reason: 'second pass: visualContext already on the entry',
               chars: visualContext.length,
             }));
-          } else if (featuresConfig.mediaAnalysisEnabled && localPaths?.framePaths.length) {
+          } else if (featuresConfig.mediaAnalysisEnabled && !skipAi && localPaths?.framePaths.length) {
             const keyFrames = pickKeyFrames(localPaths.framePaths, KEY_FRAMES_COUNT);
             visualContext = await describeFramesWithVision(keyFrames);
             await appendActionLog(entryId, createActionLog('vision_describe', {
@@ -726,7 +751,9 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           } else {
             await appendActionLog(entryId, createActionLog('vision_describe', {
               status: 'skipped',
-              reason: !featuresConfig.mediaAnalysisEnabled ? 'disabled in settings' : 'no frames',
+              reason: skipAi
+                ? 'deferred to the batched AI pass'
+                : !featuresConfig.mediaAnalysisEnabled ? 'disabled in settings' : 'no frames',
             }));
           }
 
@@ -939,7 +966,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             links: aiResult.links.length,
             tags: aiResult.tags.length,
           }
-        : { status: 'skipped', reason: 'disabled in settings' };
+        : { status: 'skipped', reason: skipAi ? 'deferred to the batched AI pass' : 'disabled in settings' };
       if (aiResponse.usageMetadata) aiAnalyzedDetails.tokenUsage = aiResponse.usageMetadata;
       await appendActionLog(entryId, createActionLog('ai_analyzed', aiAnalyzedDetails));
 

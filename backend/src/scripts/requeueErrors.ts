@@ -20,6 +20,12 @@
  *   node dist/scripts/requeueErrors.js --dry-run
  *   node dist/scripts/requeueErrors.js --days 4
  *   node dist/scripts/requeueErrors.js --days 1 --notify
+ *   node dist/scripts/requeueErrors.js --days 3 --skip-ai
+ *
+ * Con --skip-ai i job scaricano soltanto: nessuna chiamata a ollama. Serve
+ * quando il batch e' lungo — un job ogni decine di minuti sveglia la GPU una
+ * volta per job e le fa cambiare modello due volte, che e' il teardown delle
+ * code MES che la pianta. L'analisi la fa dopo, in blocco, requeueAiPass.
  */
 import { pool, appendActionLog, createActionLog } from '../utils/db';
 import { enqueueJob } from '../utils/jobQueue';
@@ -43,7 +49,12 @@ function parseArgs() {
     console.error('--days deve essere un numero positivo');
     process.exit(1);
   }
-  return { dryRun: argv.includes('--dry-run'), days, notify: argv.includes('--notify') };
+  return {
+    dryRun: argv.includes('--dry-run'),
+    days,
+    notify: argv.includes('--notify'),
+    skipAi: argv.includes('--skip-ai'),
+  };
 }
 
 async function fetchErrorEntries(): Promise<Row[]> {
@@ -70,7 +81,7 @@ async function resolveChatId(): Promise<number> {
 }
 
 async function main(): Promise<void> {
-  const { dryRun, days, notify } = parseArgs();
+  const { dryRun, days, notify, skipAi } = parseArgs();
 
   const rows = await fetchErrorEntries();
   const chatId = await resolveChatId();
@@ -80,6 +91,7 @@ async function main(): Promise<void> {
   console.log(
     `[requeue] entry in errore da riaccodare: ${rows.length} | finestra: ${days} giorni ` +
     `| una ogni ~${Math.round(slotMs / 60000)} min | ${notify ? 'con notifica Telegram' : 'silenziose'}` +
+    `${skipAi ? ' | solo download, AI rimandata' : ''}` +
     `${dryRun ? ' | DRY RUN (nessuna modifica)' : ''}`
   );
 
@@ -108,12 +120,14 @@ async function main(): Promise<void> {
       chatId,
       inputUser: row.input_user,
       notify,
+      skipAi,
       nextAttemptAt: at,
     });
     await appendActionLog(row.id, createActionLog('requeued_for_retry', {
       scheduledFor: at.toISOString(),
       platform,
       silent: !notify,
+      skipAi,
     }));
     queued++;
   }

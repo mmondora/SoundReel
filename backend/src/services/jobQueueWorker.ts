@@ -3,6 +3,7 @@ import path from 'path';
 import {
   claimNextInstagramJob,
   claimNextOtherJob,
+  claimNextReanalyzeJob,
   claimNextTranscribeJob,
   enqueueJob,
   markJobDone,
@@ -64,10 +65,21 @@ export interface WorkerState {
   igBusy: boolean;
   igNextAllowedAt: number; // epoch ms
   otherInFlight: number;
+  /**
+   * One re-analysis at a time, and no cooling-off window between them.
+   *
+   * These jobs reach no external service, so nothing here is rate limiting:
+   * it is ollama that must be protected. It keeps a single model resident
+   * (MAX_LOADED_MODELS=1, KEEP_ALIVE=90s), so running two passes at once would
+   * swap the model in and out between every call — the queue teardown that
+   * hangs this APU. Back to back and serial, the model is loaded once for the
+   * whole batch.
+   */
+  reanalyzeBusy: boolean;
 }
 
 export function createInitialWorkerState(): WorkerState {
-  return { igBusy: false, igNextAllowedAt: 0, otherInFlight: 0 };
+  return { igBusy: false, igNextAllowedAt: 0, otherInFlight: 0, reanalyzeBusy: false };
 }
 
 export function computeJitterDelayMs(rand: () => number = Math.random): number {
@@ -281,6 +293,9 @@ async function dispatch(job: JobQueueRow, onSettle: () => void): Promise<void> {
         // unconditional in the route, so this flag carries only the second
         // half of that meaning.
         reanalyze: job.reanalyze,
+        // Download only: no vision pass, no AI analysis, no ollama at all.
+        // A batched pass does that work later with the model already warm.
+        skipAi: job.skipAi,
       }),
     });
     // The body is read even on a non-2xx. The route answers a failed Instagram
@@ -348,6 +363,20 @@ export async function tick(state: WorkerState): Promise<void> {
     void dispatch(job, () => {
       state.otherInFlight--;
     });
+  }
+
+  if (!state.reanalyzeBusy) {
+    // Reserved before the await for the same reason as the lane above: two
+    // overlapping ticks must not both see it free.
+    state.reanalyzeBusy = true;
+    const job = await claimNextReanalyzeJob();
+    if (job) {
+      void dispatch(job, () => {
+        state.reanalyzeBusy = false;
+      });
+    } else {
+      state.reanalyzeBusy = false;
+    }
   }
 
   while (state.otherInFlight < OTHER_CONCURRENCY_CAP) {

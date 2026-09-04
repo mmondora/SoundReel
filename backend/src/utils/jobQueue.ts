@@ -29,6 +29,16 @@ export interface JobQueueRow {
    * precisely because the download failed, so it must keep its download.
    */
   reanalyze: boolean;
+  /**
+   * Download only: no vision, no AI analysis, no ollama at all.
+   *
+   * A repair batch is spaced out by tens of minutes so Instagram does not
+   * challenge the account again, and ollama keeps one model resident for 90
+   * seconds. Running the analysis inline would therefore wake the GPU once per
+   * job and switch models twice — the queue teardown that hangs this APU.
+   * The deferred pass picks these entries up later, in one hot run.
+   */
+  skipAi: boolean;
 }
 
 interface JobQueueDbRow {
@@ -47,6 +57,7 @@ interface JobQueueDbRow {
   kind: string;
   priority: number;
   reanalyze: boolean;
+  skip_ai: boolean;
 }
 
 function rowToJob(row: JobQueueDbRow): JobQueueRow {
@@ -66,6 +77,7 @@ function rowToJob(row: JobQueueDbRow): JobQueueRow {
     kind: (row.kind as JobKind) ?? 'analyze',
     priority: row.priority ?? 0,
     reanalyze: row.reanalyze ?? false,
+    skipAi: row.skip_ai ?? false,
   };
 }
 
@@ -85,14 +97,17 @@ export async function enqueueJob(job: {
   priority?: number;
   /** Work from the media already on disk and fetch nothing. Defaults to false. */
   reanalyze?: boolean;
+  /** Download only, leaving the AI analysis to a later batched pass. */
+  skipAi?: boolean;
 }): Promise<number> {
   const rows = await query<{ id: number }>(
-    `INSERT INTO job_queue (entry_id, source_url, platform, chat_id, input_user, notify, next_attempt_at, kind, priority, reanalyze)
-     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7, NOW()),$8,$9,$10)
+    `INSERT INTO job_queue (entry_id, source_url, platform, chat_id, input_user, notify, next_attempt_at, kind, priority, reanalyze, skip_ai)
+     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7, NOW()),$8,$9,$10,$11)
      RETURNING id`,
     [job.entryId, job.sourceUrl, job.platform, job.chatId, job.inputUser,
      job.notify ?? true, job.nextAttemptAt ?? null,
-     job.kind ?? 'analyze', job.priority ?? 0, job.reanalyze ?? false]
+     job.kind ?? 'analyze', job.priority ?? 0, job.reanalyze ?? false,
+     job.skipAi ?? false]
   );
   return rows[0].id;
 }
@@ -129,12 +144,25 @@ async function claimNext(platformClause: string): Promise<JobQueueRow | null> {
   });
 }
 
+/**
+ * The three analyze lanes are disjoint, and `reanalyze` is what splits them.
+ *
+ * A re-analysis fetches nothing — it works from media already on disk — so the
+ * rate limiting that shapes the other two lanes buys it nothing. What it does
+ * do is hit ollama, which keeps a single model resident: running several at
+ * once would thrash the model in and out. Hence its own strictly serial lane,
+ * with no jitter to cool the model down between jobs.
+ */
 export function claimNextInstagramJob(): Promise<JobQueueRow | null> {
-  return claimNext(`kind = 'analyze' AND platform = 'instagram'`);
+  return claimNext(`kind = 'analyze' AND platform = 'instagram' AND NOT reanalyze`);
 }
 
 export function claimNextOtherJob(): Promise<JobQueueRow | null> {
-  return claimNext(`kind = 'analyze' AND platform <> 'instagram'`);
+  return claimNext(`kind = 'analyze' AND platform <> 'instagram' AND NOT reanalyze`);
+}
+
+export function claimNextReanalyzeJob(): Promise<JobQueueRow | null> {
+  return claimNext(`kind = 'analyze' AND reanalyze`);
 }
 
 export function claimNextTranscribeJob(): Promise<JobQueueRow | null> {
