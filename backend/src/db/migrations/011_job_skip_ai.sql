@@ -1,0 +1,12 @@
+-- Una passata di riparazione scarica e basta: l'analisi AI arriva dopo, in blocco.
+--
+-- ollama gira con OLLAMA_KEEP_ALIVE=90s e MAX_LOADED_MODELS=1, e ogni job usa
+-- due modelli (moondream sui frame, poi qwen2.5 sul testo). Un batch di
+-- riparazione spaziato di 40 minuti — la spaziatura serve a non farsi sfidare
+-- da Instagram — significa un risveglio e due cambi di modello per job, cioe'
+-- il teardown delle code MES che pianta la GPU su questo APU Phoenix3.
+--
+-- Con questo flag il download non chiama ollama per niente. La seconda
+-- passata (reanalyze) non tocca Instagram, quindi puo' correre serrata con il
+-- modello gia' caldo.
+ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS skip_ai BOOLEAN NOT NULL DEFAULT false;

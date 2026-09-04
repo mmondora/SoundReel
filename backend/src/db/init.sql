@@ -160,6 +160,11 @@ ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0;
 -- be allowed to fetch.
 ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS reanalyze BOOLEAN NOT NULL DEFAULT false;
 
+-- Scarica e basta: l'analisi AI e' rimandata a una passata in blocco. Serve a
+-- non svegliare ollama (KEEP_ALIVE 90s, un modello caricato per volta) una
+-- volta ogni 40 minuti, con due cambi di modello per job.
+ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS skip_ai BOOLEAN NOT NULL DEFAULT false;
+
 CREATE INDEX IF NOT EXISTS idx_job_queue_dispatch ON job_queue (status, platform, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_job_queue_kind
   ON job_queue (kind, status, priority, next_attempt_at);
