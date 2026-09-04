@@ -35,6 +35,14 @@ export async function analyzeUrl(sourceUrl: string): Promise<AnalyzeResponse> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url: sourceUrl }),
   });
+  // A failed pipeline now answers with a non-2xx *and* the usual body — the
+  // status is what tells the queue worker to retry instead of marking the job
+  // done. The UI still wants the body: `useAnalyze` renders `error` off a
+  // `success: false` response, and would otherwise show the raw JSON.
+  if (!res.ok) {
+    const body = (await res.clone().json().catch(() => null)) as AnalyzeResponse | null;
+    if (body && body.success === false) return body;
+  }
   return json<AnalyzeResponse>(res);
 }
 

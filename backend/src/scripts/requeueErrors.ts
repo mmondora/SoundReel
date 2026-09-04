@@ -10,12 +10,16 @@
  * The worker's own per-job jitter and one-at-a-time Instagram lane still apply
  * on top of this.
  *
- * Jobs are queued with notify=false: this is a repair run over content the user
- * submitted days ago, and a burst of Telegram messages would be noise.
+ * Jobs are queued with notify=false by default: this is a repair run over
+ * content the user submitted days ago, and a burst of Telegram messages would
+ * be noise. Pass --notify when the batch is small enough to want the results
+ * announced — a handful of entries stranded by an expired Instagram session,
+ * say, where the whole point is hearing that they finally went through.
  *
  * Usage (inside the container):
  *   node dist/scripts/requeueErrors.js --dry-run
  *   node dist/scripts/requeueErrors.js --days 4
+ *   node dist/scripts/requeueErrors.js --days 1 --notify
  */
 import { pool, appendActionLog, createActionLog } from '../utils/db';
 import { enqueueJob } from '../utils/jobQueue';
@@ -39,7 +43,7 @@ function parseArgs() {
     console.error('--days deve essere un numero positivo');
     process.exit(1);
   }
-  return { dryRun: argv.includes('--dry-run'), days };
+  return { dryRun: argv.includes('--dry-run'), days, notify: argv.includes('--notify') };
 }
 
 async function fetchErrorEntries(): Promise<Row[]> {
@@ -57,7 +61,7 @@ async function fetchErrorEntries(): Promise<Row[]> {
   return rows;
 }
 
-/** The chat to attribute jobs to; unused while notify is false, but the column is NOT NULL. */
+/** The chat the jobs answer to; also the NOT NULL column's value when silent. */
 async function resolveChatId(): Promise<number> {
   const { rows } = await pool.query<{ chat_id: string }>(
     `SELECT chat_id FROM job_queue GROUP BY chat_id ORDER BY count(*) DESC LIMIT 1`
@@ -66,7 +70,7 @@ async function resolveChatId(): Promise<number> {
 }
 
 async function main(): Promise<void> {
-  const { dryRun, days } = parseArgs();
+  const { dryRun, days, notify } = parseArgs();
 
   const rows = await fetchErrorEntries();
   const chatId = await resolveChatId();
@@ -75,7 +79,8 @@ async function main(): Promise<void> {
 
   console.log(
     `[requeue] entry in errore da riaccodare: ${rows.length} | finestra: ${days} giorni ` +
-    `| una ogni ~${Math.round(slotMs / 60000)} min${dryRun ? ' | DRY RUN (nessuna modifica)' : ''}`
+    `| una ogni ~${Math.round(slotMs / 60000)} min | ${notify ? 'con notifica Telegram' : 'silenziose'}` +
+    `${dryRun ? ' | DRY RUN (nessuna modifica)' : ''}`
   );
 
   if (!rows.length) {
@@ -102,13 +107,13 @@ async function main(): Promise<void> {
       platform,
       chatId,
       inputUser: row.input_user,
-      notify: false,
+      notify,
       nextAttemptAt: at,
     });
     await appendActionLog(row.id, createActionLog('requeued_for_retry', {
       scheduledFor: at.toISOString(),
       platform,
-      silent: true,
+      silent: !notify,
     }));
     queued++;
   }

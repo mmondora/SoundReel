@@ -43,6 +43,7 @@ import {
   escapeHtml,
   truncateForTelegram,
   pickTitle,
+  formatAnalysisError,
   type TelegramMessage,
   type AnalyzeResult,
 } from './telegram';
@@ -402,5 +403,34 @@ describe('POST /telegram/webhook — URL message enqueues a job', () => {
     expect(body.text).toContain('Analisi fallita');
 
     vi.unstubAllGlobals();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatAnalysisError
+// ---------------------------------------------------------------------------
+describe('formatAnalysisError', () => {
+  const AUTH: AnalyzeResult = {
+    success: false,
+    entryId: '11111111-1111-1111-1111-111111111111',
+    error: 'both iphone_api and graphql failed: challenge_required',
+  };
+
+  it('names the real remedy for an expired session', () => {
+    expect(formatAnalysisError(AUTH)).toContain('nuova autorizzazione');
+  });
+
+  it('links the entry so the user can see what stalled', () => {
+    expect(formatAnalysisError(AUTH)).toContain(`?entry=${AUTH.entryId}`);
+  });
+
+  // Without this the message reads as "renew the session AND re-send the
+  // link", and the user re-submits a URL the worker is already retrying.
+  it('says the worker will retry by itself when a retry is scheduled', () => {
+    expect(formatAnalysisError(AUTH, { willRetry: true })).toContain('Riprovo da solo');
+  });
+
+  it('promises nothing when no retry is scheduled', () => {
+    expect(formatAnalysisError(AUTH)).not.toContain('Riprovo da solo');
   });
 });

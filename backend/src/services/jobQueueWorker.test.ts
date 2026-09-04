@@ -31,18 +31,21 @@ vi.mock('./debugLogger', () => {
 import {
   computeJitterDelayMs,
   computeBackoffMs,
+  computeAuthBackoffMs,
+  isAuthFailure,
   tick,
   createInitialWorkerState,
 } from './jobQueueWorker';
 import {
   claimNextInstagramJob,
   claimNextOtherJob,
+  claimNextTranscribeJob,
   markJobDone,
   markJobFailed,
   scheduleJobRetry,
   type JobQueueRow,
 } from '../utils/jobQueue';
-import { sendTelegramMessage } from '../routes/telegram';
+import { sendTelegramMessage, formatAnalysisError } from '../routes/telegram';
 
 function flush(): Promise<void> {
   return new Promise((r) => setTimeout(r, 0));
@@ -553,5 +556,171 @@ describe('dispatchTranscribe', () => {
 
     expect(scheduleJobRetry).toHaveBeenCalledWith(10, 1, expect.any(Date));
     expect(markJobFailed).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Instagram session expiry
+//
+// The bug these pin: the analyze route used to answer a failed Instagram
+// download with HTTP 200 and `success: false`, so the worker saw `res.ok`,
+// called markJobDone(), sent the "renew the session" warning — and never
+// touched the job again. The user got one message and then permanent silence,
+// even after re-seeding the session hours later.
+// ---------------------------------------------------------------------------
+describe('isAuthFailure', () => {
+  it.each([
+    'both iphone_api and graphql failed: challenge_required',
+    'login required; seed session via `instaloader -l <user>`',
+    'login_required',
+    'checkpoint_required',
+    'HTTP 403',
+    '401 Unauthorized',
+  ])('%s → auth failure', (err) => {
+    expect(isAuthFailure(err)).toBe(true);
+  });
+
+  it.each([
+    'timeout',
+    'not found',
+    'ECONNREFUSED',
+    'INSTALOADER_URL not set',
+    // A bare number inside a longer token must not read as a status code.
+    'download failed for shortcode DC401xyz',
+  ])('%s → ordinary failure', (err) => {
+    expect(isAuthFailure(err)).toBe(false);
+  });
+});
+
+describe('computeAuthBackoffMs', () => {
+  it('first attempt waits 30 minutes, not 60 seconds', () => {
+    expect(computeAuthBackoffMs(1)).toBe(30 * 60_000);
+  });
+  it('escalates to 2h then 6h', () => {
+    expect(computeAuthBackoffMs(2)).toBe(2 * 3_600_000);
+    expect(computeAuthBackoffMs(3)).toBe(6 * 3_600_000);
+  });
+  // A session renewed on day three must still find the job alive; the ordinary
+  // Instagram table is exhausted eleven minutes in.
+  it('settles into a daily knock past the escalation', () => {
+    expect(computeAuthBackoffMs(4)).toBe(24 * 3_600_000);
+    expect(computeAuthBackoffMs(10)).toBe(24 * 3_600_000);
+  });
+  it('gives up after ten attempts (~8 days)', () => {
+    expect(computeAuthBackoffMs(11)).toBeNull();
+  });
+});
+
+describe('auth failures through the queue', () => {
+  const AUTH_ERROR = 'both iphone_api and graphql failed: challenge_required';
+
+  function analyzeReplies(status: number, body: Record<string, unknown>): void {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => body,
+    } as never);
+  }
+
+  async function runIgJob(job: Partial<JobQueueRow>): Promise<void> {
+    vi.mocked(claimNextInstagramJob).mockResolvedValue({ ...IG_JOB, ...job } as JobQueueRow);
+    vi.mocked(claimNextOtherJob).mockResolvedValue(null);
+    await tick(createInitialWorkerState());
+    await flush();
+    await flush();
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn());
+    process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+    vi.mocked(claimNextTranscribeJob).mockResolvedValue(null);
+  });
+
+  it('a 502 naming challenge_required is a failure, not a completed job', async () => {
+    analyzeReplies(502, { success: false, entryId: 'e1', error: AUTH_ERROR });
+    await runIgJob({});
+
+    expect(markJobDone).not.toHaveBeenCalled();
+    expect(scheduleJobRetry).toHaveBeenCalledWith(1, 1, expect.any(Date));
+  });
+
+  it('waits 30 minutes before the first auth retry', async () => {
+    analyzeReplies(502, { success: false, entryId: 'e1', error: AUTH_ERROR });
+    await runIgJob({});
+
+    const when = vi.mocked(scheduleJobRetry).mock.calls[0][2] as Date;
+    expect(when.getTime()).toBeGreaterThan(Date.now() + 29 * 60_000);
+  });
+
+  it('tells the user once, on the first auth failure', async () => {
+    analyzeReplies(502, { success: false, entryId: 'e1', error: AUTH_ERROR });
+    await runIgJob({ attempts: 0 });
+
+    expect(sendTelegramMessage).toHaveBeenCalledTimes(1);
+    expect(formatAnalysisError).toHaveBeenCalledWith(
+      expect.objectContaining({ error: AUTH_ERROR, entryId: 'e1' }),
+      { willRetry: true }
+    );
+  });
+
+  // Retries are hours apart; repeating "renew the session" every few hours is
+  // noise. The next thing the user hears is the entry going through.
+  it('stays silent on the retries that follow', async () => {
+    analyzeReplies(502, { success: false, entryId: 'e1', error: AUTH_ERROR });
+    await runIgJob({ attempts: 2 });
+
+    expect(sendTelegramMessage).not.toHaveBeenCalled();
+    expect(scheduleJobRetry).toHaveBeenCalledWith(1, 3, expect.any(Date));
+  });
+
+  it('survives far past the 3-attempt ceiling that kills an ordinary failure', async () => {
+    analyzeReplies(502, { success: false, entryId: 'e1', error: AUTH_ERROR });
+    await runIgJob({ attempts: 6 });
+
+    expect(markJobFailed).not.toHaveBeenCalled();
+    expect(scheduleJobRetry).toHaveBeenCalledWith(1, 7, expect.any(Date));
+  });
+
+  it('gives up once the auth attempts are exhausted', async () => {
+    analyzeReplies(502, { success: false, entryId: 'e1', error: AUTH_ERROR });
+    await runIgJob({ attempts: 10 });
+
+    expect(markJobFailed).toHaveBeenCalledWith(1);
+    expect(scheduleJobRetry).not.toHaveBeenCalled();
+    expect(sendTelegramMessage).toHaveBeenCalled();
+  });
+
+  // An expired session must not stretch every unrelated failure to 30 minutes.
+  it('leaves an ordinary download failure on the short backoff', async () => {
+    analyzeReplies(502, { success: false, entryId: 'e1', error: 'timeout' });
+    await runIgJob({});
+
+    const when = vi.mocked(scheduleJobRetry).mock.calls[0][2] as Date;
+    expect(when.getTime()).toBeLessThan(Date.now() + 120_000);
+    expect(sendTelegramMessage).not.toHaveBeenCalled();
+  });
+
+  // The message the user actually waits for: the run that finally works.
+  it('sends the result when a later retry succeeds', async () => {
+    analyzeReplies(200, {
+      success: true,
+      entryId: 'e1',
+      entry: { results: { songs: [], films: [], notes: [], links: [], tags: [], summary: null } },
+    });
+    await runIgJob({ attempts: 4 });
+
+    expect(markJobDone).toHaveBeenCalledWith(1);
+    expect(sendTelegramMessage).toHaveBeenCalledWith(42, 'ok-text', expect.any(String));
+  });
+
+  // A Telegram outage must not cost the job its retry: the row would stay at
+  // status='processing' until the next server boot.
+  it('still schedules the retry when the warning cannot be delivered', async () => {
+    analyzeReplies(502, { success: false, entryId: 'e1', error: AUTH_ERROR });
+    vi.mocked(sendTelegramMessage).mockRejectedValue(new Error('ETELEGRAM'));
+    await runIgJob({});
+
+    expect(scheduleJobRetry).toHaveBeenCalledWith(1, 1, expect.any(Date));
   });
 });
