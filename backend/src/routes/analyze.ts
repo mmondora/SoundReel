@@ -512,7 +512,14 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
               error: dlError,
             }));
             const entryErr = await getEntry(entryId);
-            reply.send({ success: false, entryId, entry: entryErr, error: dlError });
+            // 502, not 200. The queue worker decides "retry or done" from the
+            // HTTP status: a 200 with `success: false` made every failed
+            // Instagram download a *completed* job, so an expired session
+            // produced one warning message and then permanent silence — no
+            // retry, ever, not even after the session was renewed. The body is
+            // unchanged: the worker reads `error` off it to tell an auth
+            // failure (long backoff) from an ordinary one.
+            reply.code(502).send({ success: false, entryId, entry: entryErr, error: dlError });
             return;
           }
         } else {

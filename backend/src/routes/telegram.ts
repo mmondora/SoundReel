@@ -106,20 +106,30 @@ function frontendUrl(entryId: string): string {
   return `${base.replace(/\/$/, '')}/?entry=${entryId}`;
 }
 
-export function formatAnalysisError(result: AnalyzeResult): string {
+export interface AnalysisErrorOptions {
+  /**
+   * The job is not dead: it has a retry scheduled. Says so in the message, so
+   * "renew the session" does not read as "and then re-submit the link" — the
+   * worker re-runs it on its own, and the user hears back when it goes through.
+   */
+  willRetry?: boolean;
+}
+
+export function formatAnalysisError(result: AnalyzeResult, opts: AnalysisErrorOptions = {}): string {
   const srl = process.env.FRONTEND_URL || 'https://soundreel.casamon.dev';
   const link = `🌐 <a href="${srl}">Apri SoundReel</a>`;
   const err = result.error ?? '';
   const entryLink = result.entryId ? `\n🔗 <a href="${frontendUrl(result.entryId)}">Vedi entry</a>` : '';
+  const retry = opts.willRetry ? '\n🔄 Riprovo da solo: non serve rimandare il link.' : '';
 
   if (err.includes('challenge_required')) {
-    return `⚠️ Instagram richiede una nuova autorizzazione.\nRinnova la sessione su Instaloader.${entryLink}\n${link}`;
+    return `⚠️ Instagram richiede una nuova autorizzazione.\nRinnova la sessione su Instaloader.${retry}${entryLink}\n${link}`;
   }
   if (err.includes('unable to extract shortcode') || err === 'instaloader_download_failed') {
-    return `⚠️ Estrattore Instagram non disponibile o URL non supportato.\nVerifica che il container Instaloader sia attivo e la sessione valida.${entryLink}\n${link}`;
+    return `⚠️ Estrattore Instagram non disponibile o URL non supportato.\nVerifica che il container Instaloader sia attivo e la sessione valida.${retry}${entryLink}\n${link}`;
   }
   if (err.includes('instaloader')) {
-    return `⚠️ Errore Instaloader: ${err.slice(0, 120)}\nVerifica la sessione Instagram.${entryLink}\n${link}`;
+    return `⚠️ Errore Instaloader: ${err.slice(0, 120)}\nVerifica la sessione Instagram.${retry}${entryLink}\n${link}`;
   }
   if (err === 'page_pipeline_failed') {
     return `⚠️ Pagina non accessibile o contenuto insufficiente.${entryLink}\n${link}`;

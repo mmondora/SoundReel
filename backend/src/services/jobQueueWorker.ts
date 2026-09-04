@@ -21,6 +21,45 @@ const OTHER_CONCURRENCY_CAP = 3;
 const IG_BACKOFF_MS = [60_000, 180_000, 420_000];
 const OTHER_BACKOFF_MS = [60_000];
 
+/**
+ * Instagram has stopped trusting the *session*, not this URL.
+ *
+ * That state ends when a human re-seeds the cookie in the Instaloader
+ * container — hours, sometimes days later. The ordinary Instagram table burns
+ * all three attempts inside eleven minutes, so the job was always dead long
+ * before anyone could act on the warning it had just sent. Escalate instead,
+ * then settle into a daily knock so a session renewed on day three still gets
+ * the entry processed.
+ */
+const AUTH_BACKOFF_MS = [30 * 60_000, 2 * 3_600_000, 6 * 3_600_000];
+const AUTH_DAILY_MS = 24 * 3_600_000;
+/** Roughly eight days of daily retries after the escalation. Then give up. */
+const AUTH_MAX_ATTEMPTS = 10;
+
+/**
+ * Errors that mean "the session is no longer valid", from either side of the
+ * sidecar: instaloader's own exception text (`challenge_required`,
+ * `LoginRequiredException`) and the sidecar's rewritten replies
+ * (`login required; seed session via ...`, a bare 401/403).
+ */
+const AUTH_ERROR_PATTERNS = [
+  /challenge_required/i,
+  /checkpoint_required/i,
+  /login[ _]?required/i,
+  /session.{0,24}expired/i,
+  /\b401\b/,
+  /\b403\b/,
+];
+
+export function isAuthFailure(error: string): boolean {
+  return AUTH_ERROR_PATTERNS.some((re) => re.test(error));
+}
+
+export function computeAuthBackoffMs(attempts: number): number | null {
+  if (attempts > AUTH_MAX_ATTEMPTS) return null;
+  return AUTH_BACKOFF_MS[attempts - 1] ?? AUTH_DAILY_MS;
+}
+
 export interface WorkerState {
   igBusy: boolean;
   igNextAllowedAt: number; // epoch ms
@@ -55,22 +94,54 @@ async function sendResultToTelegram(job: JobQueueRow, result: AnalyzeResult): Pr
   }
 }
 
+/**
+ * A Telegram send must never cost the caller its retry: the notification is a
+ * courtesy, the `scheduleJobRetry` that follows it is what keeps the job
+ * alive. Without this guard a Telegram outage left the row stuck at
+ * `processing` until the next server boot.
+ */
+async function notifyQuietly(chatId: number, text: string, token: string, log: Logger): Promise<void> {
+  try {
+    await sendTelegramMessage(chatId, text, token);
+  } catch (err) {
+    log.error('Notifica Telegram fallita', err instanceof Error ? err : new Error(String(err)));
+  }
+}
+
 async function handleFailure(job: JobQueueRow, err: unknown, log: Logger): Promise<void> {
   log.error(`Job ${job.id} (${job.platform}) failed`, err instanceof Error ? err : new Error(String(err)));
+  const message = err instanceof Error ? err.message : String(err);
+  // An expired Instagram session is not this URL's fault and is not fixed by
+  // waiting a minute — it gets its own, far longer schedule.
+  const auth = isAuthFailure(message);
   const attempts = job.attempts + 1;
-  const backoff = computeBackoffMs(job.platform, attempts);
+  const backoff = auth ? computeAuthBackoffMs(attempts) : computeBackoffMs(job.platform, attempts);
+  const token = job.notify ? process.env.TELEGRAM_BOT_TOKEN : null;
+
   if (backoff === null) {
     await markJobFailed(job.id);
-    const token = job.notify ? process.env.TELEGRAM_BOT_TOKEN : null;
     if (token) {
-      await sendTelegramMessage(
-        job.chatId,
-        `❌ Analisi fallita dopo ${attempts} tentativi.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`,
-        token
-      );
+      const text = auth
+        ? `❌ Rinuncio: la sessione Instagram non è stata rinnovata dopo ${attempts} tentativi.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`
+        : `❌ Analisi fallita dopo ${attempts} tentativi.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`;
+      await notifyQuietly(job.chatId, text, token, log);
     }
     return;
   }
+
+  // Exactly one message, on the first auth failure: the retries after it are
+  // hours apart, and repeating "renew the session" every few hours is noise.
+  // The next thing the user hears is the entry going through.
+  if (auth && job.attempts === 0 && token) {
+    await notifyQuietly(
+      job.chatId,
+      formatAnalysisError({ success: false, entryId: job.entryId, error: message }, { willRetry: true }),
+      token,
+      log
+    );
+  }
+
+  log.info(`Job ${job.id}: retry ${attempts} fra ${Math.round(backoff / 1000)}s`, { auth });
   await scheduleJobRetry(job.id, attempts, new Date(Date.now() + backoff));
 }
 
@@ -212,8 +283,13 @@ async function dispatch(job: JobQueueRow, onSettle: () => void): Promise<void> {
         reanalyze: job.reanalyze,
       }),
     });
-    if (!res.ok) throw new Error(`analyze HTTP ${res.status}`);
-    const result = (await res.json()) as AnalyzeResult;
+    // The body is read even on a non-2xx. The route answers a failed Instagram
+    // download with 502 *and* a JSON body naming the real cause
+    // (`challenge_required`, `login required`, ...), and that string is what
+    // decides between the ordinary backoff and the long auth one. Looking only
+    // at res.status would flatten every failure into "analyze HTTP 502".
+    const result = (await res.json().catch(() => null)) as AnalyzeResult | null;
+    if (!res.ok || !result) throw new Error(result?.error || `analyze HTTP ${res.status}`);
     await markJobDone(job.id);
     // Isolated from the try/catch above it: a Telegram delivery failure here
     // must not re-trigger handleFailure and undo an already-successful job.
