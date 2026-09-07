@@ -380,8 +380,19 @@ describe('analyze route second pass', () => {
    * whose second pass then 404'd.
    */
   describe('resolves the entry by id', () => {
-    it('reads entryId only on a second pass', () => {
-      onlyMatch(/const requestedEntryId = reanalyze \? req\.body\?\.entryId : undefined;/);
+    // Was "only on a second pass" until 2026-09-07. Restricting it there left
+    // the ordinary pass deriving its row from the URL, and when two rows hold
+    // the same post that lookup returns the twin: a repair job downloaded onto
+    // the twin, reported success, and left the row it was queued for in
+    // `error` with its job marked done — 8 of the 108 in that repair batch.
+    it('reads entryId on every pass', () => {
+      onlyMatch(/const requestedEntryId = req\.body\?\.entryId;/);
+    });
+
+    it('resolves an ordinary pass by id too, keeping the URL lookup as fallback', () => {
+      onlyMatch(
+        /const existingEntry = requestedEntryId !== undefined\n\s*\? await getEntry\(requestedEntryId\)\n\s*: !featuresConfig\.allowDuplicateUrls\n\s*\? await findEntryByUrl\(normalizedUrl\)\n\s*: null;/
+      );
     });
 
     it('looks the entry up by id, and by URL only as the fallback', () => {
