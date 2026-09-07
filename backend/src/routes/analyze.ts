@@ -180,7 +180,10 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
     // GPU once per job and switches models twice — the queue teardown that
     // hangs this APU. The deferred pass runs them back to back, hot.
     const skipAi = req.body?.skipAi === true;
-    const requestedEntryId = reanalyze ? req.body?.entryId : undefined;
+    // Read on every pass, not just a re-analysis. A queued job always knows
+    // which row it is about; deriving that row from the URL instead is how a
+    // repair job came to fix a *different* one — see the branch below.
+    const requestedEntryId = req.body?.entryId;
 
     if (!url) {
       reply.code(400).send({ error: 'URL richiesto' });
@@ -244,8 +247,25 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           return;
         }
         entryId = priorEntry.id;
-      } else if (!featuresConfig.allowDuplicateUrls) {
-        const existingEntry = await findEntryByUrl(normalizedUrl);
+      } else {
+        // By id when the caller has one, by URL only when it does not.
+        //
+        // Two rows can hold the same post — the stored URLs differ by a
+        // trailing slash or an `igsh` whose `==` is now re-encoded — and
+        // `findEntryByUrl` hands back whichever one normalises to the request.
+        // A repair job then downloaded onto the twin, reported success, and
+        // left the row it was queued for sitting in `error` with its job
+        // marked done: 8 of the 108 entries in the 2026-09 repair batch, none
+        // of which any later run would have picked up, since the job was gone.
+        //
+        // The URL lookup stays for the callers that genuinely have no id: the
+        // web form, the Telegram webhook, and jobs enqueued before the field
+        // existed.
+        const existingEntry = requestedEntryId !== undefined
+          ? await getEntry(requestedEntryId)
+          : !featuresConfig.allowDuplicateUrls
+            ? await findEntryByUrl(normalizedUrl)
+            : null;
         if (existingEntry) {
           if (existingEntry.status === 'completed') {
             log.info('URL già processato', { entryId: existingEntry.id });
@@ -255,6 +275,11 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           // Not completed (processing/error) — reuse entryId and re-process
           log.info('URL presente, riprocesso', { entryId: existingEntry.id, status: existingEntry.status });
           entryId = existingEntry.id;
+        } else if (requestedEntryId !== undefined) {
+          // The row was deleted between enqueue and dispatch. Creating a fresh
+          // one is the honest outcome — the URL is still worth analysing — but
+          // it is worth saying so out loud.
+          log.warn('entryId richiesto ma riga assente, ne creo una nuova', { entryId: requestedEntryId });
         }
       }
 
