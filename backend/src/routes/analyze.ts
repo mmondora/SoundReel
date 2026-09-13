@@ -341,6 +341,13 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         await updateEntry(entryId, { status: 'processing', inputUser: user });
         await appendActionLog(entryId, createActionLog('url_received', { channel, user, platform, retry: true }));
       }
+      // Il marcatore che il lucchetto legge. Scritto qui, dopo che la riga
+      // esiste e prima di qualsiasi lavoro vero: `status = 'processing'` da
+      // solo non distingue una passata viva da uno stub appena creato dal
+      // webhook Telegram, che nasce gia' in quello stato.
+      if (!reanalyze) {
+        await appendActionLog(entryId, createActionLog('analysis_started', { channel, platform }));
+      }
       log.setEntryId(entryId);
       log.info('Entry creata', {
         entryId,
