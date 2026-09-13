@@ -11,9 +11,11 @@ import { saveThumbnailLocal } from '../services/thumbnailSaver';
 import {
   extractPage,
   PageFetchError,
+  PageShellError,
   UnsupportedContentTypeError,
   setLogger as setPageExtractorLogger,
 } from '../services/pageExtractor';
+import { isAnalysisInFlight } from '../services/entryLock';
 import { analyzeWebPage } from '../services/aiAnalysisWebPage';
 import { normalizeUrl } from '../services/urlNormalize';
 import { analyzeSlides } from '../services/slideAnalysis';
@@ -267,6 +269,26 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             ? await findEntryByUrl(normalizedUrl)
             : null;
         if (existingEntry) {
+          // Una passata viva su questa riga vince su chi arriva dopo.
+          //
+          // La route non aveva nessuna mutua esclusione: due analisi sullo
+          // stesso entry si sovrascrivevano e vinceva l'ultima che scriveva,
+          // non la migliore. Il 2026-09-12 su un link Reddit due retry partiti
+          // nello stesso minuto hanno fatto esattamente questo — una passata
+          // aveva estratto il post via RSS, l'altra ha ripiegato sull'HTML e
+          // ci ha scritto sopra "Reddit" e "...".
+          //
+          // 409 e non 200: il worker legge lo status e rimette il job in coda
+          // con il suo backoff, invece di chiuderlo come riuscito.
+          if (isAnalysisInFlight(existingEntry)) {
+            log.info('Analisi già in corso, rifiuto la seconda', { entryId: existingEntry.id });
+            reply.code(409).send({
+              success: false,
+              entryId: existingEntry.id,
+              error: 'analisi già in corso su questa entry',
+            });
+            return;
+          }
           if (existingEntry.status === 'completed') {
             log.info('URL già processato', { entryId: existingEntry.id });
             reply.send({ success: true, entryId: existingEntry.id, existing: true, entry: existingEntry });
@@ -437,6 +459,15 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
               hostname: e.hostname,
               reason: e.reason,
             }));
+          } else if (e instanceof PageShellError) {
+            // Non un errore di rete: la pagina è arrivata, ma senza contenuto
+            // perché il sito lo nega a chi non è loggato. Loggato con il suo
+            // nome perché la cura è diversa — una sessione, non un retry.
+            await appendActionLog(entryId, createActionLog('page_shell_detected', {
+              site: e.site,
+              title: e.title,
+              reason: 'login wall o anti-bot: nessun contenuto da analizzare',
+            }));
           } else if (e instanceof UnsupportedContentTypeError) {
             await appendActionLog(entryId, createActionLog('page_unsupported_content_type', {
               contentType: e.contentType,
@@ -457,7 +488,10 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
             reason: 'page_pipeline_failed',
           }));
           const errEntry = await getEntry(entryId);
-          reply.send({ success: false, entryId, entry: errEntry, error: 'page_pipeline_failed' });
+          // 502, non 200: il worker decide "riprovare o chiudere" dallo status
+          // HTTP, e un 200 con `success: false` chiudeva il job come riuscito.
+          // Stessa classe di bug gia' corretta sul ramo Instagram.
+          reply.code(502).send({ success: false, entryId, entry: errEntry, error: 'page_pipeline_failed' });
           return;
         }
       } else {
