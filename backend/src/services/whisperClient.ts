@@ -115,6 +115,18 @@ export async function transcribeLocal(audioPath: string | null): Promise<Whisper
  * there" from "whisper failed": the first costs no attempt, the second does.
  * Kept separate from transcribeLocal, which by the time it can tell has
  * already read a multi-megabyte audio file into memory.
+ *
+ * RIDONDANTE, e tenuta apposta. WHISPER_URL punta al gpu-router, che quando
+ * non ha capacita' risponde gia' 503, e dispatchTranscribe tratta quel 503
+ * esattamente come un probe fallito: stesso rinvio di TRANSCRIBE_RETRY_MS,
+ * nessun tentativo consumato. Togliere questa funzione non cambierebbe il
+ * comportamento, solo il momento in cui si scopre.
+ *
+ * Resta perche' costa una GET a vuoto invece di un upload audio da parecchi
+ * MB, e perche' e' controllo di ammissione, non instradamento: chiede al
+ * router "ha senso accodare adesso?", non sceglie fra archi-pc e GEEKOM. La
+ * scelta del backend sta nel gpu-router e deve restarci — qui non c'e' nessuna
+ * logica di bilanciamento, e non va aggiunta.
  */
 export async function isWhisperReachable(): Promise<boolean> {
   const base = process.env.WHISPER_URL;

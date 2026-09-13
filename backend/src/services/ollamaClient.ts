@@ -18,7 +18,41 @@ export interface OllamaResponse {
   usageMetadata: OllamaUsage | null;
 }
 
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://ollama:11434';
+/**
+ * Ollama is reached through the gpu-router, never directly.
+ *
+ * The router is what picks the backend (archi-pc first, the local GEEKOM only
+ * as tier 1), what powers archi-pc on when a batch shows up, what refuses a
+ * vision model the local GPU cannot serve, and what applies the keep_alive
+ * policy. Talking to an Ollama instance straight loses all four silently —
+ * the calls still succeed, which is exactly what makes it hard to notice.
+ *
+ * Hence the default points at the router too: this container sits on the same
+ * `web` network as the `ollama` container, so an unset OLLAMA_URL used to fall
+ * through to it and quietly bypass everything above.
+ */
+export const DEFAULT_OLLAMA_URL = 'http://gpu-router:9000';
+
+/** Looks like an Ollama instance rather than the router. */
+export function isDirectOllamaUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.port === '11434' || u.hostname === 'ollama' || u.hostname === 'ollama-shim';
+  } catch {
+    return false;
+  }
+}
+
+const OLLAMA_URL = process.env.OLLAMA_URL || DEFAULT_OLLAMA_URL;
+
+if (isDirectOllamaUrl(OLLAMA_URL)) {
+  // Not fatal — a deliberate direct URL is a legitimate thing to do while
+  // debugging — but it must never happen by accident in production.
+  logWarning('OLLAMA_URL punta a un Ollama diretto, non al gpu-router', {
+    url: OLLAMA_URL,
+    perde: 'load balancing, wake di archi-pc, guardia sui modelli vision, policy keep_alive',
+  });
+}
 const TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || 'qwen2.5:3b';
 const VISION_MODEL = process.env.OLLAMA_VISION_MODEL || 'moondream:latest';
 
