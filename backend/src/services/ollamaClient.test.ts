@@ -63,3 +63,37 @@ describe('ollamaClient', () => {
     expect(errorMessages).not.toContain('Vision describe failed');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Router-only access
+//
+// The gpu-router picks the backend (archi-pc first, the local GEEKOM as tier
+// 1), powers archi-pc on when a batch arrives, refuses vision models the local
+// GPU cannot serve, and applies the keep_alive policy. A direct call to an
+// Ollama instance loses all four and still succeeds — which is what makes the
+// mistake invisible.
+// ---------------------------------------------------------------------------
+describe('OLLAMA_URL', () => {
+  it('defaults to the router, not to the ollama container', async () => {
+    const { DEFAULT_OLLAMA_URL } = await import('./ollamaClient');
+    expect(DEFAULT_OLLAMA_URL).toBe('http://gpu-router:9000');
+    expect(DEFAULT_OLLAMA_URL).not.toContain('11434');
+  });
+
+  it.each([
+    'http://ollama:11434',
+    'http://192.168.178.23:11434',
+    'http://ollama-shim:8080',
+  ])('%s is recognised as a direct Ollama', async (url) => {
+    const { isDirectOllamaUrl } = await import('./ollamaClient');
+    expect(isDirectOllamaUrl(url)).toBe(true);
+  });
+
+  it.each([
+    'http://gpu-router:9000',
+    'http://gpu-router:9000/whisper',
+  ])('%s is the router', async (url) => {
+    const { isDirectOllamaUrl } = await import('./ollamaClient');
+    expect(isDirectOllamaUrl(url)).toBe(false);
+  });
+});
