@@ -14,6 +14,24 @@ export class PageFetchError extends Error {
   }
 }
 
+/**
+ * La pagina è arrivata, ma è il guscio che il sito mostra a chi non è
+ * loggato: nessun contenuto, solo il nome del sito.
+ *
+ * Va distinta da una pagina povera. Su Reddit il guscio ha `og:title` =
+ * "Reddit" e description "...", e passava per estrazione riuscita: l'entry
+ * finiva `completed` con quei due valori come caption e summary. Sembrava un
+ * risultato, quindi nessun retry l'avrebbe mai ripresa — e intanto la passata
+ * gemella che il post lo aveva estratto davvero si vedeva sovrascrivere.
+ * Meglio fallire, e lasciare che il job riprovi.
+ */
+export class PageShellError extends Error {
+  constructor(public readonly site: string, public readonly title: string | null) {
+    super(`${site}: guscio senza contenuto (login wall o anti-bot)`);
+    this.name = 'PageShellError';
+  }
+}
+
 export class UnsupportedContentTypeError extends Error {
   constructor(public readonly contentType: string) {
     super(`Unsupported content type: ${contentType}`);
@@ -99,6 +117,21 @@ async function fetchHtmlWithPlaywright(url: string): Promise<string | null> {
   } finally {
     await page?.close().catch(() => {});
   }
+}
+
+/**
+ * Il guscio di Reddit, non un post povero.
+ *
+ * Stretto di proposito: un post vero porta sempre il proprio titolo in
+ * `og:title`, quindi il titolo esattamente uguale a "Reddit" e' il segnale, e
+ * la description "..." (o vuota) la conferma. Il testo della pagina non serve:
+ * l'interstiziale ne ha quasi 3000 caratteri, piu' di molti post veri.
+ */
+export function isRedditShell(title: string | null, description: string | null): boolean {
+  const t = (title ?? '').trim();
+  const d = (description ?? '').trim();
+  if (!/^reddit$/i.test(t)) return false;
+  return d === '' || /^\.{2,}$/.test(d);
 }
 
 function isRedditUrl(url: string): boolean {
@@ -348,6 +381,13 @@ export async function extractPage(rawUrl: string): Promise<PageExtractResult> {
         log.warn('Playwright HTML parse fallito', { error: String(e) });
       }
     }
+  }
+
+  // Dopo Playwright, non prima: la pagina renderizzata a volte porta i meta
+  // veri, e bocciare qui un'estrazione che stava per riuscire sarebbe peggio
+  // del guscio.
+  if (isRedditUrl(finalUrl) && isRedditShell(title, description)) {
+    throw new PageShellError('reddit', title);
   }
 
   return {
