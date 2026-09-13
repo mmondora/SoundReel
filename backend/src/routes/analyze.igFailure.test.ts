@@ -77,6 +77,18 @@ describe('analyze route: analisi concorrenti', () => {
     expect(code).toMatch(/if \(isAnalysisInFlight\(existingEntry\)\) \{/);
   });
 
+  // Il lucchetto legge un marcatore esplicito, non `status = 'processing'`:
+  // il webhook Telegram crea lo stub già in quello stato, e senza marcatore
+  // ogni post del bot veniva rifiutato dalla passata che doveva riempirlo.
+  it('scrive il marcatore di inizio che il lucchetto legge', () => {
+    expect(code).toMatch(/createActionLog\('analysis_started'/);
+  });
+
+  it('scrive il marcatore prima di qualunque lavoro vero', () => {
+    expect(code.indexOf("createActionLog('analysis_started'"))
+      .toBeLessThan(code.indexOf('extractContent('));
+  });
+
   // 409 e non 200: il worker legge lo status HTTP per decidere se riprovare.
   it('risponde 409, così il job torna in coda invece di chiudersi', () => {
     const at = code.indexOf('isAnalysisInFlight(existingEntry)');
