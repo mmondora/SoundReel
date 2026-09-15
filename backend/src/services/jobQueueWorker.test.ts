@@ -807,3 +807,97 @@ describe('deferred AI pass', () => {
     expect(state.reanalyzeBusy).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Entry occupata
+//
+// Il 2026-09-15 tre job su cinque sono finiti `failed` su entry che intanto si
+// completavano da sole. La catena: il default di undici (headersTimeout 300s)
+// chiudeva la fetch dopo cinque minuti mentre la passata dentro il server ne
+// stava macinando dodici (vision per slide, con ollama lento); il worker
+// leggeva "fetch failed", riprovava, e il retry sbatteva sul lucchetto della
+// *propria* passata ancora viva. Tre 409 di fila, tentativi esauriti, job
+// morto — mentre l'analisi vera arrivava in fondo benissimo.
+// ---------------------------------------------------------------------------
+describe('entry occupata (409)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn());
+    process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+    vi.mocked(claimNextOtherJob).mockResolvedValue(null);
+    vi.mocked(claimNextReanalyzeJob).mockResolvedValue(null);
+    vi.mocked(claimNextTranscribeJob).mockResolvedValue(null);
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ success: false, entryId: 'e1', error: 'analisi già in corso su questa entry' }),
+    } as never);
+  });
+
+  async function runIgJob(job: Partial<JobQueueRow> = {}): Promise<void> {
+    vi.mocked(claimNextInstagramJob).mockResolvedValue({ ...IG_JOB, ...job } as JobQueueRow);
+    await tick(createInitialWorkerState());
+    await flush();
+    await flush();
+  }
+
+  it('non consuma un tentativo: non è un fallimento di questo job', async () => {
+    await runIgJob({ attempts: 2 });
+    expect(scheduleJobRetry).toHaveBeenCalledWith(1, 2, expect.any(Date));
+  });
+
+  it('ribussa dopo qualche minuto, non dopo un minuto', async () => {
+    await runIgJob();
+    const when = vi.mocked(scheduleJobRetry).mock.calls[0][2] as Date;
+    expect(when.getTime()).toBeGreaterThan(Date.now() + 4 * 60_000);
+  });
+
+  // Il punto della regressione: con i tentativi esauriti il job moriva, e
+  // nessuno rimetteva in coda l'entry.
+  it('non muore nemmeno con i tentativi già esauriti', async () => {
+    await runIgJob({ attempts: 9 });
+    expect(markJobFailed).not.toHaveBeenCalled();
+    expect(scheduleJobRetry).toHaveBeenCalled();
+  });
+
+  it('non manda nessun messaggio: non c\'è niente da raccontare', async () => {
+    await runIgJob();
+    expect(sendTelegramMessage).not.toHaveBeenCalled();
+  });
+
+  it('non chiude il job come riuscito', async () => {
+    await runIgJob();
+    expect(markJobDone).not.toHaveBeenCalled();
+  });
+
+  // Un 409 è l'unico status che non conta: gli altri restano fallimenti veri.
+  it('un 502 continua a bruciare un tentativo', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false, status: 502,
+      json: async () => ({ success: false, entryId: 'e1', error: 'timeout' }),
+    } as never);
+    await runIgJob({ attempts: 1 });
+    expect(scheduleJobRetry).toHaveBeenCalledWith(1, 2, expect.any(Date));
+  });
+});
+
+describe('trasporto verso /api/analyze', () => {
+  // La causa a monte: cinque minuti di headersTimeout su una pipeline che ne
+  // dura venti. Il tetto lo decide la pipeline, non il trasporto.
+  it('non impone un tetto di tempo alla risposta', async () => {
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: async () => ({ success: true, entryId: 'e1', entry: {} }),
+    }));
+    vi.mocked(claimNextOtherJob).mockResolvedValue(null);
+    vi.mocked(claimNextReanalyzeJob).mockResolvedValue(null);
+    vi.mocked(claimNextTranscribeJob).mockResolvedValue(null);
+    vi.mocked(claimNextInstagramJob).mockResolvedValue(IG_JOB);
+
+    await tick(createInitialWorkerState());
+    await flush();
+
+    const init = vi.mocked(fetch).mock.calls[0][1] as { dispatcher?: { [k: string]: unknown } };
+    expect(init.dispatcher).toBeDefined();
+  });
+});

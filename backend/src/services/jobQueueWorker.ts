@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { Agent } from 'undici';
 import {
   claimNextInstagramJob,
   claimNextOtherJob,
@@ -55,6 +56,42 @@ const AUTH_ERROR_PATTERNS = [
 export function isAuthFailure(error: string): boolean {
   return AUTH_ERROR_PATTERNS.some((re) => re.test(error));
 }
+
+/**
+ * Nessun tetto sull'attesa della risposta di /api/analyze.
+ *
+ * Il default di undici (headersTimeout 300s) mentiva: una passata che macina
+ * OCR, vision per slide e Whisper dura tranquillamente venti minuti quando la
+ * GPU e' lenta, e a cinque minuti il worker si vedeva tornare "fetch failed"
+ * mentre dentro il server la passata stava ancora lavorando benissimo. Poi
+ * riprovava, sbatteva sul lucchetto della *propria* passata viva, bruciava i
+ * tentativi e il job finiva `failed` — su entry che intanto si completavano da
+ * sole. Il 2026-09-15 e' successo a tre job su cinque.
+ *
+ * Il tempo massimo di una passata lo decide la pipeline, non il trasporto.
+ */
+const ANALYZE_DISPATCHER = new Agent({
+  headersTimeout: 0,
+  bodyTimeout: 0,
+  // La connessione e' su 127.0.0.1: se non si apre subito non si aprira' mai.
+  connectTimeout: 10_000,
+});
+
+/**
+ * La route ha risposto 409: su quell'entry c'e' gia' una passata viva.
+ *
+ * Non e' un fallimento di questo job, e' un "non adesso" — quindi non consuma
+ * un tentativo, esattamente come il 503 di whisper.
+ */
+export class EntryBusyError extends Error {
+  constructor(message = 'entry busy') {
+    super(message);
+    this.name = 'EntryBusyError';
+  }
+}
+
+/** Quanto aspettare prima di ribussare a un'entry occupata. */
+export const BUSY_RETRY_MS = 5 * 60 * 1000;
 
 export function computeAuthBackoffMs(attempts: number): number | null {
   if (attempts > AUTH_MAX_ATTEMPTS) return null;
@@ -121,6 +158,15 @@ async function notifyQuietly(chatId: number, text: string, token: string, log: L
 }
 
 async function handleFailure(job: JobQueueRow, err: unknown, log: Logger): Promise<void> {
+  // Un'entry occupata non e' un fallimento: e' l'altra passata che sta gia'
+  // facendo questo lavoro. Rimandare senza consumare un tentativo, come per il
+  // 503 di whisper — il lucchetto si libera da solo se quella passata muore.
+  if (err instanceof EntryBusyError) {
+    log.info(`Job ${job.id}: entry occupata, ribusso fra ${BUSY_RETRY_MS / 60_000} minuti`);
+    await scheduleJobRetry(job.id, job.attempts, new Date(Date.now() + BUSY_RETRY_MS));
+    return;
+  }
+
   log.error(`Job ${job.id} (${job.platform}) failed`, err instanceof Error ? err : new Error(String(err)));
   const message = err instanceof Error ? err.message : String(err);
   // An expired Instagram session is not this URL's fault and is not fixed by
@@ -272,9 +318,14 @@ async function dispatch(job: JobQueueRow, onSettle: () => void): Promise<void> {
   const log = new Logger('jobQueueWorker');
   try {
     const internalUrl = `http://127.0.0.1:${process.env.PORT || 8080}/api/analyze`;
-    const res = await fetch(internalUrl, {
+    // `dispatcher` e' un'opzione di undici che i tipi di RequestInit non
+    // conoscono: il fetch globale di Node la legge, TypeScript no.
+    const init: RequestInit & { dispatcher?: Agent } = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      // Vedi ANALYZE_DISPATCHER: il trasporto non deve arrendersi prima della
+      // pipeline che sta aspettando.
+      dispatcher: ANALYZE_DISPATCHER,
       body: JSON.stringify({
         url: job.sourceUrl,
         channel: 'telegram',
@@ -298,13 +349,15 @@ async function dispatch(job: JobQueueRow, onSettle: () => void): Promise<void> {
         // A batched pass does that work later with the model already warm.
         skipAi: job.skipAi,
       }),
-    });
+    };
+    const res = await fetch(internalUrl, init);
     // The body is read even on a non-2xx. The route answers a failed Instagram
     // download with 502 *and* a JSON body naming the real cause
     // (`challenge_required`, `login required`, ...), and that string is what
     // decides between the ordinary backoff and the long auth one. Looking only
     // at res.status would flatten every failure into "analyze HTTP 502".
     const result = (await res.json().catch(() => null)) as AnalyzeResult | null;
+    if (res.status === 409) throw new EntryBusyError(result?.error || 'analisi già in corso su questa entry');
     if (!res.ok || !result) throw new Error(result?.error || `analyze HTTP ${res.status}`);
     await markJobDone(job.id);
     // Isolated from the try/catch above it: a Telegram delivery failure here
