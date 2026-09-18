@@ -16,6 +16,7 @@ import {
   setLogger as setPageExtractorLogger,
 } from '../services/pageExtractor';
 import { isAnalysisInFlight } from '../services/entryLock';
+import { setAiRequestMode } from '../services/aiRequestContext';
 import { analyzeWebPage } from '../services/aiAnalysisWebPage';
 import { normalizeUrl } from '../services/urlNormalize';
 import { analyzeSlides } from '../services/slideAnalysis';
@@ -182,6 +183,13 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
     // GPU once per job and switches models twice — the queue teardown that
     // hangs this APU. The deferred pass runs them back to back, hot.
     const skipAi = req.body?.skipAi === true;
+    // spec-061: una passata batch accoda e ritira dopo, invece di restare
+    // appesa alla connessione. La seconda passata *e'* il batch — decine di
+    // job in fila nella corsia seriale — mentre un link appena mandato ha
+    // qualcuno che aspetta la risposta, e li' la connessione tenuta e' giusta.
+    // Dichiarata sempre, anche quando e' falsa: cosi' nessuna richiesta eredita
+    // la modalita' di quella prima.
+    setAiRequestMode({ queued: reanalyze });
     // Read on every pass, not just a re-analysis. A queued job always knows
     // which row it is about; deriving that row from the URL instead is how a
     // repair job came to fix a *different* one — see the branch below.

@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import { isQueuedMode } from './aiRequestContext';
 import { logInfo, logWarning, logError } from '../utils/logger';
 
 export interface OllamaImage {
@@ -70,6 +71,29 @@ if (isDirectOllamaUrl(OLLAMA_URL)) {
  */
 const REQUEST_TIMEOUT_MS = 180_000;
 
+/**
+ * Ritmo del polling sulla coda async (spec-061).
+ *
+ * Parte fitto e rallenta: quando la GPU e' gia' calda il risultato arriva in
+ * pochi secondi e non ha senso aspettarne quindici, mentre in un batch lungo
+ * bussare ogni due secondi per mezz'ora e' solo traffico.
+ */
+const QUEUE_POLL_START_MS = 2_000;
+const QUEUE_POLL_MAX_MS = 15_000;
+
+/**
+ * Il tetto d'attesa complessivo per un job accodato.
+ *
+ * spec-061 toglie il timeout dalla singola richiesta, non il buon senso: senza
+ * un limite un job perso dal router terrebbe occupata la corsia seriale per
+ * sempre. Generoso — un cold start piu' la coda davanti — e superarlo e'
+ * trattato come transitorio, quindi si ritenta.
+ */
+const QUEUE_MAX_WAIT_MS = Number(process.env.OLLAMA_QUEUE_MAX_WAIT_MS ?? 45 * 60 * 1000);
+
+/** Quanto si aspetta la singola risposta di servizio (submit e poll). */
+const QUEUE_HTTP_TIMEOUT_MS = 30_000;
+
 const TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || 'qwen2.5:3b';
 const VISION_MODEL = process.env.OLLAMA_VISION_MODEL || 'moondream:latest';
 
@@ -115,7 +139,10 @@ export class BackendUnavailableError extends Error {
  * segnalarlo. Il router aspetta per noi; a noi tocca ritentare.
  */
 export class OllamaTransientError extends Error {
-  constructor(public readonly category: 'aborted' | 'transient_503', message: string) {
+  constructor(
+    public readonly category: 'aborted' | 'transient_503' | 'queue_failed' | 'queue_expired',
+    message: string,
+  ) {
     super(message);
     this.name = 'OllamaTransientError';
   }
@@ -126,6 +153,126 @@ interface OllamaNativeResponse {
   done?: boolean;
   prompt_eval_count?: number;
   eval_count?: number;
+}
+
+/**
+ * I due 503 di spec-060, letti allo stesso modo qui e nel percorso sincrono.
+ * Solleva sempre: torna solo per far contento il compilatore.
+ */
+function throwFor503(response: Response, model: string): never {
+  const capability = response.headers.get('x-backend-unavailable');
+  if (capability) {
+    logError('Backend non disponibile', { capability, model });
+    throw new BackendUnavailableError(capability);
+  }
+  logWarning('Router occupato o macchina in accensione, transitorio', { model });
+  throw new OllamaTransientError('transient_503', 'Ollama 503 transitorio');
+}
+
+function usageFrom(data: OllamaNativeResponse): OllamaUsage {
+  return {
+    promptTokenCount: data.prompt_eval_count ?? 0,
+    candidatesTokenCount: data.eval_count ?? 0,
+    totalTokenCount: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
+    estimatedCostUSD: 0,
+  };
+}
+
+interface QueueSubmitResponse {
+  queued?: boolean;
+  job_id?: string;
+  status_url?: string;
+}
+
+interface QueueStatusResponse {
+  id?: string;
+  status?: 'queued' | 'running' | 'done' | 'failed' | 'expired';
+  position?: number;
+  result?: OllamaNativeResponse;
+  error?: string | null;
+}
+
+/**
+ * Accoda il lavoro e lo ritira dopo (spec-061).
+ *
+ * Il guadagno non e' velocita' — la coda del router e' la stessa e serializza
+ * comunque — ma il fatto che nessuno resti appeso a una connessione per venti
+ * minuti. Era quella la causa degli abort del 15 settembre: il client mollava
+ * a 180s mentre il router stava ancora lavorando, e il lavoro fatto finiva nel
+ * niente.
+ *
+ * Si manda a `/api/generate`, non a `/api/chat`: spec-061 accetta entrambi, e
+ * questo tiene corpo e risposta identici al percorso sincrono — immagini
+ * comprese — quindi c'e' un solo formato da mantenere.
+ */
+async function generateQueued(body: unknown, model: string): Promise<OllamaResponse> {
+  const submit = await fetch(`${OLLAMA_URL}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-GPU-Queue': '1' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(QUEUE_HTTP_TIMEOUT_MS),
+  });
+
+  if (submit.status === 503) throwFor503(submit, model);
+  if (!submit.ok) {
+    const errText = await submit.text().catch(() => '');
+    logError('Ollama HTTP error (submit)', { status: submit.status, body: errText.substring(0, 500) });
+    throw new Error(`Ollama HTTP ${submit.status}`);
+  }
+
+  const submitted = (await submit.json().catch(() => null)) as (QueueSubmitResponse & OllamaNativeResponse) | null;
+
+  // Un router che non conosce ancora la coda risponde come sempre, con il
+  // risultato intero: e' una risposta valida, non un errore. Prenderla per
+  // buona evita di legare il deploy di Soundreel a quello del router.
+  if (submitted && !submitted.job_id && typeof submitted.response === 'string') {
+    logInfo('Router senza coda async, risposta sincrona', { model });
+    return { text: submitted.response, usageMetadata: usageFrom(submitted) };
+  }
+
+  if (!submitted?.job_id) {
+    throw new Error('Ollama: submit accodato senza job_id');
+  }
+
+  const jobId = submitted.job_id;
+  const statusUrl = submitted.status_url ?? `/router/queue/${jobId}`;
+  logInfo('Job accodato sul router', { jobId, model });
+
+  const deadline = Date.now() + QUEUE_MAX_WAIT_MS;
+  let attesa = QUEUE_POLL_START_MS;
+
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, attesa));
+    attesa = Math.min(Math.round(attesa * 1.5), QUEUE_POLL_MAX_MS);
+
+    let stato: QueueStatusResponse | null = null;
+    try {
+      const poll = await fetch(`${OLLAMA_URL}${statusUrl}`, {
+        signal: AbortSignal.timeout(QUEUE_HTTP_TIMEOUT_MS),
+      });
+      if (poll.ok) stato = (await poll.json().catch(() => null)) as QueueStatusResponse | null;
+      else logWarning('Poll della coda non riuscito', { jobId, status: poll.status });
+    } catch (error) {
+      // Un poll andato storto non perde il job: l'id resta valido e si ribussa.
+      logWarning('Poll della coda fallito, riprovo', { jobId, error: String(error) });
+    }
+
+    if (!stato) continue;
+
+    if (stato.status === 'done' && stato.result) {
+      const text = stato.result.response || '';
+      logInfo('Job ritirato dalla coda', { jobId, chars: text.length });
+      return { text, usageMetadata: usageFrom(stato.result) };
+    }
+    if (stato.status === 'failed') {
+      throw new OllamaTransientError('queue_failed', `job ${jobId} fallito: ${stato.error ?? 'senza motivo'}`);
+    }
+    if (stato.status === 'expired') {
+      throw new OllamaTransientError('queue_expired', `job ${jobId} scaduto prima del ritiro`);
+    }
+  }
+
+  throw new OllamaTransientError('aborted', `job ${jobId} non pronto entro ${Math.round(QUEUE_MAX_WAIT_MS / 60_000)} minuti`);
 }
 
 export async function generateText(
@@ -144,7 +291,10 @@ export async function generateText(
     },
   };
 
-  logInfo('Ollama generate', { model, hasImages: images.length, promptChars: prompt.length });
+  const queued = isQueuedMode();
+  logInfo('Ollama generate', { model, hasImages: images.length, promptChars: prompt.length, queued });
+
+  if (queued) return generateQueued(body, model);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -163,28 +313,15 @@ export async function generateText(
         logInfo('Vision non disponibile sul backend locale, salto', { model });
         throw new VisionUnavailableError();
       }
-      if (response.status === 503) {
-        // spec-060: e' l'header a separare i due 503, non il corpo.
-        const capability = response.headers.get('x-backend-unavailable');
-        if (capability) {
-          logError('Backend non disponibile', { capability, model });
-          throw new BackendUnavailableError(capability);
-        }
-        logWarning('Router occupato o macchina in accensione, transitorio', { model });
-        throw new OllamaTransientError('transient_503', 'Ollama 503 transitorio');
-      }
+      // spec-060: e' l'header a separare i due 503, non il corpo.
+      if (response.status === 503) throwFor503(response, model);
       logError('Ollama HTTP error', { status: response.status, body: errText.substring(0, 500) });
       throw new Error(`Ollama HTTP ${response.status}`);
     }
 
     const data = (await response.json()) as OllamaNativeResponse;
     const text = data.response || '';
-    const usage: OllamaUsage = {
-      promptTokenCount: data.prompt_eval_count ?? 0,
-      candidatesTokenCount: data.eval_count ?? 0,
-      totalTokenCount: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
-      estimatedCostUSD: 0,
-    };
+    const usage = usageFrom(data);
 
     logInfo('Ollama response', { chars: text.length, tokens: usage.totalTokenCount });
     return { text, usageMetadata: usage };

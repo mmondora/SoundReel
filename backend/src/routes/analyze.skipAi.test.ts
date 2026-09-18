@@ -58,3 +58,32 @@ describe('analyze route: download-only pass', () => {
     expect(code).not.toMatch(/skipAi\s*\?\s*\{[^}]*mediaAnalysisEnabled: false/);
   });
 });
+
+/**
+ * spec-061: una passata batch accoda e ritira dopo, invece di restare appesa
+ * alla connessione per tutta la durata. Era quella la causa degli abort del
+ * 15 settembre.
+ */
+describe('analyze route: modalità della richiesta AI', () => {
+  const source = readFileSync(path.join(__dirname, 'analyze.ts'), 'utf8');
+  const code = source
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+    .join('\n');
+
+  // La seconda passata *è* il batch: decine di job in fila nella corsia
+  // seriale, nessuno che aspetta davanti allo schermo.
+  it('accoda quando è una seconda passata, tiene la connessione quando non lo è', () => {
+    expect(code).toMatch(/setAiRequestMode\(\{ queued: reanalyze \}\)/);
+  });
+
+  // Dichiarata sempre, anche a false: il contesto è per-richiesta e nessuna
+  // deve ereditare la modalità di quella prima.
+  it('la dichiara una volta sola, e senza condizioni intorno', () => {
+    const occorrenze = code.match(/setAiRequestMode\(/g) ?? [];
+    expect(occorrenze).toHaveLength(1);
+    const at = code.indexOf('setAiRequestMode(');
+    const rigaPrima = code.slice(0, at).split('\n').slice(-2).join('\n');
+    expect(rigaPrima).not.toMatch(/\bif \(/);
+  });
+});

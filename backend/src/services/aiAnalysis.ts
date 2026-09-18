@@ -21,7 +21,16 @@ import type { AiAnalysisResult, MediaAiAnalysisResult, AiUsageMetadata } from '.
  * niente. spec-060 chiede di contare abort e 503 come categoria propria.
  */
 export type AiFailure = {
-  category: 'aborted' | 'transient_503' | 'backend_unavailable' | 'error';
+  category:
+    | 'aborted'
+    | 'transient_503'
+    | 'backend_unavailable'
+    // spec-061: il job era in coda sul router e non e' tornato — fallito o
+    // scaduto prima del ritiro. Transitorio come gli altri due, ma va distinto
+    // nel journal: dice che il problema sta dopo l'accodamento, non prima.
+    | 'queue_failed'
+    | 'queue_expired'
+    | 'error';
   /** Ritentare ha senso? Falso solo quando serve un intervento umano. */
   retryable: boolean;
   reason: string;
