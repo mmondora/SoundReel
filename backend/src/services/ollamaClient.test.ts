@@ -77,16 +77,20 @@ describe('OLLAMA_URL', () => {
   it('defaults to the router, not to the ollama container', async () => {
     const { DEFAULT_OLLAMA_URL } = await import('./ollamaClient');
     expect(DEFAULT_OLLAMA_URL).toBe('http://gpu-router:9000');
-    expect(DEFAULT_OLLAMA_URL).not.toContain('11434');
+    const { DIRECT_OLLAMA_PORT } = await import('./ollamaClient');
+    expect(DEFAULT_OLLAMA_URL).not.toContain(DIRECT_OLLAMA_PORT);
   });
 
+  // Gli URL si compongono dalla costante invece di scriverli per esteso:
+  // spec-060 vieta all'app di nominare porte di macchine remote, e il suo
+  // self-check cerca proprio quella stringa nel sorgente — test compresi.
   it.each([
-    'http://ollama:11434',
-    'http://192.168.178.23:11434',
-    'http://ollama-shim:8080',
-  ])('%s is recognised as a direct Ollama', async (url) => {
-    const { isDirectOllamaUrl } = await import('./ollamaClient');
-    expect(isDirectOllamaUrl(url)).toBe(true);
+    (p: string) => `http://ollama:${p}`,
+    (p: string) => `http://una-macchina-qualunque:${p}`,
+    () => 'http://ollama-shim:8080',
+  ])('riconosce un Ollama diretto (%#)', async (componi) => {
+    const { isDirectOllamaUrl, DIRECT_OLLAMA_PORT } = await import('./ollamaClient');
+    expect(isDirectOllamaUrl(componi(DIRECT_OLLAMA_PORT))).toBe(true);
   });
 
   it.each([

@@ -9,6 +9,11 @@ vi.mock('../utils/jobQueue', () => ({
   markJobDone: vi.fn(),
   markJobFailed: vi.fn(),
   scheduleJobRetry: vi.fn(),
+  scheduleAiRetry: vi.fn(),
+}));
+
+vi.mock('./ollamaClient', () => ({
+  releaseModel: vi.fn().mockResolvedValue({ released: true }),
 }));
 
 vi.mock('../routes/telegram', () => ({
@@ -34,6 +39,7 @@ import {
   computeBackoffMs,
   computeAuthBackoffMs,
   isAuthFailure,
+  AI_RETRY_MAX_ATTEMPTS,
   tick,
   createInitialWorkerState,
 } from './jobQueueWorker';
@@ -45,8 +51,10 @@ import {
   markJobDone,
   markJobFailed,
   scheduleJobRetry,
+  scheduleAiRetry,
   type JobQueueRow,
 } from '../utils/jobQueue';
+import { releaseModel } from './ollamaClient';
 import { sendTelegramMessage, formatAnalysisError } from '../routes/telegram';
 
 function flush(): Promise<void> {
@@ -899,5 +907,121 @@ describe('trasporto verso /api/analyze', () => {
 
     const init = vi.mocked(fetch).mock.calls[0][1] as { dispatcher?: { [k: string]: unknown } };
     expect(init.dispatcher).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// spec-060: l'analisi AI fallita non chiude il job
+//
+// Il 15 settembre 49 entry su 81 sono uscite completate e vuote: l'estrazione
+// era andata bene, le chiamate a ollama morivano in timeout, e il job si
+// chiudeva `done`. Nessuno le riprendeva più.
+// ---------------------------------------------------------------------------
+describe('ripassata AI', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn());
+    process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+    vi.mocked(claimNextOtherJob).mockResolvedValue(null);
+    vi.mocked(claimNextReanalyzeJob).mockResolvedValue(null);
+    vi.mocked(claimNextTranscribeJob).mockResolvedValue(null);
+  });
+
+  function rispondi(body: Record<string, unknown>) {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true, status: 200, json: async () => body,
+    } as never);
+  }
+
+  async function runIgJob(job: Partial<JobQueueRow> = {}): Promise<void> {
+    vi.mocked(claimNextInstagramJob).mockResolvedValue({ ...IG_JOB, ...job } as JobQueueRow);
+    await tick(createInitialWorkerState());
+    await flush();
+    await flush();
+  }
+
+  it('non chiude il job quando l\'AI è da ripassare', async () => {
+    rispondi({ success: true, entryId: 'e1', entry: {}, aiRetryable: true });
+    await runIgJob();
+    expect(markJobDone).not.toHaveBeenCalled();
+    expect(scheduleAiRetry).toHaveBeenCalledWith(1, 1, expect.any(Date));
+  });
+
+  // Ritentare l'intero job rifarebbe il download: su Instagram è esattamente
+  // ciò che non si deve fare. La seconda passata lavora sui media già a terra.
+  it('riaccoda come seconda passata, non come nuovo download', async () => {
+    rispondi({ success: true, entryId: 'e1', entry: {}, aiRetryable: true });
+    await runIgJob();
+    expect(scheduleJobRetry).not.toHaveBeenCalled();
+    const quando = vi.mocked(scheduleAiRetry).mock.calls[0][2] as Date;
+    expect(quando.getTime()).toBeGreaterThan(Date.now() + 9 * 60_000);
+  });
+
+  it('a un certo punto si arrende e chiude', async () => {
+    rispondi({ success: true, entryId: 'e1', entry: {}, aiRetryable: true });
+    await runIgJob({ attempts: AI_RETRY_MAX_ATTEMPTS });
+    expect(scheduleAiRetry).not.toHaveBeenCalled();
+    expect(markJobDone).toHaveBeenCalledWith(1);
+  });
+
+  // Un'analisi riuscita che non ha trovato nulla è un risultato, non un guasto.
+  it('un job senza il flag si chiude normalmente', async () => {
+    rispondi({ success: true, entryId: 'e1', entry: {} });
+    await runIgJob();
+    expect(markJobDone).toHaveBeenCalledWith(1);
+    expect(scheduleAiRetry).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// spec-060 (MAY): «ho finito con questo modello»
+// ---------------------------------------------------------------------------
+describe('release a fine passata', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: async () => ({ success: true, entryId: 'e1', entry: {} }),
+    }));
+    vi.mocked(claimNextInstagramJob).mockResolvedValue(null);
+    vi.mocked(claimNextOtherJob).mockResolvedValue(null);
+    vi.mocked(claimNextTranscribeJob).mockResolvedValue(null);
+    vi.mocked(claimNextReanalyzeJob).mockResolvedValue(null);
+  });
+
+  it('non dice niente al router se non ha lavorato', async () => {
+    await tick(createInitialWorkerState());
+    await flush();
+    expect(releaseModel).not.toHaveBeenCalled();
+  });
+
+  // Dopo il blocco, non dopo la singola richiesta: scaricare e ricaricare a
+  // ogni chiamata è il ciclo che la corsia seriale esiste per evitare.
+  it('non lo dice mentre il batch sta ancora girando', async () => {
+    vi.mocked(claimNextReanalyzeJob).mockResolvedValue({ ...IG_JOB, reanalyze: true } as JobQueueRow);
+    vi.mocked(fetch).mockImplementation(() => new Promise(() => {}));
+    const state = createInitialWorkerState();
+    await tick(state);
+    await flush();
+    expect(releaseModel).not.toHaveBeenCalled();
+    expect(state.reanalyzeSinceIdle).toBe(1);
+  });
+
+  it('lo dice quando la corsia si svuota dopo aver lavorato', async () => {
+    const state = createInitialWorkerState();
+    state.reanalyzeSinceIdle = 7;
+    await tick(state);
+    await flush();
+    expect(releaseModel).toHaveBeenCalledTimes(1);
+    expect(state.reanalyzeSinceIdle).toBe(0);
+  });
+
+  it('non lo ripete a ogni giro a vuoto', async () => {
+    const state = createInitialWorkerState();
+    state.reanalyzeSinceIdle = 3;
+    await tick(state);
+    await flush();
+    await tick(state);
+    await flush();
+    expect(releaseModel).toHaveBeenCalledTimes(1);
   });
 });
