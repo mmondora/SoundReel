@@ -1,4 +1,4 @@
-import { generateText, OllamaImage } from './ollamaClient';
+import { generateText, OllamaImage, BackendUnavailableError, OllamaTransientError } from './ollamaClient';
 import {
   runClaudePrompt,
   logFallbackOutcome,
@@ -10,11 +10,51 @@ import { logInfo, logWarning, logError } from '../utils/logger';
 import { getPrompt, renderTemplate } from './promptLoader';
 import type { AiAnalysisResult, MediaAiAnalysisResult, AiUsageMetadata } from '../types';
 
+/**
+ * Perche' l'analisi non ha prodotto nulla, quando non e' perche' non c'era
+ * niente da trovare.
+ *
+ * Senza questo campo un fallimento e un risultato vuoto erano la stessa riga
+ * nel journal: `{tags: 0, films: 0, notes: 0, songs: 0}`. Il 15 settembre 42
+ * chiamate su 75 sono morte in timeout e 49 entry su 81 risultavano analizzate
+ * e prive di contenuto — indistinguibili da un post che davvero non contiene
+ * niente. spec-060 chiede di contare abort e 503 come categoria propria.
+ */
+export type AiFailure = {
+  category: 'aborted' | 'transient_503' | 'backend_unavailable' | 'error';
+  /** Ritentare ha senso? Falso solo quando serve un intervento umano. */
+  retryable: boolean;
+  reason: string;
+};
+
 export interface AiAnalysisResponse {
   result: AiAnalysisResult | MediaAiAnalysisResult;
   usageMetadata: AiUsageMetadata | null;
   /** Outcome of the Claude cascade, or null when it was never reached. */
   fallback: ClaudeFallbackResult | null;
+  /** Assente quando l'analisi e' arrivata in fondo, qualunque cosa abbia trovato. */
+  failure?: AiFailure;
+}
+
+/** Traduce l'errore del client in una categoria per il journal. */
+export function classifyAiFailure(error: unknown): AiFailure {
+  if (error instanceof BackendUnavailableError) {
+    return {
+      category: 'backend_unavailable',
+      // Serve che qualcuno rimetta in piedi la macchina: ritentare a raffica
+      // non la riporta su, produce solo rumore.
+      retryable: false,
+      reason: `backend non disponibile (${error.capability})`,
+    };
+  }
+  if (error instanceof OllamaTransientError) {
+    return { category: error.category, retryable: true, reason: error.message };
+  }
+  return {
+    category: 'error',
+    retryable: false,
+    reason: error instanceof Error ? error.message : String(error),
+  };
 }
 
 /**
@@ -233,8 +273,9 @@ export async function analyzeWithAi(
 
     return { result: baseResult, usageMetadata: response.usageMetadata, fallback };
   } catch (error) {
+    const failure = classifyAiFailure(error);
     logError('Errore analisi AI', error);
-    return { result: EMPTY_RESULT, usageMetadata: null, fallback: null };
+    return { result: EMPTY_RESULT, usageMetadata: null, fallback: null, failure };
   }
 }
 

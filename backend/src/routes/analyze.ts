@@ -1023,16 +1023,29 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       // AI log + result merge (shared)
       // ---------------------------------------------------------------------
       const aiResult = aiResponse.result;
-      const aiAnalyzedDetails: Record<string, unknown> = featuresConfig.aiAnalysisEnabled
-        ? {
-            provider: 'ollama',
-            songs: aiResult.songs.length,
-            films: aiResult.films.length,
-            notes: aiResult.notes.length,
-            links: aiResult.links.length,
-            tags: aiResult.tags.length,
-          }
-        : { status: 'skipped', reason: skipAi ? 'deferred to the batched AI pass' : 'disabled in settings' };
+      // Un fallimento non deve somigliare a "non ho trovato niente": erano la
+      // stessa riga di zeri, e il 15 settembre 49 entry su 81 sono passate per
+      // analizzate mentre le chiamate morivano in timeout. spec-060 chiede
+      // abort e 503 come categoria propria.
+      const aiFailure = aiResponse.failure;
+      const aiAnalyzedDetails: Record<string, unknown> = !featuresConfig.aiAnalysisEnabled
+        ? { status: 'skipped', reason: skipAi ? 'deferred to the batched AI pass' : 'disabled in settings' }
+        : aiFailure
+          ? {
+              status: 'error',
+              provider: 'ollama',
+              category: aiFailure.category,
+              retryable: aiFailure.retryable,
+              reason: aiFailure.reason,
+            }
+          : {
+              provider: 'ollama',
+              songs: aiResult.songs.length,
+              films: aiResult.films.length,
+              notes: aiResult.notes.length,
+              links: aiResult.links.length,
+              tags: aiResult.tags.length,
+            };
       if (aiResponse.usageMetadata) aiAnalyzedDetails.tokenUsage = aiResponse.usageMetadata;
       await appendActionLog(entryId, createActionLog('ai_analyzed', aiAnalyzedDetails));
 
@@ -1557,7 +1570,18 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       }
 
       const entry = await getEntry(entryId);
-      reply.send({ success: true, entryId, entry });
+      // Il resto della passata e' riuscito — media, OCR, Shazam, tutto scritto
+      // — ma se l'analisi AI e' morta per una ragione che passera' da sola, il
+      // job non deve chiudersi come se avesse finito: l'entry sarebbe
+      // completata e vuota, senza piu' nessuno a riprenderla. Il worker lo
+      // legge e riaccoda una seconda passata sui media gia' a terra, senza
+      // ritoccare Instagram.
+      reply.send({
+        success: true,
+        entryId,
+        entry,
+        aiRetryable: aiFailure?.retryable === true,
+      });
     } catch (error) {
       log.error('Errore durante analisi', error instanceof Error ? error : new Error(String(error)));
       if (entryId) {

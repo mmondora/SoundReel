@@ -10,12 +10,14 @@ import {
   markJobDone,
   markJobFailed,
   scheduleJobRetry,
+  scheduleAiRetry,
   type JobQueueRow,
   type JobPlatform,
 } from '../utils/jobQueue';
 import { sendTelegramMessage, formatAnalysisError, formatTelegramResponse, type AnalyzeResult } from '../routes/telegram';
 import { Logger } from './debugLogger';
 import { isWhisperReachable, transcribeLocal } from './whisperClient';
+import { releaseModel } from './ollamaClient';
 import { updateEntry, appendActionLog } from '../utils/db';
 import { createActionLog } from '../utils/logger';
 
@@ -93,6 +95,19 @@ export class EntryBusyError extends Error {
 /** Quanto aspettare prima di ribussare a un'entry occupata. */
 export const BUSY_RETRY_MS = 5 * 60 * 1000;
 
+/**
+ * Quanto aspettare prima di ripassare l'AI su un'entry la cui estrazione e'
+ * riuscita ma la cui analisi e' morta per una ragione transitoria.
+ *
+ * Piu' lungo del backoff ordinario: il motivo tipico e' un backend in
+ * accensione o in coda, e ribussare dopo un minuto significa solo prendersi lo
+ * stesso muro tre volte e chiudere il job.
+ */
+export const AI_RETRY_MS = 10 * 60 * 1000;
+
+/** Massimo numero di ripassate AI prima di lasciar perdere. */
+export const AI_RETRY_MAX_ATTEMPTS = 5;
+
 export function computeAuthBackoffMs(attempts: number): number | null {
   if (attempts > AUTH_MAX_ATTEMPTS) return null;
   return AUTH_BACKOFF_MS[attempts - 1] ?? AUTH_DAILY_MS;
@@ -102,6 +117,14 @@ export interface WorkerState {
   igBusy: boolean;
   igNextAllowedAt: number; // epoch ms
   otherInFlight: number;
+  /**
+   * Quante passate seriali sono girate da quando la corsia si e' svuotata
+   * l'ultima volta. Serve solo a sapere se c'e' stato un batch da chiudere:
+   * spec-060 vuole il segnale «ho finito» dopo un blocco, non dopo ogni
+   * singola richiesta — scaricare e ricaricare a ogni chiamata e' il ciclo che
+   * la corsia seriale esiste per evitare.
+   */
+  reanalyzeSinceIdle: number;
   /**
    * One re-analysis at a time, and no cooling-off window between them.
    *
@@ -116,7 +139,7 @@ export interface WorkerState {
 }
 
 export function createInitialWorkerState(): WorkerState {
-  return { igBusy: false, igNextAllowedAt: 0, otherInFlight: 0, reanalyzeBusy: false };
+  return { igBusy: false, igNextAllowedAt: 0, otherInFlight: 0, reanalyzeBusy: false, reanalyzeSinceIdle: 0 };
 }
 
 export function computeJitterDelayMs(rand: () => number = Math.random): number {
@@ -359,6 +382,23 @@ async function dispatch(job: JobQueueRow, onSettle: () => void): Promise<void> {
     const result = (await res.json().catch(() => null)) as AnalyzeResult | null;
     if (res.status === 409) throw new EntryBusyError(result?.error || 'analisi già in corso su questa entry');
     if (!res.ok || !result) throw new Error(result?.error || `analyze HTTP ${res.status}`);
+
+    // L'estrazione e' riuscita, l'analisi AI no — e per una ragione che passa
+    // da sola (router occupato, macchina in accensione, richiesta abortita).
+    // Chiudere qui lascerebbe un'entry completata e vuota che nessuno riprende
+    // piu': e' quello che e' successo a 49 entry su 81 il 15 settembre.
+    // Si riaccoda come seconda passata sui media gia' a terra: nessuna
+    // richiesta a Instagram, e corsia seriale con il modello caldo.
+    if ((result as { aiRetryable?: boolean }).aiRetryable) {
+      const attempts = job.attempts + 1;
+      if (attempts <= AI_RETRY_MAX_ATTEMPTS) {
+        log.info(`Job ${job.id}: analisi AI da ripassare, riprovo fra ${AI_RETRY_MS / 60_000} minuti`, { attempts });
+        await scheduleAiRetry(job.id, attempts, new Date(Date.now() + AI_RETRY_MS));
+        return;
+      }
+      log.warn(`Job ${job.id}: analisi AI mai riuscita dopo ${attempts} tentativi, chiudo`);
+    }
+
     await markJobDone(job.id);
     // Isolated from the try/catch above it: a Telegram delivery failure here
     // must not re-trigger handleFailure and undo an already-successful job.
@@ -425,11 +465,27 @@ export async function tick(state: WorkerState): Promise<void> {
     state.reanalyzeBusy = true;
     const job = await claimNextReanalyzeJob();
     if (job) {
+      state.reanalyzeSinceIdle++;
       void dispatch(job, () => {
         state.reanalyzeBusy = false;
       });
     } else {
       state.reanalyzeBusy = false;
+      // La corsia si e' svuotata e qualcosa c'era: il batch e' finito, e il
+      // modello puo' andare giu'. spec-060: e' un suggerimento, il router
+      // scarica solo se non ha altro lavoro, e un rifiuto non e' un problema.
+      // Serve a liberare gli 8GB di archi-pc per chi viene dopo.
+      if (state.reanalyzeSinceIdle > 0) {
+        const passate = state.reanalyzeSinceIdle;
+        state.reanalyzeSinceIdle = 0;
+        void releaseModel().then((esito) => {
+          new Logger('jobQueueWorker').info('Fine passata, modello rilasciato?', {
+            passate,
+            released: esito.released,
+            reason: esito.reason ?? null,
+          });
+        });
+      }
     }
   }
 

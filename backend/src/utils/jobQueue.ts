@@ -184,6 +184,24 @@ export async function scheduleJobRetry(jobId: number, attempts: number, nextAtte
   );
 }
 
+/**
+ * Rimanda un job trasformandolo in una seconda passata sui media gia' scaricati.
+ *
+ * Serve quando l'estrazione e' andata bene e solo l'analisi AI e' morta per
+ * una ragione transitoria: ritentare l'intero job rifarebbe il download, e su
+ * Instagram e' esattamente cio' che non si deve fare. Il flag rende il
+ * tentativo successivo gratuito lato rete e lo manda nella corsia seriale,
+ * dove il modello resta caldo.
+ */
+export async function scheduleAiRetry(jobId: number, attempts: number, nextAttemptAt: Date): Promise<void> {
+  await query(
+    `UPDATE job_queue
+        SET status = 'queued', attempts = $2, next_attempt_at = $3, reanalyze = true, skip_ai = false, updated_at = NOW()
+      WHERE id = $1`,
+    [jobId, attempts, nextAttemptAt.toISOString()]
+  );
+}
+
 export async function requeueStuckJobs(): Promise<number> {
   const rows = await query<{ id: number }>(
     `UPDATE job_queue SET status = 'queued', updated_at = NOW() WHERE status = 'processing' RETURNING id`

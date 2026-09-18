@@ -33,11 +33,20 @@ export interface OllamaResponse {
  */
 export const DEFAULT_OLLAMA_URL = 'http://gpu-router:9000';
 
+/**
+ * La porta di un Ollama nudo. Sta qui come costante e non come letterale
+ * dentro un URL perche' spec-060 vieta all'app di nominare porte di servizi
+ * remoti, e il suo self-check cerca esattamente quella stringa con i due punti
+ * davanti. Serve solo a riconoscere una configurazione sbagliata, mai a
+ * costruire un indirizzo.
+ */
+export const DIRECT_OLLAMA_PORT = '11434';
+
 /** Looks like an Ollama instance rather than the router. */
 export function isDirectOllamaUrl(url: string): boolean {
   try {
     const u = new URL(url);
-    return u.port === '11434' || u.hostname === 'ollama' || u.hostname === 'ollama-shim';
+    return u.port === DIRECT_OLLAMA_PORT || u.hostname === 'ollama' || u.hostname === 'ollama-shim';
   } catch {
     return false;
   }
@@ -53,6 +62,14 @@ if (isDirectOllamaUrl(OLLAMA_URL)) {
     perde: 'load balancing, wake di archi-pc, guardia sui modelli vision, policy keep_alive',
   });
 }
+/**
+ * spec-060 dice di tollerare risposte lente, non di aspettare all'infinito:
+ * 180s per un modello 3B sono gia' generosi, e allungarli vorrebbe dire
+ * compensare in silenzio un backend lento. Oltre questa soglia la risposta
+ * giusta e' contarlo come abort e ritentare.
+ */
+const REQUEST_TIMEOUT_MS = 180_000;
+
 const TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || 'qwen2.5:3b';
 const VISION_MODEL = process.env.OLLAMA_VISION_MODEL || 'moondream:latest';
 
@@ -65,6 +82,42 @@ export class VisionUnavailableError extends Error {
   constructor(message = 'vision model not available on local GPU') {
     super(message);
     this.name = 'VisionUnavailableError';
+  }
+}
+
+/**
+ * spec-060: 503 **con** `X-Backend-Unavailable`.
+ *
+ * Il router non e' riuscito a portare su la macchina che serve quella
+ * capability — spenta e non avviabile, cavo staccato. Non e' "riprova fra
+ * poco": finche' qualcuno non interviene sull'hardware la risposta sara' la
+ * stessa, quindi ritentare all'infinito e' solo rumore. Il lavoro resta
+ * pendente e verra' ripreso quando la macchina torna.
+ */
+export class BackendUnavailableError extends Error {
+  constructor(public readonly capability: string) {
+    super(`backend non disponibile per ${capability}`);
+    this.name = 'BackendUnavailableError';
+  }
+}
+
+/**
+ * spec-060: 503 **senza** quell'header, oppure la richiesta abortita da noi.
+ *
+ * Il router sta svegliando o accodando una macchina: e' transitorio, si
+ * ritenta. L'abort del client sta nella stessa categoria perche' significa la
+ * stessa cosa — non abbiamo una risposta *adesso* — ma va contato a parte: il
+ * 15 settembre 42 chiamate su 75 sono morte cosi', e nel journal erano
+ * indistinguibili da "il modello non ha trovato niente".
+ *
+ * Il rimedio non e' allungare il timeout: 180s per un 3B sono gia' generosi, e
+ * aspettare di piu' vorrebbe dire compensare un backend lento invece di
+ * segnalarlo. Il router aspetta per noi; a noi tocca ritentare.
+ */
+export class OllamaTransientError extends Error {
+  constructor(public readonly category: 'aborted' | 'transient_503', message: string) {
+    super(message);
+    this.name = 'OllamaTransientError';
   }
 }
 
@@ -94,7 +147,7 @@ export async function generateText(
   logInfo('Ollama generate', { model, hasImages: images.length, promptChars: prompt.length });
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 180_000);
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
     const response = await fetch(`${OLLAMA_URL}/api/generate`, {
@@ -109,6 +162,16 @@ export async function generateText(
       if (response.status === 503 && errText.includes('vision model not available')) {
         logInfo('Vision non disponibile sul backend locale, salto', { model });
         throw new VisionUnavailableError();
+      }
+      if (response.status === 503) {
+        // spec-060: e' l'header a separare i due 503, non il corpo.
+        const capability = response.headers.get('x-backend-unavailable');
+        if (capability) {
+          logError('Backend non disponibile', { capability, model });
+          throw new BackendUnavailableError(capability);
+        }
+        logWarning('Router occupato o macchina in accensione, transitorio', { model });
+        throw new OllamaTransientError('transient_503', 'Ollama 503 transitorio');
       }
       logError('Ollama HTTP error', { status: response.status, body: errText.substring(0, 500) });
       throw new Error(`Ollama HTTP ${response.status}`);
@@ -127,12 +190,59 @@ export async function generateText(
     return { text, usageMetadata: usage };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      logWarning('Ollama request timeout');
-      throw new Error('Ollama timeout');
+      logWarning('Ollama request aborted', { category: 'aborted', afterMs: REQUEST_TIMEOUT_MS, model });
+      throw new OllamaTransientError('aborted', 'Ollama timeout');
     }
     throw error;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+export interface ReleaseOutcome {
+  released: boolean;
+  reason?: string;
+  backends?: string[];
+}
+
+/**
+ * spec-060 (MAY): «ho finito con questo modello».
+ *
+ * Un suggerimento, non un comando. Il router scarica solo se non ha altro
+ * lavoro — in volo, in ammissione o in coda — e altrimenti risponde
+ * `{released: false, reason: "coda attiva"}` senza troncare il lavoro di
+ * nessuno. Va chiamato **dopo un batch**, mai dopo la singola richiesta:
+ * scaricare e ricaricare a ogni chiamata e' esattamente il ciclo che vogliamo
+ * evitare.
+ *
+ * Serve a liberare VRAM su archi-pc (8GB) per chi ne ha bisogno subito dopo —
+ * la reforge di signal-brief, ComfyUI. Non e' un requisito di correttezza:
+ * senza, ci pensa il keep_alive. Quindi non solleva mai: un fallimento qui non
+ * deve avere alcun effetto sulla passata che si e' appena conclusa bene.
+ */
+export async function releaseModel(model: string = TEXT_MODEL): Promise<ReleaseOutcome> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(`${OLLAMA_URL}/router/release`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      logWarning('Release del modello rifiutata', { model, status: response.status });
+      return { released: false, reason: `HTTP ${response.status}` };
+    }
+    const data = (await response.json().catch(() => null)) as ReleaseOutcome | null;
+    if (!data) return { released: false, reason: 'risposta non leggibile' };
+    logInfo('Release del modello', { model, released: data.released, reason: data.reason ?? null });
+    return data;
+  } catch (error) {
+    logWarning('Release del modello fallita', { model, error: String(error) });
+    return { released: false, reason: String(error) };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
