@@ -78,6 +78,13 @@ const REQUEST_TIMEOUT_MS = 180_000;
  * pochi secondi e non ha senso aspettarne quindici, mentre in un batch lungo
  * bussare ogni due secondi per mezz'ora e' solo traffico.
  */
+/**
+ * Quanto puo' essere lunga una risposta prima che sia evidente che il modello
+ * ha perso il filo. Un'analisi completa sta sotto i mille token; oltre il
+ * doppio non sta piu' rispondendo alla domanda.
+ */
+const MAX_RESPONSE_TOKENS = 2048;
+
 const QUEUE_POLL_START_MS = 2_000;
 const QUEUE_POLL_MAX_MS = 15_000;
 
@@ -288,6 +295,20 @@ export async function generateText(
     options: {
       temperature: 0.2,
       num_ctx: 8192,
+      // Tetto alla lunghezza della risposta.
+      //
+      // Il 19 settembre qwen e' andato in loop su un reel, ripetendo la stessa
+      // nota — `{"text": "Dove ca**o siete?", "category": "quote"}` — fino a
+      // 224.000 caratteri e 83.037 token, per poi farsi troncare a meta'
+      // stringa. Il JSON risultante e' illeggibile, l'analisi risulta vuota e
+      // parte il fallback a pagamento. Un'analisi vera sta in meno di mille
+      // token: duemila lasciano margine abbondante e chiudono il rubinetto
+      // molto prima che la spirale diventi costosa.
+      num_predict: MAX_RESPONSE_TOKENS,
+      // Stessa spirale, presa dall'altro lato: alza il prezzo di ripetere
+      // quello che si e' appena scritto. Il default di ollama (1.1) non e'
+      // bastato.
+      repeat_penalty: 1.2,
     },
   };
 

@@ -104,3 +104,36 @@ describe('spec-060: release del modello a fine batch', () => {
     await expect(releaseModel()).resolves.toMatchObject({ released: false });
   });
 });
+
+/**
+ * Il tetto vero alla spirale sta nella richiesta, non nel parser: se il
+ * modello smette di generare, i 224.000 caratteri non nascono nemmeno.
+ */
+describe('tetto alla lunghezza della risposta', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.OLLAMA_URL = 'http://gpu-router:9000';
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('chiede al modello di fermarsi entro un limite', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      headers: { get: () => null },
+      text: async () => '{}',
+      json: async () => ({ response: 'ok', prompt_eval_count: 1, eval_count: 1 }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { generateText } = await import('./ollamaClient');
+    await generateText('prompt');
+
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body.options.num_predict).toBe(2048);
+    // Il default di ollama (1.1) non è bastato a fermare la ripetizione.
+    expect(body.options.repeat_penalty).toBeGreaterThan(1.1);
+  });
+});

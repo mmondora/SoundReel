@@ -52,3 +52,7 @@ frontend/tsconfig.tsbuildinfo
 .gstack/
 .worktrees/
 __pycache__/
+
+# File transitori del deploy-watcher (sentinella e lock di build)
+.rebuild
+.rebuild-running

@@ -73,6 +73,20 @@ export function classifyAiFailure(error: unknown): AiFailure {
  */
 const MIN_SOURCE_TEXT_FOR_FALLBACK = 40;
 
+/**
+ * Oltre quanti caratteri una risposta smette di essere un'analisi.
+ *
+ * Il tetto vero sta nelle opzioni della richiesta (`num_predict` nel client):
+ * questa e' la rete di sicurezza per quando quel tetto non viene applicato —
+ * un backend che ignora l'opzione, un router che riscrive le opzioni. Vive
+ * qui e non nel client perche' riguarda il testo da interpretare, non il
+ * trasporto che lo ha portato.
+ *
+ * Largo rispetto a un'analisi vera, che sta sotto i mille token: deve
+ * scartare le spirali, non i risultati buoni.
+ */
+export const MAX_RESPONSE_CHARS = 24_000;
+
 export interface AiAnalysisInput {
   caption: string | null;
   musicInfo: { title: string; artist: string } | null;
@@ -192,6 +206,19 @@ export function parseAnalysisResponse(
   text: string,
   input: AiAnalysisInput
 ): MediaAiAnalysisResult | null {
+  // Una risposta fuori scala non e' un JSON da riparare: e' un modello che ha
+  // perso il filo. Il 19 settembre erano 224.000 caratteri con la stessa nota
+  // ripetuta fino al troncamento. Dirlo subito costa un confronto; provare a
+  // parsarlo costa e non porta niente.
+  if (text.length > MAX_RESPONSE_CHARS) {
+    logWarning('Risposta AI fuori scala, scartata', {
+      chars: text.length,
+      limite: MAX_RESPONSE_CHARS,
+      inizio: text.slice(0, 200),
+    });
+    return null;
+  }
+
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) return null;
 
@@ -236,7 +263,18 @@ export function parseAnalysisResponse(
   // this way and polluted the songs page).
   const songs = (parsed.songs || []).filter((s) => isRealValue(s?.title));
   const films = (parsed.films || []).filter((f) => isRealValue(f?.title));
-  const notes = (parsed.notes || []).filter((n) => isRealValue(n?.text));
+  // Deduplicate: la stessa spirale che produce 224KB puo' anche fermarsi entro
+  // il tetto e lasciare venti copie della stessa nota. Sono rumore comunque, e
+  // una nota ripetuta non aggiunge niente a chi legge il journal.
+  const notesViste = new Set<string>();
+  const notes = (parsed.notes || [])
+    .filter((n) => isRealValue(n?.text))
+    .filter((n) => {
+      const chiave = `${n.category ?? ''}::${(n.text ?? '').trim().toLowerCase()}`;
+      if (notesViste.has(chiave)) return false;
+      notesViste.add(chiave);
+      return true;
+    });
 
   return {
     songs: songs.map((s) => ({
