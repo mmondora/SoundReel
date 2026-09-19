@@ -87,3 +87,35 @@ describe('analyze route: modalità della richiesta AI', () => {
     expect(rigaPrima).not.toMatch(/\bif \(/);
   });
 });
+
+/**
+ * `hasTranscription: false` si leggeva come un verdetto sull'audio — «non c'è
+ * voce» — mentre quasi sempre significa che Whisper è in coda: la trascrizione
+ * è asincrona e arriva dopo che la passata ha già chiuso. È successo il 19
+ * settembre su un reel con parlato inglese chiarissimo, trascritto
+ * correttamente sedici secondi dopo.
+ */
+describe('analyze route: trascrizione in attesa', () => {
+  const source = readFileSync(path.join(__dirname, 'analyze.ts'), 'utf8');
+  const code = source
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+    .join('\n');
+
+  it('distingue "in attesa" da "assente"', () => {
+    expect(code).toContain("? 'in attesa'");
+    expect(code).toContain("'assente'");
+  });
+
+  // Serve sapere se Whisper verrà accodato, e quella decisione la prende
+  // chooseTranscriptSource: va quindi calcolata prima della riga di journal.
+  it('conosce la decisione su Whisper prima di scrivere la riga', () => {
+    expect(code.indexOf('chooseTranscriptSource('))
+      .toBeLessThan(code.indexOf("createActionLog('media_analysis_complete'"));
+  });
+
+  // Una funzione pura chiamata due volte è due verità che possono divergere.
+  it('la calcola una volta sola', () => {
+    expect(code.match(/chooseTranscriptSource\(/g) ?? []).toHaveLength(1);
+  });
+});

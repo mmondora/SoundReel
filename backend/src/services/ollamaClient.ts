@@ -402,6 +402,21 @@ async function pathToImage(filePath: string): Promise<OllamaImage | null> {
  * Describe visual context of N key video frames using the vision model.
  * Returns a compact description or null if no frames available / request failed.
  */
+/**
+ * Quante immagini stanno in una richiesta a moondream.
+ *
+ * Il modello e' servito con 2048 token di contesto e ogni fotogramma ne costa
+ * circa 730: cinque insieme facevano 3716 token e il backend rispondeva 400
+ * `exceed_context_size_error`. Non un errore di formato — la vision non ha mai
+ * funzionato, e nel journal si vedeva solo `vision_describe: skipped`.
+ *
+ * Due per volta lasciano margine al prompt. Il contesto del modello lo decide
+ * chi serve il modello, non noi: qui ci si adatta, non si alza.
+ */
+const VISION_IMAGES_PER_CALL = 2;
+
+const VISION_PROMPT = `Describe briefly (2-3 sentences, in English) the main visual content across these frames of a short social video: settings, people/subjects, actions, products or brands visible, any recognizable locations or films. Do NOT transcribe overlay text (that is handled separately). Be factual and concise.`;
+
 export async function describeFramesWithVision(framePaths: string[]): Promise<string | null> {
   if (!framePaths.length) return null;
 
@@ -412,20 +427,32 @@ export async function describeFramesWithVision(framePaths: string[]): Promise<st
   }
   if (!images.length) return null;
 
-  const prompt = `Describe briefly (2-3 sentences, in English) the main visual content across these frames of a short social video: settings, people/subjects, actions, products or brands visible, any recognizable locations or films. Do NOT transcribe overlay text (that is handled separately). Be factual and concise.`;
-
-  try {
-    const response = await generateText(prompt, images);
-    const text = (response.text || '').trim();
-    if (!text) return null;
-    logInfo('Vision describe ok', { frames: images.length, chars: text.length });
-    return text;
-  } catch (err) {
-    if (err instanceof VisionUnavailableError) {
-      logInfo('Vision describe saltata: backend vision non disponibile');
-      return null;
-    }
-    logError('Vision describe failed', err);
-    return null;
+  const gruppi: OllamaImage[][] = [];
+  for (let i = 0; i < images.length; i += VISION_IMAGES_PER_CALL) {
+    gruppi.push(images.slice(i, i + VISION_IMAGES_PER_CALL));
   }
+
+  const descrizioni: string[] = [];
+  for (const [indice, gruppo] of gruppi.entries()) {
+    try {
+      const response = await generateText(VISION_PROMPT, gruppo);
+      const text = (response.text || '').trim();
+      if (text) descrizioni.push(text);
+    } catch (err) {
+      if (err instanceof VisionUnavailableError) {
+        // Il backend non serve vision adesso: inutile insistere sugli altri
+        // gruppi, la risposta sarebbe la stessa.
+        logInfo('Vision describe saltata: backend vision non disponibile');
+        break;
+      }
+      // Un gruppo perso non deve portarsi via gli altri: una descrizione
+      // parziale vale piu' di nessuna descrizione.
+      logError(`Vision describe fallita sul gruppo ${indice + 1}/${gruppi.length}`, err);
+    }
+  }
+
+  if (!descrizioni.length) return null;
+  const testo = descrizioni.join(' ');
+  logInfo('Vision describe ok', { frames: images.length, gruppi: gruppi.length, chars: testo.length });
+  return testo;
 }
