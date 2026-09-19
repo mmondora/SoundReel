@@ -6,7 +6,7 @@ import type { SlideItem } from '../services/aiAnalysis';
 import { ocrImages } from '../services/ocrClient';
 import type { OcrResult } from '../services/ocrClient';
 import { pickKeyFrames } from '../services/frameSelector';
-import { condensaContestoVisivo, describeFramesWithVision } from '../services/ollamaClient';
+import { describeFramesWithVision } from '../services/ollamaClient';
 import { saveThumbnailLocal } from '../services/thumbnailSaver';
 import {
   extractPage,
@@ -51,6 +51,7 @@ import {
 import { createActionLog, logError } from '../utils/logger';
 import { enqueueJob } from '../utils/jobQueue';
 import { chooseTranscriptSource } from '../services/transcriptSource';
+import { chooseVisualContext } from '../services/visualContextSource';
 import { Logger } from '../services/debugLogger';
 import { scanFullAudio, resolveYoutubeUrl } from '../services/shazamClient';
 import type { ShazamTrack } from '../services/shazamClient';
@@ -724,12 +725,9 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           // -----------------------------------------------------------------
           const priorResults = reanalyze ? priorEntry?.results : undefined;
           const reusedOverlayText = priorResults?.overlayText ?? null;
-          // Condensato anche quando viene riusato: le entry analizzate prima
-          // del 19 settembre portano 2300 battute di ripetizioni (cinque
-          // descrizioni della stessa inquadratura), e una seconda passata le
-          // riuserebbe cosi' come sono, continuando a diluire ogni analisi.
-          // Passando di qui si sistemano da sole, senza una migrazione.
-          const reusedVisualContext = condensaContestoVisivo(priorResults?.visualContext ?? null);
+          // Grezzo: la condensazione la applica chooseVisualContext, insieme
+          // alla decisione su cosa farne.
+          const reusedVisualContext = priorResults?.visualContext ?? null;
           // An empty array counts as absent, exactly as in mergeEntryResults:
           // an entry stored with `slides: []` must still be fillable.
           const reusedSlides = priorResults?.slides?.length ? priorResults.slides : null;
@@ -811,15 +809,26 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           // that reload churn, not from vision inference itself. Reordering
           // these two calls is the whole point; do not let them drift apart
           // again (see the ordering test in analyze.reanalyze.test.ts).
-          let visualContext: string | null = reusedVisualContext;
-          if (visualContext) {
+          // La scelta sta in chooseVisualContext, dove si puo' provare davvero:
+          // qui dentro si poteva solo verificare leggendo il sorgente, ed e'
+          // la decisione che il 19 settembre ci e' costata due giri a vuoto.
+          const fonteVisiva = chooseVisualContext({
+            stored: reusedVisualContext,
+            framePaths: localPaths?.framePaths ?? [],
+            skipAi,
+            mediaAnalysisEnabled: featuresConfig.mediaAnalysisEnabled,
+          });
+
+          let visualContext: string | null = null;
+          if (fonteVisiva.kind === 'reused') {
+            visualContext = fonteVisiva.text;
             await appendActionLog(entryId, createActionLog('vision_describe', {
               status: 'reused',
               reason: 'second pass: visualContext already on the entry',
               chars: visualContext.length,
             }));
-          } else if (featuresConfig.mediaAnalysisEnabled && !skipAi && localPaths?.framePaths.length) {
-            const keyFrames = pickKeyFrames(localPaths.framePaths, KEY_FRAMES_COUNT);
+          } else if (fonteVisiva.kind === 'compute') {
+            const keyFrames = pickKeyFrames(localPaths?.framePaths ?? [], KEY_FRAMES_COUNT);
             visualContext = await describeFramesWithVision(keyFrames);
             await appendActionLog(entryId, createActionLog('vision_describe', {
               status: visualContext ? 'ok' : 'skipped',
@@ -830,9 +839,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           } else {
             await appendActionLog(entryId, createActionLog('vision_describe', {
               status: 'skipped',
-              reason: skipAi
-                ? 'deferred to the batched AI pass'
-                : !featuresConfig.mediaAnalysisEnabled ? 'disabled in settings' : 'no frames',
+              reason: fonteVisiva.reason,
             }));
           }
 

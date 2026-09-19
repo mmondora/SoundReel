@@ -36,10 +36,11 @@ describe('analyze route: download-only pass', () => {
   // aiAnalysisEnabled alone would still have sent every frame to moondream —
   // half the model swaps this exists to prevent.
   it('turns the vision pass off too', () => {
-    const at = code.indexOf('describeFramesWithVision(keyFrames)');
+    // Il flag arriva a chooseVisualContext, che risponde 'skipped' con il
+    // motivo giusto; il caso è provato in visualContextSource.test.ts.
+    const at = code.indexOf('chooseVisualContext({');
     expect(at).toBeGreaterThan(-1);
-    const guard = code.slice(code.lastIndexOf('} else if (', at), at);
-    expect(guard).toContain('!skipAi');
+    expect(code.slice(at, at + 220)).toContain('skipAi');
   });
 
   // The deferred pass finds its work by reading this reason out of the

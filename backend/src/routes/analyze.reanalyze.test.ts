@@ -180,24 +180,21 @@ describe('analyze route second pass', () => {
   describe('recomputes only what is missing, and only locally', () => {
     it('reads the derivations the first pass persisted off the entry', () => {
       onlyMatch(/const reusedOverlayText = priorResults\?\.overlayText \?\? null;/);
-      onlyMatch(/const reusedVisualContext = condensaContestoVisivo\(priorResults\?\.visualContext \?\? null\);/);
+      onlyMatch(/const reusedVisualContext = priorResults\?\.visualContext \?\? null;/);
     });
 
     /**
-     * Il contesto riusato passa dalla condensazione. Le entry analizzate prima
-     * del 2026-09-19 portano 2300 battute di ripetizioni — cinque descrizioni
-     * della stessa inquadratura — e il riuso le porterebbe intatte in ogni
-     * analisi futura, diluendo caption e trascrizione. Passando di qui si
-     * sistemano da sole, senza una migrazione.
-     *
-     * È il difetto che si è visto rimettendo in coda gli stessi tre reel dopo
-     * il fix sulla vision: i caratteri erano identici a prima, perché la
-     * seconda passata non ricalcola, riusa.
+     * Cosa farne — riusarlo, ricalcolarlo, rinunciare — lo decide
+     * chooseVisualContext, che si può provare davvero (vedi
+     * visualContextSource.test.ts). Qui resta solo da verificare che la route
+     * gliela passi invece di decidere per conto suo: è la riga che il
+     * 2026-09-19 è costata due giri a vuoto, e dentro questo handler si poteva
+     * soltanto leggerla.
      */
-    it('condensa il contesto visivo che riusa, non solo quello che calcola', () => {
-      const at = source.indexOf('const reusedVisualContext');
-      expect(at).toBeGreaterThan(-1);
-      expect(source.slice(at, at + 120)).toContain('condensaContestoVisivo(');
+    it('delega la scelta del contesto visivo, non la ricostruisce qui', () => {
+      onlyMatch(/const fonteVisiva = chooseVisualContext\(\{/);
+      const at = source.indexOf('chooseVisualContext({');
+      expect(source.slice(at, at + 200)).toContain('stored: reusedVisualContext');
     });
 
     it('treats an empty slide array as absent, as the merge does', () => {
@@ -214,11 +211,13 @@ describe('analyze route second pass', () => {
     });
 
     it('reuses a persisted visual description instead of re-running vision', () => {
-      const at = source.indexOf('let visualContext: string | null = reusedVisualContext;');
+      // La vision parte solo sul ramo 'compute': se la decisione dice
+      // 'reused', descriveFrames non deve nemmeno essere raggiunta.
+      const at = source.indexOf("fonteVisiva.kind === 'reused'");
       expect(at).toBeGreaterThan(-1);
       const visionAt = source.indexOf('await describeFramesWithVision(');
       expect(visionAt).toBeGreaterThan(at);
-      expect(source.slice(at, visionAt)).toContain('} else if (featuresConfig.mediaAnalysisEnabled');
+      expect(source.slice(at, visionAt)).toContain("} else if (fonteVisiva.kind === 'compute')");
     });
 
     it('still computes a missing derivation, because those stay local', () => {
