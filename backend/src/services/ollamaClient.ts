@@ -453,6 +453,58 @@ const VISION_IMAGES_PER_CALL = 1;
  */
 const VISION_PROMPT = 'Describe the scene.';
 
+/**
+ * Quanto puo' essere lungo il contesto visivo finale.
+ *
+ * Non e' un testo che qualcuno legge da solo: finisce dentro il prompt di
+ * analisi, dove ogni carattere in piu' diluisce caption e trascrizione. Cinque
+ * descrizioni concatenate facevano 2300 caratteri per raccontare la stessa
+ * scena cinque volte — piu' lunghe della caption che dovevano accompagnare.
+ */
+const MAX_VISUAL_CONTEXT_CHARS = 600;
+
+/**
+ * Quanti caratteri iniziali bastano a riconoscere due descrizioni della stessa
+ * scena. Moondream apre sempre allo stesso modo («The image features a woman
+ * with long brown hair...») e diverge solo in fondo, quindi il confronto sta
+ * davanti: fotogrammi consecutivi di un video sono quasi sempre la stessa
+ * inquadratura con una posa leggermente diversa.
+ */
+const SIMILI_PRIME_LETTERE = 60;
+
+function normalizza(testo: string): string {
+  return testo.trim().toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ');
+}
+
+/**
+ * Da cinque descrizioni quasi uguali a un contesto visivo utile.
+ *
+ * Toglie le ripetizioni — prima quelle identiche, poi quelle che cominciano
+ * allo stesso modo — e taglia il risultato alla fine di una frase, perche' un
+ * testo troncato a meta' parola nel prompt e' rumore travestito da contenuto.
+ */
+export function condensaDescrizioni(descrizioni: string[]): string {
+  const viste = new Set<string>();
+  const uniche: string[] = [];
+  for (const d of descrizioni) {
+    const piatta = normalizza(d);
+    if (!piatta) continue;
+    const chiave = piatta.slice(0, SIMILI_PRIME_LETTERE);
+    if (viste.has(chiave)) continue;
+    viste.add(chiave);
+    uniche.push(d.trim());
+  }
+
+  const testo = uniche.join(' ');
+  if (testo.length <= MAX_VISUAL_CONTEXT_CHARS) return testo;
+
+  const tagliato = testo.slice(0, MAX_VISUAL_CONTEXT_CHARS);
+  const ultimaFrase = Math.max(tagliato.lastIndexOf('. '), tagliato.lastIndexOf('! '), tagliato.lastIndexOf('? '));
+  return ultimaFrase > MAX_VISUAL_CONTEXT_CHARS / 3
+    ? tagliato.slice(0, ultimaFrase + 1)
+    : `${tagliato.trimEnd()}…`;
+}
+
 export async function describeFramesWithVision(framePaths: string[]): Promise<string | null> {
   if (!framePaths.length) return null;
 
@@ -488,17 +540,7 @@ export async function describeFramesWithVision(framePaths: string[]): Promise<st
   }
 
   if (!descrizioni.length) return null;
-  // Fotogrammi vicini della stessa scena danno spesso la stessa identica
-  // descrizione: ripeterla tre volte non aggiunge niente a chi legge ne' al
-  // modello che poi la riceve nel prompt di analisi.
-  const viste = new Set<string>();
-  const uniche = descrizioni.filter((d) => {
-    const chiave = d.trim().toLowerCase();
-    if (viste.has(chiave)) return false;
-    viste.add(chiave);
-    return true;
-  });
-  const testo = uniche.join(' ');
+  const testo = condensaDescrizioni(descrizioni);
   logInfo('Vision describe ok', { frames: images.length, gruppi: gruppi.length, chars: testo.length });
   return testo;
 }
