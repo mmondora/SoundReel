@@ -41,19 +41,54 @@ describe('describeFramesWithVision', () => {
     return mod;
   }
 
-  it('spezza cinque fotogrammi in richieste che stanno nel contesto', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(rispondi('descrizione'));
+  it('manda un fotogramma per richiesta', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(rispondi('prima scena'))
+      .mockResolvedValueOnce(rispondi('seconda scena'))
+      .mockResolvedValueOnce(rispondi('terza scena'))
+      .mockResolvedValueOnce(rispondi('quarta scena'))
+      .mockResolvedValueOnce(rispondi('quinta scena'));
     vi.stubGlobal('fetch', fetchMock);
     const { describeFramesWithVision } = await conFrameFinti();
 
     await describeFramesWithVision(['a.jpg', 'b.jpg', 'c.jpg', 'd.jpg', 'e.jpg']);
 
-    // 5 fotogrammi, 2 per volta → 3 richieste, nessuna con più di 2 immagini.
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    // Cinque insieme sforavano il contesto (3716 token contro 2048), e anche
+    // due per volta erano sprecate: moondream ne descrive comunque una sola.
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     for (const [, init] of fetchMock.mock.calls) {
       const body = JSON.parse((init as { body: string }).body);
-      expect(body.images.length).toBeLessThanOrEqual(2);
+      expect(body.images).toHaveLength(1);
     }
+  });
+
+  /**
+   * La scoperta del 19 settembre: la vision non aveva mai prodotto niente, e
+   * la causa era il prompt. Sullo stesso fotogramma, misurato:
+   *
+   *   prompt lungo con negazione -> 1 token, risposta vuota
+   *   "Describe the scene."      -> 116 token, descrizione corretta
+   */
+  it('chiede con una domanda semplice, non con un elenco di istruzioni', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(rispondi('descrizione'));
+    vi.stubGlobal('fetch', fetchMock);
+    const { describeFramesWithVision } = await conFrameFinti();
+
+    await describeFramesWithVision(['a.jpg']);
+
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body.prompt.length).toBeLessThan(60);
+    expect(body.prompt).not.toMatch(/\bNOT\b/);
+  });
+
+  // Fotogrammi vicini della stessa scena danno la stessa identica descrizione.
+  it('non ripete tre volte la stessa descrizione', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(rispondi('una donna davanti a una finestra'));
+    vi.stubGlobal('fetch', fetchMock);
+    const { describeFramesWithVision } = await conFrameFinti();
+
+    expect(await describeFramesWithVision(['a.jpg', 'b.jpg', 'c.jpg']))
+      .toBe('una donna davanti a una finestra');
   });
 
   it('unisce le descrizioni dei gruppi in un testo solo', async () => {

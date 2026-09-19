@@ -424,19 +424,34 @@ async function pathToImage(filePath: string): Promise<OllamaImage | null> {
  * Returns a compact description or null if no frames available / request failed.
  */
 /**
- * Quante immagini stanno in una richiesta a moondream.
+ * Un'immagine per richiesta.
  *
- * Il modello e' servito con 2048 token di contesto e ogni fotogramma ne costa
- * circa 730: cinque insieme facevano 3716 token e il backend rispondeva 400
- * `exceed_context_size_error`. Non un errore di formato — la vision non ha mai
- * funzionato, e nel journal si vedeva solo `vision_describe: skipped`.
- *
- * Due per volta lasciano margine al prompt. Il contesto del modello lo decide
- * chi serve il modello, non noi: qui ci si adatta, non si alza.
+ * Due ragioni, misurate il 19 settembre. La prima: moondream e' servito con
+ * 2048 token di contesto e ogni immagine ne costa ~730, quindi cinque insieme
+ * facevano 3716 token e il backend rispondeva 400 `exceed_context_size_error`.
+ * La seconda, piu' decisiva: anche quando due immagini ci stanno, il modello
+ * ne descrive comunque una sola — la seconda e' contesto sprecato.
  */
-const VISION_IMAGES_PER_CALL = 2;
+const VISION_IMAGES_PER_CALL = 1;
 
-const VISION_PROMPT = `Describe briefly (2-3 sentences, in English) the main visual content across these frames of a short social video: settings, people/subjects, actions, products or brands visible, any recognizable locations or films. Do NOT transcribe overlay text (that is handled separately). Be factual and concise.`;
+/**
+ * Una domanda semplice, perche' e' l'unica cosa che moondream sa ascoltare.
+ *
+ * Il prompt precedente chiedeva 2-3 frasi, elencava sei categorie da cercare e
+ * conteneva una negazione («Do NOT transcribe overlay text»). Misurato sullo
+ * stesso fotogramma:
+ *
+ *   prompt di prima          -> 1 token generato, risposta vuota
+ *   "Describe this image in one sentence." -> 2 token, `?".`
+ *   "Describe the scene."    -> 116 token, descrizione corretta
+ *
+ * Non e' una preferenza di stile: con il prompt lungo la vision non ha **mai**
+ * prodotto niente da quando e' stata scritta, e nel journal si leggeva solo
+ * `vision_describe: skipped`. Un modello da 1,8 miliardi di parametri risponde
+ * a una domanda; non segue istruzioni articolate. Prima di allungarlo,
+ * misurare di nuovo.
+ */
+const VISION_PROMPT = 'Describe the scene.';
 
 export async function describeFramesWithVision(framePaths: string[]): Promise<string | null> {
   if (!framePaths.length) return null;
@@ -473,7 +488,17 @@ export async function describeFramesWithVision(framePaths: string[]): Promise<st
   }
 
   if (!descrizioni.length) return null;
-  const testo = descrizioni.join(' ');
+  // Fotogrammi vicini della stessa scena danno spesso la stessa identica
+  // descrizione: ripeterla tre volte non aggiunge niente a chi legge ne' al
+  // modello che poi la riceve nel prompt di analisi.
+  const viste = new Set<string>();
+  const uniche = descrizioni.filter((d) => {
+    const chiave = d.trim().toLowerCase();
+    if (viste.has(chiave)) return false;
+    viste.add(chiave);
+    return true;
+  });
+  const testo = uniche.join(' ');
   logInfo('Vision describe ok', { frames: images.length, gruppi: gruppi.length, chars: testo.length });
   return testo;
 }
