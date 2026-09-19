@@ -94,6 +94,33 @@ const EMPTY_RESULT: AiAnalysisResult = {
 };
 
 /**
+ * Ripulisce il testo che finisce dentro il prompt e che il modello ricopiera'
+ * nel proprio JSON.
+ *
+ * L'OCR di un frame produce rumore: barre rovesciate isolate, entita' HTML,
+ * caratteri di controllo. Il modello le riporta fedelmente nei campi di
+ * output, e una barra rovesciata dentro una stringa JSON e' una sequenza di
+ * escape non valida che fa saltare *tutto* il documento — non il campo, tutto.
+ *
+ * Il 19 settembre e' costato due chiamate a Claude su un'analisi che qwen
+ * aveva gia' fatto bene: note giuste, persona giusta, link giusto, buttati per
+ * una `\` che l'OCR aveva letto in un fotogramma.
+ *
+ * Toglie solo cio' che non porta significato: la barra rovesciata diventa uno
+ * spazio, i caratteri di controllo spariscono. Il testo leggibile resta intero.
+ */
+export function sanitizeForPrompt(text: string | null): string | null {
+  if (!text) return text;
+  const pulito = text
+    .replace(/\\/g, ' ')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+  return pulito.length ? pulito : null;
+}
+
+/**
  * Render the content-analysis prompt. Exported so the backfill script sends the
  * exact same prompt the live pipeline does, keeping the two from drifting.
  */
@@ -108,15 +135,52 @@ export async function buildAnalysisPrompt(input: AiAnalysisInput): Promise<strin
     transcript: input.transcript || null,
     hasTranscript: !!input.transcript,
     transcriptLanguage: input.transcriptLanguage || null,
-    ocrText: input.ocrText || null,
+    // Ripuliti perche' il modello li ricopia nel JSON di risposta: vedi
+    // sanitizeForPrompt.
+    ocrText: sanitizeForPrompt(input.ocrText),
     hasOcr: !!input.ocrText,
-    visualContext: input.visualContext || null,
+    visualContext: sanitizeForPrompt(input.visualContext),
     hasVisualContext: !!input.visualContext,
     isCarousel,
     carouselCount: input.slidePaths.length,
     hasImage: !!input.thumbnailPath || isCarousel,
     // Legacy compat: older prompts may still reference hasImage
   });
+}
+
+/** I caratteri che possono legittimamente seguire una barra rovesciata in JSON. */
+const ESCAPE_VALIDI = new Set(['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u']);
+
+/**
+ * Raddoppia le barre rovesciate che non aprono una sequenza di escape valida.
+ *
+ * Un modello che ricopia del testo OCR dentro una stringa JSON produce cose
+ * come `"wif We % \ N"`: per JSON quella barra apre un escape, `\ ` non
+ * esiste, e il documento intero diventa illeggibile. Raddoppiarla la rende il
+ * carattere che il modello intendeva.
+ *
+ * Volutamente miope: guarda un carattere alla volta e non prova a capire la
+ * struttura. Un `\u` seguito da qualcosa che non sono quattro cifre esadecimali
+ * e' altrettanto rotto, quindi rientra. Se dopo la riparazione il JSON non si
+ * parsa lo stesso, si rinuncia come prima — meglio nessun risultato che uno
+ * inventato dal riparatore.
+ */
+export function repairJsonEscapes(raw: string): string {
+  let out = '';
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (c !== '\\') { out += c; continue; }
+    const next = raw[i + 1];
+    if (next === 'u') {
+      const hex = raw.slice(i + 2, i + 6);
+      if (/^[0-9a-fA-F]{4}$/.test(hex)) { out += raw.slice(i, i + 6); i += 5; continue; }
+      out += '\\\\';
+      continue;
+    }
+    if (next !== undefined && ESCAPE_VALIDI.has(next)) { out += c + next; i++; continue; }
+    out += '\\\\';
+  }
+  return out;
 }
 
 /**
@@ -134,9 +198,31 @@ export function parseAnalysisResponse(
   let parsed: Partial<MediaAiAnalysisResult>;
   try {
     parsed = JSON.parse(jsonMatch[0]);
-  } catch {
-    logWarning('JSON AI invalido', { preview: jsonMatch[0].substring(0, 300) });
-    return null;
+  } catch (primoErrore) {
+    // Un solo carattere sbagliato in un campo qualunque buttava via l'intera
+    // analisi e mandava la richiesta su Claude, a pagamento, per rifare un
+    // lavoro gia' fatto. Prima di arrendersi si tenta la riparazione: tocca
+    // solo le sequenze di escape non valide, il contenuto resta quello del
+    // modello.
+    const riparato = repairJsonEscapes(jsonMatch[0]);
+    let recuperato: Partial<MediaAiAnalysisResult> | null = null;
+    if (riparato !== jsonMatch[0]) {
+      try {
+        recuperato = JSON.parse(riparato);
+        logInfo('JSON AI riparato', { motivo: String(primoErrore).slice(0, 120) });
+      } catch {
+        recuperato = null;
+      }
+    }
+    if (!recuperato) {
+      logWarning('JSON AI invalido', {
+        errore: String(primoErrore).slice(0, 200),
+        // 300 caratteri nascondevano la causa: l'errore stava a meta' documento.
+        preview: jsonMatch[0].substring(0, 1200),
+      });
+      return null;
+    }
+    parsed = recuperato;
   }
 
   const sourceText = [input.caption, input.ocrText, input.transcript].filter(Boolean).join(' ');

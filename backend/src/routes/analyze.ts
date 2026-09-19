@@ -1361,9 +1361,30 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       const visualContextOut = mediaAiResult.visualContext || null;
       const overlayText = mediaAiResult.overlayText || null;
 
+      // Calcolata qui e non piu' in basso perche' serve gia' a questa riga del
+      // journal. E' una funzione pura: spostarne la chiamata non cambia niente,
+      // il ramo che agisce sul risultato resta dov'era.
+      const transcriptSource = chooseTranscriptSource({
+        subtitleText: sourceSubtitle?.text ?? null,
+        subtitleLang: sourceSubtitle?.lang ?? null,
+        subtitleKind: sourceSubtitle?.kind ?? null,
+        audioPath: transcribeAudioPath,
+        transcriptionEnabled: featuresConfig.transcriptionEnabled,
+        reanalyze,
+      });
+
       if (transcription || visualContextOut || overlayText) {
         await appendActionLog(entryId, createActionLog('media_analysis_complete', {
           hasTranscription: !!transcription,
+          // `hasTranscription: false` si leggeva come un verdetto sull'audio —
+          // «non c'e' voce» — mentre quasi sempre significa solo che Whisper e'
+          // in coda: la trascrizione e' asincrona e arriva dopo che questa
+          // passata ha gia' chiuso. Il campo qui sotto dice quale dei due.
+          transcription: transcription
+            ? 'presente'
+            : transcriptSource.kind === 'whisper'
+              ? 'in attesa'
+              : 'assente',
           hasVisualContext: !!visualContextOut,
           hasOverlayText: !!overlayText,
         }));
@@ -1410,15 +1431,6 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       // had a `whisper_asr` action (legacy logs its own `transcribe` action,
       // synchronously, a few lines above in that branch), and moving the
       // enqueue down here must not hand them one.
-      const transcriptSource = chooseTranscriptSource({
-        subtitleText: sourceSubtitle?.text ?? null,
-        subtitleLang: sourceSubtitle?.lang ?? null,
-        subtitleKind: sourceSubtitle?.kind ?? null,
-        audioPath: transcribeAudioPath,
-        transcriptionEnabled: featuresConfig.transcriptionEnabled,
-        reanalyze,
-      });
-
       // Deliberately outside the `ranLocalMediaPipeline` guard below. A written
       // track can arrive on the legacy path too — a video past the download
       // duration cap still has one, and those are exactly the long talks where
