@@ -180,7 +180,24 @@ describe('analyze route second pass', () => {
   describe('recomputes only what is missing, and only locally', () => {
     it('reads the derivations the first pass persisted off the entry', () => {
       onlyMatch(/const reusedOverlayText = priorResults\?\.overlayText \?\? null;/);
-      onlyMatch(/const reusedVisualContext = priorResults\?\.visualContext \?\? null;/);
+      onlyMatch(/const reusedVisualContext = condensaContestoVisivo\(priorResults\?\.visualContext \?\? null\);/);
+    });
+
+    /**
+     * Il contesto riusato passa dalla condensazione. Le entry analizzate prima
+     * del 2026-09-19 portano 2300 battute di ripetizioni — cinque descrizioni
+     * della stessa inquadratura — e il riuso le porterebbe intatte in ogni
+     * analisi futura, diluendo caption e trascrizione. Passando di qui si
+     * sistemano da sole, senza una migrazione.
+     *
+     * È il difetto che si è visto rimettendo in coda gli stessi tre reel dopo
+     * il fix sulla vision: i caratteri erano identici a prima, perché la
+     * seconda passata non ricalcola, riusa.
+     */
+    it('condensa il contesto visivo che riusa, non solo quello che calcola', () => {
+      const at = source.indexOf('const reusedVisualContext');
+      expect(at).toBeGreaterThan(-1);
+      expect(source.slice(at, at + 120)).toContain('condensaContestoVisivo(');
     });
 
     it('treats an empty slide array as absent, as the merge does', () => {

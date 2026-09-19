@@ -6,7 +6,7 @@ import type { SlideItem } from '../services/aiAnalysis';
 import { ocrImages } from '../services/ocrClient';
 import type { OcrResult } from '../services/ocrClient';
 import { pickKeyFrames } from '../services/frameSelector';
-import { describeFramesWithVision } from '../services/ollamaClient';
+import { condensaContestoVisivo, describeFramesWithVision } from '../services/ollamaClient';
 import { saveThumbnailLocal } from '../services/thumbnailSaver';
 import {
   extractPage,
@@ -724,7 +724,12 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           // -----------------------------------------------------------------
           const priorResults = reanalyze ? priorEntry?.results : undefined;
           const reusedOverlayText = priorResults?.overlayText ?? null;
-          const reusedVisualContext = priorResults?.visualContext ?? null;
+          // Condensato anche quando viene riusato: le entry analizzate prima
+          // del 19 settembre portano 2300 battute di ripetizioni (cinque
+          // descrizioni della stessa inquadratura), e una seconda passata le
+          // riuserebbe cosi' come sono, continuando a diluire ogni analisi.
+          // Passando di qui si sistemano da sole, senza una migrazione.
+          const reusedVisualContext = condensaContestoVisivo(priorResults?.visualContext ?? null);
           // An empty array counts as absent, exactly as in mergeEntryResults:
           // an entry stored with `slides: []` must still be fillable.
           const reusedSlides = priorResults?.slides?.length ? priorResults.slides : null;

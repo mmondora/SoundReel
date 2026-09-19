@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { condensaDescrizioni } from './ollamaClient';
+import { condensaContestoVisivo, condensaDescrizioni } from './ollamaClient';
 
 /**
  * Misurato il 19 settembre, appena la vision ha ricominciato a funzionare: su
@@ -73,5 +73,48 @@ describe('condensaDescrizioni', () => {
   it('regge una lista vuota o fatta di spazi', () => {
     expect(condensaDescrizioni([])).toBe('');
     expect(condensaDescrizioni(['   ', ''])).toBe('');
+  });
+});
+
+/**
+ * Una seconda passata riusa il contesto visivo che trova invece di rifare la
+ * vision — giustamente, è lavoro già fatto. Ma le entry analizzate prima del
+ * 19 settembre portano 2312 battute di ripetizioni, e senza condensarle anche
+ * al riuso resterebbero lì per sempre a diluire ogni analisi successiva.
+ *
+ * È così che ce ne siamo accorti: rimessi in coda gli stessi tre reel dopo il
+ * fix, i caratteri erano identici a prima — 2312, 92, 2099.
+ */
+describe('condensaContestoVisivo (testo già salvato)', () => {
+  it('accorcia un contesto vecchio pieno di ripetizioni', () => {
+    const frase = 'The image features a woman with long brown hair, wearing a white shirt. She is standing in front of a window.';
+    const vecchio = Array(5).fill(frase).join(' ');
+
+    expect(vecchio.length).toBeGreaterThan(500);
+    const out = condensaContestoVisivo(vecchio);
+    expect(out).toBe(frase);
+  });
+
+  it('tiene le scene diverse dentro un contesto salvato', () => {
+    const salvato = 'A woman stands in front of a window. A close-up of a wooden board on a workbench.';
+    const out = condensaContestoVisivo(salvato) ?? '';
+    expect(out).toContain('woman');
+    expect(out).toContain('wooden board');
+  });
+
+  it('non supera il tetto nemmeno partendo da 2300 caratteri', () => {
+    const lungo = Array.from({ length: 20 }, (_, i) => `Scene ${i} shows a completely different subject with its own details.`).join(' ');
+    expect(lungo.length).toBeGreaterThan(1000);
+    expect((condensaContestoVisivo(lungo) ?? '').length).toBeLessThanOrEqual(600);
+  });
+
+  it('lascia stare un contesto già corto', () => {
+    const corto = 'The image shows a man wearing headphones in front of a turntable.';
+    expect(condensaContestoVisivo(corto)).toBe(corto);
+  });
+
+  it('null resta null', () => {
+    expect(condensaContestoVisivo(null)).toBeNull();
+    expect(condensaContestoVisivo('   ')).toBeNull();
   });
 });
