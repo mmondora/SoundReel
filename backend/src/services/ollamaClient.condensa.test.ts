@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { condensaContestoVisivo, condensaDescrizioni } from './ollamaClient';
+import { condensaContestoVisivo, condensaDescrizioni } from './visualContextText';
 
 /**
  * Misurato il 19 settembre, appena la vision ha ricominciato a funzionare: su

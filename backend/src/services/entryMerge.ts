@@ -1,5 +1,6 @@
 import type { EntryResults } from '../types';
 import { noteKey } from './noteMeta';
+import { condensaContestoVisivo } from './visualContextText';
 
 /**
  * Identity of a song inside an entry. Exported because the analyze route needs
@@ -105,7 +106,13 @@ export function mergeEntryResults(existing: EntryResults, incoming: EntryResults
     // pay for OCR, vision and slide analysis and then persist none of it.
     // The transcript is the exception above — a later, better one supersedes.
     transcription: existing.transcription ?? incoming.transcription ?? null,
-    visualContext: existing.visualContext ?? incoming.visualContext ?? null,
+    // L'esistente vince, come sopra — ma passa dalla condensazione. Le entry
+    // analizzate prima del 2026-09-19 portano cinque descrizioni della stessa
+    // inquadratura, 2300 battute: senza questo passaggio ogni passata le
+    // ricondensa per il prompt e poi risalva l'originale gonfio, quindi il
+    // testo non si accorcerebbe mai. Qui non si perde niente e non si cambia
+    // chi ha la precedenza: si riscrive lo stesso contenuto senza le copie.
+    visualContext: condensaContestoVisivo(existing.visualContext ?? null) ?? incoming.visualContext ?? null,
     overlayText: existing.overlayText ?? incoming.overlayText ?? null,
     // An array, so emptiness and absence both mean "nothing here": an entry
     // stored with `slides: []` must still be fillable by a pass that found some.

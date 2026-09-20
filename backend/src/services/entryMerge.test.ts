@@ -244,3 +244,43 @@ describe('mergeEntryResults', () => {
     expect(existing.tags).toEqual(['#roma']);
   });
 });
+
+/**
+ * Il difetto che ha retto tre giri di verifica.
+ *
+ * Il contesto visivo veniva condensato per il prompt ma risalvato gonfio,
+ * perché qui l'esistente vince: 2312 caratteri nel journal, 470 davvero usati.
+ * Ogni passata ricondensava e poi riscriveva l'originale, quindi il testo non
+ * si sarebbe accorciato mai.
+ *
+ * La precedenza resta quella di prima — una seconda passata non cancella una
+ * vision già buona — ma il valore che sopravvive passa dalla condensazione.
+ */
+describe('contesto visivo salvato', () => {
+  const scena = 'The image features a woman with long brown hair, wearing a white shirt. She is standing in front of a window.';
+
+  it('accorcia il contesto gonfio che si porta dietro', () => {
+    const existing = { ...empty(), visualContext: Array(5).fill(scena).join(' ') };
+    const out = mergeEntryResults(existing, { ...empty(), visualContext: 'nuova descrizione' });
+
+    // Vince l'esistente, come prima. Ma senza le quattro copie.
+    expect(out.visualContext).toBe(scena);
+    expect(out.visualContext!.length).toBeLessThan(existing.visualContext!.length);
+  });
+
+  it('non cambia chi ha la precedenza', () => {
+    const existing = { ...empty(), visualContext: 'descrizione originale' };
+    const out = mergeEntryResults(existing, { ...empty(), visualContext: 'nuova' });
+    expect(out.visualContext).toBe('descrizione originale');
+  });
+
+  it('prende quella nuova quando non ce n’era una', () => {
+    const out = mergeEntryResults(empty(), { ...empty(), visualContext: 'una cucina' });
+    expect(out.visualContext).toBe('una cucina');
+  });
+
+  it('un contesto già corto resta identico', () => {
+    const existing = { ...empty(), visualContext: scena };
+    expect(mergeEntryResults(existing, empty()).visualContext).toBe(scena);
+  });
+});

@@ -1,4 +1,4 @@
-import { condensaContestoVisivo } from './ollamaClient';
+import { condensaContestoVisivo } from './visualContextText';
 
 export interface VisualContextInput {
   /** Il contesto visivo che una passata precedente ha lasciato sull'entry. */
