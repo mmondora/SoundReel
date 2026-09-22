@@ -283,12 +283,31 @@ async function generateQueued(body: unknown, model: string): Promise<OllamaRespo
   throw new OllamaTransientError('aborted', `job ${jobId} non pronto entro ${Math.round(QUEUE_MAX_WAIT_MS / 60_000)} minuti`);
 }
 
+export interface GenerateOptions {
+  /**
+   * Vincola la generazione a produrre JSON valido (`format: "json"` di ollama).
+   *
+   * Da chiedere quando la risposta viene parsata come **oggetto**. Misurato il
+   * 22 settembre sullo stesso prompt: senza, 1 risposta su 3 si parsava — le
+   * altre due avevano slip di sintassi come `"category: "quote"` al posto di
+   * `"category": "quote"`. Con, 3 su 3. Il contenuto era buono in tutti i casi:
+   * era la punteggiatura a buttare via l'analisi e a mandarla su Claude.
+   *
+   * Non e' gratis per tutti: con `format: json` il modello incapsula un array
+   * dentro un oggetto (`{"search_terms": [...]}`), quindi chi si aspetta un
+   * array nudo — queryExpander, musicListExtractor — non lo chiede e continua
+   * a leggere la risposta libera.
+   */
+  json?: boolean;
+}
+
 export async function generateText(
   prompt: string,
-  images: OllamaImage[] = []
+  images: OllamaImage[] = [],
+  opts: GenerateOptions = {}
 ): Promise<OllamaResponse> {
   const model = images.length > 0 ? VISION_MODEL : TEXT_MODEL;
-  const body = {
+  const body: Record<string, unknown> = {
     model,
     prompt,
     stream: false,
@@ -312,6 +331,10 @@ export async function generateText(
       repeat_penalty: 1.2,
     },
   };
+
+  // Mai insieme alle immagini: li' risponde moondream, a cui si chiede una
+  // descrizione in prosa, e vincolarlo al JSON avrebbe l'effetto opposto.
+  if (opts.json && images.length === 0) body.format = 'json';
 
   const queued = isQueuedMode();
   logInfo('Ollama generate', { model, hasImages: images.length, promptChars: prompt.length, queued });

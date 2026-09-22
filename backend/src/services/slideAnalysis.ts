@@ -117,7 +117,7 @@ export async function analyzeSlides(
   // that a slide is item 3 of a list rather than judging it in isolation.
   let byIndex = new Map<number, RawSlideResult>();
   try {
-    const response = await generateText(prompt, []);
+    const response = await generateText(prompt, [], { json: true });
     byIndex = parseSlideResponse(response.text);
   } catch (err) {
     logError('Analisi slide con Ollama fallita', err);

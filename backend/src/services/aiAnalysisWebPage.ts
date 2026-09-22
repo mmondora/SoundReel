@@ -61,7 +61,7 @@ export async function analyzeWebPage(input: PageExtractResult): Promise<WebPageA
 
   let response;
   try {
-    response = await generateText(prompt);
+    response = await generateText(prompt, [], { json: true });
   } catch (e) {
     logWarning('Web-page LLM failed', { error: String(e) });
     return { result: EMPTY, usageMetadata: null, fallback: null };

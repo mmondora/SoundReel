@@ -361,7 +361,7 @@ export async function analyzeWithAi(
     // (moondream), which tends to echo the template placeholders.
     const images: OllamaImage[] = [];
 
-    const response = await generateText(prompt, images);
+    const response = await generateText(prompt, images, { json: true });
     const text = response.text;
     logInfo('Risposta AI ricevuta', { chars: text.length });
 
@@ -445,7 +445,7 @@ Usa null per campi sconosciuti. Se non c'è nulla di estraibile, ritorna [].
 Rispondi SOLO con il JSON array, senza testo aggiuntivo.`;
 
     try {
-      const response = await generateText(prompt, []);
+      const response = await generateText(prompt, [], { json: true });
       const text_resp = response.text;
       const jsonMatch = text_resp.match(/\[[\s\S]*\]/);
       if (!jsonMatch) continue;
