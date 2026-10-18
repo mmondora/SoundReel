@@ -7,6 +7,9 @@ services:
         BUILD_DATE: ${BUILD_DATE:-}
     image: soundreel:local
     container_name: soundreel
+    # node e' PID 1 e non raccoglie gli orfani: i chromium/chrome_crashpad
+    # lasciati da Puppeteer restavano zombie.
+    init: true
     env_file: [.env]
     environment:
       NODE_ENV: production
