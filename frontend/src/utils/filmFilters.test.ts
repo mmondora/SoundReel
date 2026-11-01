@@ -71,11 +71,14 @@ describe('filterFilms', () => {
     expect(filterFilms(API_FILMS, { genres: [], watched: 'all', availability: 'free' }).map((f) => f.filmKey)).not.toContain('f');
   });
 
-  it('platform shelf keeps films with a deep link or search URL for that service', () => {
+  it('platform shelf keeps only films the availability API listed on that service', () => {
     const netflixDeep = film('n1', {
       streamingOptions: [{ platform: 'Netflix', type: 'SUBSCRIPTION', is_free: false, price: null, url: 'https://netflix.com/title/1' }],
     });
-    const raiSearch = film('r1', null, {
+    const raiApi = film('r1', {
+      streamingOptions: [{ platform: 'RaiPlay', type: 'FREE', is_free: true, price: null, url: 'https://raiplay.it/x' }],
+    });
+    const searchOnly = film('s1', null, {
       netflix: 'https://www.netflix.com/search?q=x',
       primeVideo: 'https://www.primevideo.com/search?phrase=x',
       raiPlay: 'https://www.raiplay.it/ricerca.html?q=x',
@@ -84,10 +87,10 @@ describe('filterFilms', () => {
       appleTv: '',
     });
     const nowhere = film('z', { streamingOptions: [] });
-    const pool = [netflixDeep, raiSearch, nowhere];
-    expect(filterFilms(pool, { genres: [], watched: 'all', availability: 'all', platform: 'netflix' }).map((f) => f.filmKey)).toEqual(['n1', 'r1']);
+    const pool = [netflixDeep, raiApi, searchOnly, nowhere];
+    expect(filterFilms(pool, { genres: [], watched: 'all', availability: 'all', platform: 'netflix' }).map((f) => f.filmKey)).toEqual(['n1']);
     expect(filterFilms(pool, { genres: [], watched: 'all', availability: 'all', platform: 'raiPlay' }).map((f) => f.filmKey)).toEqual(['r1']);
-    expect(filterFilms(pool, { genres: [], watched: 'all', availability: 'all', platform: 'primeVideo' }).map((f) => f.filmKey)).toEqual(['r1']);
+    expect(filterFilms(pool, { genres: [], watched: 'all', availability: 'all', platform: 'primeVideo' }).map((f) => f.filmKey)).toEqual([]);
   });
 
   it('checked-empty streamingOptions ([]) has no availability signal', () => {
@@ -122,7 +125,7 @@ describe('platformPlayUrl / filmOnPlatform', () => {
     expect(filmOnPlatform(f, 'raiPlay')).toBe(false);
   });
 
-  it('falls back to streamingUrls search link when no API option', () => {
+  it('does not treat search-only streamingUrls as shelf membership', () => {
     const f = film('solo', null, {
       netflix: '',
       primeVideo: 'https://www.primevideo.com/search?phrase=Solo',
@@ -131,6 +134,24 @@ describe('platformPlayUrl / filmOnPlatform', () => {
       disneyPlus: '',
       appleTv: '',
     });
+    expect(filmOnPlatform(f, 'primeVideo')).toBe(false);
+    expect(platformPlayUrl(f, 'primeVideo')).toBeNull();
+  });
+
+  it('falls back to search URL when API lists the platform without a deep link', () => {
+    const f = film(
+      'solo',
+      { streamingOptions: [{ platform: 'Prime Video', type: 'SUBSCRIPTION', is_free: false, price: null, url: '' }] },
+      {
+        netflix: '',
+        primeVideo: 'https://www.primevideo.com/search?phrase=Solo',
+        raiPlay: '',
+        now: '',
+        disneyPlus: '',
+        appleTv: '',
+      },
+    );
+    expect(filmOnPlatform(f, 'primeVideo')).toBe(true);
     expect(platformPlayUrl(f, 'primeVideo')).toBe('https://www.primevideo.com/search?phrase=Solo');
   });
 });

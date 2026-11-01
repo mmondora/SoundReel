@@ -133,7 +133,8 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter)
     totalSongs: allEntries.reduce((acc, e) => acc + e.results.songs.length, 0),
     totalFilms: allEntries.reduce((acc, e) => acc + e.results.films.length, 0),
     totalNotes: allEntries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0),
-    totalSoftware: allEntries.reduce((acc, e) => acc + (e.results.software?.length || 0), 0),
+    // Software total lives on /software (aggregated + GitHub harvest); omit here
+    // so the header does not show a misleading "0" from the home window alone.
   };
 
   const nextPage = useCallback(() => {

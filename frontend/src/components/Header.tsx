@@ -53,7 +53,8 @@ export function Header({ stats }: HeaderProps) {
           <Link to="/films" className="stat stat-link">{stats.totalFilms} {t.films}</Link>
           <Link to="/notes" className="stat stat-link">{stats.totalNotes} {t.notes}</Link>
           <Link to="/software" className="stat stat-link">
-            {stats.totalSoftware ?? 0} {t.software}
+            {stats.totalSoftware != null ? `${stats.totalSoftware} ` : ''}
+            {t.software}
           </Link>
         </div>
         <div className="search-wrapper">

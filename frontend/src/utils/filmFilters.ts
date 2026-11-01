@@ -52,7 +52,8 @@ function availabilitySignal(meta: FilmMetaRecord | null | undefined): { free: bo
 
 /**
  * Best play/open URL for a platform shelf: prefer API deep link from
- * streamingOptions, else fall back to the search streamingUrls entry.
+ * streamingOptions. Search streamingUrls are a last-resort open target only
+ * when the film is already known to be on that platform via API data.
  */
 export function platformPlayUrl(
   film: AggregatedFilm,
@@ -63,16 +64,22 @@ export function platformPlayUrl(
     const hit = options.find((o) => matchService(o.platform) === platform && !!o.url);
     if (hit?.url) return hit.url;
   }
+  if (!filmOnPlatform(film, platform)) return null;
   const searchUrl = film.streamingUrls?.[platform as keyof StreamingUrls];
   return searchUrl || null;
 }
 
-/** True when the film has a usable link (deep or search) for the shelf platform. */
+/**
+ * Shelf membership: only films the availability API listed on that platform.
+ * Search-only streamingUrls would put almost every film on every shelf.
+ */
 export function filmOnPlatform(
   film: AggregatedFilm,
   platform: Exclude<PlatformShelfFilter, 'all'>
 ): boolean {
-  return platformPlayUrl(film, platform) != null;
+  const options = film.meta?.streamingOptions;
+  if (!options || options.length === 0) return false;
+  return options.some((o) => matchService(o.platform) === platform);
 }
 
 export function filterFilms(films: AggregatedFilm[], opts: FilmFilterOptions): AggregatedFilm[] {
