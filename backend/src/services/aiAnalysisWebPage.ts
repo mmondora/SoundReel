@@ -27,6 +27,7 @@ const EMPTY: MediaAiAnalysisResult = {
   songs: [],
   films: [],
   notes: [],
+  software: [],
   links: [],
   tags: [],
   summary: null,
@@ -80,6 +81,9 @@ export async function analyzeWebPage(input: PageExtractResult): Promise<WebPageA
     songs: Array.isArray(parsed.songs) ? parsed.songs.filter(isSongShape) : [],
     films: Array.isArray(parsed.films) ? parsed.films.filter(isFilmShape) : [],
     notes: Array.isArray(parsed.notes) ? parsed.notes.filter(isNoteShape) : [],
+    software: Array.isArray(parsed.software)
+      ? parsed.software.filter(isSoftwareShape).map(normalizeSoftwareItem)
+      : [],
     links,
     tags: Array.isArray(parsed.tags)
       ? parsed.tags.filter((t: unknown): t is string => typeof t === 'string').slice(0, 16)
@@ -138,4 +142,29 @@ function isNoteShape(v: unknown): boolean {
   if (!v || typeof v !== 'object') return false;
   const o = v as Record<string, unknown>;
   return typeof o.text === 'string' && typeof o.category === 'string';
+}
+
+function isSoftwareShape(v: unknown): v is { title: string; url?: string | null; tag?: string; description?: string | null } {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.title === 'string' && o.title.trim().length > 0;
+}
+
+function normalizeSoftwareItem(v: {
+  title: string;
+  url?: string | null;
+  tag?: string;
+  description?: string | null;
+}): import('../types').SoftwareItem {
+  const tagRaw = String(v.tag ?? 'other').toLowerCase();
+  const tag =
+    tagRaw === 'repo' || tagRaw === 'product' || tagRaw === 'article' || tagRaw === 'other'
+      ? tagRaw
+      : 'other';
+  return {
+    title: v.title.trim(),
+    url: typeof v.url === 'string' && v.url.trim() ? v.url.trim() : null,
+    tag,
+    description: typeof v.description === 'string' ? v.description : null,
+  };
 }

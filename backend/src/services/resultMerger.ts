@@ -1,4 +1,4 @@
-import type { Song, Film, Note, ExtractedLink, AudioRecognitionResult, AiAnalysisResult } from '../types';
+import type { Song, Film, Note, SoftwareItem, ExtractedLink, AudioRecognitionResult, AiAnalysisResult } from '../types';
 import { logInfo } from '../utils/logger';
 
 interface MergedResults {
@@ -14,6 +14,7 @@ interface MergedResults {
     year: string | null;
   }>;
   notes: Note[];
+  software: SoftwareItem[];
   links: ExtractedLink[];
   tags: string[];
   summary: string | null;
@@ -88,6 +89,7 @@ export function mergeResults(
     aiOnly: mergedSongs.filter(s => s.source === 'ai_analysis').length,
     both: mergedSongs.filter(s => s.source === 'both').length,
     notes: aiResult.notes.length,
+    software: (aiResult.software ?? []).length,
     links: aiResult.links.length,
     tags: aiResult.tags.length
   });
@@ -96,6 +98,7 @@ export function mergeResults(
     songs: mergedSongs,
     films: mergedFilms,
     notes: aiResult.notes,
+    software: aiResult.software ?? [],
     links: aiResult.links,
     tags: aiResult.tags,
     summary: aiResult.summary

@@ -1,5 +1,6 @@
 import type { EntryResults } from '../types';
 import { noteKey } from './noteMeta';
+import { softwareKey } from './softwareMeta';
 import { condensaContestoVisivo } from './visualContextText';
 
 /**
@@ -82,6 +83,16 @@ export function mergeEntryResults(existing: EntryResults, incoming: EntryResults
     }
   }
 
+  const software = [...list(existing.software)];
+  const seenSoftware = new Set(software.map((s) => softwareKey(s.tag, s.title, s.url)));
+  for (const s of list(incoming.software)) {
+    const k = softwareKey(s.tag, s.title, s.url);
+    if (!seenSoftware.has(k)) {
+      seenSoftware.add(k);
+      software.push(s);
+    }
+  }
+
   const links = [...list(existing.links)];
   const seenLinks = new Set(links.map((l) => l.url));
   for (const l of list(incoming.links)) {
@@ -96,6 +107,7 @@ export function mergeEntryResults(existing: EntryResults, incoming: EntryResults
     songs,
     films,
     notes,
+    software,
     links,
     tags: [...new Set([...list(existing.tags), ...list(incoming.tags)])],
     summary: isBlank(existing.summary) ? incoming.summary : existing.summary,

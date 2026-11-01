@@ -7,8 +7,8 @@ import { FilterPanel } from '../components/FilterPanel';
 import type { FilterSection } from '../components/FilterPanel';
 import { fetchFilms, patchFilmMeta, refreshFilmStreaming, archiveLookupFilm, archiveDownloadFilm } from '../services/api';
 import type { FilmMetaPatchBody } from '../services/api';
-import { filterFilms, collectGenres, sortFilms } from '../utils/filmFilters';
-import type { WatchedFilter, AvailabilityFilter, FilmSortMode } from '../utils/filmFilters';
+import { filterFilms, collectGenres, sortFilms, platformPlayUrl, filmOnPlatform, PLATFORM_SHELF_KEYS } from '../utils/filmFilters';
+import type { WatchedFilter, AvailabilityFilter, FilmSortMode, PlatformShelfFilter } from '../utils/filmFilters';
 import { useAllEntries } from '../hooks/useJournal';
 import { useLanguage } from '../i18n';
 import type { AggregatedFilm, FilmMetaRecord, JournalStats, StreamingUrls } from '../types';
@@ -72,6 +72,7 @@ export function FilmsPage() {
   const [genreFilter, setGenreFilter] = useState<string[]>([]);
   const [watchedFilter, setWatchedFilter] = useState<WatchedFilter>('all');
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>('all');
+  const [platformFilter, setPlatformFilter] = useState<PlatformShelfFilter>('all');
   const [panelOpen, setPanelOpen] = useState(false);
   const [sortMode, setSortMode] = useState<FilmSortMode>('date');
   // Per-filmKey monotonic counter so a slow/out-of-order PATCH response (success
@@ -99,9 +100,28 @@ export function FilmsPage() {
         watched: watchedFilter,
         availability: availabilityFilter,
         text: textFilter,
+        platform: platformFilter,
       }),
-    [sortedFilms, genreFilter, watchedFilter, availabilityFilter, textFilter]
+    [sortedFilms, genreFilter, watchedFilter, availabilityFilter, textFilter, platformFilter]
   );
+
+  const shelfCounts = useMemo(() => {
+    const counts: Record<Exclude<PlatformShelfFilter, 'all'>, number> = {
+      netflix: 0,
+      primeVideo: 0,
+      raiPlay: 0,
+    };
+    for (const key of PLATFORM_SHELF_KEYS) {
+      counts[key] = sortedFilms.filter((f) => filmOnPlatform(f, key)).length;
+    }
+    return counts;
+  }, [sortedFilms]);
+
+  const shelfLabels: Record<Exclude<PlatformShelfFilter, 'all'>, string> = {
+    netflix: t.filmsShelfNetflix,
+    primeVideo: t.filmsShelfPrime,
+    raiPlay: t.filmsShelfRaiPlay,
+  };
 
   function toggleGenre(genre: string) {
     setGenreFilter((prev) => (prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]));
@@ -223,6 +243,31 @@ export function FilmsPage() {
 
         {!loading && (
           <>
+            <div className="platform-shelf-bar" role="tablist" aria-label={t.filmsShelfLabel}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={platformFilter === 'all'}
+                className={`filter-chip ${platformFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setPlatformFilter('all')}
+              >
+                {t.filmsFilterAll}
+              </button>
+              {PLATFORM_SHELF_KEYS.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={platformFilter === key}
+                  className={`filter-chip ${platformFilter === key ? 'active' : ''}`}
+                  onClick={() => setPlatformFilter(key)}
+                >
+                  {shelfLabels[key]}
+                  <span className="filter-chip-count"> {shelfCounts[key]}</span>
+                </button>
+              ))}
+            </div>
+
             <div className="filter-topbar">
               <input
                 type="text"
@@ -294,6 +339,9 @@ export function FilmsPage() {
               <FilmCard
                 key={film.filmKey}
                 film={film}
+                primaryPlayUrl={
+                  platformFilter === 'all' ? null : platformPlayUrl(film, platformFilter)
+                }
                 onPatch={(patch) => {
                   void applyPatch(film.filmKey, patch);
                 }}
@@ -308,6 +356,9 @@ export function FilmsPage() {
             <FilmCard
               key={film.filmKey}
               film={film}
+              primaryPlayUrl={
+                platformFilter === 'all' ? null : platformPlayUrl(film, platformFilter)
+              }
               onPatch={(patch) => {
                 void applyPatch(film.filmKey, patch);
               }}

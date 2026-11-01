@@ -6,6 +6,7 @@ export interface Translations {
   songs: string;
   films: string;
   notes: string;
+  software: string;
   deleteAll: string;
   deleting: string;
   console: string;
@@ -228,6 +229,15 @@ export interface Translations {
   allSongs: string;
   allFilms: string;
   allNotes: string;
+  allSoftware: string;
+  noSoftwareYet: string;
+  softwareTagSection: string;
+  softwareTagRepo: string;
+  softwareTagProduct: string;
+  softwareTagArticle: string;
+  softwareTagOther: string;
+  softwareOpenLink: string;
+  sortByTitle: string;
   viewReel: string;
   sortRecent: string;
   sortArtist: string;
@@ -262,6 +272,11 @@ export interface Translations {
   filmsFilterUnwatched: string;
   filmsFilterFree: string;
   filmsFilterNotFree: string;
+  filmsShelfLabel: string;
+  filmsShelfNetflix: string;
+  filmsShelfPrime: string;
+  filmsShelfRaiPlay: string;
+  filmsOpenOnPlatform: string;
   filmsMentions: string;
   filmsMarkFresh: string;
   filmsMarkRotten: string;
@@ -329,6 +344,7 @@ export const translations: Record<Language, Translations> = {
     songs: 'canzoni',
     films: 'film',
     notes: 'note',
+    software: 'software',
     deleteAll: 'Cancella tutto',
     deleting: 'Eliminazione...',
     console: 'Console',
@@ -551,6 +567,15 @@ export const translations: Record<Language, Translations> = {
     allSongs: 'Tutte le canzoni',
     allFilms: 'Tutti i film',
     allNotes: 'Tutte le note',
+    allSoftware: 'Software',
+    noSoftwareYet: 'Nessun software trovato',
+    softwareTagSection: 'Tag',
+    softwareTagRepo: 'Repo',
+    softwareTagProduct: 'Prodotto',
+    softwareTagArticle: 'Articolo',
+    softwareTagOther: 'Altro',
+    softwareOpenLink: 'Apri',
+    sortByTitle: 'Titolo',
     viewReel: 'Vedi reel →',
     sortRecent: 'Recenti',
     sortArtist: 'Artista A-Z',
@@ -583,6 +608,11 @@ export const translations: Record<Language, Translations> = {
     filmsFilterUnwatched: 'Non visti',
     filmsFilterFree: 'Gratis',
     filmsFilterNotFree: 'Non gratis',
+    filmsShelfLabel: 'Lista piattaforma',
+    filmsShelfNetflix: 'Netflix',
+    filmsShelfPrime: 'Prime',
+    filmsShelfRaiPlay: 'RaiPlay',
+    filmsOpenOnPlatform: 'Apri sulla piattaforma',
     filmsMentions: 'menzioni',
     filmsMarkFresh: 'Fresco',
     filmsMarkRotten: 'Marcio',
@@ -647,6 +677,7 @@ export const translations: Record<Language, Translations> = {
     songs: 'songs',
     films: 'films',
     notes: 'notes',
+    software: 'software',
     deleteAll: 'Delete all',
     deleting: 'Deleting...',
     console: 'Console',
@@ -869,6 +900,15 @@ export const translations: Record<Language, Translations> = {
     allSongs: 'All songs',
     allFilms: 'All films',
     allNotes: 'All notes',
+    allSoftware: 'Software',
+    noSoftwareYet: 'No software found yet',
+    softwareTagSection: 'Tag',
+    softwareTagRepo: 'Repo',
+    softwareTagProduct: 'Product',
+    softwareTagArticle: 'Article',
+    softwareTagOther: 'Other',
+    softwareOpenLink: 'Open',
+    sortByTitle: 'Title',
     viewReel: 'View reel →',
     sortRecent: 'Recent',
     sortArtist: 'Artist A-Z',
@@ -901,6 +941,11 @@ export const translations: Record<Language, Translations> = {
     filmsFilterUnwatched: 'Unwatched',
     filmsFilterFree: 'Free',
     filmsFilterNotFree: 'Not free',
+    filmsShelfLabel: 'Platform list',
+    filmsShelfNetflix: 'Netflix',
+    filmsShelfPrime: 'Prime',
+    filmsShelfRaiPlay: 'RaiPlay',
+    filmsOpenOnPlatform: 'Open on platform',
     filmsMentions: 'mentions',
     filmsMarkFresh: 'Fresh',
     filmsMarkRotten: 'Rotten',

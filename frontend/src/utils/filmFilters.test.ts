@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { filterFilms, collectGenres, sortFilms } from './filmFilters';
-import type { AggregatedFilm } from '../types';
+import { filterFilms, collectGenres, sortFilms, platformPlayUrl, filmOnPlatform } from './filmFilters';
+import type { AggregatedFilm, StreamingUrls } from '../types';
 
-function film(key: string, meta: Partial<NonNullable<AggregatedFilm['meta']>> | null): AggregatedFilm {
+function film(
+  key: string,
+  meta: Partial<NonNullable<AggregatedFilm['meta']>> | null,
+  streamingUrls: StreamingUrls | null = null,
+): AggregatedFilm {
   return {
     filmKey: key, title: key, director: null, year: null, imdbUrl: null,
-    posterUrl: null, streamingUrls: null, mentions: [],
+    posterUrl: null, streamingUrls, mentions: [],
     meta: meta === null ? null : {
       filmKey: key, tmdbId: null, genres: [], overview: null, cast: [],
       tmdbScore: null, watched: false, rating: null, score: null, availability: {},
@@ -67,6 +71,25 @@ describe('filterFilms', () => {
     expect(filterFilms(API_FILMS, { genres: [], watched: 'all', availability: 'free' }).map((f) => f.filmKey)).not.toContain('f');
   });
 
+  it('platform shelf keeps films with a deep link or search URL for that service', () => {
+    const netflixDeep = film('n1', {
+      streamingOptions: [{ platform: 'Netflix', type: 'SUBSCRIPTION', is_free: false, price: null, url: 'https://netflix.com/title/1' }],
+    });
+    const raiSearch = film('r1', null, {
+      netflix: 'https://www.netflix.com/search?q=x',
+      primeVideo: 'https://www.primevideo.com/search?phrase=x',
+      raiPlay: 'https://www.raiplay.it/ricerca.html?q=x',
+      now: '',
+      disneyPlus: '',
+      appleTv: '',
+    });
+    const nowhere = film('z', { streamingOptions: [] });
+    const pool = [netflixDeep, raiSearch, nowhere];
+    expect(filterFilms(pool, { genres: [], watched: 'all', availability: 'all', platform: 'netflix' }).map((f) => f.filmKey)).toEqual(['n1', 'r1']);
+    expect(filterFilms(pool, { genres: [], watched: 'all', availability: 'all', platform: 'raiPlay' }).map((f) => f.filmKey)).toEqual(['r1']);
+    expect(filterFilms(pool, { genres: [], watched: 'all', availability: 'all', platform: 'primeVideo' }).map((f) => f.filmKey)).toEqual(['r1']);
+  });
+
   it('checked-empty streamingOptions ([]) has no availability signal', () => {
     expect(filterFilms(API_FILMS, { genres: [], watched: 'all', availability: 'free' }).map((f) => f.filmKey)).not.toContain('g');
     expect(filterFilms(API_FILMS, { genres: [], watched: 'all', availability: 'notfree' }).map((f) => f.filmKey)).not.toContain('g');
@@ -77,6 +100,38 @@ describe('filterFilms', () => {
 describe('collectGenres', () => {
   it('unique sorted genre list', () => {
     expect(collectGenres(FILMS)).toEqual(['Fantascienza', 'Thriller']);
+  });
+});
+
+describe('platformPlayUrl / filmOnPlatform', () => {
+  it('prefers streamingOptions deep link over search URL', () => {
+    const f = film(
+      'heat',
+      { streamingOptions: [{ platform: 'Netflix', type: 'SUBSCRIPTION', is_free: false, price: null, url: 'https://netflix.com/title/42' }] },
+      {
+        netflix: 'https://www.netflix.com/search?q=Heat',
+        primeVideo: '',
+        raiPlay: '',
+        now: '',
+        disneyPlus: '',
+        appleTv: '',
+      },
+    );
+    expect(platformPlayUrl(f, 'netflix')).toBe('https://netflix.com/title/42');
+    expect(filmOnPlatform(f, 'netflix')).toBe(true);
+    expect(filmOnPlatform(f, 'raiPlay')).toBe(false);
+  });
+
+  it('falls back to streamingUrls search link when no API option', () => {
+    const f = film('solo', null, {
+      netflix: '',
+      primeVideo: 'https://www.primevideo.com/search?phrase=Solo',
+      raiPlay: '',
+      now: '',
+      disneyPlus: '',
+      appleTv: '',
+    });
+    expect(platformPlayUrl(f, 'primeVideo')).toBe('https://www.primevideo.com/search?phrase=Solo');
   });
 });
 

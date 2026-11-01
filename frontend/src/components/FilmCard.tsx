@@ -8,6 +8,8 @@ import type { FilmMetaPatchBody } from '../services/api';
 
 interface FilmCardProps {
   film: AggregatedFilm;
+  /** When set (platform shelf active), the title becomes a link to this play URL. */
+  primaryPlayUrl?: string | null;
   onPatch: (patch: FilmMetaPatchBody) => void;
   onRefreshStreaming: () => Promise<void>;
   onArchiveLookup: () => Promise<void>;
@@ -41,53 +43,8 @@ export function streamTypeLabel(type: StreamingPlatformOption['type'], t: Transl
   return t.filmsStreamBuy; // PURCHASE
 }
 
-// Explicit per-service alias lists (not the short display labels in SERVICES,
-// which are too ambiguous to substring-match against real API platform names:
-// 'D+' never appears in "Disney Plus"/"Disney+", and 'TV' false-positives on
-// "Rakuten TV" / "ITVX"). Matching a display label is a UI concern; matching a
-// real-world platform name is a data concern, and they diverge.
-const SERVICE_ALIASES: Record<keyof StreamingUrls, string[]> = {
-  netflix: ['netflix'],
-  primeVideo: ['prime video', 'amazon prime', 'prime', 'amazon'],
-  raiPlay: ['raiplay', 'rai play'],
-  now: ['now tv', 'now'],
-  disneyPlus: ['disney plus', 'disney+', 'disney'],
-  appleTv: ['apple tv', 'appletv', 'itunes'],
-};
-
-// Flattened (service, alias) pairs, longest alias first, so a more specific
-// alias ("now tv", "amazon prime") is checked before a shorter one that could
-// otherwise over-match ("now", "prime") on an unrelated platform name.
-const ALIAS_ENTRIES: Array<{ key: keyof StreamingUrls; alias: string }> = (
-  Object.entries(SERVICE_ALIASES) as Array<[keyof StreamingUrls, string[]]>
-)
-  .flatMap(([key, aliases]) => aliases.map((alias) => ({ key, alias })))
-  .sort((a, b) => b.alias.length - a.alias.length);
-
-// True when `alias` occurs in `lower` as a whole word/phrase — not merely as
-// a substring. Plain `.includes()` over-matches badly: 'now' inside
-// "Snowpiercer TV" ('s-now-piercer'), or 'prime' inside "Primetime Channel".
-// We can't use `\b` here because '+' (as in "disney+"/"paramount+") is a
-// non-word character, so `\bdisney\+\b` doesn't behave predictably around
-// it; an explicit non-alphanumeric-or-edge boundary class handles both plain
-// words and aliases ending in '+' the same way.
-function aliasMatches(lower: string, alias: string): boolean {
-  const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`).test(lower);
-}
-
-/**
- * Best-effort match between an API platform name (e.g. "Amazon Prime Video")
- * and one of our known manual-dot services, so the existing manual override
- * dot can still be placed next to the right API badge. Platforms that don't
- * resemble any known service (e.g. "Rakuten TV", "Paramount+", "Snowpiercer
- * TV", "Primetime Channel") return `undefined` — by design, they render a
- * badge with no adjacent dot.
- */
-export function matchService(platform: string): keyof StreamingUrls | undefined {
-  const lower = platform.toLowerCase();
-  return ALIAS_ENTRIES.find(({ alias }) => aliasMatches(lower, alias))?.key;
-}
+import { matchService } from '../utils/streamingMatch';
+export { matchService };
 
 /**
  * Service keys that carry a manual availability mark but have no matching
@@ -107,7 +64,14 @@ export function manualOnlyServices(
 }
 
 /** One deduplicated film row: poster, TMDb metadata, ratings and streaming availability. */
-export function FilmCard({ film, onPatch, onRefreshStreaming, onArchiveLookup, onArchiveDownload }: FilmCardProps) {
+export function FilmCard({
+  film,
+  primaryPlayUrl = null,
+  onPatch,
+  onRefreshStreaming,
+  onArchiveLookup,
+  onArchiveDownload,
+}: FilmCardProps) {
   const { t } = useLanguage();
   const meta = film.meta;
   // Slider position while dragging; null when idle (shows the stored score).
@@ -184,7 +148,19 @@ export function FilmCard({ film, onPatch, onRefreshStreaming, onArchiveLookup, o
       )}
       <div className="list-item-content">
         <div className="list-item-title">
-          {film.title}
+          {primaryPlayUrl ? (
+            <a
+              href={primaryPlayUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="film-title-play-link"
+              title={t.filmsOpenOnPlatform}
+            >
+              {film.title}
+            </a>
+          ) : (
+            film.title
+          )}
           <button
             type="button"
             className={`watched-toggle ${meta?.watched ? 'active' : ''}`}

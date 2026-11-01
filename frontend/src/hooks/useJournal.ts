@@ -3,7 +3,10 @@ import { listEntries, openEntryStream } from '../services/api';
 import type { Entry, JournalStats } from '../types';
 
 const DEFAULT_PAGE_SIZE = 20;
-const FETCH_LIMIT = 1000;
+/** Home journal feed: only the latest N entries (keeps first paint light). */
+export const JOURNAL_FETCH_LIMIT = 50;
+/** Full-catalog pages (Entries / Header stats helpers) may load more. */
+const ALL_ENTRIES_FETCH_LIMIT = 1000;
 
 function paginate<T>(items: T[], page: number, pageSize: number): T[] {
   const start = (page - 1) * pageSize;
@@ -27,7 +30,7 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter)
 
   const reload = useCallback(async () => {
     try {
-      const data = await listEntries(FETCH_LIMIT);
+      const data = await listEntries(JOURNAL_FETCH_LIMIT);
       if (!mountedRef.current) return;
       setAllEntries(data);
       setLoading(false);
@@ -130,6 +133,7 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter)
     totalSongs: allEntries.reduce((acc, e) => acc + e.results.songs.length, 0),
     totalFilms: allEntries.reduce((acc, e) => acc + e.results.films.length, 0),
     totalNotes: allEntries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0),
+    totalSoftware: allEntries.reduce((acc, e) => acc + (e.results.software?.length || 0), 0),
   };
 
   const nextPage = useCallback(() => {
@@ -167,7 +171,7 @@ export function useAllEntries() {
     let mounted = true;
     const load = async (): Promise<void> => {
       try {
-        const data = await listEntries(FETCH_LIMIT);
+        const data = await listEntries(ALL_ENTRIES_FETCH_LIMIT);
         if (!mounted) return;
         setEntries(data);
       } finally {

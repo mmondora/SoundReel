@@ -68,6 +68,8 @@ Compiti:
 
 - NOTE: Luoghi (place), eventi (event), brand (brand), libri (book), prodotti (product), citazioni testuali (quote), persone non-artiste (person), altro (other).
 
+- SOFTWARE: Repository GitHub/GitLab, tool/prodotti software e articoli tecnici citati. Tag: repo | product | article | other. Includi URL ufficiale se presente nel testo; non inventare URL.
+
 - LINK: URL presenti nei testi (caption, OCR, transcript).
 
 - TAG: Hashtag (#x) e menzioni (@x) dalla caption.
@@ -85,6 +87,7 @@ Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
   "songs": [ { "title": "...", "artist": "...", "album": "... o null" } ],
   "films": [ { "title": "...", "director": "... o null", "year": "... o null" } ],
   "notes": [ { "text": "...", "category": "place|event|brand|book|product|quote|person|other" } ],
+  "software": [ { "title": "...", "url": "https://... o null", "tag": "repo|product|article|other", "description": "... o null" } ],
   "links": [ { "url": "https://...", "label": "... o null" } ],
   "tags": ["#tag", "@utente"],
   "summary": "...",
@@ -93,7 +96,7 @@ Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
   "overlayText": "... o null"
 }
 
-Se non trovi nulla, rispondi: { "songs": [], "films": [], "notes": [], "links": [], "tags": [], "summary": null, "transcription": null, "visualContext": null, "overlayText": null }`,
+Se non trovi nulla, rispondi: { "songs": [], "films": [], "notes": [], "software": [], "links": [], "tags": [], "summary": null, "transcription": null, "visualContext": null, "overlayText": null }`,
     variables: [
       'caption', 'hasCaption',
       'musicInfo', 'hasMusicInfo',
@@ -215,6 +218,9 @@ Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
   "notes": [
     { "text": "descrizione", "category": "place|event|brand|book|product|quote|person|other" }
   ],
+  "software": [
+    { "title": "nome", "url": "https://... o null", "tag": "repo|product|article|other", "description": "... o null" }
+  ],
   "links": [
     { "url": "https://...", "label": "descrizione del link o null" }
   ],
@@ -299,8 +305,9 @@ Compiti:
    - "category": una di "referenced" | "sponsor" | "navigation" | "related" | "social" | "other"
 3) TAGS: Hashtag o keyword tematiche (max 8).
 4) NOTES: Luoghi, eventi, brand, libri, prodotti, citazioni, persone menzionati.
-5) SONGS: Solo se la pagina cita esplicitamente canzoni (titolo + artista).
-6) FILMS: Solo se la pagina cita film/serie (titolo + regista? + anno?).
+5) SOFTWARE: Repository, tool/prodotti software, articoli tecnici. Tag: repo|product|article|other. URL solo se presente in rawLinks o nel testo.
+6) SONGS: Solo se la pagina cita esplicitamente canzoni (titolo + artista).
+7) FILMS: Solo se la pagina cita film/serie (titolo + regista? + anno?).
 
 Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
 {
@@ -308,6 +315,7 @@ Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
   "links": [ { "url": "https://...", "label": "...", "category": "referenced" } ],
   "tags": ["..."],
   "notes": [ { "text": "...", "category": "place|event|brand|book|product|quote|person|other" } ],
+  "software": [ { "title": "...", "url": "https://... o null", "tag": "repo|product|article|other", "description": "... o null" } ],
   "songs": [ { "title": "...", "artist": "...", "album": "... o null" } ],
   "films": [ { "title": "...", "director": "... o null", "year": "... o null" } ]
 }

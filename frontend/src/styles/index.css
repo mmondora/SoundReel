@@ -953,6 +953,13 @@ body {
   font-weight: 400;
 }
 
+.platform-shelf-bar {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.75rem 0;
+}
+
 .filter-divider {
   width: 1px;
   height: 1rem;
@@ -3176,6 +3183,15 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.film-title-play-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.film-title-play-link:hover {
+  text-decoration: underline;
 }
 
 .list-item-subtitle {

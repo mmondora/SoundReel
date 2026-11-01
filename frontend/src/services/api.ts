@@ -1,6 +1,6 @@
 import type {
   Entry, SearchResponse, EnrichmentResult, AggregatedFilm, FilmMetaRecord, AvailabilityStatus,
-  AggregatedSong, SongMetaRecord, SongRating, AggregatedNote,
+  AggregatedSong, SongMetaRecord, SongRating, AggregatedNote, AggregatedSoftware,
 } from '../types';
 
 // When served from the same origin as the backend, relative paths work.
@@ -426,6 +426,12 @@ export async function fetchSongs(): Promise<AggregatedSong[]> {
   const res = await fetch(url('/api/songs'));
   const data = await json<{ songs: AggregatedSong[] }>(res);
   return data.songs;
+}
+
+export async function fetchSoftware(): Promise<AggregatedSoftware[]> {
+  const res = await fetch(url('/api/software'));
+  const data = await json<{ software: AggregatedSoftware[] }>(res);
+  return data.software;
 }
 
 /**

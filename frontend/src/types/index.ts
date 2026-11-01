@@ -164,6 +164,29 @@ export interface Note {
   category: NoteCategory;
 }
 
+export type SoftwareTag = 'repo' | 'product' | 'article' | 'other';
+
+export interface SoftwareItem {
+  title: string;
+  url: string | null;
+  tag: SoftwareTag;
+  description?: string | null;
+}
+
+export interface SoftwareMention {
+  entryId: string;
+  createdAt: string;
+}
+
+export interface AggregatedSoftware {
+  softwareKey: string;
+  title: string;
+  url: string | null;
+  tag: SoftwareTag;
+  description: string | null;
+  mentions: SoftwareMention[];
+}
+
 export type ExtractedLinkCategory =
   | 'referenced'
   | 'sponsor'
@@ -234,6 +257,7 @@ export interface EntryResults {
   songs: Song[];
   films: Film[];
   notes: Note[];
+  software?: SoftwareItem[];
   links: ExtractedLink[];
   tags: string[];
   summary?: string | null;
@@ -282,6 +306,7 @@ export interface JournalStats {
   totalSongs: number;
   totalFilms: number;
   totalNotes: number;
+  totalSoftware?: number;
 }
 
 export interface SpotifyConfig {

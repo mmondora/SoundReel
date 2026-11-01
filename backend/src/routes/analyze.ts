@@ -331,7 +331,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         thumbnailUrl: null,
         mediaUrl: null,
         status: 'processing',
-        results: { songs: [], films: [], notes: [], links: [], tags: [], summary: null },
+        results: { songs: [], films: [], notes: [], software: [], links: [], tags: [], summary: null },
         actionLog: [createActionLog('url_received', { channel, user, platform })],
       };
 
@@ -1643,6 +1643,7 @@ function emptyMedia(): MediaAiAnalysisResult {
     songs: [],
     films: [],
     notes: [],
+    software: [],
     links: [],
     tags: [],
     summary: null,

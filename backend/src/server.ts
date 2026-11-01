@@ -19,6 +19,7 @@ import { registerMusicListRoute } from './routes/musicList';
 import { registerFilmsRoutes } from './routes/films';
 import { registerSongsRoutes } from './routes/songs';
 import { registerNotesRoutes } from './routes/notes';
+import { registerSoftwareRoutes } from './routes/software';
 import { requeueStuckJobs } from './utils/jobQueue';
 import { startJobQueueWorker } from './services/jobQueueWorker';
 import { runMigrations } from './db/runMigrations';
@@ -51,6 +52,7 @@ async function bootstrap(): Promise<void> {
   registerFilmsRoutes(app);
   registerSongsRoutes(app);
   registerNotesRoutes(app);
+  registerSoftwareRoutes(app);
 
   // Serve static frontend (after routes so /api/* wins)
   const publicDir = path.resolve(__dirname, 'public');

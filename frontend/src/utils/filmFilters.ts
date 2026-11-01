@@ -1,7 +1,16 @@
-import type { AggregatedFilm, FilmMetaRecord } from '../types';
+import type { AggregatedFilm, FilmMetaRecord, StreamingUrls } from '../types';
+import { matchService } from './streamingMatch';
 
 export type WatchedFilter = 'all' | 'watched' | 'unwatched';
 export type AvailabilityFilter = 'all' | 'free' | 'notfree';
+/** SoundReel "shelf" lists — platforms the user wants to open and play. */
+export type PlatformShelfFilter = 'all' | 'netflix' | 'primeVideo' | 'raiPlay';
+
+export const PLATFORM_SHELF_KEYS: Array<Exclude<PlatformShelfFilter, 'all'>> = [
+  'netflix',
+  'primeVideo',
+  'raiPlay',
+];
 
 export interface FilmFilterOptions {
   genres: string[];
@@ -9,6 +18,8 @@ export interface FilmFilterOptions {
   availability: AvailabilityFilter;
   /** Case-insensitive containment search over title, director, cast, genres. Empty/omitted = no filtering. */
   text?: string;
+  /** When set (not 'all'), keep films available / linked on that platform. */
+  platform?: PlatformShelfFilter;
 }
 
 /**
@@ -39,8 +50,34 @@ function availabilitySignal(meta: FilmMetaRecord | null | undefined): { free: bo
   return { free: false, notfree: false };
 }
 
+/**
+ * Best play/open URL for a platform shelf: prefer API deep link from
+ * streamingOptions, else fall back to the search streamingUrls entry.
+ */
+export function platformPlayUrl(
+  film: AggregatedFilm,
+  platform: Exclude<PlatformShelfFilter, 'all'>
+): string | null {
+  const options = film.meta?.streamingOptions;
+  if (options && options.length > 0) {
+    const hit = options.find((o) => matchService(o.platform) === platform && !!o.url);
+    if (hit?.url) return hit.url;
+  }
+  const searchUrl = film.streamingUrls?.[platform as keyof StreamingUrls];
+  return searchUrl || null;
+}
+
+/** True when the film has a usable link (deep or search) for the shelf platform. */
+export function filmOnPlatform(
+  film: AggregatedFilm,
+  platform: Exclude<PlatformShelfFilter, 'all'>
+): boolean {
+  return platformPlayUrl(film, platform) != null;
+}
+
 export function filterFilms(films: AggregatedFilm[], opts: FilmFilterOptions): AggregatedFilm[] {
   const query = opts.text?.trim().toLowerCase() ?? '';
+  const platform = opts.platform ?? 'all';
   return films.filter((film) => {
     if (opts.genres.length > 0) {
       const genres = film.meta?.genres ?? [];
@@ -56,6 +93,7 @@ export function filterFilms(films: AggregatedFilm[], opts: FilmFilterOptions): A
       if (opts.availability === 'free' && !free) return false;
       if (opts.availability === 'notfree' && !notfree) return false;
     }
+    if (platform !== 'all' && !filmOnPlatform(film, platform)) return false;
     if (query) {
       const haystack = [
         film.title,

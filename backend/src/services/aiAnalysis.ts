@@ -102,6 +102,7 @@ const EMPTY_RESULT: AiAnalysisResult = {
   songs: [],
   films: [],
   notes: [],
+  software: [],
   links: [],
   tags: [],
   summary: null,
@@ -276,6 +277,29 @@ export function parseAnalysisResponse(
       return true;
     });
 
+  const softwareVisti = new Set<string>();
+  const software = ((parsed as { software?: unknown }).software as Array<{
+    title?: string;
+    url?: string | null;
+    tag?: string;
+    description?: string | null;
+  }> | undefined || [])
+    .filter((s) => isRealValue(s?.title))
+    .map((s) => ({
+      title: (s.title ?? '').trim(),
+      url: isRealValue(s.url) ? String(s.url).trim() : null,
+      tag: (['repo', 'product', 'article', 'other'].includes(String(s.tag ?? '').toLowerCase())
+        ? String(s.tag).toLowerCase()
+        : 'other') as 'repo' | 'product' | 'article' | 'other',
+      description: isRealValue(s.description) ? String(s.description) : null,
+    }))
+    .filter((s) => {
+      const chiave = `${s.tag}::${(s.url ?? s.title).toLowerCase()}`;
+      if (softwareVisti.has(chiave)) return false;
+      softwareVisti.add(chiave);
+      return true;
+    });
+
   return {
     songs: songs.map((s) => ({
       ...s,
@@ -288,6 +312,7 @@ export function parseAnalysisResponse(
       year: isRealValue(f.year) ? f.year : null,
     })),
     notes,
+    software,
     links: verifiedLinks,
     tags: (parsed.tags || []).filter(isRealValue),
     summary: isRealValue(parsed.summary) ? parsed.summary : null,
