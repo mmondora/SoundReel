@@ -228,6 +228,12 @@ export interface Translations {
 
   // Recent section
   recentEntries: string;
+  /** Inbox First: ghost control that reveals the chip filter bar. */
+  filterToggle: string;
+  /** Inbox First: link under the recent slice to the full journal. */
+  seeAllJournal: string;
+  /** Inbox First: empty inspector prompt under the main hint. */
+  inboxEmptyHint: string;
 
   // Pagination & List Pages
   previousPage: string;
@@ -574,7 +580,10 @@ export const translations: Record<Language, Translations> = {
     deleted: 'Eliminate {count} entry',
 
     // Recent section
-    recentEntries: 'Recenti',
+    recentEntries: 'Oggi',
+    filterToggle: 'Filtra',
+    seeAllJournal: 'Vedi tutto il journal →',
+    inboxEmptyHint: 'Incolla un link sopra, oppure apri una card recente.',
 
     // Pagination & List Pages
     previousPage: '← Precedente',
@@ -916,7 +925,10 @@ export const translations: Record<Language, Translations> = {
     deleted: 'Deleted {count} entries',
 
     // Recent section
-    recentEntries: 'Recent',
+    recentEntries: 'Today',
+    filterToggle: 'Filter',
+    seeAllJournal: 'See full journal →',
+    inboxEmptyHint: 'Paste a link above, or open a recent card.',
 
     // Pagination & List Pages
     previousPage: '← Previous',

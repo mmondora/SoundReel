@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { UrlInput } from '../components/UrlInput';
 import { CompactCard } from '../components/CompactCard';
 import { EntryInspector } from '../components/EntryInspector';
-import { Pagination } from '../components/Pagination';
 import { useJournal } from '../hooks/useJournal';
 import { useSearch } from '../hooks/useSearch';
 import { useAnalyze } from '../hooks/useAnalyze';
@@ -58,44 +57,7 @@ function parseFirestoreDate(timestamp: unknown): Date | null {
   return null;
 }
 
-function getMonthKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}`;
-}
-
-interface DateGroup {
-  key: string;
-  label: string;
-  entries: Entry[];
-}
-
 const RECENT_COUNT = 5;
-
-function groupByMonth(entries: Entry[], lang: string): DateGroup[] {
-  const groups: DateGroup[] = [];
-  let lastMonthKey = '';
-  const locale = lang === 'it' ? 'it-IT' : 'en-US';
-
-  for (const entry of entries) {
-    const date = parseFirestoreDate(entry.createdAt);
-    if (!date) {
-      if (groups.length === 0) groups.push({ key: 'unknown', label: '', entries: [] });
-      groups[groups.length - 1].entries.push(entry);
-      continue;
-    }
-
-    const monthKey = getMonthKey(date);
-
-    if (monthKey !== lastMonthKey) {
-      const label = date.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
-      groups.push({ key: monthKey, label, entries: [] });
-      lastMonthKey = monthKey;
-    }
-
-    groups[groups.length - 1].entries.push(entry);
-  }
-
-  return groups;
-}
 
 function truncate(s: string | null, max: number): string {
   if (!s) return '';
@@ -159,17 +121,18 @@ export function Home() {
 
   const {
     entries, stats, loading: journalLoading,
-    currentPage, totalPages, nextPage, prevPage,
     availablePlatforms, availableChannels, availableUsers, availableCategories, availableVerdicts, filteredCount,
   } = useJournal(20, {
     platform: filterPlatform, channel: filterChannel, user: filterUser,
     category: filterCategory, verdict: filterVerdict,
   });
   const { analyze, loading: analyzeLoading, error, successStatus, clearError } = useAnalyze();
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
   const [searchParams] = useSearchParams();
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [mobileInspector, setMobileInspector] = useState(false);
+  /** Inbox First A: chip bar stays collapsed until the user opens Filtra. */
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const q = searchParams.get('q') ?? '';
   const isSearchMode = q.trim().length >= 2;
@@ -284,17 +247,21 @@ export function Home() {
   }, []);
 
   const recentEntries = useMemo(() => entries.slice(0, RECENT_COUNT), [entries]);
-  const archiveEntries = useMemo(() => entries.slice(RECENT_COUNT), [entries]);
-  const archiveGroups = useMemo(
-    () => groupByMonth(archiveEntries, language),
-    [archiveEntries, language]
-  );
+  const listEntries = hasFilter ? entries : recentEntries;
+  const showFilterBar =
+    !isSearchMode &&
+    (availablePlatforms.length > 1 ||
+      availableChannels.length > 1 ||
+      availableCategories.length > 0 ||
+      availableVerdicts.length > 0 ||
+      availableUsers.length > 1);
+  const filtersVisible = filtersOpen || hasFilter;
 
   return (
-    <div className="home">
+    <div className="home home--inbox">
       <Header stats={stats} />
 
-      <div className="url-input-bar">
+      <div className="url-input-bar inbox-input-bar">
         <UrlInput
           onSubmit={handleSubmit}
           loading={analyzeLoading}
@@ -303,87 +270,97 @@ export function Home() {
         />
       </div>
 
-      {!isSearchMode && (availablePlatforms.length > 1 || availableChannels.length > 1 || availableCategories.length > 0 || availableVerdicts.length > 0) && (
-        <div className="journal-filter-bar">
+      {showFilterBar && (
+        <div className="inbox-filter-row">
           <button
-            className={`filter-chip ${!hasFilter ? 'active' : ''}`}
-            onClick={clearFilters}
+            type="button"
+            className={`inbox-filter-toggle ${filtersVisible ? 'open' : ''} ${hasFilter ? 'active' : ''}`}
+            onClick={() => setFiltersOpen((v) => !v)}
+            aria-expanded={filtersVisible}
           >
-            Tutti
+            {t.filterToggle}
+            {hasFilter ? ` · ${filteredCount}` : ''}
           </button>
-          {availablePlatforms.map(({ platform, count }) => (
-            <button
-              key={platform}
-              className={`filter-chip ${filterPlatform === platform ? 'active' : ''}`}
-              onClick={() => togglePlatform(platform)}
-              title={platform}
-            >
-              {PLATFORM_LABEL[platform] ?? platform}
-              <span className="filter-chip-count"> {count}</span>
-            </button>
-          ))}
-          {availableChannels.length > 1 && (
-            <>
-              <span className="filter-divider" />
-              {availableChannels.map(({ channel, count }) => (
+          {filtersVisible && (
+            <div className="journal-filter-bar inbox-filter-bar">
+              <button
+                className={`filter-chip ${!hasFilter ? 'active' : ''}`}
+                onClick={clearFilters}
+              >
+                Tutti
+              </button>
+              {availablePlatforms.map(({ platform, count }) => (
                 <button
-                  key={channel}
-                  className={`filter-chip ${filterChannel === channel ? 'active' : ''}`}
-                  onClick={() => toggleChannel(channel)}
+                  key={platform}
+                  className={`filter-chip ${filterPlatform === platform ? 'active' : ''}`}
+                  onClick={() => togglePlatform(platform)}
+                  title={platform}
                 >
-                  {CHANNEL_LABEL[channel] ?? channel}
+                  {PLATFORM_LABEL[platform] ?? platform}
                   <span className="filter-chip-count"> {count}</span>
                 </button>
               ))}
-            </>
-          )}
-          {availableUsers.length > 1 && (
-            <>
-              <span className="filter-divider" />
-              {availableUsers.map(({ user, count }) => (
-                <button
-                  key={user}
-                  className={`filter-chip ${filterUser === user ? 'active' : ''}`}
-                  onClick={() => toggleUser(user)}
-                >
-                  {user}
-                  <span className="filter-chip-count"> {count}</span>
-                </button>
-              ))}
-            </>
-          )}
-          {availableCategories.length > 0 && (
-            <>
-              <span className="filter-divider" />
-              {availableCategories.map(({ category, count }) => (
-                <button
-                  key={category}
-                  className={`filter-chip ${filterCategory === category ? 'active' : ''}`}
-                  onClick={() => toggleCategory(category)}
-                >
-                  {CATEGORY_ICON[category as EnrichmentCategory] ?? ''} {CATEGORY_LABEL[category as EnrichmentCategory] ?? category}
-                  <span className="filter-chip-count"> {count}</span>
-                </button>
-              ))}
-            </>
-          )}
-          {availableVerdicts.length > 0 && (
-            <>
-              <span className="filter-divider" />
-              {availableVerdicts.map(({ verdict, count }) => (
-                <button
-                  key={verdict}
-                  className={`filter-chip ${filterVerdict === verdict ? 'active' : ''}`}
-                  onClick={() => toggleVerdict(verdict)}
-                >
-                  {VERDICT_ICON[verdict as EnrichmentVerdictLabel]} {verdict.toUpperCase()}
-                  <span className="filter-chip-count"> {count}</span>
-                </button>
-              ))}
-            </>
-          )}
-          {hasFilter && (
-            <span className="filter-result-count">{filteredCount}</span>
+              {availableChannels.length > 1 && (
+                <>
+                  <span className="filter-divider" />
+                  {availableChannels.map(({ channel, count }) => (
+                    <button
+                      key={channel}
+                      className={`filter-chip ${filterChannel === channel ? 'active' : ''}`}
+                      onClick={() => toggleChannel(channel)}
+                    >
+                      {CHANNEL_LABEL[channel] ?? channel}
+                      <span className="filter-chip-count"> {count}</span>
+                    </button>
+                  ))}
+                </>
+              )}
+              {availableUsers.length > 1 && (
+                <>
+                  <span className="filter-divider" />
+                  {availableUsers.map(({ user, count }) => (
+                    <button
+                      key={user}
+                      className={`filter-chip ${filterUser === user ? 'active' : ''}`}
+                      onClick={() => toggleUser(user)}
+                    >
+                      {user}
+                      <span className="filter-chip-count"> {count}</span>
+                    </button>
+                  ))}
+                </>
+              )}
+              {availableCategories.length > 0 && (
+                <>
+                  <span className="filter-divider" />
+                  {availableCategories.map(({ category, count }) => (
+                    <button
+                      key={category}
+                      className={`filter-chip ${filterCategory === category ? 'active' : ''}`}
+                      onClick={() => toggleCategory(category)}
+                    >
+                      {CATEGORY_ICON[category as EnrichmentCategory] ?? ''} {CATEGORY_LABEL[category as EnrichmentCategory] ?? category}
+                      <span className="filter-chip-count"> {count}</span>
+                    </button>
+                  ))}
+                </>
+              )}
+              {availableVerdicts.length > 0 && (
+                <>
+                  <span className="filter-divider" />
+                  {availableVerdicts.map(({ verdict, count }) => (
+                    <button
+                      key={verdict}
+                      className={`filter-chip ${filterVerdict === verdict ? 'active' : ''}`}
+                      onClick={() => toggleVerdict(verdict)}
+                    >
+                      {VERDICT_ICON[verdict as EnrichmentVerdictLabel]} {verdict.toUpperCase()}
+                      <span className="filter-chip-count"> {count}</span>
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -429,42 +406,22 @@ export function Home() {
               <p>{t.noEntriesHint}</p>
             </div>
           ) : (
-            <>
-              <div className="journal-list">
-                {recentEntries.length > 0 && (
-                  <div>
-                    <div className="date-group-header">{t.recentEntries}</div>
-                    {recentEntries.map(entry => (
-                      <CompactCard
-                        key={entry.id}
-                        entry={entry}
-                        selected={entry.id === selectedEntryId}
-                        onSelect={handleSelect}
-                      />
-                    ))}
-                  </div>
-                )}
-                {archiveGroups.map(group => (
-                  <div key={group.key}>
-                    <div className="date-group-header">{group.label}</div>
-                    {group.entries.map(entry => (
-                      <CompactCard
-                        key={entry.id}
-                        entry={entry}
-                        selected={entry.id === selectedEntryId}
-                        onSelect={handleSelect}
-                      />
-                    ))}
-                  </div>
-                ))}
-              </div>
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPrev={prevPage}
-                onNext={nextPage}
-              />
-            </>
+            <div className="journal-list inbox-list">
+              <div className="date-group-header">{hasFilter ? t.filtersButton : t.recentEntries}</div>
+              {listEntries.map((entry) => (
+                <CompactCard
+                  key={entry.id}
+                  entry={entry}
+                  selected={entry.id === selectedEntryId}
+                  onSelect={handleSelect}
+                />
+              ))}
+              {!hasFilter && (
+                <Link to="/entries" className="inbox-see-all">
+                  {t.seeAllJournal}
+                </Link>
+              )}
+            </div>
           )}
         </div>
 
@@ -478,7 +435,7 @@ export function Home() {
             <div className="inspector-placeholder">
               <div className="inspector-placeholder-icon">📋</div>
               <p>{t.selectEntry}</p>
-              <p className="inspector-placeholder-hint">{t.selectEntryHint}</p>
+              <p className="inspector-placeholder-hint">{t.inboxEmptyHint}</p>
             </div>
           )}
         </div>
