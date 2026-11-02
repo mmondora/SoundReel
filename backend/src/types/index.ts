@@ -59,12 +59,23 @@ export interface SoftwareMention {
   createdAt: string;
 }
 
+export interface SoftwareMetaRecord {
+  softwareKey: string;
+  description: string | null;
+  /** Repo creation date from the forge API (GitHub/GitLab/Codeberg created_at). */
+  publishedAt: string | null;
+  host: string | null;
+  enrichedAt: string | null;
+}
+
 export interface AggregatedSoftware {
   softwareKey: string;
   title: string;
   url: string | null;
   tag: SoftwareTag;
   description: string | null;
+  /** Repo creation date when known from forge enrichment. */
+  publishedAt?: string | null;
   mentions: SoftwareMention[];
 }
 

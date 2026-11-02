@@ -184,6 +184,8 @@ export interface AggregatedSoftware {
   url: string | null;
   tag: SoftwareTag;
   description: string | null;
+  /** Repo creation date when known from forge enrichment. */
+  publishedAt?: string | null;
   mentions: SoftwareMention[];
 }
 

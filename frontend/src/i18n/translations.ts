@@ -245,6 +245,7 @@ export interface Translations {
   softwareTagArticle: string;
   softwareTagOther: string;
   softwareOpenLink: string;
+  softwarePublished: string;
   sortByTitle: string;
   viewReel: string;
   sortRecent: string;
@@ -591,6 +592,7 @@ export const translations: Record<Language, Translations> = {
     softwareTagArticle: 'Articolo',
     softwareTagOther: 'Altro',
     softwareOpenLink: 'Apri',
+    softwarePublished: 'Pubblicato',
     sortByTitle: 'Titolo',
     viewReel: 'Vedi reel →',
     sortRecent: 'Recenti',
@@ -932,6 +934,7 @@ export const translations: Record<Language, Translations> = {
     softwareTagArticle: 'Article',
     softwareTagOther: 'Other',
     softwareOpenLink: 'Open',
+    softwarePublished: 'Published',
     sortByTitle: 'Title',
     viewReel: 'View reel →',
     sortRecent: 'Recent',

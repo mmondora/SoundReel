@@ -29,8 +29,15 @@ function tagLabel(tag: SoftwareTag, t: Translations): string {
   return map[tag];
 }
 
+function formatPublishedAt(iso: string, locale: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 function SoftwareRow({ item }: { item: AggregatedSoftware }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const locale = language === 'it' ? 'it-IT' : 'en-US';
   return (
     <div className="list-item-row">
       <div className="list-item-icon">{TAG_ICONS[item.tag]}</div>
@@ -56,6 +63,11 @@ function SoftwareRow({ item }: { item: AggregatedSoftware }) {
           <span className="note-category-badge">
             {TAG_ICONS[item.tag]} {tagLabel(item.tag, t)}
           </span>
+          {item.publishedAt && (
+            <span className="list-item-muted" title={item.publishedAt}>
+              {t.softwarePublished} {formatPublishedAt(item.publishedAt, locale)}
+            </span>
+          )}
           {item.url && (
             <a
               href={item.url}
@@ -89,7 +101,23 @@ export function SoftwarePage() {
   const [sortMode, setSortMode] = useState<SoftwareSortMode>('date');
 
   useEffect(() => {
-    fetchSoftware().then(setItems).catch(() => setItems([])).finally(() => setLoading(false));
+    let cancelled = false;
+    fetchSoftware()
+      .then((list) => {
+        if (cancelled) return;
+        setItems(list);
+        // Forge enrichment runs in the background on the server; refresh once
+        // so description + publishedAt appear without a manual reload.
+        const needsMeta = list.some((i) => i.tag === 'repo' && i.url && !i.publishedAt);
+        if (!needsMeta) return;
+        window.setTimeout(() => {
+          if (cancelled) return;
+          fetchSoftware().then((again) => { if (!cancelled) setItems(again); }).catch(() => undefined);
+        }, 4000);
+      })
+      .catch(() => { if (!cancelled) setItems([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const stats: JournalStats = {

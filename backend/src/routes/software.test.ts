@@ -89,4 +89,23 @@ describe('aggregateSoftware', () => {
     expect(item.mentions).toHaveLength(2);
     expect(item.title).toBe('foo/bar');
   });
+
+  it('overlays forge meta description and publishedAt onto aggregated repos', () => {
+    const e = entry('1', {
+      software: [{ title: 'foo/bar', url: 'https://github.com/foo/bar', tag: 'repo', description: 'ai guess' }],
+    });
+    const key = 'repo::url::https://github.com/foo/bar';
+    const meta = new Map([
+      [key, {
+        softwareKey: key,
+        description: 'Official repo description',
+        publishedAt: '2020-01-15T00:00:00.000Z',
+        host: 'github',
+        enrichedAt: '2026-11-02T00:00:00.000Z',
+      }],
+    ]);
+    const item = [...aggregateSoftware([e], meta).values()][0];
+    expect(item.description).toBe('Official repo description');
+    expect(item.publishedAt).toBe('2020-01-15T00:00:00.000Z');
+  });
 });
