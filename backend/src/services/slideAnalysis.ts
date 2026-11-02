@@ -144,13 +144,66 @@ export async function analyzeSlides(
     slide.links = parseLinks(raw.links);
   }
 
+  // Small local models often mirror OCR language despite prompt rules
+  // ("La slide presenta un texto extracto…"). A short dedicated translate
+  // pass is cheap and much more reliable than hoping the first call obeys.
+  await ensureSummariesInLanguage(slides, outputLanguage);
+
   logInfo('Analisi slide completata', {
     slides: slides.length,
     withOcr: slides.filter((s) => s.ocrText).length,
     withVision: slides.filter((s) => s.visualDescription).length,
     withSummary: slides.filter((s) => s.summary).length,
     totalLinks: slides.reduce((n, s) => n + s.links.length, 0),
+    outputLanguage,
   });
 
   return slides;
+}
+
+/** Heuristic: summaries that still look like Spanish after an Italian request. */
+function looksForeignForItalian(text: string): boolean {
+  return /\b(texto|extracto|extraido|muestra|historia|trayectoria|incluyendo|empresa|declaraci[oó]n|autor)\b/i.test(text);
+}
+
+async function ensureSummariesInLanguage(
+  slides: EntrySlide[],
+  outputLanguage: 'it' | 'en'
+): Promise<void> {
+  const targets = slides.filter((s) => {
+    if (!s.summary) return false;
+    if (outputLanguage === 'it') return looksForeignForItalian(s.summary);
+    return false;
+  });
+  if (targets.length === 0) return;
+
+  const langName = outputLanguageDisplayName(outputLanguage);
+  const list = targets
+    .map((s) => `${s.index}: ${s.summary}`)
+    .join('\n');
+  const translatePrompt = `Translate each numbered summary into ${langName}. Keep proper names (people, brands, places). Do not add commentary.
+
+${list}
+
+Reply ONLY with valid JSON, no markdown:
+{"slides":[{"index":0,"summary":"..."}]}`;
+
+  try {
+    const response = await generateText(translatePrompt, [], { json: true });
+    const translated = parseSlideResponse(response.text);
+    let applied = 0;
+    for (const slide of targets) {
+      const raw = translated.get(slide.index);
+      if (!raw || !isRealValue(raw.summary)) continue;
+      slide.summary = raw.summary!.trim();
+      applied++;
+    }
+    logInfo('Slide summaries translated to output language', {
+      outputLanguage,
+      candidates: targets.length,
+      applied,
+    });
+  } catch (err) {
+    logWarning('Traduzione summary slide fallita', { error: String(err) });
+  }
 }

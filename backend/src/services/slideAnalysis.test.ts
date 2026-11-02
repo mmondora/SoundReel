@@ -55,6 +55,30 @@ describe('analyzeSlides', () => {
     expect(ctx.outputLanguageName).toBe('Italian');
   });
 
+  it('re-translates Spanish summaries into Italian with a second call', async () => {
+    vi.mocked(generateText)
+      .mockResolvedValueOnce({
+        text: slidesPayload([
+          { index: 0, summary: 'La slide presenta un texto extracto de la historia de Piero.' },
+          { index: 1, summary: 'Presenta Jellyfin.' },
+        ]),
+        usageMetadata: null,
+      })
+      .mockResolvedValueOnce({
+        text: slidesPayload([
+          { index: 0, summary: 'La slide presenta un estratto sulla storia di Piero.' },
+        ]),
+        usageMetadata: null,
+      });
+
+    const slides = await analyzeSlides(BASE);
+    expect(generateText).toHaveBeenCalledTimes(2);
+    expect(slides[0].summary).toContain('estratto');
+    expect(slides[0].summary).not.toMatch(/texto extracto/i);
+    // Already-Italian summary is left alone (no index 1 in translate payload result).
+    expect(slides[1].summary).toBe('Presenta Jellyfin.');
+  });
+
   it('returns one entry per slide with its own OCR text and image url', async () => {
     vi.mocked(generateText).mockResolvedValue({
       text: slidesPayload([
