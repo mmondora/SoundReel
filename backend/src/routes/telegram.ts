@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import Handlebars from 'handlebars';
 import type { SocialPlatform } from '../types';
 import { getPrompt, renderTemplate } from '../services/promptLoader';
 import { Logger } from '../services/debugLogger';
@@ -50,7 +51,7 @@ export function extractUrl(message: TelegramMessage): string | null {
 }
 
 export async function sendTelegramMessage(chatId: number, text: string, token: string): Promise<void> {
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -60,6 +61,10 @@ export async function sendTelegramMessage(chatId: number, text: string, token: s
       disable_web_page_preview: true,
     }),
   });
+  const body = await res.json().catch(() => null) as { ok?: boolean; description?: string } | null;
+  if (!res.ok || !body?.ok) {
+    throw new Error(`Telegram sendMessage failed: HTTP ${res.status} ${body?.description || ''}`.trim());
+  }
 }
 
 async function getStats(): Promise<{ entries: number; songs: number; films: number }> {
@@ -149,14 +154,19 @@ export async function formatTelegramResponse(result: AnalyzeResult, entryId: str
   const filmsCount = films.length;
   const hasCounts = linksCount > 0 || songsCount > 0 || filmsCount > 0;
 
+  const entryHref = frontendUrl(entryId);
   try {
     const promptConfig = await getPrompt('telegramResponse');
+    // Handlebars escapes {{var}} by default. Title/summary go through once
+    // (raw → Handlebars). The URL must stay raw inside href= — pass a
+    // SafeString, and keep {{{frontendUrl}}} in the default template so a
+    // custom prompt that still uses {{frontendUrl}} also works.
     const response = renderTemplate(promptConfig.template, {
-      title: escapeHtml(title),
-      summary: summary ? escapeHtml(summary) : '',
+      title,
+      summary: summary || '',
       hasSummary: !!summary,
       linksCount, songsCount, filmsCount, hasCounts,
-      frontendUrl: frontendUrl(entryId),
+      frontendUrl: new Handlebars.SafeString(entryHref),
     });
     return response.replace(/\n{3,}/g, '\n\n').trim();
   } catch {
@@ -165,7 +175,7 @@ export async function formatTelegramResponse(result: AnalyzeResult, entryId: str
     if (summary) lines.push(escapeHtml(summary));
     lines.push('');
     if (hasCounts) lines.push(`🔗 ${linksCount} · 🎵 ${songsCount} · 🎬 ${filmsCount}`);
-    lines.push(`🌐 <a href="${frontendUrl(entryId)}">Apri su SoundReel</a>`);
+    lines.push(`🌐 <a href="${entryHref}">Apri su SoundReel</a>`);
     return lines.join('\n');
   }
 }
@@ -363,6 +373,15 @@ export function registerTelegramRoute(app: FastifyInstance): void {
           `❌ Analisi fallita.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`,
           token
         ).catch(() => {});
+      } else {
+        // Immediate ack: Instagram carousels and Reddit rate-limits can sit
+        // in the queue for minutes with no other signal. A failed ack must
+        // not undo the enqueue — the final result still notifies later.
+        await sendTelegramMessage(chatId, '⏳ Analizzo il link…', token).catch((ackErr) => {
+          log.warn('Ack Telegram fallito', {
+            error: ackErr instanceof Error ? ackErr.message : String(ackErr),
+          });
+        });
       }
 
       reply.code(200).send('OK');

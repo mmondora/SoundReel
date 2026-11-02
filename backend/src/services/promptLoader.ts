@@ -331,7 +331,7 @@ Se non trovi nulla rispondi con summary "..." e gli altri campi come array vuoti
 {{#if hasSummary}}{{summary}}{{/if}}
 
 {{#if hasCounts}}🔗 {{linksCount}} · 🎵 {{songsCount}} · 🎬 {{filmsCount}}{{/if}}
-🌐 <a href="{{frontendUrl}}">Apri su SoundReel</a>`,
+🌐 <a href="{{{frontendUrl}}}">Apri su SoundReel</a>`,
     variables: [
       'title', 'summary', 'hasSummary',
       'linksCount', 'songsCount', 'filmsCount', 'hasCounts',

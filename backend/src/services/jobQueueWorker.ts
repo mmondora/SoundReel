@@ -23,7 +23,10 @@ import { createActionLog } from '../utils/logger';
 
 const OTHER_CONCURRENCY_CAP = 3;
 const IG_BACKOFF_MS = [60_000, 180_000, 420_000];
-const OTHER_BACKOFF_MS = [60_000];
+// Reddit/page fetches often get 429; one 60s retry was not enough and the
+// job closed as failed while a later manual retry succeeded. Stretch the
+// ladder so "other" (non-IG) jobs wait out short rate windows.
+const OTHER_BACKOFF_MS = [60_000, 300_000, 900_000];
 
 /**
  * Instagram has stopped trusting the *session*, not this URL.

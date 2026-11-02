@@ -267,6 +267,14 @@ async function extractRedditRss(rawUrl: string): Promise<PageExtractResult | nul
       clearTimeout(timer);
     }
 
+    if (res.statusCode === 429 || res.statusCode === 503) {
+      for await (const _ of res.body) { void _; }
+      // Rate limit must not fall through to the HTML/Playwright path: that
+      // path hits Reddit's login wall and becomes a hard PageShellError after
+      // one short retry. Throw so the job worker backs off and tries RSS again.
+      throw new PageFetchError(res.statusCode, 'reddit_rss_rate_limited');
+    }
+
     if (res.statusCode < 200 || res.statusCode >= 400) {
       for await (const _ of res.body) { void _; }
       return null;
@@ -325,6 +333,7 @@ async function extractRedditRss(rawUrl: string): Promise<PageExtractResult | nul
       lang: null,
     };
   } catch (e) {
+    if (e instanceof PageFetchError) throw e;
     log.warn('Reddit RSS fallito', { error: String(e) });
     return null;
   }

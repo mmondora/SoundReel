@@ -93,8 +93,14 @@ describe('computeBackoffMs', () => {
   it('other attempt 1 → 60s', () => {
     expect(computeBackoffMs('other', 1)).toBe(60_000);
   });
-  it('other attempt 2 → null (terminal, exhausted)', () => {
-    expect(computeBackoffMs('other', 2)).toBeNull();
+  it('other attempt 2 → 5min', () => {
+    expect(computeBackoffMs('other', 2)).toBe(300_000);
+  });
+  it('other attempt 3 → 15min', () => {
+    expect(computeBackoffMs('other', 3)).toBe(900_000);
+  });
+  it('other attempt 4 → null (terminal, exhausted)', () => {
+    expect(computeBackoffMs('other', 4)).toBeNull();
   });
 });
 
@@ -461,9 +467,9 @@ describe('dispatchTranscribe', () => {
     });
 
     const { dispatchTranscribe, TRANSCRIBE_RETRY_MS } = await import('./jobQueueWorker');
-    // attempts: 1 — one short of markJobFailed under OTHER_BACKOFF_MS, which
-    // is a single 60s retry. Routed through handleFailure this 503 would end
-    // the job permanently and lose the transcript.
+    // attempts: 1. Whisper 503 must use TRANSCRIBE_RETRY_MS, not the
+    // analyze OTHER_BACKOFF ladder — otherwise a cold whisper would burn
+    // analyze retries and could drop the transcript.
     const job = {
       id: 11, entryId: 'e11', attempts: 1, sourceUrl: 'https://x', platform: 'other',
       chatId: 1, inputUser: null, priority: 0,
@@ -510,8 +516,10 @@ describe('dispatchTranscribe', () => {
     });
 
     const { dispatchTranscribe } = await import('./jobQueueWorker');
+    // attempts already at the last OTHER_BACKOFF slot (3): the next failure
+    // exhausts the ladder and markJobFailed closes the job.
     const job = {
-      id: 12, entryId: 'e12', attempts: 1, sourceUrl: 'https://x', platform: 'other',
+      id: 12, entryId: 'e12', attempts: 3, sourceUrl: 'https://x', platform: 'other',
       chatId: 1, inputUser: null, priority: 0,
     } as never;
     await dispatchTranscribe(job);

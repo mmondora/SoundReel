@@ -347,8 +347,11 @@ describe('POST /telegram/webhook — URL message enqueues a job', () => {
     );
   });
 
-  it('does not call fetch — webhook no longer calls /api/analyze directly', async () => {
-    const fetchSpy = vi.fn();
+  it('successful enqueue → immediate ack via sendMessage (no direct /api/analyze)', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, result: { message_id: 1 } }),
+    });
     vi.stubGlobal('fetch', fetchSpy);
     const app = buildApp();
     await app.inject({
@@ -356,13 +359,21 @@ describe('POST /telegram/webhook — URL message enqueues a job', () => {
       url: '/telegram/webhook',
       payload: urlMessage('https://www.instagram.com/reel/nofetch/'),
     });
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [calledUrl, calledInit] = fetchSpy.mock.calls[0];
+    expect(String(calledUrl)).toContain('/sendMessage');
+    expect(String(calledUrl)).not.toContain('/api/analyze');
+    const body = JSON.parse((calledInit as { body: string }).body);
+    expect(body.text).toContain('Analizzo');
     vi.unstubAllGlobals();
   });
 
   it('stub entry creation throws → sends fallback failure message, does not enqueue', async () => {
     vi.mocked(createEntry).mockRejectedValueOnce(new Error('db hiccup'));
-    const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true }),
+    });
     vi.stubGlobal('fetch', fetchSpy);
 
     const app = buildApp();
@@ -385,7 +396,10 @@ describe('POST /telegram/webhook — URL message enqueues a job', () => {
 
   it('enqueueJob throws → sends fallback failure message', async () => {
     vi.mocked(enqueueJob).mockRejectedValueOnce(new Error('queue down'));
-    const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true }),
+    });
     vi.stubGlobal('fetch', fetchSpy);
 
     const app = buildApp();
