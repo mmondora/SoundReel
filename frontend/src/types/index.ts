@@ -322,6 +322,14 @@ export interface FeaturesConfig {
   cobaltEnabled: boolean;
   allowDuplicateUrls: boolean;
   mediaAnalysisEnabled: boolean;
+  transcriptionEnabled?: boolean;
+  aiAnalysisEnabled?: boolean;
+  pageExtractionEnabled?: boolean;
+  shazamEnabled?: boolean;
+  multiSongScanEnabled?: boolean;
+  youtubeDirect?: boolean;
+  carouselStructuredExtraction?: boolean;
+  outputLanguage?: 'it' | 'en';
 }
 
 export interface PromptTemplate {

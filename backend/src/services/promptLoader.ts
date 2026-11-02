@@ -74,7 +74,10 @@ Compiti:
 
 - TAG: Hashtag (#x) e menzioni (@x) dalla caption.
 
-- SUMMARY: Riassunto di 1-2 frasi dell'intero contenuto (caption + video + overlay).
+- SUMMARY: Riassunto di 1-2 frasi dell'intero contenuto (caption + video + overlay). Deve essere in {{outputLanguageName}}.
+
+LINGUA DI OUTPUT (OBBLIGATORIA): {{outputLanguageName}}
+Tutti i campi testuali che GENERI (summary, note.text, software.description, links.label descrittive) devono essere in {{outputLanguageName}}, indipendentemente dalla lingua di caption/OCR/transcript. Se il contenuto sorgente è in un'altra lingua, TRADUCI. Non copiare la lingua del testo sorgente nei campi generati. I campi di ricopiatura (transcription, visualContext, overlayText) restano nella lingua originale.
 
 - TRANSCRIPTION: Ricopia qui il transcript ricevuto, oppure null se assente.
 
@@ -105,6 +108,7 @@ Se non trovi nulla, rispondi: { "songs": [], "films": [], "notes": [], "software
       'visualContext', 'hasVisualContext',
       'isCarousel', 'carouselCount',
       'hasImage',
+      'outputLanguage', 'outputLanguageName',
     ],
     updatedAt: new Date().toISOString()
   },
@@ -202,7 +206,9 @@ Esegui TUTTE le seguenti analisi:
 
 8. TAG: Estrai hashtag e menzioni.
 
-9. SUMMARY: Un breve riassunto di 1-2 frasi del contenuto complessivo.
+9. SUMMARY: Un breve riassunto di 1-2 frasi del contenuto complessivo, in {{outputLanguageName}}.
+
+LINGUA DI OUTPUT (OBBLIGATORIA): {{outputLanguageName}}. Summary, note e label generate devono essere in {{outputLanguageName}} indipendentemente dalla lingua del media. Trascrizione e overlayText restano nella lingua originale.
 
 Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
 {
@@ -229,7 +235,7 @@ Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
 }
 
 Se non trovi nulla per un campo, usa un array vuoto [] o null.`,
-    variables: ['caption', 'hasImage'],
+    variables: ['caption', 'hasImage', 'outputLanguage', 'outputLanguageName'],
     updatedAt: new Date().toISOString()
   },
   slideAnalysis: {
@@ -257,7 +263,8 @@ Compito: per OGNI slide scrivi un paragrafo che spiega cosa presenta, e raccogli
 
 Regole importanti:
 - Considera le slide come parti di un unico discorso: se la slide 3 di 8 è il terzo elemento di una lista, il paragrafo deve rifletterlo.
-- Il paragrafo è in italiano, 2-4 frasi, concreto: cosa mostra la slide e perché è rilevante. Niente frasi vuote tipo \"questa slide mostra del testo\".
+- LINGUA DI OUTPUT (OBBLIGATORIA): {{outputLanguageName}}. Ogni \"summary\" DEVE essere in {{outputLanguageName}}, anche se OCR/caption sono in un'altra lingua (es. spagnolo). TRADUCI; non copiare la lingua del testo estratto.
+- Il paragrafo è 2-4 frasi, concreto: cosa mostra la slide e perché è rilevante. Niente frasi vuote tipo \"questa slide mostra del testo\".
 - Per i link usa l'URL ufficiale del servizio o prodotto nominato (es. Plex → https://www.plex.tv). Includi SOLO destinazioni di cui conosci l'indirizzo reale: se non sei sicuro dell'URL, ometti quel link.
 - \"label\" è il nome leggibile della destinazione (es. \"Plex\").
 - Se una slide non nomina nulla di raggiungibile, lascia \"links\": [].
@@ -269,7 +276,7 @@ Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
     { \"index\": 0, \"summary\": \"...\", \"links\": [ { \"url\": \"https://...\", \"label\": \"...\" } ] }
   ]
 }`,
-    variables: ['slideCount', 'caption', 'slides'],
+    variables: ['slideCount', 'caption', 'slides', 'outputLanguage', 'outputLanguageName'],
     updatedAt: new Date().toISOString(),
   },
   webPageAnalysis: {
@@ -298,16 +305,18 @@ Link presenti nella pagina (massimo 100, già dedotti):
 {{/each}}
 
 Compiti:
-1) SUMMARY: Sintesi in italiano, max 280 caratteri, una sola frase o due brevi. Cattura il punto della pagina.
+1) SUMMARY: Sintesi in {{outputLanguageName}}, max 280 caratteri, una sola frase o due brevi. Cattura il punto della pagina. Traduci se la pagina è in un'altra lingua.
 2) LINKS: Seleziona dai link forniti quelli più utili (max 30). Per ognuno:
    - "url": **deve esistere ESATTAMENTE in rawLinks**, non inventare
-   - "label": breve etichetta in italiano (anchor text pulito o derivato dal contesto)
+   - "label": breve etichetta in {{outputLanguageName}} (anchor text pulito o derivato dal contesto)
    - "category": una di "referenced" | "sponsor" | "navigation" | "related" | "social" | "other"
 3) TAGS: Hashtag o keyword tematiche (max 8).
-4) NOTES: Luoghi, eventi, brand, libri, prodotti, citazioni, persone menzionati.
+4) NOTES: Luoghi, eventi, brand, libri, prodotti, citazioni, persone menzionati (testo in {{outputLanguageName}}).
 5) SOFTWARE: Repository, tool/prodotti software, articoli tecnici. Tag: repo|product|article|other. URL solo se presente in rawLinks o nel testo.
 6) SONGS: Solo se la pagina cita esplicitamente canzoni (titolo + artista).
 7) FILMS: Solo se la pagina cita film/serie (titolo + regista? + anno?).
+
+LINGUA DI OUTPUT (OBBLIGATORIA): {{outputLanguageName}}. Summary, note e label devono essere in {{outputLanguageName}} anche se la pagina è in un'altra lingua.
 
 Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
 {
@@ -321,7 +330,7 @@ Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
 }
 
 Se non trovi nulla rispondi con summary "..." e gli altri campi come array vuoti.`,
-    variables: ['title', 'description', 'siteName', 'lang', 'mainText', 'hasMainText', 'rawLinks'],
+    variables: ['title', 'description', 'siteName', 'lang', 'mainText', 'hasMainText', 'rawLinks', 'outputLanguage', 'outputLanguageName'],
     updatedAt: new Date().toISOString(),
   },
   telegramResponse: {

@@ -457,7 +457,7 @@ export const translations: Record<Language, Translations> = {
 
     // Language
     language: 'Lingua',
-    languageDescription: 'Seleziona la lingua dell\'interfaccia',
+    languageDescription: 'Lingua dell\'interfaccia e dei testi generati dall\'AI (riassunti, slide, note)',
     italian: 'Italiano',
     english: 'English',
 
@@ -798,7 +798,7 @@ export const translations: Record<Language, Translations> = {
 
     // Language
     language: 'Language',
-    languageDescription: 'Select the interface language',
+    languageDescription: 'Interface language and AI-generated text (summaries, slides, notes)',
     italian: 'Italiano',
     english: 'English',
 

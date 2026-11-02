@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
-import type { Entry, Note } from '../types';
+import type { Entry, Note, ExtractedLink } from '../types';
 import { SongItem } from './SongItem';
 import { FilmItem } from './FilmItem';
 import { ActionLog } from './ActionLog';
@@ -193,7 +193,25 @@ export function EntryCard({ entry }: EntryCardProps) {
   const hasSongs = entry.results.songs.length > 0;
   const hasFilms = entry.results.films.length > 0;
   const hasNotes = (entry.results.notes?.length || 0) > 0;
-  const hasLinks = (entry.results.links?.length || 0) > 0;
+  const slides = entry.results.slides ?? [];
+  const browsingLinks = (() => {
+    const seen = new Set<string>();
+    const out: ExtractedLink[] = [];
+    const add = (url: string, label: string | null, extra?: Partial<ExtractedLink>) => {
+      const trimmed = url?.trim();
+      if (!trimmed || seen.has(trimmed)) return;
+      seen.add(trimmed);
+      out.push({ url: trimmed, label, ...extra });
+    };
+    for (const link of entry.results.links ?? []) {
+      add(link.url, link.label, link);
+    }
+    for (const slide of slides) {
+      for (const link of slide.links ?? []) add(link.url, link.label);
+    }
+    return out;
+  })();
+  const hasLinks = browsingLinks.length > 0;
   const hasTags = (entry.results.tags?.length || 0) > 0;
   const hasSummary = !!entry.results.summary;
   const hasEnrichments = !!entry.results.enrichments;
@@ -443,7 +461,7 @@ export function EntryCard({ entry }: EntryCardProps) {
         <section className="entry-section links">
           <h3 className="section-title">{t.linksSection}</h3>
           <ul className="links-list">
-            {entry.results.links.map((link, index) => {
+            {browsingLinks.map((link, index) => {
               const domain = link.domain
                 || (() => { try { return new URL(link.url).hostname.replace(/^www\./, ''); } catch { return null; } })();
               const favicon = link.faviconUrl

@@ -4,6 +4,10 @@ vi.mock('./ollamaClient', () => ({ generateText: vi.fn(), describeFramesWithVisi
 vi.mock('./claudeFallback', () => ({ runClaudePrompt: vi.fn(), logFallbackOutcome: vi.fn() }));
 vi.mock('./promptLoader', () => ({ getPrompt: vi.fn(), renderTemplate: vi.fn() }));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn() }));
+vi.mock('../utils/db', () => ({
+  getFeaturesConfig: vi.fn().mockResolvedValue({ outputLanguage: 'it' }),
+  outputLanguageDisplayName: (lang: string) => (lang === 'en' ? 'English' : 'Italian'),
+}));
 
 import { analyzeSlides } from './slideAnalysis';
 import { generateText, describeFramesWithVision } from './ollamaClient';
@@ -35,6 +39,20 @@ describe('analyzeSlides', () => {
     vi.mocked(renderTemplate).mockReturnValue('rendered prompt');
     vi.mocked(runClaudePrompt).mockResolvedValue(DISABLED_FALLBACK);
     vi.mocked(describeFramesWithVision).mockResolvedValue(null);
+  });
+
+  it('passes outputLanguage Italian into the slide prompt by default', async () => {
+    vi.mocked(generateText).mockResolvedValue({
+      text: slidesPayload([{ index: 0, summary: 'ok' }, { index: 1, summary: 'ok' }]),
+      usageMetadata: null,
+    });
+    await analyzeSlides(BASE);
+    const ctx = vi.mocked(renderTemplate).mock.calls[0][1] as {
+      outputLanguage: string;
+      outputLanguageName: string;
+    };
+    expect(ctx.outputLanguage).toBe('it');
+    expect(ctx.outputLanguageName).toBe('Italian');
   });
 
   it('returns one entry per slide with its own OCR text and image url', async () => {

@@ -145,6 +145,8 @@ export interface FeaturesConfig {
   multiSongScanEnabled: boolean;
   youtubeDirect: boolean;
   carouselStructuredExtraction: boolean;
+  /** Lingua dei testi generati dall'AI (summary, slide, note). */
+  outputLanguage: 'it' | 'en';
 }
 
 export async function getFeatures(): Promise<FeaturesConfig> {

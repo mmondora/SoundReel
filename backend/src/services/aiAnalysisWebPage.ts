@@ -3,6 +3,7 @@
 import { generateText } from './ollamaClient';
 import { logInfo, logWarning } from '../utils/logger';
 import { getPrompt, renderTemplate } from './promptLoader';
+import { getFeaturesConfig, outputLanguageDisplayName } from '../utils/db';
 import type { MediaAiAnalysisResult, ExtractedLink, ExtractedLinkCategory, AiUsageMetadata } from '../types';
 import type { PageExtractResult } from './pageExtractor';
 
@@ -44,6 +45,8 @@ export async function analyzeWebPage(input: PageExtractResult): Promise<WebPageA
   }
 
   const promptConfig = await getPrompt('webPageAnalysis');
+  const features = await getFeaturesConfig();
+  const outputLanguage = features.outputLanguage === 'en' ? 'en' : 'it';
   const mainText = input.mainText
     ? input.mainText.length > MAIN_TEXT_BUDGET
       ? input.mainText.slice(0, MAIN_TEXT_BUDGET) + '\n[...troncato...]'
@@ -58,6 +61,8 @@ export async function analyzeWebPage(input: PageExtractResult): Promise<WebPageA
     mainText,
     hasMainText: !!mainText,
     rawLinks: input.rawLinks,
+    outputLanguage,
+    outputLanguageName: outputLanguageDisplayName(outputLanguage),
   });
 
   let response;

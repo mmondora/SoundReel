@@ -132,10 +132,27 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
   const hasSongs = entry.results.songs.length > 0;
   const hasFilms = entry.results.films.length > 0;
   const hasNotes = (entry.results.notes?.length || 0) > 0;
-  const hasLinks = (entry.results.links?.length || 0) > 0;
   const hasTags = (entry.results.tags?.length || 0) > 0;
   const hasEnrichments = !!entry.results.enrichments;
   const slides = entry.results.slides ?? [];
+  // Top-level links plus suggested destinations from slides (older entries
+  // often have slide.links but an empty results.links).
+  const browsingLinks = (() => {
+    const seen = new Set<string>();
+    const out: Array<{ url: string; label: string }> = [];
+    const add = (url: string, label: string | null | undefined) => {
+      const trimmed = url?.trim();
+      if (!trimmed || seen.has(trimmed)) return;
+      seen.add(trimmed);
+      out.push({ url: trimmed, label: (label && label.trim()) || trimmed });
+    };
+    for (const link of entry.results.links ?? []) add(link.url, link.label || link.domain);
+    for (const slide of slides) {
+      for (const link of slide.links ?? []) add(link.url, link.label);
+    }
+    return out;
+  })();
+  const hasLinks = browsingLinks.length > 0;
   const verdict = entry.results.enrichments?.verdict;
   const transcript = entry.results.transcript || entry.results.transcription || null;
   const hasTranscript = !!transcript;
@@ -396,15 +413,15 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
         </section>
       )}
 
-      {/* Links */}
+      {/* Links (AI + destinazioni suggerite dalle slide) */}
       {hasLinks && (
         <section className="inspector-section">
           <h3 className="inspector-section-title">{t.linksSection}</h3>
           <ul className="inspector-links">
-            {entry.results.links.map((link, i) => (
-              <li key={i}>
+            {browsingLinks.map((link) => (
+              <li key={link.url}>
                 <a href={link.url} target="_blank" rel="noopener noreferrer" className="inspector-link">
-                  {link.label || link.url}
+                  {link.label}
                 </a>
               </li>
             ))}

@@ -1350,7 +1350,19 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       }
 
       const notes: Note[] = merged.notes;
-      const links: ExtractedLink[] = merged.links.map((l) => {
+      // Promote suggested slide destinations into the top-level browsing links
+      // so the Links section is visible without opening every slide block.
+      const linkByUrl = new Map<string, { url: string; label: string | null }>();
+      for (const l of merged.links) {
+        if (l?.url) linkByUrl.set(l.url, { url: l.url, label: l.label ?? null });
+      }
+      for (const slide of entrySlides) {
+        for (const sl of slide.links ?? []) {
+          if (!sl?.url || linkByUrl.has(sl.url)) continue;
+          linkByUrl.set(sl.url, { url: sl.url, label: sl.label ?? null });
+        }
+      }
+      const links: ExtractedLink[] = Array.from(linkByUrl.values()).map((l) => {
         let domain: string | null = null;
         try {
           domain = new URL(l.url).hostname.replace(/^www\./, '');

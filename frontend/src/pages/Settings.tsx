@@ -64,7 +64,7 @@ export function Settings() {
         setFeaturesConfig(features);
       } catch (err) {
         console.error('Error loading features:', err);
-        setFeaturesConfig({ cobaltEnabled: false, allowDuplicateUrls: false, mediaAnalysisEnabled: false, transcriptionEnabled: true, aiAnalysisEnabled: true, pageExtractionEnabled: true, shazamEnabled: true, multiSongScanEnabled: true, youtubeDirect: true, carouselStructuredExtraction: true });
+        setFeaturesConfig({ cobaltEnabled: false, allowDuplicateUrls: false, mediaAnalysisEnabled: false, transcriptionEnabled: true, aiAnalysisEnabled: true, pageExtractionEnabled: true, shazamEnabled: true, multiSongScanEnabled: true, youtubeDirect: true, carouselStructuredExtraction: true, outputLanguage: 'it' });
       }
 
       // Load OpenAI config
@@ -170,8 +170,15 @@ export function Settings() {
     await initiateSpotifyAuth();
   }
 
-  function handleLanguageChange(newLang: Language) {
+  async function handleLanguageChange(newLang: Language) {
     setLanguage(newLang);
+    // Persist as AI output language so pipeline prompts follow UI preference.
+    try {
+      const result = await updateFeatures({ outputLanguage: newLang });
+      setFeaturesConfig(result.config);
+    } catch {
+      // UI language still changes locally; AI language stays on last known value.
+    }
   }
 
   if (loading) {

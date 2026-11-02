@@ -8,6 +8,7 @@ import {
 import { isRealValue } from './placeholderFilter';
 import { logInfo, logWarning, logError } from '../utils/logger';
 import { getPrompt, renderTemplate } from './promptLoader';
+import { getFeaturesConfig, outputLanguageDisplayName } from '../utils/db';
 import type { AiAnalysisResult, MediaAiAnalysisResult, AiUsageMetadata } from '../types';
 
 /**
@@ -142,6 +143,8 @@ export function sanitizeForPrompt(text: string | null): string | null {
 export async function buildAnalysisPrompt(input: AiAnalysisInput): Promise<string> {
   const promptConfig = await getPrompt('contentAnalysis');
   const isCarousel = input.slidePaths.length > 0;
+  const features = await getFeaturesConfig();
+  const outputLanguage = features.outputLanguage === 'en' ? 'en' : 'it';
   return renderTemplate(promptConfig.template, {
     caption: input.caption || '[nessuna caption]',
     hasCaption: !!input.caption,
@@ -159,6 +162,8 @@ export async function buildAnalysisPrompt(input: AiAnalysisInput): Promise<strin
     isCarousel,
     carouselCount: input.slidePaths.length,
     hasImage: !!input.thumbnailPath || isCarousel,
+    outputLanguage,
+    outputLanguageName: outputLanguageDisplayName(outputLanguage),
     // Legacy compat: older prompts may still reference hasImage
   });
 }

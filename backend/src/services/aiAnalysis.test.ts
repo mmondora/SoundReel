@@ -4,6 +4,10 @@ vi.mock('./ollamaClient', () => ({ generateText: vi.fn() }));
 vi.mock('./claudeFallback', () => ({ runClaudePrompt: vi.fn(), logFallbackOutcome: vi.fn() }));
 vi.mock('./promptLoader', () => ({ getPrompt: vi.fn(), renderTemplate: vi.fn() }));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn() }));
+vi.mock('../utils/db', () => ({
+  getFeaturesConfig: vi.fn().mockResolvedValue({ outputLanguage: 'it' }),
+  outputLanguageDisplayName: (lang: string) => (lang === 'en' ? 'English' : 'Italian'),
+}));
 
 import { analyzeWithAi, isEmptyAnalysis } from './aiAnalysis';
 import { generateText } from './ollamaClient';

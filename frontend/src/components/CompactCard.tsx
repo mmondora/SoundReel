@@ -57,7 +57,14 @@ export function CompactCard({ entry, selected, onSelect }: CompactCardProps) {
   const songCount = entry.results.songs.length;
   const filmCount = entry.results.films.length;
   const noteCount = entry.results.notes?.length || 0;
-  const linksCount = entry.results.links?.length || 0;
+  const linksCount = (() => {
+    const seen = new Set<string>();
+    for (const l of entry.results.links ?? []) if (l.url) seen.add(l.url);
+    for (const s of entry.results.slides ?? []) {
+      for (const l of s.links ?? []) if (l.url) seen.add(l.url);
+    }
+    return seen.size;
+  })();
   const hasTranscript = !!(entry.results.transcript || entry.results.transcription);
 
   const verdict = entry.results.enrichments?.verdict;

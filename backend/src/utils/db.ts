@@ -271,6 +271,8 @@ export async function updateSpotifyConfig(updates: Partial<SpotifyConfig>): Prom
 
 // Features
 
+export type OutputLanguage = 'it' | 'en';
+
 export interface FeaturesConfig {
   cobaltEnabled: boolean;
   allowDuplicateUrls: boolean;
@@ -282,6 +284,8 @@ export interface FeaturesConfig {
   multiSongScanEnabled: boolean;
   youtubeDirect: boolean;
   carouselStructuredExtraction: boolean;
+  /** Lingua dei testi generati dall'AI (summary, slide, note). Default italiano. */
+  outputLanguage: OutputLanguage;
 }
 
 const DEFAULT_FEATURES: FeaturesConfig = {
@@ -295,7 +299,12 @@ const DEFAULT_FEATURES: FeaturesConfig = {
   multiSongScanEnabled: true,
   youtubeDirect: true,
   carouselStructuredExtraction: true,
+  outputLanguage: 'it',
 };
+
+export function outputLanguageDisplayName(lang: OutputLanguage): string {
+  return lang === 'en' ? 'English' : 'Italian';
+}
 
 export async function getFeaturesConfig(): Promise<FeaturesConfig> {
   return { ...DEFAULT_FEATURES, ...(await getConfig<Partial<FeaturesConfig>>('features', {})) };

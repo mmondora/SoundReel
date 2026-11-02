@@ -4,6 +4,7 @@ import { runClaudePrompt, logFallbackOutcome, type ClaudePromptOptions } from '.
 import { getPrompt, renderTemplate } from './promptLoader';
 import { isPlausibleUrl } from './linkValidation';
 import { isRealValue } from './placeholderFilter';
+import { getFeaturesConfig, outputLanguageDisplayName } from '../utils/db';
 import { logInfo, logWarning, logError } from '../utils/logger';
 import type { EntrySlide, SlideLink } from '../types';
 
@@ -101,10 +102,14 @@ export async function analyzeSlides(
     }
   }
 
+  const features = await getFeaturesConfig();
+  const outputLanguage = features.outputLanguage === 'en' ? 'en' : 'it';
   const promptConfig = await getPrompt('slideAnalysis');
   const prompt = renderTemplate(promptConfig.template, {
     slideCount: slides.length,
     caption: input.caption,
+    outputLanguage,
+    outputLanguageName: outputLanguageDisplayName(outputLanguage),
     slides: slides.map((s) => ({
       indexLabel: `${s.index + 1} / ${slides.length}`,
       index: s.index,

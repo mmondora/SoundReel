@@ -39,6 +39,11 @@ vi.mock('../utils/logger', () => ({
   logError: vi.fn(),
 }));
 
+vi.mock('../utils/db', () => ({
+  getFeaturesConfig: vi.fn().mockResolvedValue({ outputLanguage: 'it' }),
+  outputLanguageDisplayName: (lang: string) => (lang === 'en' ? 'English' : 'Italian'),
+}));
+
 /** La risposta reale di qwen, con la barra rovesciata che l'OCR gli ha passato. */
 const RISPOSTA_CON_BARRA = `{
   "songs": [],
