@@ -57,13 +57,33 @@ async function bootstrap(): Promise<void> {
   // Serve static frontend (after routes so /api/* wins)
   const publicDir = path.resolve(__dirname, 'public');
   if (fs.existsSync(publicDir)) {
-    await app.register(fastifyStatic, { root: publicDir, prefix: '/' });
+    // Hashed /assets/* can be cached forever; index.html must always revalidate
+    // so Safari/iOS does not keep an old entry pointing at a previous bundle.
+    await app.register(fastifyStatic, {
+      root: publicDir,
+      prefix: '/',
+      setHeaders(res, filePath) {
+        const base = path.basename(filePath);
+        if (base === 'index.html') {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+        } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    });
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api/') || req.url.startsWith('/telegram/')) {
         reply.code(404).send({ error: 'Not found' });
         return;
       }
-      reply.type('text/html').sendFile('index.html');
+      reply
+        .header('Cache-Control', 'no-store, no-cache, must-revalidate')
+        .header('Pragma', 'no-cache')
+        .type('text/html')
+        .sendFile('index.html');
     });
   }
 
