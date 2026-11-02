@@ -1,6 +1,7 @@
 import { Pool, PoolClient, QueryResultRow } from 'pg';
 import { randomUUID } from 'node:crypto';
 import type { Entry, ActionLogItem } from '../types';
+import { extractInstagramShortcode } from '../services/urlNormalize';
 
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
@@ -76,7 +77,29 @@ export async function findEntryByUrl(sourceUrl: string): Promise<Entry | null> {
     'SELECT * FROM entries WHERE source_url = $1 ORDER BY created_at DESC LIMIT 1',
     [sourceUrl]
   );
-  return rows[0] ? rowToEntry(rows[0]) : null;
+  if (rows[0]) return rowToEntry(rows[0]);
+
+  // Older rows still carry Instagram share params (mdxt/obrf/…). Exact match
+  // on the cleaned URL misses them; fall back to the shortcode in the path.
+  const shortcode = extractInstagramShortcode(sourceUrl);
+  if (!shortcode) return null;
+
+  const byCode = await query<EntryRow>(
+    `SELECT * FROM entries
+     WHERE source_platform = 'instagram'
+       AND (
+         source_url LIKE $1 OR source_url LIKE $2 OR source_url LIKE $3 OR source_url LIKE $4
+       )
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [
+      `%/p/${shortcode}%`,
+      `%/reel/${shortcode}%`,
+      `%/reels/${shortcode}%`,
+      `%/tv/${shortcode}%`,
+    ],
+  );
+  return byCode[0] ? rowToEntry(byCode[0]) : null;
 }
 
 export async function getEntry(entryId: string): Promise<Entry | null> {

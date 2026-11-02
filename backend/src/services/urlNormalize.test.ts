@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeUrl } from './urlNormalize';
+import { normalizeUrl, extractInstagramShortcode } from './urlNormalize';
 
 describe('normalizeUrl', () => {
   it('strips utm_source param', () => {
@@ -80,5 +80,35 @@ describe('normalizeUrl', () => {
   it('strips tracking params while keeping non-tracking ones', () => {
     const url = 'https://example.com/page?v=abc&utm_source=ig&fbclid=xyz';
     expect(normalizeUrl(url)).toBe('https://example.com/page?v=abc');
+  });
+
+  it('strips Instagram share params so mdxt and obrf collapse to the same URL', () => {
+    const mdxt = 'https://www.instagram.com/p/DfM5C7FjfzZ/?mdxt=MTF5d3Zwc3lrYTF2Yg==';
+    const obrf = 'https://www.instagram.com/p/DfM5C7FjfzZ?obrf=MTF5d3Zwc3lrYTF2Yg%3D%3D';
+    expect(normalizeUrl(mdxt)).toBe('https://www.instagram.com/p/DfM5C7FjfzZ');
+    expect(normalizeUrl(obrf)).toBe('https://www.instagram.com/p/DfM5C7FjfzZ');
+  });
+
+  it('strips igsh / stkn / img_index on reels', () => {
+    const url = 'https://www.instagram.com/reel/abc123/?img_index=3&igsh=xyz&stkn=tok';
+    expect(normalizeUrl(url)).toBe('https://www.instagram.com/reel/abc123');
+  });
+});
+
+describe('extractInstagramShortcode', () => {
+  it('reads /p/ shortcode', () => {
+    expect(extractInstagramShortcode('https://www.instagram.com/p/DfM5C7FjfzZ/?mdxt=x')).toBe('DfM5C7FjfzZ');
+  });
+
+  it('reads /reel/ shortcode', () => {
+    expect(extractInstagramShortcode('https://instagram.com/reel/AbC_12-3')).toBe('AbC_12-3');
+  });
+
+  it('returns null for non-Instagram hosts', () => {
+    expect(extractInstagramShortcode('https://tiktok.com/@x/video/1')).toBeNull();
+  });
+
+  it('returns null for profile URLs', () => {
+    expect(extractInstagramShortcode('https://www.instagram.com/someuser/')).toBeNull();
   });
 });
