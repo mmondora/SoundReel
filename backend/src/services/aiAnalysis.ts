@@ -68,9 +68,8 @@ export function classifyAiFailure(error: unknown): AiFailure {
 }
 
 /**
- * Below this many characters of real source text, an empty result is most likely
- * correct (a story with no caption, no speech and no on-screen text) rather than
- * a model failure — not worth spending subscription quota on.
+ * Below this many characters of real source text, burning Claude when Ollama
+ * is down is still not worth it — there was almost nothing to analyse.
  */
 const MIN_SOURCE_TEXT_FOR_FALLBACK = 40;
 
@@ -371,26 +370,25 @@ export async function analyzeWithAi(
     return { result: EMPTY_RESULT, usageMetadata: null, fallback: null };
   }
 
+  logInfo('Analisi AI multimodale', {
+    hasCaption: !!input.caption,
+    hasMusicInfo: !!input.musicInfo,
+    hasTranscript: !!input.transcript,
+    transcriptLang: input.transcriptLanguage,
+    hasOcr: !!input.ocrText,
+    hasVisualContext: !!input.visualContext,
+    slideCount: input.slidePaths.length,
+    hasThumbnail: !!input.thumbnailPath,
+  });
+
+  const prompt = await buildAnalysisPrompt(input);
+  // Text-only analysis: OCR already captured slide text, visualContext already
+  // describes video frames. No need to pass images to the final LLM — the text
+  // model handles structured JSON better than the vision model (moondream),
+  // which tends to echo the template placeholders.
+  const images: OllamaImage[] = [];
+
   try {
-    logInfo('Analisi AI multimodale', {
-      hasCaption: !!input.caption,
-      hasMusicInfo: !!input.musicInfo,
-      hasTranscript: !!input.transcript,
-      transcriptLang: input.transcriptLanguage,
-      hasOcr: !!input.ocrText,
-      hasVisualContext: !!input.visualContext,
-      slideCount: input.slidePaths.length,
-      hasThumbnail: !!input.thumbnailPath,
-    });
-
-    const prompt = await buildAnalysisPrompt(input);
-
-    // Text-only analysis: OCR already captured slide text, visualContext already
-    // describes video frames. No need to pass images to the final LLM — the text
-    // model (qwen2.5:3b) handles structured JSON better than the vision model
-    // (moondream), which tends to echo the template placeholders.
-    const images: OllamaImage[] = [];
-
     const response = await generateText(prompt, images, { json: true });
     const text = response.text;
     logInfo('Risposta AI ricevuta', { chars: text.length });
@@ -398,13 +396,44 @@ export async function analyzeWithAi(
     const ollamaResult = parseAnalysisResponse(text, input);
     if (!ollamaResult) logWarning('Nessun JSON utilizzabile nella risposta Ollama');
 
-    // Cascade: the local model returns nothing at all on a large share of entries
-    // even when handed a full caption + transcript + OCR payload. Retry the very
-    // same prompt through Claude before giving up.
-    let fallback: ClaudeFallbackResult | null = null;
-    if (isEmptyAnalysis(ollamaResult) && sourceTextLength(input) >= MIN_SOURCE_TEXT_FOR_FALLBACK) {
-      logInfo('Ollama non ha estratto nulla, provo il fallback Claude');
-      fallback = await runClaudePrompt(prompt, opts);
+    // Empty local output is a valid answer (post with nothing to extract).
+    // Claude used to fire on emptiness and cost ~18s of opus on every quiet
+    // reel — the user wants cloud only when the local stack is actually down.
+    const baseResult = ollamaResult ?? {
+      ...EMPTY_RESULT,
+      transcription: null,
+      visualContext: input.visualContext ?? null,
+      overlayText: input.ocrText ?? null,
+    };
+
+    logInfo('Analisi AI completata', {
+      songs: baseResult.songs.length,
+      films: baseResult.films.length,
+      notes: baseResult.notes.length,
+      links: baseResult.links.length,
+      tags: baseResult.tags.length,
+      hasSummary: !!baseResult.summary,
+    });
+
+    return { result: baseResult, usageMetadata: response.usageMetadata, fallback: null };
+  } catch (error) {
+    const failure = classifyAiFailure(error);
+    logError('Errore analisi AI', error);
+
+    // Safety net: Ollama/router down, timed out, or queue expired — not "empty JSON".
+    const ollamaDown =
+      failure.category === 'backend_unavailable' ||
+      failure.category === 'aborted' ||
+      failure.category === 'transient_503' ||
+      failure.category === 'queue_failed' ||
+      failure.category === 'queue_expired';
+
+    if (ollamaDown && sourceTextLength(input) >= MIN_SOURCE_TEXT_FOR_FALLBACK) {
+      logInfo('Ollama non disponibile, provo il fallback Claude', {
+        category: failure.category,
+        reason: failure.reason,
+      });
+      const fallback = await runClaudePrompt(prompt, opts);
       logFallbackOutcome(fallback);
 
       if (fallback.status === 'ok' && fallback.text) {
@@ -417,27 +446,13 @@ export async function analyzeWithAi(
             notes: claudeResult.notes.length,
             hasSummary: !!claudeResult.summary,
           });
-          return { result: claudeResult, usageMetadata: response.usageMetadata, fallback };
+          return { result: claudeResult, usageMetadata: null, fallback };
         }
         logWarning('Anche il fallback Claude non ha estratto nulla di utile');
       }
+      return { result: EMPTY_RESULT, usageMetadata: null, fallback, failure };
     }
 
-    const baseResult = ollamaResult ?? { ...EMPTY_RESULT, transcription: null, visualContext: input.visualContext ?? null, overlayText: input.ocrText ?? null };
-
-    logInfo('Analisi AI completata', {
-      songs: baseResult.songs.length,
-      films: baseResult.films.length,
-      notes: baseResult.notes.length,
-      links: baseResult.links.length,
-      tags: baseResult.tags.length,
-      hasSummary: !!baseResult.summary,
-    });
-
-    return { result: baseResult, usageMetadata: response.usageMetadata, fallback };
-  } catch (error) {
-    const failure = classifyAiFailure(error);
-    logError('Errore analisi AI', error);
     return { result: EMPTY_RESULT, usageMetadata: null, fallback: null, failure };
   }
 }

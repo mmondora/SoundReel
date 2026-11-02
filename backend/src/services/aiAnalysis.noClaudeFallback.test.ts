@@ -100,24 +100,19 @@ describe('una risposta valida di qwen non finisce su Claude', () => {
     expect(risposta.fallback).toBeNull();
   });
 
-  // La rete di sicurezza resta: se il modello non produce davvero niente, il
-  // fallback deve continuare a scattare come prima.
-  it('ma Claude interviene ancora quando qwen non estrae nulla', async () => {
+  // Empty local JSON is a valid answer now — Claude stays off unless Ollama throws.
+  it('Claude non interviene quando il modello locale estrae un JSON vuoto', async () => {
     generateText.mockResolvedValue({
       text: '{"songs":[],"films":[],"notes":[],"links":[],"tags":[],"summary":null}',
       usageMetadata: null,
-    });
-    runClaudePrompt.mockResolvedValue({
-      status: 'ok',
-      model: 'haiku',
-      text: '{"songs":[],"films":[],"notes":[{"text":"recuperata","category":"other"}],"links":[],"tags":[],"summary":"riassunto"}',
     });
 
     const { analyzeWithAi } = await import('./aiAnalysis');
     const risposta = await analyzeWithAi(INPUT);
 
-    expect(runClaudePrompt).toHaveBeenCalledTimes(1);
-    expect(risposta.result.notes.map((n) => n.text)).toEqual(['recuperata']);
+    expect(runClaudePrompt).not.toHaveBeenCalled();
+    expect(risposta.fallback).toBeNull();
+    expect(risposta.result.notes).toHaveLength(0);
   });
 
   // Se nemmeno la riparazione basta, si rinuncia come prima: meglio nessun

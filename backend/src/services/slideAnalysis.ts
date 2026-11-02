@@ -120,16 +120,14 @@ export async function analyzeSlides(
 
   // One call for all slides: cheaper than one per slide, and the model can see
   // that a slide is item 3 of a list rather than judging it in isolation.
+  // Claude only when Ollama/router is actually down — empty local output stays local.
   let byIndex = new Map<number, RawSlideResult>();
   try {
     const response = await generateText(prompt, [], { json: true });
     byIndex = parseSlideResponse(response.text);
   } catch (err) {
     logError('Analisi slide con Ollama fallita', err);
-  }
-
-  if (byIndex.size === 0) {
-    logInfo('Ollama non ha prodotto risultati per le slide, provo Claude');
+    logInfo('Ollama non disponibile per le slide, provo Claude');
     const fallback = await runClaudePrompt(prompt, opts);
     logFallbackOutcome(fallback);
     if (fallback.status === 'ok' && fallback.text) {

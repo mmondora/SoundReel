@@ -1,6 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('./ollamaClient', () => ({ generateText: vi.fn() }));
+const { BackendUnavailableError, OllamaTransientError } = vi.hoisted(() => {
+  class BackendUnavailableError extends Error {
+    capability: string;
+    constructor(capability: string) {
+      super(`backend unavailable: ${capability}`);
+      this.capability = capability;
+      this.name = 'BackendUnavailableError';
+    }
+  }
+  class OllamaTransientError extends Error {
+    category: 'aborted' | 'transient_503' | 'queue_failed' | 'queue_expired';
+    constructor(category: OllamaTransientError['category'], message: string) {
+      super(message);
+      this.category = category;
+      this.name = 'OllamaTransientError';
+    }
+  }
+  return { BackendUnavailableError, OllamaTransientError };
+});
+
+vi.mock('./ollamaClient', () => ({
+  generateText: vi.fn(),
+  BackendUnavailableError,
+  OllamaTransientError,
+}));
 vi.mock('./claudeFallback', () => ({ runClaudePrompt: vi.fn(), logFallbackOutcome: vi.fn() }));
 vi.mock('./promptLoader', () => ({ getPrompt: vi.fn(), renderTemplate: vi.fn() }));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn() }));
@@ -152,8 +176,39 @@ describe('analyzeWithAi — Claude fallback cascade', () => {
     expect(res.fallback).toBeNull();
   });
 
-  it('calls Claude when Ollama is empty and source text is substantial', async () => {
+  it('does not call Claude when Ollama returns empty JSON (local empty is valid)', async () => {
     vi.mocked(generateText).mockResolvedValue({ text: EMPTY_JSON, usageMetadata: null });
+
+    const res = await analyzeWithAi({ ...BASE_INPUT, caption: RICH_TEXT });
+
+    expect(runClaudePrompt).not.toHaveBeenCalled();
+    expect(res.result.films).toHaveLength(0);
+    expect(res.fallback).toBeNull();
+  });
+
+  it('does not call Claude on tags-only local output', async () => {
+    vi.mocked(generateText).mockResolvedValue({
+      text: JSON.stringify({ songs: [], films: [], notes: [], links: [], tags: ['#cinema'], summary: null }),
+      usageMetadata: null,
+    });
+
+    const res = await analyzeWithAi({ ...BASE_INPUT, caption: RICH_TEXT });
+
+    expect(runClaudePrompt).not.toHaveBeenCalled();
+    expect(res.fallback).toBeNull();
+  });
+
+  it('does not call Claude when Ollama emits no JSON at all', async () => {
+    vi.mocked(generateText).mockResolvedValue({ text: 'mi dispiace, non posso', usageMetadata: null });
+
+    const res = await analyzeWithAi({ ...BASE_INPUT, caption: RICH_TEXT });
+
+    expect(runClaudePrompt).not.toHaveBeenCalled();
+    expect(res.fallback).toBeNull();
+  });
+
+  it('calls Claude when Ollama is down (transient 503) and source text is substantial', async () => {
+    vi.mocked(generateText).mockRejectedValue(new OllamaTransientError('transient_503', 'Ollama 503'));
     vi.mocked(runClaudePrompt).mockResolvedValue(okFallback(RICH_JSON));
 
     const res = await analyzeWithAi({ ...BASE_INPUT, caption: RICH_TEXT });
@@ -164,10 +219,8 @@ describe('analyzeWithAi — Claude fallback cascade', () => {
     expect(res.fallback?.status).toBe('ok');
   });
 
-  // A second pass makes this fallback more likely, not less — the transcript
-  // pushes source text past the threshold — so it must run on the light model.
   it('tells the fallback when the pass is a reanalyse, so it runs cheap', async () => {
-    vi.mocked(generateText).mockResolvedValue({ text: EMPTY_JSON, usageMetadata: null });
+    vi.mocked(generateText).mockRejectedValue(new OllamaTransientError('aborted', 'timeout'));
     vi.mocked(runClaudePrompt).mockResolvedValue(okFallback(RICH_JSON));
 
     await analyzeWithAi({ ...BASE_INPUT, caption: RICH_TEXT }, { reanalyze: true });
@@ -175,41 +228,18 @@ describe('analyzeWithAi — Claude fallback cascade', () => {
     expect(runClaudePrompt).toHaveBeenCalledWith('rendered prompt', { reanalyze: true });
   });
 
-  it('does not call Claude when there is too little source text to be worth it', async () => {
-    vi.mocked(generateText).mockResolvedValue({ text: EMPTY_JSON, usageMetadata: null });
-    vi.mocked(runClaudePrompt).mockResolvedValue(DISABLED_FALLBACK);
+  it('does not call Claude when Ollama is down but source text is tiny', async () => {
+    vi.mocked(generateText).mockRejectedValue(new OllamaTransientError('transient_503', 'Ollama 503'));
 
     const res = await analyzeWithAi({ ...BASE_INPUT, caption: 'ciao' });
 
     expect(runClaudePrompt).not.toHaveBeenCalled();
     expect(res.fallback).toBeNull();
-  });
-
-  it('treats tags-only output as empty and still falls back', async () => {
-    vi.mocked(generateText).mockResolvedValue({
-      text: JSON.stringify({ songs: [], films: [], notes: [], links: [], tags: ['#cinema'], summary: null }),
-      usageMetadata: null,
-    });
-    vi.mocked(runClaudePrompt).mockResolvedValue(okFallback(RICH_JSON));
-
-    const res = await analyzeWithAi({ ...BASE_INPUT, caption: RICH_TEXT });
-
-    expect(runClaudePrompt).toHaveBeenCalled();
-    expect(res.result.films).toHaveLength(1);
-  });
-
-  it('falls back when Ollama emits no JSON at all', async () => {
-    vi.mocked(generateText).mockResolvedValue({ text: 'mi dispiace, non posso', usageMetadata: null });
-    vi.mocked(runClaudePrompt).mockResolvedValue(okFallback(RICH_JSON));
-
-    const res = await analyzeWithAi({ ...BASE_INPUT, caption: RICH_TEXT });
-
-    expect(runClaudePrompt).toHaveBeenCalled();
-    expect(res.result.films).toHaveLength(1);
+    expect(res.failure?.category).toBe('transient_503');
   });
 
   it('strips markdown fences from the Claude output', async () => {
-    vi.mocked(generateText).mockResolvedValue({ text: EMPTY_JSON, usageMetadata: null });
+    vi.mocked(generateText).mockRejectedValue(new BackendUnavailableError('ollama'));
     vi.mocked(runClaudePrompt).mockResolvedValue(okFallback('```json\n' + RICH_JSON + '\n```'));
 
     const res = await analyzeWithAi({ ...BASE_INPUT, caption: RICH_TEXT });
@@ -218,7 +248,7 @@ describe('analyzeWithAi — Claude fallback cascade', () => {
   });
 
   it('applies the same link verification to Claude output', async () => {
-    vi.mocked(generateText).mockResolvedValue({ text: EMPTY_JSON, usageMetadata: null });
+    vi.mocked(generateText).mockRejectedValue(new OllamaTransientError('queue_expired', 'expired'));
     vi.mocked(runClaudePrompt).mockResolvedValue(okFallback(JSON.stringify({
       songs: [], films: [], notes: [], tags: [], summary: 'ok',
       links: [
@@ -235,8 +265,8 @@ describe('analyzeWithAi — Claude fallback cascade', () => {
     expect(res.result.links).toEqual([{ url: 'https://real.example.com', label: 'real' }]);
   });
 
-  it('keeps the empty Ollama result when the fallback fails', async () => {
-    vi.mocked(generateText).mockResolvedValue({ text: EMPTY_JSON, usageMetadata: null });
+  it('keeps failure when Ollama is down and the fallback also fails', async () => {
+    vi.mocked(generateText).mockRejectedValue(new OllamaTransientError('transient_503', 'busy'));
     vi.mocked(runClaudePrompt).mockResolvedValue({
       status: 'error', text: null, reason: 'exit code 1', durationMs: 50, model: 'claude-opus-4-8',
     });
@@ -246,10 +276,11 @@ describe('analyzeWithAi — Claude fallback cascade', () => {
     expect(res.result.films).toHaveLength(0);
     expect(res.result.summary).toBeNull();
     expect(res.fallback?.status).toBe('error');
+    expect(res.failure?.category).toBe('transient_503');
   });
 
-  it('keeps the empty Ollama result when the fallback returns unparseable text', async () => {
-    vi.mocked(generateText).mockResolvedValue({ text: EMPTY_JSON, usageMetadata: null });
+  it('keeps failure when Ollama is down and Claude returns unparseable text', async () => {
+    vi.mocked(generateText).mockRejectedValue(new OllamaTransientError('aborted', 'timeout'));
     vi.mocked(runClaudePrompt).mockResolvedValue(okFallback('non e json'));
 
     const res = await analyzeWithAi({ ...BASE_INPUT, caption: RICH_TEXT });

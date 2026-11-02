@@ -214,8 +214,17 @@ describe('analyzeSlides', () => {
     expect(slides[0].summary).toBeNull();
   });
 
-  it('falls back to Claude when the local model yields nothing usable', async () => {
+  it('does not call Claude when the local model yields unusable JSON', async () => {
     vi.mocked(generateText).mockResolvedValue({ text: 'not json', usageMetadata: null });
+
+    const slides = await analyzeSlides(BASE);
+
+    expect(runClaudePrompt).not.toHaveBeenCalled();
+    expect(slides[0].summary).toBeNull();
+  });
+
+  it('falls back to Claude when Ollama throws', async () => {
+    vi.mocked(generateText).mockRejectedValue(new Error('ollama down'));
     vi.mocked(runClaudePrompt).mockResolvedValue({
       status: 'ok', text: slidesPayload([{ index: 0, summary: 'recuperato da Claude' }]),
       reason: null, durationMs: 10, model: 'claude-opus-4-8',
@@ -230,8 +239,8 @@ describe('analyzeSlides', () => {
   // Slide analysis has its own fallback, one call per entry. It only runs on a
   // second pass when the entry has no persisted slides, but when it does it
   // must be as cheap as the content-analysis one.
-  it('runs its own Claude fallback cheap on a second pass', async () => {
-    vi.mocked(generateText).mockResolvedValue({ text: 'not json', usageMetadata: null });
+  it('runs its own Claude fallback cheap on a second pass when Ollama is down', async () => {
+    vi.mocked(generateText).mockRejectedValue(new Error('timeout'));
     vi.mocked(runClaudePrompt).mockResolvedValue({
       status: 'ok', text: slidesPayload([{ index: 0, summary: 'recuperato' }]),
       reason: null, durationMs: 1, model: 'haiku',
