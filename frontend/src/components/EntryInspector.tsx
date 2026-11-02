@@ -135,8 +135,8 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
   const hasTags = (entry.results.tags?.length || 0) > 0;
   const hasEnrichments = !!entry.results.enrichments;
   const slides = entry.results.slides ?? [];
-  // Top-level links plus suggested destinations from slides (older entries
-  // often have slide.links but an empty results.links).
+  // Top-level links + slide suggestions + enrichment deep links (older
+  // carousels often leave results.links empty).
   const browsingLinks = (() => {
     const seen = new Set<string>();
     const out: Array<{ url: string; label: string }> = [];
@@ -149,6 +149,9 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
     for (const link of entry.results.links ?? []) add(link.url, link.label || link.domain);
     for (const slide of slides) {
       for (const link of slide.links ?? []) add(link.url, link.label);
+    }
+    for (const item of entry.results.enrichments?.items ?? []) {
+      for (const link of item.links ?? []) add(link.url, link.title || item.label);
     }
     return out;
   })();
