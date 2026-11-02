@@ -2947,9 +2947,14 @@ body {
 
 /* ==================== RESPONSIVE ==================== */
 @media (max-width: 768px) {
+  .header {
+    padding: 0.75rem 1rem;
+  }
+
   .header-content {
     flex-wrap: wrap;
-    gap: 1rem;
+    gap: 0.75rem;
+    max-width: 100%;
   }
 
   .stats {
@@ -2957,6 +2962,26 @@ body {
     width: 100%;
     justify-content: center;
     flex-wrap: wrap;
+  }
+
+  /* Nav links used to spill past the viewport (~Settings at x=480 on a
+     390px phone). Keep them on one row and scroll horizontally instead. */
+  .nav {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-link {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 0.4rem 0.65rem;
   }
 
   /* Master-detail mobile */
@@ -3443,6 +3468,8 @@ body {
 @media (max-width: 768px) {
   .list-page-content {
     padding: 1rem;
+    overflow-x: clip;
+    max-width: 100%;
   }
 
   .list-page-header h1 {
@@ -3451,12 +3478,38 @@ body {
 
   .list-item-row {
     flex-wrap: wrap;
+    min-width: 0;
   }
 
   .list-item-action {
     width: 100%;
     text-align: right;
     margin-top: 0.25rem;
+  }
+
+  .filter-topbar {
+    flex-wrap: wrap;
+  }
+
+  .filter-search {
+    flex: 1 1 12rem;
+    min-width: 0;
+  }
+
+  /* Long repo URLs / titles must ellipsis inside the flex child, not grow the row. */
+  .list-item-title,
+  .list-item-title a,
+  .film-title-play-link {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .list-item-subtitle {
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 }
 
