@@ -347,11 +347,8 @@ describe('POST /telegram/webhook — URL message enqueues a job', () => {
     );
   });
 
-  it('successful enqueue → immediate ack via sendMessage (no direct /api/analyze)', async () => {
-    const fetchSpy = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ ok: true, result: { message_id: 1 } }),
-    });
+  it('successful enqueue → no Telegram chatter and no direct /api/analyze', async () => {
+    const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     const app = buildApp();
     await app.inject({
@@ -359,12 +356,8 @@ describe('POST /telegram/webhook — URL message enqueues a job', () => {
       url: '/telegram/webhook',
       payload: urlMessage('https://www.instagram.com/reel/nofetch/'),
     });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [calledUrl, calledInit] = fetchSpy.mock.calls[0];
-    expect(String(calledUrl)).toContain('/sendMessage');
-    expect(String(calledUrl)).not.toContain('/api/analyze');
-    const body = JSON.parse((calledInit as { body: string }).body);
-    expect(body.text).toContain('Analizzo');
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(enqueueJob).toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 

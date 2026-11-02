@@ -367,21 +367,14 @@ export function registerTelegramRoute(app: FastifyInstance): void {
       // If the stub entry write or the enqueue itself failed (e.g. a DB
       // hiccup), the job never entered the queue — tell the user instead
       // of silently replying 200 with no entry, no job, and no feedback.
+      // No "analizzo…" ack: the user only wants the final result (or a clear
+      // failure). Reliability is the stub entry + job queue, not chatter.
       if (!enqueued) {
         await sendTelegramMessage(
           chatId,
           `❌ Analisi fallita.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`,
           token
         ).catch(() => {});
-      } else {
-        // Immediate ack: Instagram carousels and Reddit rate-limits can sit
-        // in the queue for minutes with no other signal. A failed ack must
-        // not undo the enqueue — the final result still notifies later.
-        await sendTelegramMessage(chatId, '⏳ Analizzo il link…', token).catch((ackErr) => {
-          log.warn('Ack Telegram fallito', {
-            error: ackErr instanceof Error ? ackErr.message : String(ackErr),
-          });
-        });
       }
 
       reply.code(200).send('OK');
