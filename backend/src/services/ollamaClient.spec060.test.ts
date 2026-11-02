@@ -132,7 +132,7 @@ describe('tetto alla lunghezza della risposta', () => {
     await generateText('prompt');
 
     const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
-    expect(body.options.num_predict).toBe(2048);
+    expect(body.options.num_predict).toBe(4096);
     // Il default di ollama (1.1) non è bastato a fermare la ripetizione.
     expect(body.options.repeat_penalty).toBeGreaterThan(1.1);
   });

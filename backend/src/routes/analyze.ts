@@ -1048,6 +1048,12 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       // analizzate mentre le chiamate morivano in timeout. spec-060 chiede
       // abort e 503 come categoria propria.
       const aiFailure = aiResponse.failure;
+      // When Claude recovered a downed Ollama call, label the provider honestly
+      // so the journal does not look like a successful local pass.
+      const aiProvider =
+        aiResponse.fallback?.status === 'ok'
+          ? `claude:${aiResponse.fallback.model}`
+          : 'ollama';
       const aiAnalyzedDetails: Record<string, unknown> = !featuresConfig.aiAnalysisEnabled
         ? { status: 'skipped', reason: skipAi ? 'deferred to the batched AI pass' : 'disabled in settings' }
         : aiFailure
@@ -1059,7 +1065,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
               reason: aiFailure.reason,
             }
           : {
-              provider: 'ollama',
+              provider: aiProvider,
               songs: aiResult.songs.length,
               films: aiResult.films.length,
               notes: aiResult.notes.length,

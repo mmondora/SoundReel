@@ -81,10 +81,15 @@ const REQUEST_TIMEOUT_MS = 180_000;
  */
 /**
  * Quanto puo' essere lunga una risposta prima che sia evidente che il modello
- * ha perso il filo. Un'analisi completa sta sotto i mille token; oltre il
- * doppio non sta piu' rispondendo alla domanda.
+ * ha perso il filo.
+ *
+ * Era 2048: su caption lunghe + OCR + vision glm-4.7-flash spesso arrivava
+ * esattamente a 2048 (`done_reason=length`), il JSON restava troncato, il
+ * parser vedeva vuoto e scattava Claude (~18s). 4096 lascia margine per
+ * analisi ricche senza riaprire la spirale da 80k token del 19 settembre
+ * (ancora chiusa da repeat_penalty). Override: OLLAMA_NUM_PREDICT.
  */
-const MAX_RESPONSE_TOKENS = 2048;
+const MAX_RESPONSE_TOKENS = Number(process.env.OLLAMA_NUM_PREDICT ?? 4096);
 
 const QUEUE_POLL_START_MS = 2_000;
 const QUEUE_POLL_MAX_MS = 15_000;
@@ -169,6 +174,7 @@ export class OllamaTransientError extends Error {
 interface OllamaNativeResponse {
   response?: string;
   done?: boolean;
+  done_reason?: string;
   prompt_eval_count?: number;
   eval_count?: number;
 }
@@ -194,6 +200,41 @@ function usageFrom(data: OllamaNativeResponse): OllamaUsage {
     totalTokenCount: (data.prompt_eval_count ?? 0) + (data.eval_count ?? 0),
     estimatedCostUSD: 0,
   };
+}
+
+function hitTokenCeiling(data: OllamaNativeResponse): boolean {
+  return (
+    data.done_reason === 'length' ||
+    (typeof data.eval_count === 'number' && data.eval_count >= MAX_RESPONSE_TOKENS)
+  );
+}
+
+function finalizeOllamaText(
+  data: OllamaNativeResponse,
+  model: string,
+  extraLog: Record<string, unknown> = {}
+): OllamaResponse {
+  const text = data.response || '';
+  const usage = usageFrom(data);
+  const truncated = hitTokenCeiling(data);
+  logInfo('Ollama response', {
+    chars: text.length,
+    tokens: usage.totalTokenCount,
+    doneReason: data.done_reason ?? null,
+    evalCount: data.eval_count ?? null,
+    truncated,
+    ...extraLog,
+  });
+  if (truncated) {
+    logWarning('Ollama risposta tagliata dal tetto num_predict — JSON spesso illeggibile', {
+      model,
+      evalCount: data.eval_count,
+      maxPredict: MAX_RESPONSE_TOKENS,
+      doneReason: data.done_reason ?? null,
+      ...extraLog,
+    });
+  }
+  return { text, usageMetadata: usage };
 }
 
 interface QueueSubmitResponse {
@@ -245,7 +286,7 @@ async function generateQueued(body: unknown, model: string): Promise<OllamaRespo
   // buona evita di legare il deploy di Soundreel a quello del router.
   if (submitted && !submitted.job_id && typeof submitted.response === 'string') {
     logInfo('Router senza coda async, risposta sincrona', { model });
-    return { text: submitted.response, usageMetadata: usageFrom(submitted) };
+    return finalizeOllamaText(submitted, model);
   }
 
   if (!submitted?.job_id) {
@@ -383,8 +424,25 @@ export async function generateText(
     const data = (await response.json()) as OllamaNativeResponse;
     const text = data.response || '';
     const usage = usageFrom(data);
+    const hitTokenCeiling =
+      data.done_reason === 'length' ||
+      (typeof data.eval_count === 'number' && data.eval_count >= MAX_RESPONSE_TOKENS);
 
-    logInfo('Ollama response', { chars: text.length, tokens: usage.totalTokenCount });
+    logInfo('Ollama response', {
+      chars: text.length,
+      tokens: usage.totalTokenCount,
+      doneReason: data.done_reason ?? null,
+      evalCount: data.eval_count ?? null,
+      truncated: hitTokenCeiling,
+    });
+    if (hitTokenCeiling) {
+      logWarning('Ollama risposta tagliata dal tetto num_predict — JSON spesso illeggibile', {
+        model,
+        evalCount: data.eval_count,
+        maxPredict: MAX_RESPONSE_TOKENS,
+        doneReason: data.done_reason ?? null,
+      });
+    }
     return { text, usageMetadata: usage };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
