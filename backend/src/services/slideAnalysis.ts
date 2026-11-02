@@ -163,8 +163,12 @@ export async function analyzeSlides(
 
 /** Heuristic: summaries that still look like Spanish after an Italian request. */
 function looksForeignForItalian(text: string): boolean {
-  return /\b(texto|extracto|extraido|muestra|historia|trayectoria|incluyendo|empresa|declaraci[oó]n|autor)\b/i.test(text);
+  return /\b(texto|extracto|extra[ií]do|extractado|muestra|historia|trayectoria|incluyendo|empresa|declaraci[oó]n|nieto|creador|bodega)\b/i.test(
+    text
+  );
 }
+
+const TRANSLATE_BATCH = 4;
 
 async function ensureSummariesInLanguage(
   slides: EntrySlide[],
@@ -178,32 +182,42 @@ async function ensureSummariesInLanguage(
   if (targets.length === 0) return;
 
   const langName = outputLanguageDisplayName(outputLanguage);
-  const list = targets
-    .map((s) => `${s.index}: ${s.summary}`)
-    .join('\n');
-  const translatePrompt = `Translate each numbered summary into ${langName}. Keep proper names (people, brands, places). Do not add commentary.
+  let applied = 0;
+
+  for (let i = 0; i < targets.length; i += TRANSLATE_BATCH) {
+    const batch = targets.slice(i, i + TRANSLATE_BATCH);
+    const list = batch.map((s) => `${s.index}: ${s.summary}`).join('\n');
+    const translatePrompt = `Translate each numbered paragraph into ${langName}. Keep proper names. No commentary.
 
 ${list}
 
-Reply ONLY with valid JSON, no markdown:
-{"slides":[{"index":0,"summary":"..."}]}`;
+Reply ONLY with JSON:
+{"slides":[{"index":${batch[0].index},"summary":"..."}]}`;
 
-  try {
-    const response = await generateText(translatePrompt, [], { json: true });
-    const translated = parseSlideResponse(response.text);
-    let applied = 0;
-    for (const slide of targets) {
-      const raw = translated.get(slide.index);
-      if (!raw || !isRealValue(raw.summary)) continue;
-      slide.summary = raw.summary!.trim();
-      applied++;
+    try {
+      const response = await generateText(translatePrompt, [], { json: true });
+      const translated = parseSlideResponse(response.text);
+      for (const slide of batch) {
+        const raw = translated.get(slide.index);
+        if (!raw || !isRealValue(raw.summary)) continue;
+        const next = raw.summary!.trim();
+        // Reject if the model echoed Spanish again.
+        if (outputLanguage === 'it' && looksForeignForItalian(next)) continue;
+        slide.summary = next;
+        applied++;
+      }
+    } catch (err) {
+      logWarning('Traduzione summary slide fallita', {
+        error: String(err),
+        batchStart: batch[0]?.index,
+      });
     }
-    logInfo('Slide summaries translated to output language', {
-      outputLanguage,
-      candidates: targets.length,
-      applied,
-    });
-  } catch (err) {
-    logWarning('Traduzione summary slide fallita', { error: String(err) });
   }
+
+  logInfo('Slide summaries translated to output language', {
+    outputLanguage,
+    candidates: targets.length,
+    applied,
+    batches: Math.ceil(targets.length / TRANSLATE_BATCH),
+  });
 }

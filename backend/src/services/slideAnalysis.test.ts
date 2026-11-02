@@ -55,7 +55,7 @@ describe('analyzeSlides', () => {
     expect(ctx.outputLanguageName).toBe('Italian');
   });
 
-  it('re-translates Spanish summaries into Italian with a second call', async () => {
+  it('re-translates Spanish summaries into Italian in small batches', async () => {
     vi.mocked(generateText)
       .mockResolvedValueOnce({
         text: slidesPayload([
@@ -72,10 +72,10 @@ describe('analyzeSlides', () => {
       });
 
     const slides = await analyzeSlides(BASE);
+    // 1 analysis + 1 translate batch (only index 0 looked Spanish)
     expect(generateText).toHaveBeenCalledTimes(2);
     expect(slides[0].summary).toContain('estratto');
     expect(slides[0].summary).not.toMatch(/texto extracto/i);
-    // Already-Italian summary is left alone (no index 1 in translate payload result).
     expect(slides[1].summary).toBe('Presenta Jellyfin.');
   });
 
