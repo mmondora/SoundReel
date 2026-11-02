@@ -102,7 +102,17 @@ const QUEUE_MAX_WAIT_MS = Number(process.env.OLLAMA_QUEUE_MAX_WAIT_MS ?? 45 * 60
 /** Quanto si aspetta la singola risposta di servizio (submit e poll). */
 const QUEUE_HTTP_TIMEOUT_MS = 30_000;
 
-const TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || 'qwen2.5:3b';
+/**
+ * Default text model: glm-4.7-flash on vulcano (M5 Max, tier 0).
+ *
+ * Scelto al posto di qwen2.5:3b perche' su vulcano e' disponibile un 30B-class
+ * flash (~19GB q4) che estrae JSON strutturato da caption/transcript molto
+ * meglio del 3B, restando sotto il secondo col `think: false` obbligatorio
+ * (senza, brucia num_predict nel reasoning e `format: json` torna vuoto).
+ * I 100B+ (qwen3.5:122b, gpt-oss:120b) restano fuori: troppo lenti per la
+ * coda di analyze e monopolizzano la macchina. Vision resta moondream.
+ */
+const TEXT_MODEL = process.env.OLLAMA_TEXT_MODEL || 'glm-4.7-flash:q4_K_M';
 const VISION_MODEL = process.env.OLLAMA_VISION_MODEL || 'moondream:latest';
 
 /**
@@ -335,6 +345,12 @@ export async function generateText(
   // Mai insieme alle immagini: li' risponde moondream, a cui si chiede una
   // descrizione in prosa, e vincolarlo al JSON avrebbe l'effetto opposto.
   if (opts.json && images.length === 0) body.format = 'json';
+
+  // I modelli "thinking" (glm-4.7-flash, ecc.) spendono i token di
+  // num_predict nel reasoning interno. Con format:json la risposta utile
+  // resta vuota e done_reason=length. `think: false` spegne quel canale;
+  // sui modelli senza thinking Ollama lo ignora.
+  if (images.length === 0) body.think = false;
 
   const queued = isQueuedMode();
   logInfo('Ollama generate', { model, hasImages: images.length, promptChars: prompt.length, queued });

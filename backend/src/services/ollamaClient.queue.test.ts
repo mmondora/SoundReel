@@ -88,6 +88,33 @@ describe('spec-061: coda async', () => {
     expect(init.headers['X-GPU-Queue']).toBeUndefined();
   });
 
+  // glm-4.7-flash (e altri thinking model) senza think:false bruciano
+  // num_predict nel reasoning e con format:json tornano response vuota.
+  it('sui call di testo manda think:false (e format:json se richiesto)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ok({ response: '{}', prompt_eval_count: 1, eval_count: 1 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { generateText } = await import('./ollamaClient');
+    await generateText('prompt', [], { json: true });
+
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body) as Record<string, unknown>;
+    expect(body.think).toBe(false);
+    expect(body.format).toBe('json');
+    expect(body.images).toEqual([]);
+  });
+
+  it('sulla vision non manda think ne format json', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ok({ response: 'una scena', prompt_eval_count: 1, eval_count: 1 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { generateText } = await import('./ollamaClient');
+    await generateText('descrivi', [{ mimeType: 'image/jpeg', base64: 'AAAA' }], { json: true });
+
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body) as Record<string, unknown>;
+    expect(body.think).toBeUndefined();
+    expect(body.format).toBeUndefined();
+  });
+
   // Un router non ancora aggiornato risponde come sempre: è una risposta
   // valida, non un errore. Così il deploy di Soundreel non è legato al suo.
   it('accetta la risposta piena di un router senza coda', async () => {

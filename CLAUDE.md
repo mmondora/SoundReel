@@ -9,7 +9,7 @@ SoundReel è una web app personale (single user) che analizza contenuti social (
 - **Frontend**: React + Vite + TypeScript, SPA statica servita da Fastify
 - **Backend**: Node.js 20 + Fastify + TypeScript, in `backend/`
 - **Database**: PostgreSQL 17 (container Docker `soundreel-db`)
-- **AI**: Ollama self-hosted — `qwen2.5:3b` (testo/analisi), `moondream:latest` (vision/frame video) via `ollamaClient.ts`
+- **AI**: Ollama self-hosted — `glm-4.7-flash:q4_K_M` (testo/analisi, via vulcano), `moondream:latest` (vision/frame video) via `ollamaClient.ts`
 - **Music Recognition**: AudD API + Shazam (`shazamClient.ts` → instaloader) + Whisper (trascrizione)
 - **Film DB**: TMDb API
 - **Spotify**: Spotify Web API con OAuth 2.0 PKCE
@@ -95,7 +95,7 @@ soundreel/
 - **Whisper**: HTTP verso `gpu-router:9000/whisper` (env `WHISPER_URL`) — il router sceglie: archi-pc (`192.168.178.23:9000`, nativo CPU) quando risponde, altrimenti accende da sé il container locale `soundreel-whisper` scegliendo `tiny` o `small` secondo la RAM disponibile, e lo spegne dopo 15 minuti di inattività. Spec: `geekom-hub/gpu-router/specs/2026-08-30-whisper-routing-and-on-demand-design.md`
 - **Instaloader**: HTTP verso `soundreel-instaloader:5000` (include endpoint `/shazam/recognize`, `/shazam/scan-full`, `/yt/url`, `/download-media` per YouTube/TikTok via yt-dlp)
 - **OCR**: HTTP verso `soundreel-ocr:5001`
-- **Ollama**: HTTP verso `gpu-router:9000` (env `OLLAMA_URL`) — gpu-router fa load balancing tra archi-PC (`192.168.178.23:11434`) e ollama locale GEEKOM. Modelli: `OLLAMA_TEXT_MODEL` (default `qwen2.5:3b`), `OLLAMA_VISION_MODEL` (default `moondream:latest`)
+- **Ollama**: HTTP verso `gpu-router:9000` (env `OLLAMA_URL`) — gpu-router preferisce vulcano (tier 0), poi archi-PC, poi GEEKOM. Modelli: `OLLAMA_TEXT_MODEL` (default `glm-4.7-flash:q4_K_M`; il client manda `think: false` sui call di testo), `OLLAMA_VISION_MODEL` (default `moondream:latest`)
 - **Spooty**: HTTP verso `spooty:3000/api/playlist` per aggiungere link Spotify (env `SPOOTY_URL`, default `http://spooty:3000`; env `SPOOTY_FRONTEND_URL`, default `https://spooty.casamon.dev`)
 - **Spotify**: OAuth PKCE, token refresh automatico prima di ogni operazione
 - **TMDb**: GET a `https://api.themoviedb.org/3/search/movie`
