@@ -58,6 +58,40 @@ export async function getEntry(id: string): Promise<Entry> {
   return json<Entry>(res);
 }
 
+export interface EntryMediaUrls {
+  entryId: string;
+  videoUrl: string | null;
+  audioUrl: string | null;
+  thumbnailUrl: string | null;
+  frames: string[];
+  slides: string[];
+}
+
+export async function fetchEntryMedia(entryId: string): Promise<EntryMediaUrls> {
+  const res = await fetch(url(`/api/entries/${encodeURIComponent(entryId)}/media`));
+  return json<EntryMediaUrls>(res);
+}
+
+export interface LibraryItem {
+  entryId: string;
+  sourceUrl: string;
+  sourcePlatform: string;
+  createdAt: string;
+  caption: string | null;
+  summary: string | null;
+  videoUrl: string | null;
+  audioUrl: string | null;
+  thumbnailUrl: string | null;
+  frameCount: number;
+  slideCount: number;
+}
+
+export async function fetchLibrary(limit = 60): Promise<LibraryItem[]> {
+  const res = await fetch(url(`/api/library?limit=${limit}`));
+  const data = await json<{ items: LibraryItem[] }>(res);
+  return data.items;
+}
+
 export async function deleteEntry(entryId: string): Promise<{ success: boolean }> {
   const res = await fetch(url(`/api/entries/${encodeURIComponent(entryId)}`), { method: 'DELETE' });
   return json<{ success: boolean }>(res);

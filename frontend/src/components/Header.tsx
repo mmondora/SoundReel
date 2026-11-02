@@ -73,6 +73,7 @@ export function Header({ stats }: HeaderProps) {
           )}
         </div>
         <nav className="nav">
+          <Link to="/library" className="nav-link">{t.libraryNav}</Link>
           <Link to="/console" className="nav-link">{t.console}</Link>
           <Link to="/prompts" className="nav-link">{t.aiPrompts}</Link>
           <Link to="/admin" className="nav-link">Admin</Link>

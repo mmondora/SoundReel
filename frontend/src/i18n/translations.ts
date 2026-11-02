@@ -7,6 +7,14 @@ export interface Translations {
   films: string;
   notes: string;
   software: string;
+  libraryNav: string;
+  libraryTitle: string;
+  libraryHint: string;
+  libraryEmpty: string;
+  localMediaSection: string;
+  localMediaBadge: string;
+  framePrev: string;
+  frameNext: string;
   deleteAll: string;
   deleting: string;
   console: string;
@@ -345,6 +353,14 @@ export const translations: Record<Language, Translations> = {
     films: 'film',
     notes: 'note',
     software: 'software',
+    libraryNav: 'Libreria',
+    libraryTitle: 'Libreria media',
+    libraryHint: 'Contenuti salvati in locale — aprili senza tornare online.',
+    libraryEmpty: 'Nessun media locale trovato',
+    localMediaSection: 'Media locale',
+    localMediaBadge: 'Offline',
+    framePrev: 'Frame precedente',
+    frameNext: 'Frame successivo',
     deleteAll: 'Cancella tutto',
     deleting: 'Eliminazione...',
     console: 'Console',
@@ -678,6 +694,14 @@ export const translations: Record<Language, Translations> = {
     films: 'films',
     notes: 'notes',
     software: 'software',
+    libraryNav: 'Library',
+    libraryTitle: 'Media library',
+    libraryHint: 'Saved local media — review offline without going back online.',
+    libraryEmpty: 'No local media found',
+    localMediaSection: 'Local media',
+    localMediaBadge: 'Offline',
+    framePrev: 'Previous frame',
+    frameNext: 'Next frame',
     deleteAll: 'Delete all',
     deleting: 'Deleting...',
     console: 'Console',

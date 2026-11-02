@@ -23,6 +23,14 @@ vi.mock('../services/api', () => ({
   deleteEntry: vi.fn(),
   retryEntry: vi.fn(),
   enrichEntry: vi.fn(),
+  fetchEntryMedia: vi.fn().mockResolvedValue({
+    entryId: '',
+    videoUrl: null,
+    audioUrl: null,
+    thumbnailUrl: null,
+    frames: [],
+    slides: [],
+  }),
 }));
 
 function makeEntry(partial: Partial<Entry> & Pick<Entry, 'id'>): Entry {

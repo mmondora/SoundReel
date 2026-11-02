@@ -3,13 +3,17 @@ import { pool } from '../utils/db';
 import { listEntries, getEntry, updateEntry, deleteEntry, deleteAllEntries, appendActionLog, createActionLog } from '../utils/db';
 import { addToPlaylist } from '../services/spotify';
 import { enrichWithOpenAI } from '../services/openaiEnrich';
+import { listEntryMediaUrls, preferLocalMediaUrls } from '../services/localMedia';
 import { logError } from '../utils/logger';
 import type { Entry } from '../types';
 
 export function registerEntriesRoutes(app: FastifyInstance): void {
   app.get<{ Querystring: { limit?: string } }>('/api/entries', async (req) => {
     const limit = Math.min(1000, Math.max(1, Number(req.query.limit ?? 200)));
-    return await listEntries(limit);
+    const entries = await listEntries(limit);
+    // Home fetches ≤50; overlaying local paths keeps thumbnails/players alive
+    // after Instagram CDN URLs expire.
+    return Promise.all(entries.map((e) => preferLocalMediaUrls(e)));
   });
 
   app.get<{ Params: { id: string } }>('/api/entries/:id', async (req, reply) => {
@@ -18,7 +22,24 @@ export function registerEntriesRoutes(app: FastifyInstance): void {
       reply.code(404).send({ error: 'Not found' });
       return;
     }
-    return entry;
+    return preferLocalMediaUrls(entry);
+  });
+
+  app.get<{ Params: { id: string } }>('/api/entries/:id/media', async (req, reply) => {
+    const entry = await getEntry(req.params.id);
+    if (!entry) {
+      reply.code(404).send({ error: 'Not found' });
+      return;
+    }
+    const media = await listEntryMediaUrls(req.params.id);
+    return media ?? {
+      entryId: req.params.id,
+      videoUrl: null,
+      audioUrl: null,
+      thumbnailUrl: null,
+      frames: [],
+      slides: [],
+    };
   });
 
   app.delete<{ Params: { id: string } }>('/api/entries/:id', async (req) => {

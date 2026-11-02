@@ -1,9 +1,10 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { Entry, Note } from '../types';
 import { SongItem } from './SongItem';
 import { FilmItem } from './FilmItem';
 import { ActivityTimeline } from './ActivityTimeline';
-import { deleteEntry, retryEntry, enrichEntry } from '../services/api';
+import { deleteEntry, retryEntry, enrichEntry, fetchEntryMedia } from '../services/api';
+import type { EntryMediaUrls } from '../services/api';
 import { useLanguage, interpolate } from '../i18n';
 import { VERDICT_TONE, VERDICT_ICON } from '../utils/enrichmentVerdict';
 
@@ -101,7 +102,29 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
   const [transcriptExpanded, setTranscriptExpanded] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [localMedia, setLocalMedia] = useState<EntryMediaUrls | null>(null);
+  const [frameIndex, setFrameIndex] = useState(0);
   const { t, language } = useLanguage();
+
+  useEffect(() => {
+    let cancelled = false;
+    setLocalMedia(null);
+    setFrameIndex(0);
+    void fetchEntryMedia(entry.id)
+      .then((media) => {
+        if (!cancelled) setLocalMedia(media);
+      })
+      .catch(() => {
+        if (!cancelled) setLocalMedia(null);
+      });
+    return () => { cancelled = true; };
+  }, [entry.id]);
+
+  const videoSrc = localMedia?.videoUrl || entry.mediaUrl;
+  const isLocalVideo = !!localMedia?.videoUrl;
+  const audioSrc = localMedia?.audioUrl;
+  const frames = localMedia?.frames ?? [];
+  const currentFrame = frames[frameIndex] ?? null;
 
   const dateLocale = language === 'it' ? 'it-IT' : 'en-US';
   const parsedDate = parseFirestoreDate(entry.createdAt);
@@ -217,6 +240,71 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
           </div>
         </div>
       </div>
+
+      {/* Local / offline media replay */}
+      {(videoSrc || audioSrc || frames.length > 0) && (
+        <section className="inspector-section inspector-media-section">
+          <h3 className="inspector-section-title">
+            {t.localMediaSection}
+            {isLocalVideo && <span className="local-media-badge">{t.localMediaBadge}</span>}
+          </h3>
+          {videoSrc && (
+            <video
+              key={videoSrc}
+              className="inspector-video"
+              src={videoSrc}
+              controls
+              preload="metadata"
+              poster={localMedia?.thumbnailUrl || entry.thumbnailUrl || undefined}
+            />
+          )}
+          {!videoSrc && audioSrc && (
+            <audio key={audioSrc} className="inspector-audio" src={audioSrc} controls preload="metadata" />
+          )}
+          {frames.length > 0 && (
+            <div className="inspector-frames">
+              <div className="inspector-frames-toolbar">
+                <button
+                  type="button"
+                  className="inspector-action-btn"
+                  disabled={frameIndex <= 0}
+                  onClick={() => setFrameIndex((i) => Math.max(0, i - 1))}
+                  title={t.framePrev}
+                >
+                  ←
+                </button>
+                <span className="inspector-frames-count">
+                  {frameIndex + 1} / {frames.length}
+                </span>
+                <button
+                  type="button"
+                  className="inspector-action-btn"
+                  disabled={frameIndex >= frames.length - 1}
+                  onClick={() => setFrameIndex((i) => Math.min(frames.length - 1, i + 1))}
+                  title={t.frameNext}
+                >
+                  →
+                </button>
+              </div>
+              {currentFrame && (
+                <img src={currentFrame} alt="" className="inspector-frame-main" loading="lazy" />
+              )}
+              <div className="inspector-frame-strip">
+                {frames.map((src, i) => (
+                  <button
+                    key={src}
+                    type="button"
+                    className={`inspector-frame-thumb ${i === frameIndex ? 'active' : ''}`}
+                    onClick={() => setFrameIndex(i)}
+                  >
+                    <img src={src} alt="" loading="lazy" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Summary */}
       {entry.results.summary && (

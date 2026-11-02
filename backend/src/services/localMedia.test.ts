@@ -88,4 +88,30 @@ describe('rebuildLocalPaths', () => {
       expect(p?.startsWith(path.join(root, 'e1') + path.sep)).toBe(true);
     }
   });
+
+  it('listEntryMediaUrls exposes /media public paths', async () => {
+    await withDir(['video.mp4', 'audio.wav', 'thumbnail.jpg', 'frame-001.jpg', 'slide-001.jpg']);
+    const { listEntryMediaUrls } = await import('./localMedia');
+    const urls = await listEntryMediaUrls('e1');
+    expect(urls).toEqual({
+      entryId: 'e1',
+      videoUrl: '/media/e1/video.mp4',
+      audioUrl: '/media/e1/audio.wav',
+      thumbnailUrl: '/media/e1/thumbnail.jpg',
+      frames: ['/media/e1/frame-001.jpg'],
+      slides: ['/media/e1/slide-001.jpg'],
+    });
+  });
+
+  it('preferLocalMediaUrls replaces CDN links when local files exist', async () => {
+    await withDir(['video.mp4', 'thumbnail.jpg']);
+    const { preferLocalMediaUrls } = await import('./localMedia');
+    const out = await preferLocalMediaUrls({
+      id: 'e1',
+      mediaUrl: 'https://cdn.example/video.mp4',
+      thumbnailUrl: 'https://cdn.example/thumb.jpg',
+    });
+    expect(out.mediaUrl).toBe('/media/e1/video.mp4');
+    expect(out.thumbnailUrl).toBe('/media/e1/thumbnail.jpg');
+  });
 });

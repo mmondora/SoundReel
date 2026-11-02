@@ -45,3 +45,49 @@ export async function rebuildLocalPaths(entryId: string): Promise<ExtractedConte
 
   return hasSomething ? paths : null;
 }
+
+export interface EntryMediaUrls {
+  entryId: string;
+  videoUrl: string | null;
+  audioUrl: string | null;
+  thumbnailUrl: string | null;
+  frames: string[];
+  slides: string[];
+}
+
+function toPublicUrl(entryId: string, absPath: string | null): string | null {
+  if (!absPath) return null;
+  return `/media/${entryId}/${path.basename(absPath)}`;
+}
+
+/** Public `/media/...` URLs for files still on disk for this entry. */
+export async function listEntryMediaUrls(entryId: string): Promise<EntryMediaUrls | null> {
+  const paths = await rebuildLocalPaths(entryId);
+  if (!paths) return null;
+  return {
+    entryId,
+    videoUrl: toPublicUrl(entryId, paths.videoPath),
+    audioUrl: toPublicUrl(entryId, paths.audioPath),
+    thumbnailUrl: toPublicUrl(entryId, paths.thumbnailPath),
+    frames: paths.framePaths.map((p) => toPublicUrl(entryId, p)!),
+    slides: paths.slidePaths.map((p) => toPublicUrl(entryId, p)!),
+  };
+}
+
+/**
+ * Prefer durable local media URLs over expiring CDN links when the file exists.
+ * Leaves remote URLs untouched when nothing is on disk.
+ */
+export async function preferLocalMediaUrls<T extends {
+  id: string;
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+}>(entry: T): Promise<T> {
+  const local = await listEntryMediaUrls(entry.id);
+  if (!local) return entry;
+  return {
+    ...entry,
+    mediaUrl: local.videoUrl ?? entry.mediaUrl,
+    thumbnailUrl: local.thumbnailUrl ?? entry.thumbnailUrl,
+  };
+}

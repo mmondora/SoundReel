@@ -1,6 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { createReadStream, promises as fs } from 'fs';
 import path from 'path';
+import { listEntries } from '../utils/db';
+import { listEntryMediaUrls } from '../services/localMedia';
+import { logError } from '../utils/logger';
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || '/data/media';
 
@@ -57,4 +60,55 @@ export function registerMediaRoute(app: FastifyInstance): void {
       }
     },
   );
+
+  /**
+   * Offline library: recent entries that still have at least one local media file.
+   * Scans MEDIA_ROOT ∩ recent entries (not a full FS walk of 1400+ dirs on every request).
+   */
+  app.get<{ Querystring: { limit?: string } }>('/api/library', async (req, reply) => {
+    try {
+      const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 60)));
+      const entries = await listEntries(Math.min(500, limit * 4));
+      const items: Array<{
+        entryId: string;
+        sourceUrl: string;
+        sourcePlatform: string;
+        createdAt: string;
+        caption: string | null;
+        summary: string | null;
+        videoUrl: string | null;
+        audioUrl: string | null;
+        thumbnailUrl: string | null;
+        frameCount: number;
+        slideCount: number;
+      }> = [];
+
+      for (const entry of entries) {
+        if (items.length >= limit) break;
+        const media = await listEntryMediaUrls(entry.id);
+        if (!media) continue;
+        if (!media.videoUrl && !media.audioUrl && !media.thumbnailUrl && media.frames.length === 0 && media.slides.length === 0) {
+          continue;
+        }
+        items.push({
+          entryId: entry.id,
+          sourceUrl: entry.sourceUrl,
+          sourcePlatform: entry.sourcePlatform,
+          createdAt: entry.createdAt,
+          caption: entry.caption,
+          summary: entry.results.summary ?? null,
+          videoUrl: media.videoUrl,
+          audioUrl: media.audioUrl,
+          thumbnailUrl: media.thumbnailUrl,
+          frameCount: media.frames.length,
+          slideCount: media.slides.length,
+        });
+      }
+
+      return { items };
+    } catch (err) {
+      logError('GET /api/library failed', { err: String(err) });
+      return reply.code(500).send({ error: 'library failed' });
+    }
+  });
 }

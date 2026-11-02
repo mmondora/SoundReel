@@ -141,6 +141,96 @@ function isRedditUrl(url: string): boolean {
   } catch { return false; }
 }
 
+function isRedditHost(hostname: string): boolean {
+  const h = hostname.replace(/^www\./, '').toLowerCase();
+  return h === 'reddit.com' || h === 'old.reddit.com' || h === 'redd.it' || h.endsWith('.reddit.com');
+}
+
+/** Links embedded in a Reddit post's HTML content (from RSS `<content>`). */
+export function linksFromRedditPostHtml(html: string, baseUrl: string): PageRawLink[] {
+  if (!html.trim()) return [];
+  try {
+    const doc = new JSDOM(html).window.document;
+    return scrapeLinks(doc, baseUrl);
+  } catch {
+    return [];
+  }
+}
+
+function isCodeHost(hostname: string): boolean {
+  const h = hostname.replace(/^www\./, '').toLowerCase();
+  return (
+    h === 'github.com' ||
+    h === 'gitlab.com' ||
+    h === 'codeberg.org' ||
+    h === 'bitbucket.org' ||
+    h.endsWith('.github.io')
+  );
+}
+
+/**
+ * Prefer a non-Reddit outbound link that looks like an article/product page.
+ * Code hosts (GitHub, …) are fallbacks so a blog link wins when both appear.
+ */
+export function pickPrimaryArticleUrl(links: PageRawLink[]): string | null {
+  const candidates: string[] = [];
+  for (const link of links) {
+    try {
+      const u = new URL(link.url);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') continue;
+      if (isRedditHost(u.hostname)) continue;
+      if (/\.(jpg|jpeg|png|gif|webp|mp4|webm|gifv)(\?|$)/i.test(u.pathname)) continue;
+      candidates.push(link.url);
+    } catch {
+      continue;
+    }
+  }
+  const articleLike = candidates.find((url) => {
+    try {
+      return !isCodeHost(new URL(url).hostname);
+    } catch {
+      return false;
+    }
+  });
+  return articleLike ?? candidates[0] ?? null;
+}
+
+/** Fold a fetched linked article into the Reddit page payload for AI analysis. */
+export function mergeArticleIntoReddit(
+  reddit: PageExtractResult,
+  article: PageExtractResult,
+): PageExtractResult {
+  const articleBody = article.mainText?.trim() || '';
+  if (!articleBody) return reddit;
+
+  const articleTitle = article.title?.trim();
+  const section = [
+    '## Linked article',
+    articleTitle ? `### ${articleTitle}` : null,
+    article.finalUrl,
+    articleBody,
+  ].filter(Boolean).join('\n\n');
+
+  const mainText = [reddit.mainText?.trim(), section].filter(Boolean).join('\n\n');
+
+  const seen = new Set(reddit.rawLinks.map((l) => l.url));
+  const rawLinks = [...reddit.rawLinks];
+  for (const l of article.rawLinks) {
+    if (seen.has(l.url)) continue;
+    seen.add(l.url);
+    rawLinks.push(l);
+    if (rawLinks.length >= MAX_RAW_LINKS) break;
+  }
+
+  return {
+    ...reddit,
+    mainText,
+    rawLinks,
+    representativeImageUrl: reddit.representativeImageUrl || article.representativeImageUrl,
+    description: reddit.description || article.description,
+  };
+}
+
 async function resolveRedirectUrl(rawUrl: string): Promise<string> {
   // Use global fetch (Node 18+) — exposes response.url (final URL after redirects)
   const res = await fetch(rawUrl, {
@@ -206,6 +296,7 @@ async function extractRedditRss(rawUrl: string): Promise<PageExtractResult | nul
 
     const subreddit = doc.querySelector('category')?.getAttribute('label') ?? '';
     const postLink = postEntry.querySelector('link')?.getAttribute('href') ?? base;
+    const rawLinks = linksFromRedditPostHtml(postContentHtml, postLink);
 
     const parts = [
       title ? `# ${title}` : '',
@@ -214,7 +305,12 @@ async function extractRedditRss(rawUrl: string): Promise<PageExtractResult | nul
       comments.length ? `## Comments\n${comments.join('\n\n')}` : '',
     ].filter(Boolean);
 
-    log.info('Reddit RSS estratto', { title, postTextChars: postText.length, comments: comments.length });
+    log.info('Reddit RSS estratto', {
+      title,
+      postTextChars: postText.length,
+      comments: comments.length,
+      rawLinks: rawLinks.length,
+    });
 
     return {
       finalUrl: postLink,
@@ -224,7 +320,7 @@ async function extractRedditRss(rawUrl: string): Promise<PageExtractResult | nul
       description: postText.slice(0, 300) || null,
       mainText: parts.join('\n\n') || null,
       representativeImageUrl: thumbnail,
-      rawLinks: [],
+      rawLinks,
       siteName: 'Reddit',
       lang: null,
     };
@@ -234,11 +330,29 @@ async function extractRedditRss(rawUrl: string): Promise<PageExtractResult | nul
   }
 }
 
-export async function extractPage(rawUrl: string): Promise<PageExtractResult> {
+export async function extractPage(rawUrl: string, opts?: { skipArticleFollow?: boolean }): Promise<PageExtractResult> {
   // Reddit: use RSS feed for structured content (JSON API is blocked)
   if (isRedditUrl(rawUrl)) {
     const redditResult = await extractRedditRss(rawUrl);
-    if (redditResult) return redditResult;
+    if (redditResult) {
+      if (opts?.skipArticleFollow) return redditResult;
+      const articleUrl = pickPrimaryArticleUrl(redditResult.rawLinks);
+      if (!articleUrl) return redditResult;
+      try {
+        log.info('Reddit: fetch articolo collegato', { articleUrl });
+        // skipArticleFollow prevents a reddit→article→reddit loop if the
+        // outbound URL redirects oddly; articles are never Reddit share links
+        // in the happy path, but the flag is cheap insurance.
+        const article = await extractPage(articleUrl, { skipArticleFollow: true });
+        return mergeArticleIntoReddit(redditResult, article);
+      } catch (e) {
+        log.warn('Reddit: articolo collegato fallito, tengo solo il post', {
+          articleUrl,
+          error: String(e),
+        });
+        return redditResult;
+      }
+    }
     log.warn('Reddit RSS fallback a HTML', { url: rawUrl });
   }
 
