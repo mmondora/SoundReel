@@ -65,6 +65,12 @@ public final class LocalAudioPlayer: ObservableObject {
     /// player draws its own.
     @Published public private(set) var coverData: Data? = nil
     @Published public private(set) var lyrics: String = ""
+    /// Where the words on screen come from (the sheet says it), and whether SoundReel is still being asked for them (ADR-0021).
+    public enum LyricsOrigin: Equatable, Sendable {
+        case none, typed, transcript, internet, instrumental
+    }
+    @Published public private(set) var lyricsOrigin: LyricsOrigin = .none
+    @Published public private(set) var lyricsSearching: Bool = false
     @Published public private(set) var playing: Bool = false
     @Published public private(set) var index: Int = 0
     @Published public private(set) var queue: [QueueItem] = []
@@ -91,6 +97,8 @@ public final class LocalAudioPlayer: ObservableObject {
     private var artworkImage: MPMediaItemArtwork? = nil
     /// Where the queue is kept between launches (`QueueSnapshot`).
     private let snapshots: QueueSnapshotStore
+    private let lyricsLoader: LyricsLoader
+    private var lyricsTask: Task<Void, Never>?
     /// Where the user was inside the song a restored queue points at: applied once, when that song starts, never before.
     private var pendingResume: (songKey: String, seconds: Double)?
     private var lastPositionSave = Date.distantPast
@@ -100,12 +108,13 @@ public final class LocalAudioPlayer: ObservableObject {
     /// Internal, not private: the tests build their own player on a folder of their own.
     init(
         store: OfflineStore = .shared, api: MondropAPIProtocol = MondropAPI(), recorder: PlayRecorder? = nil,
-        snapshots: QueueSnapshotStore = QueueSnapshotStore()
+        snapshots: QueueSnapshotStore = QueueSnapshotStore(), lyricsLoader: LyricsLoader = .shared
     ) {
         self.store = store
         self.api = api
         self.recorder = recorder ?? PlayRecorder.shared
         self.snapshots = snapshots
+        self.lyricsLoader = lyricsLoader
         configureSession()
         configureRemoteCommands()
         #if os(iOS)
@@ -250,7 +259,7 @@ public final class LocalAudioPlayer: ObservableObject {
         title = entry.title
         artist = entry.artist
         coverData = CoverLoader.shared.cached(songKey: entry.songKey)
-        lyrics = store.lyrics(for: entry.songKey) ?? entry.lyrics ?? ""
+        loadLyrics(for: entry)
         artworkImage = nil
         currentTime = 0
         duration = 0
@@ -272,7 +281,7 @@ public final class LocalAudioPlayer: ObservableObject {
         title = entry.title
         artist = entry.artist
         coverData = CoverLoader.shared.cached(songKey: entry.songKey)       // what the phone already has, at once, offline too
-        lyrics = store.lyrics(for: entry.songKey) ?? entry.lyrics ?? ""
+        loadLyrics(for: entry)
         artworkImage = nil
         currentTime = 0
         duration = 0
@@ -344,6 +353,45 @@ public final class LocalAudioPlayer: ObservableObject {
     static func serverView(of entry: QueueItem, api: MondropAPIProtocol) async -> OfflineTrack? {
         if let track = entry.track { return track }
         return try? await api.track(songKey: entry.songKey)
+    }
+
+    // MARK: - The words
+
+    /// What the phone has for the song, no network: what the user typed, else the words the sync brought (the transcript of the post).
+    static func localLyrics(for entry: QueueItem, store: OfflineStore) -> (text: String, origin: LyricsOrigin) {
+        if store.hasTypedLyrics(for: entry.songKey), let typed = store.lyrics(for: entry.songKey), !typed.isEmpty { return (typed, .typed) }
+        if let known = store.lyrics(for: entry.songKey) ?? entry.lyrics, !known.isEmpty { return (known, .transcript) }
+        return ("", .none)
+    }
+
+    /// The words of the song that starts: what the user typed, what the phone has, what it kept of an earlier find and — when there is
+    /// nothing — what SoundReel finds (ADR-0021). A song that changed meanwhile never takes the words of another.
+    private func loadLyrics(for entry: QueueItem) {
+        lyricsTask?.cancel()
+        lyricsTask = nil
+        lyricsSearching = false
+        let local = Self.localLyrics(for: entry, store: store)
+        lyrics = local.text
+        lyricsOrigin = local.origin
+        guard local.origin == .none else { return }
+        if let kept = lyricsLoader.cached(songKey: entry.songKey) {
+            applyFound(kept)
+            return
+        }
+        lyricsSearching = true
+        let key = entry.songKey
+        lyricsTask = Task { [weak self] in
+            let found = await self?.lyricsLoader.fetch(songKey: key)
+            guard let self, !Task.isCancelled, self.currentSongKey == key else { return }
+            self.lyricsSearching = false
+            // The user may have typed words while SoundReel was being asked: they stay.
+            if let found, self.lyricsOrigin == .none { self.applyFound(found) }
+        }
+    }
+
+    private func applyFound(_ found: SongLyrics) {
+        lyrics = found.text
+        lyricsOrigin = found.instrumental ? .instrumental : (found.source == .internet ? .internet : .transcript)
     }
 
     // MARK: - AVPlayer plumbing
@@ -518,6 +566,9 @@ public final class LocalAudioPlayer: ObservableObject {
 
     public func setLyrics(_ text: String) {
         lyrics = text
+        lyricsOrigin = text.isEmpty ? .none : .typed      // what the user typed wins over everything else, and is not asked of anybody
+        lyricsSearching = false
+        lyricsTask?.cancel()
         if queue.indices.contains(index) {
             store.saveLyrics(songKey: queue[index].songKey, text: text)
         }

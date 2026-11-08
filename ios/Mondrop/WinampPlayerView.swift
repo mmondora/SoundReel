@@ -16,6 +16,14 @@ struct WinampPlayerView: View {
     var body: some View {
         playerSurface
         .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
+        #if DEBUG
+        .onAppear {
+            if DemoData.opensLyricsSheet {
+                lyricsDraft = player.lyrics
+                showLyrics = true
+            }
+        }
+        #endif
         .sheet(isPresented: $showQueue) { QueueView() }
         .sheet(isPresented: $showLyrics) {
             NavigationStack {
@@ -23,18 +31,33 @@ struct WinampPlayerView: View {
                     if editingLyrics {
                         TextEditor(text: $lyricsDraft)
                             .padding()
+                    } else if player.lyricsSearching && player.lyrics.isEmpty && lyricsDraft.isEmpty {
+                        VStack(spacing: 12) {
+                            ProgressView()
+                            Text("Cerco il testo…").foregroundStyle(secondary)
+                        }
+                    } else if player.lyricsOrigin == .instrumental {
+                        ContentUnavailableView("Brano strumentale", systemImage: "music.note", description: Text("Non ha parole."))
                     } else if player.lyrics.isEmpty && lyricsDraft.isEmpty {
                         ContentUnavailableView(
                             "Nessun testo",
                             systemImage: "text.quote",
-                            description: Text("Trascrizione del post se c’è, oppure incolla le lyrics.")
+                            description: Text("Non l’ho trovato né nel post né su Internet: puoi incollarlo tu.")
                         )
                     } else {
                         ScrollView {
-                            Text(lyricsDraft.isEmpty ? player.lyrics : lyricsDraft)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding()
-                                .font(.body)
+                            VStack(alignment: .leading, spacing: 14) {
+                                Text(lyricsDraft.isEmpty ? player.lyrics : lyricsDraft)
+                                    .font(.body)
+                                // Where the words come from: a text found on the Internet can have mistakes or miss lines.
+                                if let origin = lyricsOriginLine {
+                                    Text(origin)
+                                        .font(.footnote)
+                                        .foregroundStyle(secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
                         }
                     }
                 }
@@ -227,12 +250,29 @@ struct WinampPlayerView: View {
             showLyrics = true
         } label: {
             Label {
-                Text(player.lyrics.isEmpty ? "Parole / lyrics" : "Vedi parole")
+                Text(lyricsButtonTitle)
             } icon: {
                 Image(systemName: "text.alignleft").foregroundStyle(Color(MondropPalette.accent))
             }
         }
         .buttonStyle(PlayerPillStyle())
+    }
+
+    /// «Vedi parole» when there are words, «Cerco il testo…» while SoundReel is being asked, «Brano strumentale» for an instrumental.
+    private var lyricsButtonTitle: String {
+        if player.lyricsOrigin == .instrumental { return "Brano strumentale" }
+        if !player.lyrics.isEmpty { return "Vedi parole" }
+        return player.lyricsSearching ? "Cerco il testo…" : "Parole / lyrics"
+    }
+
+    /// The line under the words that says where they come from (nil for none).
+    private var lyricsOriginLine: String? {
+        switch player.lyricsOrigin {
+        case .internet: return "Testo trovato su Internet: può avere errori o righe mancanti."
+        case .transcript: return "Trascrizione del post."
+        case .typed: return "Scritto da te."
+        case .none, .instrumental: return nil
+        }
     }
 
     /// The secondary text, as the palette says it (the same on every appearance).

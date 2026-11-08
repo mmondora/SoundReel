@@ -261,6 +261,12 @@ public final class OfflineStore: @unchecked Sendable {
         return index.lyricsOverrides[songKey] ?? index.items.first { $0.songKey == songKey }?.lyrics
     }
 
+    /// True when the user typed (or pasted) the words of this song: they win over every other source, and the sheet says «Scritto da te».
+    public func hasTypedLyrics(for songKey: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return index.lyricsOverrides[songKey] != nil
+    }
+
     // MARK: - Writing
 
     /// Moves a finished download into the library (replacing an older copy) and records it.

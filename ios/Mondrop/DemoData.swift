@@ -17,6 +17,13 @@ enum DemoData {
         guard isOn, let at = arguments.firstIndex(of: "-MondropDemoPush"), arguments.indices.contains(at + 1) else { return nil }
         return arguments[at + 1]
     }
+    /// `-MondropDemoLyrics internet|transcript|instrumental`: what the phone «kept» for the song the demo queue is on; and
+    /// `-MondropDemoLyricsSheet` opens the sheet of the words on the Player.
+    static var lyrics: String? {
+        guard isOn, let at = arguments.firstIndex(of: "-MondropDemoLyrics"), arguments.indices.contains(at + 1) else { return nil }
+        return arguments[at + 1]
+    }
+    static var opensLyricsSheet: Bool { isOn && arguments.contains("-MondropDemoLyricsSheet") }
     static var startTab: RootTab? {
         guard isOn, let at = arguments.firstIndex(of: "-MondropDemoTab"), arguments.indices.contains(at + 1) else { return nil }
         switch arguments[at + 1] {
@@ -66,6 +73,36 @@ enum DemoData {
         let store = QueueSnapshotStore()
         store.save(QueueSnapshot.make(queue: items, index: 1, label: "Playlist · Road trip", playlistId: "p1"))
         store.save(position: items[1].songKey, seconds: 74, duration: 241)
+        seedLyrics(for: items[1].songKey)
+    }
+
+    /// Words of the demo (a short original text, not a real song's), kept as if SoundReel had found them earlier.
+    private static func seedLyrics(for songKey: String) {
+        guard let kind = lyrics else { return }
+        let text = """
+        Prima riga di prova, scritta per vedere il foglio
+        Seconda riga, un poco più lunga della prima riga
+        Il ritornello torna e il ritornello è questo qui
+        Il ritornello torna e il ritornello è questo qui
+
+        Una strofa nuova comincia dopo la riga vuota
+        e finisce quando finiscono le parole di prova
+        """
+        let dir = LyricsLoader.defaultDirectory
+        let file = dir.appendingPathComponent(LyricsLoader.fileStem(songKey)).appendingPathExtension("json")
+        let kept: SongLyrics?
+        switch kind {
+        case "internet": kept = SongLyrics(text: text, source: .internet)
+        case "transcript": kept = SongLyrics(text: text, source: .transcript)
+        case "instrumental": kept = SongLyrics(text: "", source: .internet, instrumental: true)
+        default: kept = nil                          // «none»: forget what an earlier run kept, so the song has no words
+        }
+        guard let kept, let data = try? JSONEncoder().encode(kept) else {
+            try? FileManager.default.removeItem(at: file)
+            return
+        }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? data.write(to: file, options: .atomic)
     }
 }
 #endif
