@@ -1,6 +1,6 @@
 # I testi delle canzoni, cercati su Internet quando mancano (richiesta 2026-11-08)
 
-Stato: **costruita e provata, in attesa dell'OK di Michele** (deploy e TestFlight) per SoundReel **2.19.0** (la rotta e la ricerca) e Mondrop **1.7.0 build 10** (l'app). Una rotta nuova e un'origine dati nuova sono architettura: **ADR-0021**.
+Stato: SoundReel **2.19.0** (la rotta e la ricerca) **in produzione dall'8 novembre, 20:13**; Mondrop **1.7.0 build 10** (l'app) costruita e provata. Una rotta nuova e un'origine dati nuova sono architettura: **ADR-0021**.
 Codice: backend `services/lyricsFinder.ts`, `services/songLyrics.ts`, `db/migrations/020_song_lyrics.sql`, `routes/mondrop.ts` (`GET /api/mondrop/songs/:key/lyrics`); app `ios/MondropKit/LyricsLoader.swift`, `LocalAudioPlayer.swift`, `ios/Mondrop/WinampPlayerView.swift`.
 
 ## 1. Richieste di Michele (testuali)
@@ -50,3 +50,4 @@ La frase si poteva leggere in due modi; la lettura (b) era: quando un brano non 
 
 1. **Le parole su Internet?** Risposta: **«Sì, cercale su Internet»**.
 2. **Da correggere se non va (default scelti):** i testi di Internet **non** sostituiscono le trascrizioni dei post (L1); il ripiego sull'originale per le versioni (L5); «non c'è» ricordato 7 giorni (L7).
+3. **Visto in produzione (8 novembre, dopo il deploy delle 20:13; domanda aperta):** «The Winner Takes It All» (ABBA, 1581 caratteri, 75 righe) e «Heart of Glass» (Blondie, 1170 caratteri, 41 righe) sono arrivati da Internet in 0,9 s; «Clocks», «Dreams» e «Lose Yourself» hanno servito la trascrizione del post, come da L1. Ma **una trascrizione cortissima batte i testi veri**: «Clocks» ne ha una di **33 caratteri**, e **67 entry** con canzoni ne hanno una di 21–100 caratteri (frammenti di ciò che Whisper ha sentito in un reel; sotto i 20 non si serve già oggi). Per loro Internet non si chiede mai. Proposta, **non fatta** (è la regola L1): sotto una soglia (100 caratteri?) la trascrizione conta come «testo che manca», si cerca su Internet e, se non si trova niente, resta la trascrizione. Da decidere con Michele.
