@@ -98,6 +98,20 @@ describe('mondrop routes', () => {
     expect(res.json().playlists[0]).toMatchObject({ kind: 'static', songCount: 2 });
   });
 
+  it('says which playlists take songs by hand: only the static ones of the user (`canEdit`, for the share sheet)', async () => {
+    vi.mocked(authenticateApiKey).mockResolvedValue({ owner: { user: 'mike', device: 'iPhone di Michele' } });
+    vi.mocked(listPlaylists).mockResolvedValue([
+      { id: 'own', name: 'Mie', kind: 'static', ownerUser: 'mike', songCount: 2 },
+      { id: 'legacy', name: 'Senza tipo', ownerUser: 'mike', songCount: 1 },
+      { id: 'dyn', name: 'Regola', kind: 'dynamic', ownerUser: 'mike', songCount: 9 },
+      { id: 'shared', name: 'Di Sara', kind: 'static', ownerUser: 'sara', songCount: 4 },
+    ] as never);
+    vi.mocked(resolveSummaries).mockImplementation((async (list: unknown) => list) as never);
+    const res = await buildApp().inject({ method: 'GET', url: '/api/mondrop/playlists', headers: { 'x-soundreel-key': 'sr_test' } });
+    const byId = Object.fromEntries(res.json().playlists.map((p: { id: string; canEdit: boolean }) => [p.id, p.canEdit]));
+    expect(byId).toEqual({ own: true, legacy: true, dyn: false, shared: false });
+  });
+
   it('a playlist\'s detail is the live one: a dynamic playlist lists its songs now, not the stored ones', async () => {
     vi.mocked(authenticateApiKey).mockResolvedValue({ owner: { user: 'mike', device: 'iPhone di Michele' } });
     vi.mocked(getPlaylist).mockResolvedValue({ id: 'd1', name: 'Notte', kind: 'dynamic', songKeys: [] } as never);

@@ -5,6 +5,12 @@ vi.mock('./ollamaClient', () => ({
   BackendUnavailableError: class BackendUnavailableError extends Error {},
   OllamaTransientError: class OllamaTransientError extends Error {},
 }));
+// The second, software-only call has its own tests (softwareExtraction.test.ts, aiAnalysis.softwarePass.test.ts): here
+// the subject is the main call, so it must not add a model call of its own to the counts below.
+vi.mock('./softwareExtraction', async (orig) => ({
+  ...(await orig<typeof import('./softwareExtraction')>()),
+  extractSoftware: vi.fn(async () => ({ items: [], usage: null, outcome: 'skipped' as const })),
+}));
 vi.mock('./claudeFallback', () => ({ runClaudePrompt: vi.fn(), logFallbackOutcome: vi.fn() }));
 vi.mock('./promptLoader', () => ({ getPrompt: vi.fn(), renderTemplate: vi.fn() }));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn() }));

@@ -5,6 +5,7 @@ import {
   type ClaudeFallbackResult,
   type ClaudePromptOptions,
 } from './claudeFallback';
+import { extractSoftware, mergeSoftware } from './softwareExtraction';
 import { isJunkSoftwareTitle, isRealValue } from './placeholderFilter';
 import { logInfo, logWarning, logError } from '../utils/logger';
 import { getPrompt, renderTemplate } from './promptLoader';
@@ -530,6 +531,15 @@ export async function analyzeWithAi(
       };
     }
 
+    // The big schema leaves software[] empty or full of placeholders (measured: 0 items on 135 re-analysed entries, 48 of
+    // them naming tools). A small second call that looks for nothing else finds the tools a post names; it only runs
+    // when the text hints at software, keeps only names that really are in the text, and never fails the analysis.
+    const extra = await extractSoftware({ caption: input.caption, transcript: input.transcript, ocrText: input.ocrText });
+    if (extra.items.length > 0) {
+      ollamaResult = { ...ollamaResult, software: mergeSoftware(ollamaResult.software ?? [], extra.items) };
+    }
+    usage = addUsage(usage, extra.usage ?? null);
+
     // A valid but empty answer is still a valid answer (a post with nothing to extract): Claude used to fire on
     // emptiness and cost ~18s of opus on every quiet reel — the user wants cloud only when the local stack is down.
     logInfo('Analisi AI completata', {
@@ -537,6 +547,7 @@ export async function analyzeWithAi(
       films: ollamaResult.films.length,
       notes: ollamaResult.notes.length,
       software: (ollamaResult.software ?? []).length,
+      softwarePass: extra.outcome,
       links: ollamaResult.links.length,
       tags: ollamaResult.tags.length,
       hasSummary: !!ollamaResult.summary,

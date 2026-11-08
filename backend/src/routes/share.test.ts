@@ -9,6 +9,10 @@ vi.mock('../utils/db', () => ({
   createActionLog: vi.fn((action: string, details: unknown) => ({ action, details, timestamp: 't' })),
   getApiKeysConfig: vi.fn().mockResolvedValue({ keys: ['sr_test_key_1234567890ab'] }),
   updateApiKeysConfig: vi.fn(),
+  getEntry: vi.fn(),
+  addEntryShares: vi.fn(),
+  query: vi.fn(),
+  pool: { query: vi.fn() },
 }));
 
 vi.mock('../utils/jobQueue', () => ({

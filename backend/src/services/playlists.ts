@@ -269,6 +269,35 @@ export async function addSongToPlaylist(
   return getPlaylist(playlistId);
 }
 
+/**
+ * Several songs at once, for the owner of a STATIC playlist (a share that carries a playlist, ADR-0015).
+ * Songs already there stay where they are and are not counted. Returns how many were really added, or `null`
+ * when the playlist is not this user's (not found, or only shared with him: read-only). Throws
+ * `playlist_is_dynamic` for a dynamic one, like every other by-hand edit.
+ */
+export async function addSongsToPlaylist(
+  playlistId: string,
+  songKeys: string[],
+  ownerUser: string,
+): Promise<number | null> {
+  const keys = [...new Set(songKeys.map((k) => k.trim()).filter(Boolean))];
+  if (!(await assertOwner(playlistId, ownerUser))) return null;
+  await assertStatic(playlistId);
+  if (keys.length === 0) return 0;
+  const start = await nextPosition(playlistId);
+  const result = await pool.query(
+    `INSERT INTO playlist_songs (playlist_id, song_key, position)
+     SELECT $1, t.k, $3::int + (t.ord - 1)::int
+       FROM unnest($2::text[]) WITH ORDINALITY AS t(k, ord)
+     ON CONFLICT (playlist_id, song_key) DO NOTHING
+     RETURNING song_key`,
+    [playlistId, keys, start],
+  );
+  const added = result.rowCount ?? 0;
+  if (added > 0) await touchPlaylist(playlistId);
+  return added;
+}
+
 export async function removeSongFromPlaylist(
   playlistId: string,
   songKey: string,

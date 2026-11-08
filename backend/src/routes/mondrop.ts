@@ -30,7 +30,7 @@ import { serveSong } from '../services/songStream';
 import { recordPlayEvents } from '../services/playEvents';
 import { recordDeviceEvents } from '../services/deviceEvents';
 
-interface MondropCaller {
+export interface MondropCaller {
   userId: string;
   /** Label of the device the key was issued for ("iPhone di Michele"); '' for legacy keys without one. */
   device: string;
@@ -38,7 +38,7 @@ interface MondropCaller {
 
 const callerActor = (c: MondropCaller): Actor => ({ user: c.userId, device: c.device || null, channel: 'mondrop' });
 
-async function requireMondrop(
+export async function requireMondrop(
   req: FastifyRequest,
   reply: FastifyReply,
 ): Promise<MondropCaller | null> {
@@ -122,7 +122,15 @@ export function registerMondropRoutes(app: FastifyInstance): void {
       const viewer = { userId: auth.userId, isAdmin: false };
       // dynamic playlists come with their rule summary and the count of what the rule selects now (docs/mondrop-stats.md §4)
       const playlists = await resolveSummaries(await listPlaylists(viewer), viewer);
-      return { playlists, user: auth.userId };
+      // `canEdit`: only the STATIC playlists of this user take songs by hand (the share sheet offers only those);
+      // dynamic ones are rules and the ones shared with him are read-only.
+      return {
+        playlists: playlists.map((p) => ({
+          ...p,
+          canEdit: (p.kind ?? 'static') === 'static' && (p as { ownerUser?: string }).ownerUser === auth.userId,
+        })),
+        user: auth.userId,
+      };
     } catch (err) {
       logError('GET /api/mondrop/playlists failed', { err: String(err) });
       return reply.code(500).send({ error: 'playlists failed' });

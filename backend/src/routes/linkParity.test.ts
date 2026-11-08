@@ -28,6 +28,13 @@ vi.mock('../utils/db', () => {
   });
 });
 vi.mock('../utils/jobQueue', () => ({ enqueueJob: vi.fn() }));
+// Parity is about the entry and the job each channel creates. What only Mondrop adds afterwards (the playlist, the
+// family, the inbox: docs/mondrop-inbox.md) is covered by share.options.test.ts and shareFlow.test.ts.
+vi.mock('../services/shareFlow', async (orig) => ({
+  ...(await orig<typeof import('../services/shareFlow')>()),
+  registerShare: vi.fn(async () => ({ playlist: null, sharedWith: [] })),
+  recordShareError: vi.fn(),
+}));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn(), createActionLog: vi.fn() }));
 vi.mock('../services/debugLogger', () => ({
   Logger: vi.fn().mockImplementation(function () {

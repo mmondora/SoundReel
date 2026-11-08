@@ -18,6 +18,8 @@ import { countPublished, countSongFilesByStatus } from '../services/songFiles';
 import { countMediaIndex } from '../services/mediaIndex';
 import { getMediaServerStatus, MEDIA_STORE, reconcilePublished, refreshMediaIndex } from '../services/mediaServer';
 import { logError } from '../utils/logger';
+import { isAdminRequest } from '../utils/requestUser';
+import { readUsage } from '../services/usageCounters';
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || '/data/media';
 
@@ -201,6 +203,18 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     } catch (err) {
       logError('GET /api/admin/store failed', { err: String(err) });
       return reply.code(500).send({ error: 'store status failed' });
+    }
+  });
+
+  // How the site is used (spec web-mobile-ux M8): aggregated counters per day, user, kind of device, network and
+  // route group. Never an IP or a user-agent. Admins only.
+  app.get<{ Querystring: { days?: string } }>('/api/admin/usage', async (req, reply) => {
+    if (!isAdminRequest(req)) return reply.code(403).send({ error: 'admin only' });
+    try {
+      return await readUsage(req.query.days);
+    } catch (err) {
+      logError('GET /api/admin/usage failed', { err: String(err) });
+      return reply.code(500).send({ error: 'usage failed' });
     }
   });
 

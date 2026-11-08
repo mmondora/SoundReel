@@ -356,6 +356,11 @@ export interface GenerateOptions {
    */
   json?: boolean;
   /**
+   * Tetto di token della risposta, al posto di `MAX_RESPONSE_TOKENS`. Per le chiamate che sanno di dover produrre poco
+   * (l'elenco dei software citati: una decina di righe) e non devono poter girare in loop fino al tetto generale.
+   */
+  maxTokens?: number;
+  /**
    * Uno JSON Schema che Ollama impone alla generazione (`format: <schema>`, le "structured outputs"), al posto del
    * semplice `format: "json"`. Con `json` e basta il modello puo' scrivere QUALSIASI chiave: il 8 novembre, sullo
    * stesso reel, ha copiato come chiave una riga di istruzioni del prompt
@@ -389,7 +394,7 @@ export async function generateText(
       // parte il fallback a pagamento. Un'analisi vera sta in meno di mille
       // token: duemila lasciano margine abbondante e chiudono il rubinetto
       // molto prima che la spirale diventi costosa.
-      num_predict: MAX_RESPONSE_TOKENS,
+      num_predict: opts.maxTokens && opts.maxTokens > 0 ? Math.min(opts.maxTokens, MAX_RESPONSE_TOKENS) : MAX_RESPONSE_TOKENS,
       // Stessa spirale, presa dall'altro lato: alza il prezzo di ripetere
       // quello che si e' appena scritto. Il default di ollama (1.1) non e'
       // bastato.

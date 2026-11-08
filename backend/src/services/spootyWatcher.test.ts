@@ -18,6 +18,7 @@ vi.mock('./linkIngest', async (orig) => ({
   ensureAtSpooty: vi.fn(),
   persistCovers: vi.fn(),
 }));
+vi.mock('./shareFlow', () => ({ onEntrySongsAvailable: vi.fn() }));
 vi.mock('./songMeta', async (orig) => ({
   ...(await orig<typeof import('./songMeta')>()),
   patchSongUserMeta: vi.fn(),
@@ -29,6 +30,7 @@ import { listDueSpootyRequests, patchSpootyRequest } from './spootyRequests';
 import { listSpootyPlaylists, listSpootyTracks } from './spootyClient';
 import { ensureAtSpooty } from './linkIngest';
 import { patchSongUserMeta } from './songMeta';
+import { onEntrySongsAvailable } from './shareFlow';
 
 const ID = '22kBlINGUYm2rc1Wd7RPfw';
 const CANON = `https://open.spotify.com/track/${ID}`;
@@ -93,6 +95,26 @@ describe('pollSpootyRequests', () => {
     }));
     expect(patchSpootyRequest).toHaveBeenCalledWith(5, { lastError: null, nextCheckInMs: 5_000 });
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('when the songs arrive, a Mondrop share of this link waiting for them (playlist, recipients) is told', async () => {
+    vi.mocked(listDueSpootyRequests).mockResolvedValue([request()] as never);
+    vi.mocked(listSpootyTracks).mockResolvedValue([track(3)]);
+    await run();
+    expect(onEntrySongsAvailable).toHaveBeenCalledWith('e1');
+  });
+
+  it('...but not on every poll: only when the track list really changed', async () => {
+    vi.mocked(listDueSpootyRequests).mockResolvedValue([request()] as never);
+    vi.mocked(listSpootyTracks).mockResolvedValue([track(3)]);
+    vi.mocked(getEntry).mockResolvedValue(entry({
+      caption: 'PENNY – Say it Ain\'t So',
+      thumbnailUrl: 'https://i.scdn.co/c',
+      results: { songs: [{ title: "Say it Ain't So", artist: 'PENNY', album: null, source: 'spotify_link' }], films: [], notes: [], links: [], tags: [], summary: null },
+    }) as never);
+    await run();
+    expect(updateEntry).not.toHaveBeenCalled();
+    expect(onEntrySongsAvailable).not.toHaveBeenCalled();
   });
 
   it('completed (status 4): entry completed, downloaded flag set, Telegram told', async () => {

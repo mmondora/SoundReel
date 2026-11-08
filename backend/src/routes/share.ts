@@ -5,11 +5,12 @@
  */
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { createActionLog, getApiKeysConfig } from '../utils/db';
+import { createActionLog, getApiKeysConfig, getEntry } from '../utils/db';
 import { authenticateApiKey } from '../utils/apiKeyAuth';
 import { extractTelegramCommentTags } from '../services/telegramCommentTags';
 import { ingestLink } from '../services/linkIngest';
 import { Logger } from '../services/debugLogger';
+import { cleanComment, inboxUserOf, parseShareOptions, recordShareError, registerShare } from '../services/shareFlow';
 
 type ShareDeviceInfo = {
   name?: string;
@@ -30,6 +31,10 @@ type ShareBody = {
   /** Device-local timestamp ISO-8601 with offset (when the user tapped Invia). */
   sharedAt?: string | null;
   device?: ShareDeviceInfo | null;
+  /** A STATIC playlist of the sender to put the link's songs in (docs/mondrop-inbox.md). Default: none. */
+  playlistId?: string | null;
+  /** Family members (`mike`, `archi`, `sara`, never the sender) to share the entry with, on the server. */
+  shareWith?: string[] | null;
 };
 
 function mergeTagLists(...lists: Array<string[] | undefined>): string[] {
@@ -126,9 +131,25 @@ export function registerShareRoute(app: FastifyInstance): void {
 
       log.info('Share enqueued', { entryId: result.entryId, platform: result.platform, kind: result.kind, tags });
 
+      // What the share asked for besides the link: a playlist and the family (docs/mondrop-inbox.md). The inbox
+      // user is the same mapping the Mondrop routes use, so the app reads what this share writes.
+      const sender = inboxUserOf(inputUser);
+      const options = parseShareOptions(req.body, sender);
+      const sharedComment = cleanComment(req.body?.comment);
+
       // A Shazam link is stored even when its page cannot be read; say so now (the share sheet shows
-      // `error` and stays open) — sharing the same link again retries.
+      // `error` and stays open) — sharing the same link again retries. The inbox keeps the error too.
       if (result.shazam?.error) {
+        await recordShareError({
+          userId: sender,
+          entry: { id: result.entryId, sourceUrl: result.shazam.ref.url },
+          reason: 'shazam_unreadable',
+          options: {
+            ...(options.playlistId ? { playlistId: options.playlistId } : {}),
+            ...(options.recipients.length > 0 ? { shareWith: options.recipients } : {}),
+            ...(sharedComment ? { comment: sharedComment } : {}),
+          },
+        });
         return {
           success: false,
           entryId: result.entryId,
@@ -136,8 +157,18 @@ export function registerShareRoute(app: FastifyInstance): void {
           status: 'error',
           kind: result.kind,
           error: `Shazam: ${result.shazam.error}`,
+          playlist: null,
+          sharedWith: [],
+          rejected: options.rejected,
         };
       }
+
+      // The family sees the entry at once; the playlist is filled now when the songs are known (Spotify,
+      // Shazam) and when the analysis ends otherwise; the outcome comes back through the inbox either way.
+      const stored = await getEntry(result.entryId);
+      const shared = stored
+        ? await registerShare({ entry: stored, sender, kind: result.kind, options, comment: sharedComment })
+        : { playlist: null, sharedWith: [] };
 
       const track = result.spotify ?? result.shazam;
       return {
@@ -148,6 +179,9 @@ export function registerShareRoute(app: FastifyInstance): void {
         status: result.kind === 'shazam' ? 'completed' : 'queued',
         kind: result.kind,
         ...(track ? { title: track.title, artist: track.artist } : {}),
+        playlist: shared.playlist,
+        sharedWith: shared.sharedWith,
+        rejected: options.rejected,
       };
     } catch (err) {
       log.error('Share failed', err instanceof Error ? err : new Error(String(err)));

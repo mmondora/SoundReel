@@ -24,11 +24,14 @@ import { registerNetRoutes } from './routes/net';
 import { registerLibraryRoutes } from './routes/library';
 import { startMusicFoldersSync } from './services/musicFolders';
 import { startReleaseYearBackfill } from './services/releaseYearBackfill';
+import { startInboxSweeper } from './services/inboxSweeper';
+import { startUsageCounters } from './services/usageCounters';
 import { registerNotesRoutes } from './routes/notes';
 import { registerSoftwareRoutes } from './routes/software';
 import { registerTtsRoutes } from './routes/tts';
 import { registerShareRoute } from './routes/share';
 import { registerMondropRoutes } from './routes/mondrop';
+import { registerMondropInboxRoutes } from './routes/mondropInbox';
 import { registerMeRoute } from './routes/me';
 import { registerMondropConnectRoutes } from './routes/mondropConnect';
 import { requeueStuckJobs } from './utils/jobQueue';
@@ -50,6 +53,10 @@ async function bootstrap(): Promise<void> {
   });
 
   await app.register(fastifyCors, { origin: true });
+
+  // How the site is used (spec web-mobile-ux M8): aggregated counters, no IP / user-agent / path stored. The hook
+  // has to be added before the server starts listening.
+  const stopUsageCounters = startUsageCounters(app);
 
   registerAnalyzeRoute(app);
   registerTelegramRoute(app);
@@ -75,6 +82,7 @@ async function bootstrap(): Promise<void> {
   registerTtsRoutes(app);
   registerShareRoute(app);
   registerMondropRoutes(app);
+  registerMondropInboxRoutes(app);
   registerMeRoute(app);
   registerMondropConnectRoutes(app); // behind Authelia: keep OFF /api/share and /api/mondrop (bypass routers)
 
@@ -154,6 +162,9 @@ async function bootstrap(): Promise<void> {
   // One-off, gentle pass: the release year of the songs enriched before 2.9.0 ("anni 80", ADR-0013).
   const stopReleaseYearBackfill = startReleaseYearBackfill();
 
+  // The Mondrop inbox housekeeping: information expires after 3 days, errors never do (ADR-0015).
+  const stopInboxSweeper = startInboxSweeper();
+
   // Startup cleanup + daily schedule (orphan + retention purge)
   const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
   const kickCleanup = async (): Promise<void> => {
@@ -176,6 +187,8 @@ async function bootstrap(): Promise<void> {
       stopMediaServerSync();
       stopMusicFoldersSync();
       stopReleaseYearBackfill();
+      stopInboxSweeper();
+      stopUsageCounters();
       await app.close();
       await pool.end();
       process.exit(0);

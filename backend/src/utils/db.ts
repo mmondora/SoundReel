@@ -313,6 +313,27 @@ export async function shareEntry(
   return listEntryShares(entryId);
 }
 
+/**
+ * Shares an entry with family members and returns only the ones who did NOT have it yet: they are the ones worth a
+ * notice. Idempotent (sharing again changes nothing); a new share starts "unseen" (`seen_at` NULL).
+ */
+export async function addEntryShares(
+  entryId: string,
+  sharedWith: string[],
+  sharedBy: string,
+): Promise<string[]> {
+  const targets = [...new Set(sharedWith.map((u) => u.trim().toLowerCase()).filter(Boolean))];
+  if (targets.length === 0) return [];
+  const rows = await query<{ shared_with: string }>(
+    `INSERT INTO entry_shares (entry_id, shared_with, shared_by)
+     SELECT $1, t, $3 FROM unnest($2::text[]) AS t
+     ON CONFLICT (entry_id, shared_with) DO NOTHING
+     RETURNING shared_with`,
+    [entryId, targets, sharedBy],
+  );
+  return rows.map((r) => r.shared_with);
+}
+
 export async function unshareEntry(entryId: string, sharedWith: string): Promise<string[]> {
   await query(
     'DELETE FROM entry_shares WHERE entry_id = $1 AND shared_with = $2',

@@ -20,6 +20,7 @@ import { isWhisperReachable, transcribeLocal } from './whisperClient';
 import { releaseModel } from './ollamaClient';
 import { updateEntry, appendActionLog } from '../utils/db';
 import { createActionLog } from '../utils/logger';
+import { onAnalysisFinished, onAnalysisRetrying } from './shareFlow';
 
 const OTHER_CONCURRENCY_CAP = 3;
 const IG_BACKOFF_MS = [60_000, 180_000, 420_000];
@@ -183,6 +184,18 @@ async function notifyQuietly(chatId: number, text: string, token: string, log: L
   }
 }
 
+/**
+ * The Mondrop inbox is a courtesy next to the job: whatever it does (and it already swallows its own errors) may
+ * never undo, skip or repeat the job's bookkeeping — a finished job must not be retried because an inbox write failed.
+ */
+async function quietly(what: string, fn: () => Promise<void>, log: Logger): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    log.error(`${what} failed`, err instanceof Error ? err : new Error(String(err)));
+  }
+}
+
 async function handleFailure(job: JobQueueRow, err: unknown, log: Logger): Promise<void> {
   // Un'entry occupata non e' un fallimento: e' l'altra passata che sta gia'
   // facendo questo lavoro. Rimandare senza consumare un tentativo, come per il
@@ -204,6 +217,12 @@ async function handleFailure(job: JobQueueRow, err: unknown, log: Logger): Promi
 
   if (backoff === null) {
     await markJobFailed(job.id);
+    // A share from Mondrop waiting on this entry turns into an error that stays in the inbox until the link works.
+    await quietly(
+      `Job ${job.id}: inbox error`,
+      () => onAnalysisFinished(job.entryId, { ok: false, reason: auth ? 'instagram_session' : 'analysis_failed' }),
+      log,
+    );
     if (token) {
       const text = auth
         ? `❌ Rinuncio: la sessione Instagram non è stata rinnovata dopo ${attempts} tentativi.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`
@@ -211,6 +230,12 @@ async function handleFailure(job: JobQueueRow, err: unknown, log: Logger): Promi
       await notifyQuietly(job.chatId, text, token, log);
     }
     return;
+  }
+
+  // The same for the inbox: one notice on the first auth failure (it says the server keeps trying), and the
+  // notice closes by itself when the link finally goes through.
+  if (auth && job.attempts === 0) {
+    await quietly(`Job ${job.id}: inbox retry notice`, () => onAnalysisRetrying(job.entryId, 'instagram_session'), log);
   }
 
   // Exactly one message, on the first auth failure: the retries after it are
@@ -403,6 +428,21 @@ async function dispatch(job: JobQueueRow, onSettle: () => void): Promise<void> {
     }
 
     await markJobDone(job.id);
+    // The Mondrop shares waiting on this entry (playlist, outcome, recipients) complete now — or fail, when the AI
+    // never produced a readable answer. Never throws: the job is done either way.
+    await quietly(
+      `Job ${job.id}: inbox outcome`,
+      () =>
+        onAnalysisFinished(
+          job.entryId,
+          (result as { aiRetryable?: boolean }).aiRetryable
+            ? { ok: false, reason: 'ai_output_unusable' }
+            : result.success
+              ? { ok: true }
+              : { ok: false, reason: isAuthFailure(result.error ?? '') ? 'instagram_session' : 'analysis_failed' },
+        ),
+      log,
+    );
     // Isolated from the try/catch above it: a Telegram delivery failure here
     // must not re-trigger handleFailure and undo an already-successful job.
     try {

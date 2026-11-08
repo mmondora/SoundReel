@@ -6,6 +6,7 @@ import { countEntries, listEntries, createActionLog } from '../utils/db';
 import { extractTelegramCommentTags } from '../services/telegramCommentTags';
 import { ingestLink, type IngestResult } from '../services/linkIngest';
 import { spootyFrontendUrl } from '../services/spootyClient';
+import { entryTitle } from '../utils/entryLinks';
 
 export interface TelegramMessageEntity {
   type: string;
@@ -230,14 +231,7 @@ export async function formatTelegramResponse(result: AnalyzeResult, entryId: str
 
 export function pickTitle(result: AnalyzeResult, summary: string | null): string {
   const r = result.entry as { caption?: string | null; sourceUrl?: string } | undefined;
-  const caption = r?.caption?.split(/\r?\n/)[0]?.trim();
-  if (caption && caption.length > 0) return caption.slice(0, 90);
-  if (summary) return summary.slice(0, 80);
-  if (r?.sourceUrl) {
-    try { return new URL(r.sourceUrl).hostname.replace(/^www\./, ''); }
-    catch { return 'SoundReel' }
-  }
-  return 'SoundReel';
+  return entryTitle({ caption: r?.caption, summary, sourceUrl: r?.sourceUrl });
 }
 
 export function truncateForTelegram(s: string, max: number): string {

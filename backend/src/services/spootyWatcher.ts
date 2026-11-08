@@ -9,6 +9,7 @@
  * State lives in `spooty_requests`, so a restart loses nothing.
  */
 import { getEntry, updateEntry, appendActionLog, createActionLog } from '../utils/db';
+import { onEntrySongsAvailable } from './shareFlow';
 import { listDueSpootyRequests, patchSpootyRequest, type SpootyRequest } from './spootyRequests';
 import {
   isFinalSpootyStatus,
@@ -84,6 +85,8 @@ async function syncEntry(entry: Entry, ref: SpotifyRef, playlist: SpootyPlaylist
   await persistCovers(tracks, playlist, ref);
   // the track list just changed (names arrive while Spooty works): genres and cover for the new songs too
   enqueueSongEnrichment(songs.map((s) => ({ artist: s.artist, title: s.title })));
+  // A Mondrop share of this link that was waiting for its songs (playlist, recipients' notice) completes now.
+  await onEntrySongsAvailable(entry.id);
 }
 
 async function finalize(

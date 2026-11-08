@@ -16,6 +16,12 @@ vi.mock('./ollamaClient', () => ({
   releaseModel: vi.fn().mockResolvedValue({ released: true }),
 }));
 
+// The Mondrop share completion (playlist, inbox) has its own tests (shareFlow.test.ts, jobQueueWorker.shares.test.ts).
+vi.mock('./shareFlow', () => ({
+  onAnalysisFinished: vi.fn().mockResolvedValue(undefined),
+  onAnalysisRetrying: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../routes/telegram', () => ({
   sendTelegramMessage: vi.fn(),
   formatAnalysisError: vi.fn().mockReturnValue('error-text'),
