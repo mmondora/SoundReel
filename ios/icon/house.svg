@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="0.18" y2="1"><stop offset="0" stop-color="#5F9BFF"/><stop offset="1" stop-color="#1B3FC4"/></linearGradient>
+  <radialGradient id="halo" cx="512" cy="560" r="520" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#9CC2FF" stop-opacity="0.2"/><stop offset="1" stop-color="#9CC2FF" stop-opacity="0"/></radialGradient>
+  <radialGradient id="sheen" cx="300" cy="90" r="760" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.2"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></radialGradient>
+  <linearGradient id="gl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF1A8"/><stop offset="1" stop-color="#FFC400"/></linearGradient>
+  <filter id="blur" x="-30%" y="-30%" width="160%" height="170%"><feGaussianBlur stdDeviation="26"/></filter>
+</defs>
+<rect width="1024" height="1024" fill="url(#bg)"/>
+<rect width="1024" height="1024" fill="url(#halo)"/>
+<rect width="1024" height="1024" fill="url(#sheen)"/>
+<mask id="outside" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect width="1024" height="1024" fill="#fff"/><path d="M469.91 186.73Q512 150 554.09 186.73L836.09 432.87Q858 452 858 481.09L858 794Q858 858 794 858L230 858Q166 858 166 794L166 481.09Q166 452 187.91 432.87Z" fill="#000"/></mask>
+<g mask="url(#outside)"><g filter="url(#blur)" transform="translate(0 24)" opacity="0.9"><path d="M469.91 186.73Q512 150 554.09 186.73L836.09 432.87Q858 452 858 481.09L858 794Q858 858 794 858L230 858Q166 858 166 794L166 481.09Q166 452 187.91 432.87Z" fill="rgba(5,15,70,0.5)"/></g></g>
+<path d="M469.91 186.73Q512 150 554.09 186.73L836.09 432.87Q858 452 858 481.09L858 794Q858 858 794 858L230 858Q166 858 166 794L166 481.09Q166 452 187.91 432.87ZM336 545H336A28 28 0 0 1 364 573V627A28 28 0 0 1 336 655H336A28 28 0 0 1 308 627V573A28 28 0 0 1 336 545ZM424 485H424A28 28 0 0 1 452 513V687A28 28 0 0 1 424 715H424A28 28 0 0 1 396 687V513A28 28 0 0 1 424 485ZM512 435H512A28 28 0 0 1 540 463V737A28 28 0 0 1 512 765H512A28 28 0 0 1 484 737V463A28 28 0 0 1 512 435ZM600 485H600A28 28 0 0 1 628 513V687A28 28 0 0 1 600 715H600A28 28 0 0 1 572 687V513A28 28 0 0 1 600 485ZM688 545H688A28 28 0 0 1 716 573V627A28 28 0 0 1 688 655H688A28 28 0 0 1 660 627V573A28 28 0 0 1 688 545Z" fill="url(#gl)" fill-rule="evenodd"/>
+</svg>
