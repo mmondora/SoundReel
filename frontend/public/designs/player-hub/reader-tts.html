@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reader TTS mock — audio + progress</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0a0c10; --card: #1a1e28; --line: #2a3040;
+    --text: #e8eaed; --muted: #8b93a7; --accent: #3ddc97;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: Inter, system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 1rem;
+  }
+  .note {
+    max-width: 520px; width: 100%; color: var(--muted); font-size: 0.85rem;
+    margin-bottom: 0.75rem;
+  }
+  .note code { color: var(--accent); }
+  .phone {
+    width: min(520px, 100%);
+    background: #050607;
+    border: 2px solid #222833;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 16px 48px rgba(0,0,0,.4);
+  }
+  .top {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); background: #0d1016;
+  }
+  .top .back { color: var(--accent); font-weight: 600; }
+  .modes {
+    display: flex; gap: 0.25rem; background: #0a0c10; padding: 0.2rem;
+    border-radius: 999px; border: 1px solid var(--line); font-size: 0.78rem; font-weight: 600;
+  }
+  .modes span { padding: 0.35rem 0.65rem; border-radius: 999px; color: var(--muted); }
+  .modes .on { background: var(--accent); color: #0a0f0c; }
+  .stage { padding: 1.5rem 1.25rem 1.25rem; text-align: center; }
+  .cover {
+    width: 140px; aspect-ratio: 2/3; margin: 0 auto 1rem; border-radius: 10px;
+    background: linear-gradient(160deg, #3a4a2e, #1a2218); border: 1px solid var(--line);
+    display: grid; place-items: center; font-size: 2.5rem;
+  }
+  h1 { margin: 0; font-size: 1.25rem; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); margin: 0.35rem 0 1rem; font-size: 0.9rem; }
+  .badge {
+    display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--accent); background: rgba(61,220,151,.12);
+    border: 1px solid rgba(61,220,151,.35); padding: 0.25rem 0.55rem; border-radius: 999px;
+    margin-bottom: 1rem;
+  }
+  .progress {
+    height: 10px; background: #222833; border-radius: 999px; overflow: hidden; cursor: pointer;
+  }
+  .progress > i { display: block; height: 100%; background: var(--accent); width: 0%; }
+  .times {
+    display: flex; justify-content: space-between; color: var(--muted);
+    font-size: 0.8rem; font-variant-numeric: tabular-nums; margin: 0.4rem 0 1rem;
+  }
+  .transport {
+    display: flex; align-items: center; justify-content: center; gap: 1rem;
+  }
+  .t-btn {
+    width: 3.2rem; height: 3.2rem; border-radius: 50%; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); font-size: 0.95rem; font-weight: 700;
+    cursor: pointer; font-family: inherit;
+  }
+  .t-btn.primary {
+    width: 4.2rem; height: 4.2rem; background: var(--accent); color: #0a0f0c;
+    border: none; font-size: 1.4rem;
+  }
+  .svc {
+    margin-top: 1.25rem; text-align: left; background: #0d1016;
+    border: 1px solid var(--line); border-radius: 12px; padding: 0.85rem 1rem;
+    font-size: 0.8rem; color: var(--muted);
+  }
+  .svc b { color: var(--text); }
+  .svc .ok { color: var(--accent); }
+  .svc .pending { color: #ffb454; }
+</style>
+</head>
+<body>
+  <p class="note">
+    Spike: play di <code>demo-ch04.mp3</code> generato con <b>edge-tts</b> (voce it-IT-DiegoNeural).
+    In prod il file arriverà da un servizio (<code>/media/tts/…</code>). Progresso in
+    <code>localStorage</code>. Richiesta infra a Geeko in
+    <code>geekom-hub/inbox/2026-11-07-soundreel-tts-spike.md</code>.
+  </p>
+  <div class="phone">
+    <div class="top">
+      <span class="back">← Continua</span>
+      <div class="modes">
+        <span>Ascolta</span>
+        <span class="on">Leggi</span>
+        <span>Esplora</span>
+      </div>
+      <span style="color:var(--muted);font-size:.75rem">TTS</span>
+    </div>
+    <div class="stage">
+      <div class="cover">📖</div>
+      <div class="badge">Audio dal servizio</div>
+      <h1>The Man Who Solved the Market</h1>
+      <p class="sub">Cap. 4 · voce it-IT-DiegoNeural (demo)</p>
+      <div class="progress" id="bar" title="seek"><i id="fill"></i></div>
+      <div class="times"><span id="cur">0:00</span><span id="dur">3:00</span></div>
+      <div class="transport">
+        <button type="button" class="t-btn" id="back15">−15</button>
+        <button type="button" class="t-btn primary" id="play">▶</button>
+        <button type="button" class="t-btn" id="fwd30">+30</button>
+      </div>
+      <div class="svc" id="svc">
+        <b>Servizio TTS</b> · stato: <span class="ok" id="svcState">ready</span><br>
+        Cache hit · <code id="audioUrl">/media/tts/demo-ch04.mp3</code><br>
+        Client = solo &lt;audio&gt; + PUT progress
+      </div>
+    </div>
+  </div>
+<audio id="audio" src="./demo-ch04.mp3" preload="metadata"></audio>
+<script>
+(function () {
+  const KEY = 'soundreel.reader.tts.demo.v1';
+  const audio = document.getElementById('audio');
+  const fill = document.getElementById('fill');
+  const cur = document.getElementById('cur');
+  const durEl = document.getElementById('dur');
+  const playBtn = document.getElementById('play');
+  const svcState = document.getElementById('svcState');
+
+  function fmt(s) {
+    if (!Number.isFinite(s)) return '0:00';
+    s = Math.max(0, Math.floor(s));
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+  function save() {
+    localStorage.setItem(KEY, JSON.stringify({ positionSec: audio.currentTime, at: Date.now() }));
+  }
+  function paint() {
+    const d = audio.duration || 0;
+    const p = audio.currentTime || 0;
+    fill.style.width = (d ? (p / d) * 100 : 0) + '%';
+    cur.textContent = fmt(p);
+    durEl.textContent = fmt(d);
+    playBtn.textContent = audio.paused ? '▶' : '⏸';
+  }
+
+  audio.addEventListener('loadedmetadata', () => {
+    svcState.textContent = 'ready · edge-tts file';
+    svcState.className = 'ok';
+    try {
+      const data = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (data && typeof data.positionSec === 'number') {
+        audio.currentTime = Math.min(data.positionSec, audio.duration || data.positionSec);
+      }
+    } catch {}
+    paint();
+  });
+  audio.addEventListener('timeupdate', () => { save(); paint(); });
+  audio.addEventListener('play', paint);
+  audio.addEventListener('pause', () => { save(); paint(); });
+  audio.addEventListener('ended', () => { save(); paint(); });
+  audio.addEventListener('error', () => {
+    svcState.textContent = 'error · manca demo-ch04.mp3';
+    svcState.className = 'pending';
+  });
+
+  document.getElementById('play').onclick = () => {
+    if (audio.paused) audio.play(); else audio.pause();
+  };
+  document.getElementById('back15').onclick = () => {
+    audio.currentTime = Math.max(0, audio.currentTime - 15); save(); paint();
+  };
+  document.getElementById('fwd30').onclick = () => {
+    audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 30); save(); paint();
+  };
+  document.getElementById('bar').onclick = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    if (!audio.duration) return;
+    audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
+    save(); paint();
+  };
+  paint();
+})();
+</script>
+</body>
+</html>

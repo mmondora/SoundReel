@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explore spike — scheda prodotto + Grok</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1115; --card: #1a1d24; --line: #2a2e38;
+    --text: #e8eaed; --muted: #7a808c; --accent: #3ddc97;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: Inter, system-ui, sans-serif; min-height: 100vh;
+    display: grid; grid-template-rows: auto 1fr;
+  }
+  header {
+    padding: 1rem 1.25rem; border-bottom: 1px solid var(--line);
+    display: flex; gap: 1rem; align-items: center;
+  }
+  header .icon {
+    width: 4.5rem; height: 4.5rem; border-radius: 14px;
+    background: #22262e; display: grid; place-items: center; font-size: 2rem;
+  }
+  header h1 { margin: 0; font-size: 1.25rem; }
+  header p { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.9rem; }
+  main {
+    display: grid; grid-template-columns: 1fr 1.1fr; min-height: 0;
+  }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  .facts, .chat-wrap { padding: 1.25rem; overflow: auto; }
+  .facts { border-right: 1px solid var(--line); }
+  .facts h2, .chat-wrap h2 {
+    margin: 0 0 0.75rem; font-size: 0.72rem; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .fact {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 0.85rem 1rem; margin-bottom: 0.55rem;
+  }
+  .fact b { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.2rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+  .chip {
+    appearance: none; border: 1px solid var(--line); background: var(--card);
+    color: var(--text); border-radius: 999px; padding: 0.7rem 1rem;
+    font-weight: 600; font-size: 0.95rem; cursor: pointer; min-height: 2.8rem;
+  }
+  .chip:hover, .chip.on {
+    border-color: rgba(61,220,151,.45); background: rgba(61,220,151,.12); color: var(--accent);
+  }
+  .thread {
+    display: flex; flex-direction: column; gap: 0.65rem; min-height: 240px;
+  }
+  .bubble {
+    max-width: 92%; padding: 0.85rem 1rem; border-radius: 14px;
+    font-size: 0.95rem; line-height: 1.45;
+  }
+  .bubble.user {
+    align-self: flex-end; background: rgba(61,220,151,.16); color: var(--accent);
+  }
+  .bubble.bot {
+    align-self: flex-start; background: var(--card); border: 1px solid var(--line);
+  }
+  .hint { color: var(--muted); font-size: 0.8rem; margin-top: 1rem; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="icon">🍷</div>
+    <div>
+      <h1>Juraçon Sec · Vignau la Juscle</h1>
+      <p>Nota prodotto · da reel Instagram · spike senza API</p>
+    </div>
+  </header>
+  <main>
+    <section class="facts">
+      <h2>Scheda</h2>
+      <div class="fact"><b>Categoria</b>prodotto · vino</div>
+      <div class="fact"><b>Perché in libreria</b>Menzionato in un reel; Franco voleva riassaggiarlo.</div>
+      <div class="fact"><b>Entry</b>Instagram · high-signal food/wine</div>
+      <div class="fact"><b>Azioni</b>Apri source · Cerca web · Aggiungi a lista spesa (futuro)</div>
+      <p class="hint">In v1 reale il contesto Grok = caption + summary + note dell’entry, senza scraping shop live.</p>
+    </section>
+    <section class="chat-wrap">
+      <h2>Grok (mock)</h2>
+      <div class="chips" id="chips">
+        <button type="button" class="chip" data-q="Cos’è?">Cos’è?</button>
+        <button type="button" class="chip" data-q="Pro e contro">Pro / contro</button>
+        <button type="button" class="chip" data-q="Con cosa lo abbino?">Abbinamenti</button>
+        <button type="button" class="chip" data-q="Perché l’ho salvato?">Perché salvato</button>
+      </div>
+      <div class="thread" id="thread">
+        <div class="bubble bot">Tocca un chip. Le risposte sono canned — nessuna chiamata a xAI in questo spike.</div>
+      </div>
+      <p class="hint">In auto: solo chips. Tastiera libera = uso casa / passeggero.</p>
+    </section>
+  </main>
+<script>
+const ANSWERS = {
+  "Cos’è?": "Bianco secco del Jurançon (Francia SO). Il reel lo citava come bottiglia da riassaggiare dopo una degustazione lunga — acidità e aromaticità in equilibrio.",
+  "Pro e contro": "Pro: profilo aromatico, freschezza, buon racconto territoriale. Contro: disponibilità discontinua fuori zona; prezzo variabile; non è un ‘tutti i giorni’ per tutti i palati.",
+  "Con cosa lo abbino?": "Pesce grasso, formaggi di capra, cucina basca leggera. Evita sughi molto piccanti che coprono il naso.",
+  "Perché l’ho salvato?": "Perché l’entry originale esprimeva desiderio concreto di riassaggio — segnale più forte di un semplice hashtag #wine.",
+};
+const thread = document.getElementById('thread');
+document.getElementById('chips').addEventListener('click', (e) => {
+  const btn = e.target.closest('.chip');
+  if (!btn) return;
+  document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === btn));
+  const q = btn.dataset.q;
+  const a = ANSWERS[q] || '…';
+  thread.insertAdjacentHTML('beforeend',
+    `<div class="bubble user">${q}</div><div class="bubble bot">${a}</div>`);
+  thread.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'end' });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SoundReel Player Hub — proposte</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0a0c10;
+    --panel: #12151c;
+    --card: #1a1e28;
+    --line: #2a3040;
+    --text: #e8eaed;
+    --muted: #8b93a7;
+    --accent: #3ddc97;
+    --accent-dim: rgba(61, 220, 151, 0.14);
+    --warn: #ffb454;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, system-ui, sans-serif;
+    line-height: 1.45;
+  }
+  header.doc {
+    padding: 1.5rem 1.5rem 0.5rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  header.doc h1 { font-size: 1.35rem; margin: 0 0 0.35rem; letter-spacing: -0.02em; }
+  header.doc p { margin: 0; color: var(--muted); font-size: 0.95rem; max-width: 52rem; }
+  .badge {
+    display: inline-block;
+    margin-top: 0.75rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--warn);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .tabs {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    max-width: 1100px;
+    margin: 1.25rem auto 0;
+    padding: 0 1.5rem;
+  }
+  .tabs button {
+    appearance: none;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--muted);
+    padding: 0.55rem 1rem;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .tabs button[aria-selected="true"] {
+    background: var(--accent);
+    color: #0a0f0c;
+    border-color: var(--accent);
+  }
+  .panel { display: none; max-width: 1100px; margin: 0 auto; padding: 1rem 1.5rem 3rem; }
+  .panel.active { display: block; }
+  .blurb {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 1rem 1.15rem;
+    margin-bottom: 1rem;
+    color: var(--muted);
+    font-size: 0.92rem;
+  }
+  .blurb strong { color: var(--text); }
+  .pros { display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.75rem 0 0; padding: 0; list-style: none; font-size: 0.8rem; }
+  .pros li { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 0.45rem 0.65rem; }
+
+  /* Tesla-ish frame */
+  .tesla {
+    background: #050607;
+    border: 2px solid #222833;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45);
+    aspect-ratio: 16 / 9;
+    min-height: 420px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .tesla-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--line);
+    background: #0d1016;
+  }
+  .tesla-top .back {
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .modes {
+    display: flex;
+    gap: 0.35rem;
+    background: #0a0c10;
+    padding: 0.25rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+  }
+  .modes span {
+    padding: 0.45rem 0.9rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .modes span.on {
+    background: var(--accent);
+    color: #0a0f0c;
+  }
+  .tesla-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    min-height: 0;
+  }
+  .stage {
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    border-right: 1px solid var(--line);
+    min-width: 0;
+  }
+  .cover {
+    width: 100%;
+    max-width: 220px;
+    aspect-ratio: 1;
+    border-radius: 14px;
+    background: linear-gradient(145deg, #243043, #151a24);
+    display: grid;
+    place-items: center;
+    font-size: 3rem;
+    margin: 0 auto;
+    border: 1px solid var(--line);
+  }
+  .cover.book { aspect-ratio: 2/3; max-width: 160px; }
+  .title { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; text-align: center; }
+  .sub { color: var(--muted); text-align: center; font-size: 0.95rem; }
+  .transport {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    padding: 0.5rem 0 0.25rem;
+  }
+  .t-btn {
+    width: 3.4rem;
+    height: 3.4rem;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--text);
+    font-size: 1.25rem;
+    display: grid;
+    place-items: center;
+  }
+  .t-btn.primary {
+    width: 4.4rem;
+    height: 4.4rem;
+    background: var(--accent);
+    color: #0a0f0c;
+    border: none;
+    font-size: 1.6rem;
+  }
+  .progress {
+    height: 10px;
+    background: #222833;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .progress > i {
+    display: block;
+    height: 100%;
+    width: 37%;
+    background: var(--accent);
+  }
+  .prog-meta {
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .rail {
+    padding: 1rem;
+    overflow: auto;
+    background: #0d1016;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+  .rail h3 {
+    margin: 0 0 0.35rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 0.75rem;
+    border-radius: 12px;
+    background: var(--card);
+    border: 1px solid transparent;
+    min-height: 3.6rem;
+  }
+  .row.active { border-color: rgba(61,220,151,.45); background: var(--accent-dim); }
+  .row .ico {
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 8px;
+    background: #222833;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    font-size: 1.1rem;
+  }
+  .row .meta { min-width: 0; flex: 1; }
+  .row .meta b { display: block; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .meta span { color: var(--muted); font-size: 0.78rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+  .chip {
+    padding: 0.65rem 0.9rem;
+    border-radius: 999px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+  .chip.accent { background: var(--accent-dim); border-color: rgba(61,220,151,.4); color: var(--accent); }
+  .chat {
+    flex: 1;
+    background: #0a0c10;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0.85rem;
+    font-size: 0.88rem;
+    color: var(--muted);
+    min-height: 120px;
+  }
+  .chat .me { color: var(--accent); margin-bottom: 0.5rem; }
+  .chat .bot { color: var(--text); }
+
+  /* Variant B shelves */
+  .shelves {
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    overflow: auto;
+    flex: 1;
+  }
+  .shelf-title {
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 0.45rem;
+  }
+  .shelf-row {
+    display: flex;
+    gap: 0.65rem;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
+  .tile {
+    flex: 0 0 140px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 0.75rem;
+    min-height: 150px;
+  }
+  .tile.continue {
+    flex-basis: 220px;
+    border-color: rgba(61,220,151,.4);
+    background: linear-gradient(160deg, rgba(61,220,151,.12), var(--card));
+  }
+  .tile .kind { font-size: 0.68rem; color: var(--accent); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+  .tile b { display: block; margin: 0.35rem 0 0.2rem; font-size: 0.95rem; }
+  .tile span { color: var(--muted); font-size: 0.78rem; }
+  .tile .bar { margin-top: 0.7rem; height: 6px; background: #222833; border-radius: 99px; overflow: hidden; }
+  .tile .bar i { display: block; height: 100%; background: var(--accent); width: 42%; }
+
+  .pick {
+    max-width: 1100px;
+    margin: 0 auto 2.5rem;
+    padding: 1rem 1.25rem;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    color: var(--muted);
+  }
+  .pick b { color: var(--text); }
+  a.doclink { color: var(--accent); }
+
+  @media (max-width: 800px) {
+    .tesla { aspect-ratio: auto; min-height: 560px; }
+    .tesla-body { grid-template-columns: 1fr; }
+    .stage { border-right: none; border-bottom: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+  <header class="doc">
+    <h1>Player Hub — scelto: shell B + superfici A</h1>
+    <p>
+      Hub a ripiani → Ascolta / <b>Leggi (TTS servizio)</b> / Esplora.
+      Produzione <code>/player</code> intatta. Spec aggiornata in repo:
+      <code>docs/superpowers/specs/2026-11-05-player-hub-proposals.md</code>
+    </p>
+    <span class="badge">Scelto B+A · Reader = TTS delegato · no prod wiring</span>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" aria-selected="true" data-tab="b">B · Shell (scelto)</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="a">A · Superfici</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="tts">Leggi · TTS</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="c">C · archiviato</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="reader">Spike scroll</button>
+  </div>
+
+  <!-- A -->
+  <section class="panel" id="tab-a" role="tabpanel">
+    <div class="blurb">
+      <strong>A — Superfici (scelte).</strong> Dopo un tap da Continua: chrome Tesla con Ascolta / Leggi / Esplora.
+      Leggi = player audio del capitolo TTS (servizio), non scroll di testo in guida.
+      <ul class="pros">
+        <li>Ascolta = coda sticky</li>
+        <li>Leggi = &lt;audio&gt; da servizio</li>
+        <li>Esplora = scheda + Grok</li>
+      </ul>
+    </div>
+    <div class="tesla" id="mock-a">
+      <div class="tesla-top">
+        <span class="back">← Songs</span>
+        <div class="modes" id="a-modes">
+          <span class="on" data-mode="listen">Ascolta</span>
+          <span data-mode="read">Leggi</span>
+          <span data-mode="explore">Esplora</span>
+        </div>
+        <span style="color:var(--muted);font-size:.8rem">v hub</span>
+      </div>
+      <div class="tesla-body">
+        <div class="stage" id="a-stage">
+          <!-- filled by JS -->
+        </div>
+        <div class="rail" id="a-rail"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- B -->
+  <section class="panel active" id="tab-b" role="tabpanel">
+    <div class="blurb">
+      <strong>B — Shell (scelta).</strong> Home Tesla = ripiani. Primario: <em>Continua</em>.
+      Tap su un libro → superficie Leggi (TTS). Tap su una canzone → Ascolta.
+      <ul class="pros">
+        <li>Shell B</li>
+        <li>Superfici A</li>
+        <li>Reader = servizio TTS</li>
+      </ul>
+    </div>
+    <div class="tesla">
+      <div class="tesla-top">
+        <span class="back">SoundReel</span>
+        <strong style="font-size:1.05rem">Libreria in auto</strong>
+        <span style="color:var(--muted);font-size:.8rem">Continua</span>
+      </div>
+      <div class="shelves">
+        <div>
+          <div class="shelf-title">Continua</div>
+          <div class="shelf-row">
+            <div class="tile continue">
+              <div class="kind">Libro</div>
+              <b>The Man Who Solved the Market</b>
+              <span>Cap. 4 · 42%</span>
+              <div class="bar"><i></i></div>
+            </div>
+            <div class="tile continue">
+              <div class="kind">Musica</div>
+              <b>Where Is My Mind?</b>
+              <span>Coda · Apocalypse</span>
+            </div>
+            <div class="tile continue">
+              <div class="kind">Prodotto</div>
+              <b>Juraçon Sec · Vignau</b>
+              <span>Ultima scheda · Grok</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="shelf-title">Musica</div>
+          <div class="shelf-row">
+            <div class="tile"><div class="kind">♪</div><b>Preferiti</b><span>128</span></div>
+            <div class="tile"><div class="kind">♪</div><b>Da ascoltare</b><span>54</span></div>
+            <div class="tile"><div class="kind">♪</div><b>Playlist Tesla</b><span>12</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="shelf-title">Libri · Prodotti</div>
+          <div class="shelf-row">
+            <div class="tile"><div class="kind">Libro</div><b>76 titoli</b><span>Open Library</span></div>
+            <div class="tile"><div class="kind">Prodotto</div><b>1.4k schede</b><span>+ Grok</span></div>
+            <div class="tile"><div class="kind">Film</div><b>Netflix / Prime</b><span>shelf</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- C -->
+  <section class="panel" id="tab-c" role="tabpanel">
+    <div class="blurb">
+      <strong>C — Music-first + Context rail.</strong> Player attuale al centro; a destra la scheda
+      contestuale dell’entry (prodotto/libro/film) e chips Grok. Minimo rischio di regressione.
+      <ul class="pros">
+        <li>Pro: zero rewrite coda</li>
+        <li>Pro: spike più piccolo</li>
+        <li>Contro: libri lunghi stretti</li>
+      </ul>
+    </div>
+    <div class="tesla">
+      <div class="tesla-top">
+        <span class="back">← Songs</span>
+        <strong>Now playing</strong>
+        <span style="color:var(--accent);font-size:.85rem;font-weight:600">▶ Coda</span>
+      </div>
+      <div class="tesla-body">
+        <div class="stage">
+          <div class="cover">🎵</div>
+          <div class="title">Where Is My Mind?</div>
+          <div class="sub">Pixies · da entry IG</div>
+          <div class="progress"><i style="width:55%"></i></div>
+          <div class="prog-meta"><span>1:42</span><span>3:05</span></div>
+          <div class="transport">
+            <div class="t-btn">⏮</div>
+            <div class="t-btn primary">⏸</div>
+            <div class="t-btn">⏭</div>
+          </div>
+        </div>
+        <div class="rail">
+          <h3>Dal post</h3>
+          <div class="row active">
+            <div class="ico">📦</div>
+            <div class="meta"><b>Juraçon Sec · Vignau</b><span>prodotto · menzionato</span></div>
+          </div>
+          <div class="row">
+            <div class="ico">🎬</div>
+            <div class="meta"><b>Fight Club</b><span>film · colonna</span></div>
+          </div>
+          <h3 style="margin-top:.75rem">Chiedi a Grok</h3>
+          <div class="chips">
+            <span class="chip accent">Cos’è?</span>
+            <span class="chip">Pro / contro</span>
+            <span class="chip">Perché l’ho salvato</span>
+          </div>
+          <div class="chat" style="margin-top:.5rem">
+            <div class="me">Tu · Cos’è?</div>
+            <div class="bot">Bianco secco del Jurançon (FR), note aromatiche; lo hai salvato da un reel di Franco…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TTS -->
+  <section class="panel" id="tab-tts" role="tabpanel">
+    <div class="blurb">
+      <strong>Leggi = TTS online delegato.</strong> Il browser non sintetizza: play di MP3 dal servizio
+      (default proposto: edge-tts microservice → cache in <code>/media/tts/</code>).
+      Mock interattivo: <a class="doclink" href="./reader-tts.html">reader-tts.html</a>.
+    </div>
+    <iframe src="./reader-tts.html" title="TTS reader mock" style="width:100%;height:640px;border:1px solid var(--line);border-radius:16px;background:#000"></iframe>
+  </section>
+
+  <!-- Reader spike -->
+  <section class="panel" id="tab-reader" role="tabpanel">
+    <div class="blurb">
+      <strong>Spike scroll</strong> (archiviato come UX primaria in auto). Utile a casa / passeggero.
+      <a class="doclink" href="./reader.html">reader.html</a>
+    </div>
+    <iframe src="./reader.html" title="Reader spike" style="width:100%;height:520px;border:1px solid var(--line);border-radius:16px;background:#000"></iframe>
+  </section>
+
+  <div class="pick">
+    Congelato: <b>B+A</b> + <b>Reader TTS servizio</b>.
+    Prossimo: conferma backend TTS — <b>edge-tts self-hosted (consigliato)</b> · cloud · aspetta gpu-router.
+    Poi spec implementativa / spike servizio in worktree. Nessun wiring su <code>/player</code> finché non ok.
+  </div>
+
+<script>
+(function () {
+  const tabs = document.querySelectorAll('.tabs button');
+  const panels = {
+    a: document.getElementById('tab-a'),
+    b: document.getElementById('tab-b'),
+    c: document.getElementById('tab-c'),
+    tts: document.getElementById('tab-tts'),
+    reader: document.getElementById('tab-reader'),
+  };
+  tabs.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      tabs.forEach((b) => b.setAttribute('aria-selected', String(b === btn)));
+      Object.keys(panels).forEach((k) => panels[k].classList.toggle('active', k === btn.dataset.tab));
+    });
+  });
+
+  const modes = {
+    listen: {
+      stage: `
+        <div class="cover">🎵</div>
+        <div class="title">Where Is My Mind?</div>
+        <div class="sub">Pixies</div>
+        <div class="progress"><i style="width:55%"></i></div>
+        <div class="prog-meta"><span>1:42</span><span>3:05</span></div>
+        <div class="transport">
+          <div class="t-btn">⏮</div>
+          <div class="t-btn primary">⏸</div>
+          <div class="t-btn">⏭</div>
+        </div>`,
+      rail: `
+        <h3>Coda</h3>
+        <div class="row active"><div class="ico">▶</div><div class="meta"><b>Where Is My Mind?</b><span>Pixies</span></div></div>
+        <div class="row"><div class="ico">·</div><div class="meta"><b>Debaser</b><span>Pixies</span></div></div>
+        <div class="row"><div class="ico">·</div><div class="meta"><b>Monkey Gone to Heaven</b><span>Pixies</span></div></div>`,
+    },
+    read: {
+      stage: `
+        <div class="cover book">📖</div>
+        <div class="title">The Man Who Solved the Market</div>
+        <div class="sub">Cap. 4 · TTS servizio · it-IT-Diego</div>
+        <div class="progress"><i style="width:42%"></i></div>
+        <div class="prog-meta"><span>1:18</span><span>3:05</span></div>
+        <div class="transport">
+          <div class="t-btn" style="font-size:.85rem;font-weight:700">−15</div>
+          <div class="t-btn primary">⏸</div>
+          <div class="t-btn" style="font-size:.85rem;font-weight:700">+30</div>
+        </div>`,
+      rail: `
+        <h3>Servizio TTS</h3>
+        <div class="row active"><div class="ico">✓</div><div class="meta"><b>Cache ready</b><span>/media/tts/ch04.mp3</span></div></div>
+        <div class="row"><div class="ico">¶</div><div class="meta"><b>Cap. 5</b><span>pending · enqueue</span></div></div>
+        <div class="chat" style="margin-top:.5rem">
+          Client = solo &lt;audio&gt; + progress.<br>
+          Rendering voce = servizio (edge-tts di default).
+        </div>`,
+    },
+    explore: {
+      stage: `
+        <div class="cover">📦</div>
+        <div class="title">Juraçon Sec</div>
+        <div class="sub">Vignau la Juscle · prodotto</div>
+        <div class="chips" style="justify-content:center;margin-top:.5rem">
+          <span class="chip accent">Apri link</span>
+          <span class="chip">Salva</span>
+        </div>
+        <div class="transport">
+          <div class="t-btn primary" style="width:auto;padding:0 1.4rem;border-radius:999px;font-size:1rem">Chiedi a Grok</div>
+        </div>`,
+      rail: `
+        <h3>Grok</h3>
+        <div class="chips">
+          <span class="chip accent">Cos’è?</span>
+          <span class="chip">Abbinamenti</span>
+          <span class="chip">Perché salvato</span>
+        </div>
+        <div class="chat" style="margin-top:.55rem">
+          <div class="me">Tu · Cos’è?</div>
+          <div class="bot">Bianco secco del Jurançon. Lo hai salvato da un reel di Franco che lo rimentovava dopo una degustazione…</div>
+        </div>`,
+    },
+  };
+
+  function renderA(mode) {
+    document.getElementById('a-stage').innerHTML = modes[mode].stage;
+    document.getElementById('a-rail').innerHTML = modes[mode].rail;
+    document.querySelectorAll('#a-modes span').forEach((s) => {
+      s.classList.toggle('on', s.dataset.mode === mode);
+    });
+  }
+  document.getElementById('a-modes').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-mode]');
+    if (t) renderA(t.dataset.mode);
+  });
+  renderA('listen');
+})();
+</script>
+</body>
+</html>
