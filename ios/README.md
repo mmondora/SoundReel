@@ -177,6 +177,65 @@ Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/library» e i campi `album
 
 ---
 
+## Foglio di condivisione, Posta e notifiche (Mondrop 1.6 · SoundReel 2.10.0)
+
+Contratto: `docs/mondrop-inbox.md` · spec `docs/superpowers/specs/2026-11-08-mondrop-share-inbox-design.md` (SH1–SH7, IN1–IN7) · ADR-0015.
+
+- **Il foglio** (`MondropKit/ShareComposeView.swift`, lo stesso per iOS e Mac): in alto l'anteprima del link (sito + URL accorciato), poi **«Aggiungi a
+  una playlist»** (solo link di musica/media), **«Condividi con»**, i tag, e in piccolo utente e dispositivo. **«Invia a SoundReel»** è un bottone grande,
+  pieno, a tutta larghezza, fisso in fondo e sempre sopra la tastiera (spinner mentre invia; disabilitato solo se manca il link, e il motivo è scritto sopra);
+  nella barra resta solo «Annulla» (dopo l'invio diventa «Chiudi»). **Dopo l'invio il foglio non si chiude di scatto**: una spunta grande e una riga dicono che cosa è successo
+  («Brano aggiunto a Road trip», «Link in analisi, ti avviso», «Condiviso con archi e sara»), con feedback aptico, per ~1,2 s (3 s se c'è qualcosa da leggere:
+  playlist non usata, destinatario rifiutato); un tocco chiude subito. **In caso di errore resta aperto** con il motivo e **«Riprova»** (rimanda la stessa cosa:
+  il server è idempotente per link).
+- **Playlist** (SH4): compare solo per `open.spotify.com` / `spotify.link` / `spotify:`, `music.apple.com`, `shazam.com`, `youtube.com` / `youtu.be` /
+  `music.youtube.com`, `soundcloud.com`, `instagram.com`, `tiktok.com` (e i loro sottodomini; mai i look-alike come `youtube.com.evil.example`). **Default «Nessuna»**:
+  senza scelta `playlistId` non è nel corpo. Si offrono solo le playlist con `canEdit == true` (statiche e proprie). L'elenco sta in `playlists-cache.json`
+  nell'App Group: l'app lo riscrive a ogni apertura e a ogni sync (`GET /api/mondrop/playlists`), il foglio **non aspetta mai la rete**. Mai la cache di un altro
+  utente (se la key passa a un altro utente il foglio non offre nulla finché l'app non la riscrive); con un backend vecchio, senza `canEdit`, non offre nessuna playlist.
+- **Condividi con** (SH6): chip dei familiari — la famiglia **senza l'utente di questo telefono** (per mike: archi e sara), selezionabili, anche entrambi, default nessuno;
+  vanno in `shareWith` solo se scelti. Impostazioni → «Condividi di default con…» li pre-seleziona, il foglio li lascia modificare. È una condivisione **sul server**:
+  chi la riceve la vede nel proprio SoundReel e nella propria app (scheda Posta → «Ricevute»). L'esito del server (`playlist`, `sharedWith`, `rejected`) finisce nella riga di
+  successo: un destinatario rifiutato («sei tu», «utente sconosciuto», «la tua chiave non è legata a un utente» se la key non ha un utente) o una playlist non valida (inesistente, dinamica, in sola lettura) compaiono come avvisi, il link è salvato comunque.
+- **Posta** (scheda «Posta», quarta, con il numero da leggere come badge; sull'icona dell'app se iOS lo permette): due elenchi. **Notifiche**: gli esiti delle tue condivisioni e gli avvisi;
+  le `info` scadono dopo 3 giorni (non si mostrano più quando `expiresAt` è passato, senza aspettare la pulizia del server), **gli errori no**: restano in rosso con **Riprova**, **Apri** ed **Elimina**.
+  **Riprova** rimanda `data.sourceUrl` con la stessa chiamata di condivisione e **con le stesse opzioni** con cui era partito: quelle di questo telefono se le ha (playlist, destinatari, commento: ogni
+  invio lascia una riga in `share-log.json`, 60 righe / 30 giorni, ritrovata anche se il server ha tolto `?si=` o `utm_*`), **altrimenti quelle che il server ha tenuto** (`data.options`: `playlistId`,
+  `shareWith`, `comment`), così funziona anche per una condivisione partita da un altro dispositivo. Se il problema era la playlist (`playlist_not_found`, `playlist_dynamic`, `playlist_read_only`) il
+  bottone dice **«Riprova senza playlist»** e rimanda il link **senza** `playlistId` (destinatari e commento restano). Se il server **riprova da solo** (`data.retrying`, per esempio Instagram che chiede una
+  nuova autorizzazione) la riga mostra il testo del server e «Riprova comunque» passa in secondo piano, più discreto. Un «Riprova» riuscito lascia a sua volta una riga nel registro, con quello che è
+  stato davvero mandato (senza la playlist, se è stata tolta). L'errore si chiude da solo quando il link poi riesce (lo fa il server). **Ricevute**: le voci che altri hanno condiviso con te, **non scadono**; un tocco apre la voce e la segna vista. Una notifica `info` si segna letta quando resta
+  a schermo ~1,5 s (`POST …/read`) e un tocco apre la voce; scorrimento a sinistra = elimina, a destra = letta. Si legge all'apertura della scheda, quando l'app torna in primo piano, dopo un sync
+  e col pull-to-refresh. **Letture leggere** (primo piano, dopo un sync) mandano `since` = l'ultimo `serverTime` e **fondono** (aggiungono/aggiornano) e **tolgono** gli id di `removedIds` (cancellate
+  da un altro dispositivo, errori che il server ha chiuso perché lo stesso link è poi riuscito, notifiche scadute). Le **Ricevute** invece si **sostituiscono** a ogni lettura, anche leggera (il server manda sempre l'elenco intero, con `seen`): una condivisione ritirata sparisce subito. La scheda aperta, il pull-to-refresh e l'avvio rileggono **tutto**, e così fa una
+  lettura leggera dopo 10 minuti dall'ultima completa: è la rete di sicurezza per un server che non manda `removedIds`.
+- **Un solo numero** (badge della scheda e dell'icona): una condivisione ricevuta conta **una volta**. La sua notifica («<Nome> ha condiviso con te») e la voce in «Ricevute» sono la stessa cosa,
+  legate da `entryId`: **vista = letta**. Segnare letta la notifica segna vista la voce, aprire la voce segna letta la notifica, eliminare la notifica segna vista la voce, «Segna tutto come letto» le
+  segna tutte. Il numero che arriva dal server (`unread`) è sempre quello giusto; tra una lettura e l'altra l'app lo corregge con la **differenza** calcolata con la stessa regola (mai sotto zero, e
+  un annullamento restituisce esattamente quello che aveva tolto), così non salta alla lettura successiva.
+- **Notifiche**: Impostazioni → «Notifiche delle condivisioni» (acceso di default; il permesso a iOS si chiede la prima volta che serve — aprendo la Posta, accendendo l'interruttore, o tornando
+  nell'app dopo aver condiviso — mai a freddo). Senza push l'app mostra **una notifica locale** quando legge notifiche non lette che non aveva ancora annunciato (dedupe per id, memoria di 300 id;
+  si sta zitti se la Posta è a schermo, se l'interruttore è spento, se iOS non lo permette, o se la notizia ha più di 24 h — un primo avvio non annuncia un arretrato). Un tocco apre la Posta.
+- **Push (client costruito, dormiente)**: dopo il permesso l'app chiama `registerForRemoteNotifications()` e manda l'hex del token a `POST /api/mondrop/push/devices` con `environment`
+  `development` nelle build Debug (quelle di `install-iphone.sh`) e `production` nelle altre; con l'interruttore spento fa `DELETE` (se il server non risponde riprova al lancio dopo). Se iOS rifiuta
+  (`didFailToRegisterForRemoteNotificationsWithError`: oggi manca l'entitlement) il push resta spento, Impostazioni lo dice in una riga e la Posta funziona uguale. Quando il token è registrato, l'app
+  **non** annuncia in locale le stesse notifiche (le suona il server). **Per accenderlo — solo DOPO che il server ha la chiave APNs** (`~/.config/soundreel/apns/`, Key ID in configurazione):
+  in `ios/project.yml`, nel target `Mondrop`, sotto `entitlements.properties` (accanto a `com.apple.security.application-groups`) aggiungere **una riga**: `aps-environment: development`
+  (`production` per TestFlight / App Store); poi `xcodegen generate` e `ios/scripts/install-iphone.sh` (con `-allowProvisioningUpdates` Xcode aggiunge la capability Push Notifications al profilo
+  dell'account a pagamento). Non è stata aggiunta ora perché cambierebbe la firma prima che la chiave esista.
+- **Badge sull'icona**: serve il permesso `.badge`. La 1.5 chiedeva solo avviso e suono e iOS non cambia le opzioni di un permesso già dato: su un'installazione che aveva già risposto il badge dell'icona
+  non compare finché non si reinstalla l'app (o si attiva «Badge» in Impostazioni iOS → Notifiche → Mondrop, se la voce c'è). Il numero sulla scheda funziona sempre.
+- **Non fatto**: l'aggiornamento in background (`BGAppRefreshTask`) — iOS decide se e quando eseguirlo, richiede modifiche a Info.plist e non è verificabile senza un dispositivo; il risveglio per i download
+  in background legge comunque la Posta dopo un sync. «Aggiungi a playlist» da una condivisione ricevuta — non esiste una rotta Mondrop per aggiungere una voce già nota a una playlist.
+- **Schede**: sono 6 (Player, Libreria, Playlist, **Posta**, Share, Impostazioni); su iPhone la barra ne mostra 4 più «Altro», perciò la Posta è la quarta (il suo badge resta visibile) e Share e Impostazioni stanno in «Altro».
+- **Compatibilità**: ogni campo nuovo è opzionale (un backend senza Posta risponde 404 alla lettura: la scheda lo dice quietamente); la risposta di `POST /api/share` si legge anche nella forma vecchia.
+- **Test** nuovi: corpo della richiesta (`playlistId` / `shareWith` solo se scelti), risposte vecchie e nuove, classificazione dei link, cache delle playlist, testi di successo e di errore, decodifica della Posta,
+  conteggio dei non letti (una condivisione ricevuta una volta sola), errori visibili a prescindere dalla scadenza, letto / elimina / visto (con annullamento, anche della voce collegata, se il server non conferma),
+  `removedIds`, `data.options` / `retrying` / `reason`, «Riprova» con lo stesso corpo (dal registro del telefono o da quello che ha tenuto il server, senza playlist se era lei il problema), impostazioni di default,
+  dedupe delle notifiche locali, registrazione del push (successo, rifiuto di iOS, server giù, interruttore spento).
+
+---
+
 ## Cosa viene inviato con il link
 
 | Campo | Esempio | Dove finisce |

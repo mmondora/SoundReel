@@ -108,10 +108,18 @@ public enum NotificationPermission: Equatable, Sendable {
 public struct SyncNotificationContent: Equatable, Sendable {
     public let title: String
     public let body: String
+    /// Mondrop 1.6 (the inbox): a notification that replaces an older one with the same identifier, carries the ids
+    /// a tap needs, and sets the number on the app icon. All optional: the «Sync finito» notification uses none.
+    public let identifier: String?
+    public let userInfo: [String: String]
+    public let badge: Int?
 
-    public init(title: String, body: String) {
+    public init(title: String, body: String, identifier: String? = nil, userInfo: [String: String] = [:], badge: Int? = nil) {
         self.title = title
         self.body = body
+        self.identifier = identifier
+        self.userInfo = userInfo
+        self.badge = badge
     }
 }
 

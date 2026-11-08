@@ -11,8 +11,8 @@ options:
 settings:
   base:
     DEVELOPMENT_TEAM: 5NZADC9YQ2
-    MARKETING_VERSION: "1.5.0"
-    CURRENT_PROJECT_VERSION: "6"
+    MARKETING_VERSION: "1.6.0"
+    CURRENT_PROJECT_VERSION: "7"
     SWIFT_VERSION: "5.9"
     CODE_SIGN_STYLE: Automatic
 
@@ -38,6 +38,12 @@ targets:
         PRODUCT_NAME: Mondrop
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_ENTITLEMENTS: Mondrop/Mondrop.entitlements
+        # Release is what scripts/testflight.sh archives: push-ready (aps-environment becomes "production" at export). Debug,
+        # the day-to-day device install, keeps the plain entitlements, so it does not depend on the App ID's capabilities.
+        # A conditional setting, not `settings: configs: Release:`: XcodeGen writes the `entitlements:` path below into EVERY
+        # configuration of the target after merging, so a per-config override is silently lost (checked in the generated
+        # project: Release kept Mondrop.entitlements). The more specific `[config=Release]` value wins in Xcode.
+        "CODE_SIGN_ENTITLEMENTS[config=Release]": Mondrop/MondropPush.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         GENERATE_INFOPLIST_FILE: YES
@@ -46,6 +52,9 @@ targets:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        # The app targets iPad too (TARGETED_DEVICE_FAMILY 1,2): App Store Connect refuses the upload (ITMS-90474) unless
+        # the iPad lists all four orientations (or the app opts out of multitasking).
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         # ATS lives in Mondrop/Info.plist (NSAllowsLocalNetworking for the home media server, arbitrary loads off):
         # a nested INFOPLIST_KEY_NSAppTransportSecurity_* build setting is silently ignored by Xcode.
     entitlements:
@@ -72,8 +81,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: it.mikesoft.mondrop.share
         PRODUCT_NAME: MondropShare
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon # share-sheet icon (own arrow icon, not the app's)
-        MARKETING_VERSION: "1.5.0"
-        CURRENT_PROJECT_VERSION: "6"
+        MARKETING_VERSION: "1.6.0"
+        CURRENT_PROJECT_VERSION: "7"
         CODE_SIGN_ENTITLEMENTS: MondropShare/MondropShare.entitlements
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: MondropShare/Info.plist

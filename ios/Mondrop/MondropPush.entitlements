@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Used ONLY by the Release configuration of the Mondrop target (project.yml), i.e. by the TestFlight archive; the
+	     Debug build installed on the phone keeps Mondrop.entitlements and does not touch the App ID. "development" is the
+	     value Xcode expects at archive time: the export step signs with the App Store profile and writes "production"
+	     (what a TestFlight build must carry). -->
+	<key>aps-environment</key>
+	<string>development</string>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.it.mikesoft.mondrop</string>
+	</array>
+</dict>
+</plist>

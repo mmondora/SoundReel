@@ -26,7 +26,9 @@ struct UNSyncNotificationCenter: SyncNotificationCenter {
     }
 
     func requestPermission() async -> Bool {
-        (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
+        // `.badge` is the number on the app icon (the Posta's unread count). iOS fixes the options at the FIRST request:
+        // an install that already answered with alert + sound only keeps them (see ios/README.md).
+        (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
     }
 
     func post(_ content: SyncNotificationContent) async {
@@ -34,8 +36,11 @@ struct UNSyncNotificationCenter: SyncNotificationCenter {
         body.title = content.title
         body.body = content.body
         body.sound = .default
-        // One fixed identifier: a new «Sync finito» replaces the previous one instead of piling up.
-        let request = UNNotificationRequest(identifier: Self.identifier, content: body, trigger: nil)
+        if !content.userInfo.isEmpty { body.userInfo = content.userInfo }
+        if let badge = content.badge { body.badge = NSNumber(value: badge) }
+        // «Sync finito» uses one fixed identifier: a new one replaces the previous instead of piling up. The Posta's
+        // notifications carry their own (one per inbox item), so a tap and a dedupe can find them.
+        let request = UNNotificationRequest(identifier: content.identifier ?? Self.identifier, content: body, trigger: nil)
         try? await UNUserNotificationCenter.current().add(request)
     }
 }
@@ -55,8 +60,14 @@ enum SyncNotifications {
         notifier.backgroundRunner = UIKitBackgroundTaskRunner()
         #endif
         SyncEngine.shared.onBatchFinished = { summary in
-            Task { await SyncNotifier.shared.syncFinished(summary) }
+            Task {
+                await SyncNotifier.shared.syncFinished(summary)
+                // A sync is also a good moment to look at the Posta (and the playlists the share sheet offers).
+                await InboxModel.shared.refresh(.sync)
+                await InboxWiring.refreshPlaylistsCache()
+            }
         }
+        InboxWiring.install()
     }
 
     static func appIsActive() -> Bool {

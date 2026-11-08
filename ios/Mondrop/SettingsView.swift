@@ -13,7 +13,10 @@ struct SettingsView: View {
     @State private var savedMessage: String = ""
     @State private var allowCellular: Bool = Settings.shared.allowCellularDownloads
     @State private var notifyWhenDone: Bool = Settings.shared.syncNotificationsEnabled
+    @State private var notifyShares: Bool = Settings.shared.inboxNotificationsEnabled
+    @State private var shareWithByDefault: Set<String> = Set(Settings.shared.defaultShareWith)
     @State private var notificationPermission: NotificationPermission?
+    @ObservedObject private var push = PushRegistrar.shared
     @ObservedObject private var net = NetStatus.shared
     @ObservedObject private var uploader = EventUploader.shared
 
@@ -81,6 +84,8 @@ struct SettingsView: View {
             }
 
             syncSection
+
+            sharesSection
 
             statsSection
 
@@ -167,6 +172,54 @@ struct SettingsView: View {
             Text("Sync")
         } footer: {
             Text("I download del Sync usano solo il Wi-Fi, salvo che attivi la rete cellulare. A casa i brani arrivano direttamente dal media server (il file non passa da internet); fuori casa dal server SoundReel. Quando un Sync finisce e l'app non è aperta ti arriva una notifica con quanti brani sono stati scaricati e quanti errori ci sono (iOS lo chiede la prima volta). In «Spazio» vedi quanto pesano i brani, elimini i meno ascoltati (doppia conferma per più brani) e riscarichi ciò che serve.")
+        }
+    }
+
+    /// «Notifiche delle condivisioni» and «Condividi di default con…» (Mondrop 1.6, the Posta tab and the share sheet).
+    @ViewBuilder
+    private var sharesSection: some View {
+        Section {
+            Toggle("Notifiche delle condivisioni", isOn: $notifyShares)
+                .onChange(of: notifyShares) { _, newValue in
+                    Settings.shared.inboxNotificationsEnabled = newValue
+                    // Asked when the switch is turned on, never behind the user's back; turning it off tells the server to stop.
+                    Task {
+                        if newValue { await InboxWiring.ensurePermissionIfNeeded() }
+                        await InboxWiring.reconcilePush()
+                        await refreshNotificationPermission()
+                    }
+                }
+            if notifyShares && notificationPermission == .denied {
+                Text("Le notifiche di Mondrop sono disattivate nelle Impostazioni di iOS: la Posta funziona lo stesso, ma non ti avviso quando arriva qualcosa.")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+            if let line = pushLine {
+                Text(line).font(.footnote).foregroundStyle(.secondary)
+            }
+            ForEach(ShareRecipients.available(for: username), id: \.self) { user in
+                Toggle("Condividi di default con \(user)", isOn: Binding(
+                    get: { shareWithByDefault.contains(user) },
+                    set: { on in
+                        if on { shareWithByDefault.insert(user) } else { shareWithByDefault.remove(user) }
+                        Settings.shared.defaultShareWith = Array(shareWithByDefault)
+                    }
+                ))
+            }
+        } header: {
+            Text("Condivisioni e Posta")
+        } footer: {
+            Text("Quando condividi un link da un'altra app, l'esito ti torna nella scheda Posta (e come notifica). «Condividi di default con…» pre-seleziona i destinatari nel foglio di condivisione, dove puoi sempre cambiarli; di base nessuno. Le notifiche spariscono dopo 3 giorni, gli errori restano.")
+        }
+    }
+
+    /// Push is dormant until the signed app carries the push entitlement and the server holds the APNs key.
+    private var pushLine: String? {
+        switch push.state {
+        case .registered: return "Push attivo su questo telefono."
+        case .waiting: return "Push: in attesa di iOS…"
+        case .unavailable(let reason): return "Push non attivo su questa installazione (\(reason)): gli avvisi arrivano quando apri Mondrop."
+        case .off: return nil
         }
     }
 

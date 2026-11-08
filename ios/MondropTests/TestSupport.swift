@@ -517,3 +517,147 @@ actor AsyncGate {
         for waiter in pending { waiter.resume() }
     }
 }
+
+// MARK: - 1.6.0: Share sheet + Posta
+
+/// What was sent through the share call, and what the server «answered».
+final class FakeShareSender: ShareSending, @unchecked Sendable {
+    struct Call: Equatable {
+        let url: String
+        let comment: String?
+        let tags: [String]?
+        let options: ShareOptions
+    }
+
+    private let lock = NSLock()
+    private var _calls: [Call] = []
+    private var _results: [Result<ShareResponse, Error>]
+
+    init(_ results: [Result<ShareResponse, Error>] = [.success(ShareResponse(success: true, status: "queued", kind: "generic"))]) {
+        _results = results
+    }
+
+    var calls: [Call] { lock.withLock { _calls } }
+    func script(_ results: [Result<ShareResponse, Error>]) { lock.withLock { _results = results } }
+
+    func share(url: String, comment: String?, tags: [String]?, options: ShareOptions) async throws -> ShareResponse {
+        let result: Result<ShareResponse, Error> = lock.withLock {
+            _calls.append(Call(url: url, comment: comment, tags: tags, options: options))
+            return _results.count > 1 ? _results.removeFirst() : (_results.first ?? .success(ShareResponse(success: true)))
+        }
+        return try result.get()
+    }
+}
+
+/// The inbox on the server: answers are scripted, every call is recorded.
+final class FakeInbox: InboxTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _snapshots: [InboxSnapshot]
+    private var _calls: [String] = []
+    private var _sinceValues: [String?] = []
+    private var _failing: Set<String> = []
+    private var _error: Error?
+
+    init(_ snapshots: [InboxSnapshot] = [InboxSnapshot()]) { _snapshots = snapshots }
+
+    /// Every call fails with this exact error (an HTTP 404 from a backend that predates the Posta, say).
+    func failWith(_ error: Error?) { lock.withLock { _error = error } }
+
+    var calls: [String] { lock.withLock { _calls } }
+    var sinceValues: [String?] { lock.withLock { _sinceValues } }
+    func script(_ snapshots: [InboxSnapshot]) { lock.withLock { _snapshots = snapshots } }
+    /// `"markRead"`, `"delete"`, `"seen"`, `"readAll"`, `"inbox"` fail with a network error while listed.
+    func fail(_ names: Set<String>) { lock.withLock { _failing = names } }
+
+    private func record(_ name: String, _ detail: String = "") throws {
+        let failing = lock.withLock { () -> Bool in
+            _calls.append(detail.isEmpty ? name : "\(name):\(detail)")
+            return _failing.contains(name)
+        }
+        if let error = lock.withLock({ _error }) { throw error }
+        if failing { throw MondropAPIError.transport("offline") }
+    }
+
+    func inbox(since: String?, limit: Int?) async throws -> InboxSnapshot {
+        lock.withLock { _sinceValues.append(since) }
+        try record("inbox")
+        return lock.withLock { _snapshots.count > 1 ? _snapshots.removeFirst() : (_snapshots.first ?? InboxSnapshot()) }
+    }
+
+    func markRead(id: String) async throws { try record("markRead", id) }
+    func markAllRead() async throws { try record("readAll") }
+    func deleteNotification(id: String) async throws { try record("delete", id) }
+    func markSeen(entryId: String) async throws { try record("seen", entryId) }
+}
+
+final class FakePushTransport: PushTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _registered: [(token: String, environment: PushEnvironment)] = []
+    private var _unregistered: [String] = []
+    private var _failing = false
+
+    var registered: [(token: String, environment: PushEnvironment)] { lock.withLock { _registered } }
+    var unregistered: [String] { lock.withLock { _unregistered } }
+    func fail(_ value: Bool) { lock.withLock { _failing = value } }
+
+    func registerPushDevice(token: String, environment: PushEnvironment) async throws {
+        if lock.withLock({ _failing }) { throw MondropAPIError.transport("offline") }
+        lock.withLock { _registered.append((token, environment)) }
+    }
+
+    func unregisterPushDevice(token: String) async throws {
+        if lock.withLock({ _failing }) { throw MondropAPIError.transport("offline") }
+        lock.withLock { _unregistered.append(token) }
+    }
+}
+
+@MainActor
+final class FakePushSystem: PushSystem {
+    private(set) var registerCalls = 0
+    private(set) var unregisterCalls = 0
+    func registerForRemoteNotifications() { registerCalls += 1 }
+    func unregisterForRemoteNotifications() { unregisterCalls += 1 }
+}
+
+final class FakeBadge: BadgeSetting, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _values: [Int] = []
+    var values: [Int] { lock.withLock { _values } }
+    var last: Int? { lock.withLock { _values.last } }
+    func setBadge(_ count: Int) async { lock.withLock { _values.append(count) } }
+}
+
+extension TestSupport {
+    static func tempFile(_ name: String) throws -> URL {
+        try tempDir("file").appendingPathComponent(name)
+    }
+
+    /// A notification as the server sends it, with sensible defaults.
+    static func notification(
+        _ id: String, level: InboxLevel = .info, title: String? = nil, body: String = "2 canzoni, 1 film",
+        created: Date? = nil, read: Date? = nil, expires: Date? = nil, sourceUrl: String? = nil, entryId: String? = "e1",
+        kind: String = "share_result", reason: String? = nil, options: InboxRetryOptions? = nil, retrying: Bool = false
+    ) -> InboxNotification {
+        InboxNotification(
+            id: id, kind: kind, level: level, title: title ?? (level == .error ? "Analisi non riuscita" : "Salvato su SoundReel"),
+            body: body, entryId: entryId, url: entryId.map { "https://soundreel.test/?entry=\($0)" },
+            createdAt: created ?? Date(timeIntervalSince1970: 1_794_000_000), readAt: read, expiresAt: expires,
+            data: InboxData(sourceUrl: sourceUrl, reason: reason, options: options, retrying: retrying)
+        )
+    }
+
+    /// The notice that tells somebody an entry was shared with him (it is linked to its share by `entryId`).
+    static func sharedWithYou(_ id: String, entry: String, read: Date? = nil, expires: Date? = nil) -> InboxNotification {
+        notification(id, title: "Sara ha condiviso con te", body: "Say it Ain't So\n1 canzone", read: read, expires: expires, entryId: entry, kind: "share_received")
+    }
+
+    static func receivedShare(_ entryId: String, from: String = "sara", seen: Bool = false) -> ReceivedShare {
+        ReceivedShare(
+            entryId: entryId, from: from, sharedAt: Date(timeIntervalSince1970: 1_794_000_000), title: "Say it Ain't So",
+            kind: "spotify", counts: ShareCounts(songs: 1), seen: seen, url: "https://soundreel.test/?entry=\(entryId)"
+        )
+    }
+
+    /// 2026-11-08 ~ 07:20 UTC
+    static let inboxNow = Date(timeIntervalSince1970: 1_794_000_000 + 600)
+}

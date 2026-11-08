@@ -87,8 +87,12 @@ struct PlaylistOfflineView: View {
                 engine: .shared,
                 net: .shared,
                 activity: .shared,
-                // The right moment to ask iOS for notifications, once: the user has just started a sync.
-                onSyncStarted: { Task { await SyncNotifier.shared.ensurePermission() } }
+                // The right moment to ask iOS for notifications, once: the user has just started a sync. And to refresh the
+                // playlists the share sheet offers.
+                onSyncStarted: {
+                    Task { await SyncNotifier.shared.ensurePermission() }
+                    Task { await InboxWiring.refreshPlaylistsCache() }
+                }
             )
         )
     }

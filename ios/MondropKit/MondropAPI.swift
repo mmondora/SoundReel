@@ -12,17 +12,20 @@ public struct MondropPlaylist: Codable, Identifiable, Sendable, Equatable {
     public let kind: String?
     /// Readable rule of a dynamic playlist, e.g. «Più ascoltate · 07:00–08:00 · ultimi 30 giorni».
     public let ruleSummary: String?
+    /// 2.10.0 (docs/mondrop-inbox.md): true only for the user's OWN STATIC playlists — the ones the share sheet may
+    /// add songs to. nil on an older backend: then none is offered (better no choice than a rejected one).
+    public let canEdit: Bool?
 
     /// Dynamic playlists are read-only on the phone: the rule decides which songs are in.
     public var isDynamic: Bool { kind?.lowercased() == "dynamic" }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, songCount, createdAt, updatedAt, kind, ruleSummary
+        case id, name, songCount, createdAt, updatedAt, kind, ruleSummary, canEdit
     }
 
     public init(
         id: String, name: String, songCount: Int, createdAt: String? = nil, updatedAt: String? = nil,
-        kind: String? = nil, ruleSummary: String? = nil
+        kind: String? = nil, ruleSummary: String? = nil, canEdit: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -31,6 +34,7 @@ public struct MondropPlaylist: Codable, Identifiable, Sendable, Equatable {
         self.updatedAt = updatedAt
         self.kind = kind
         self.ruleSummary = ruleSummary
+        self.canEdit = canEdit
     }
 
     public init(from decoder: Decoder) throws {
@@ -42,6 +46,7 @@ public struct MondropPlaylist: Codable, Identifiable, Sendable, Equatable {
         updatedAt = try? c.decodeIfPresent(String.self, forKey: .updatedAt)
         kind = try? c.decodeIfPresent(String.self, forKey: .kind)
         ruleSummary = try? c.decodeIfPresent(String.self, forKey: .ruleSummary)
+        canEdit = (try? c.decodeIfPresent(Bool.self, forKey: .canEdit)) ?? nil
     }
 }
 
@@ -192,6 +197,23 @@ public final class MondropAPI: MondropAPIProtocol, @unchecked Sendable {
         } catch {
             throw MondropAPIError.decode(String(describing: error))
         }
+    }
+
+    // MARK: - For the calls that live in other files (inbox, push)
+
+    /// One authenticated call. `query` pairs are percent-encoded here (RFC 3986 unreserved only, like the library
+    /// query); the `user` hint goes last, as in every other call.
+    func sendRequest(
+        path: String, method: String = "GET", body: Data? = nil, timeout: TimeInterval = 120, query: [(String, String)] = []
+    ) async throws -> Data {
+        let encodedQuery: ((String) -> String)? = query.isEmpty ? nil : { user in
+            (query + [("user", user)]).map { "\($0.0)=\(LibraryQuery.encode($0.1))" }.joined(separator: "&")
+        }
+        return try await send(try authedRequest(path: path, method: method, body: body, timeout: timeout, encodedQuery: encodedQuery))
+    }
+
+    func decodeBody<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        try decode(type, from: data)
     }
 
     // MARK: - Endpoints

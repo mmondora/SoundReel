@@ -33,6 +33,9 @@ public final class Settings {
         }
     }
 
+    /// The defaults the Settings live in (the App Group's on a device), for the small stores that sit next to them.
+    public var storage: UserDefaults { defaults }
+
     public var backendBaseUrl: String {
         get { defaults.string(forKey: "backendBaseUrl") ?? "https://soundreel.casamon.dev" }
         set { defaults.set(newValue, forKey: "backendBaseUrl") }
@@ -66,6 +69,20 @@ public final class Settings {
     public var syncNotificationsEnabled: Bool {
         get { (defaults.object(forKey: "syncNotificationsEnabled") as? Bool) ?? true }
         set { defaults.set(newValue, forKey: "syncNotificationsEnabled") }
+    }
+
+    /// «Notifiche delle condivisioni» (Mondrop 1.6): a local notification (and the push, once it exists) when a share's
+    /// result or a share from the family reaches the Posta. ON by default; a missing key means ON.
+    public var inboxNotificationsEnabled: Bool {
+        get { (defaults.object(forKey: "inboxNotificationsEnabled") as? Bool) ?? true }
+        set { defaults.set(newValue, forKey: "inboxNotificationsEnabled") }
+    }
+
+    /// «Condividi di default con…»: the family members the share sheet pre-selects. Default: nobody. Read back clean:
+    /// only family ids, never the user of this phone, each once.
+    public var defaultShareWith: [String] {
+        get { ShareRecipients.sanitize(defaults.stringArray(forKey: "defaultShareWith") ?? [], for: autheliaUsername) }
+        set { defaults.set(ShareRecipients.sanitize(newValue, for: autheliaUsername), forKey: "defaultShareWith") }
     }
 
     public var recentTags: [String] {

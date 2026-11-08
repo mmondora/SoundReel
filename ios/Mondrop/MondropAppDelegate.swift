@@ -4,6 +4,25 @@
 import UIKit
 
 final class MondropAppDelegate: NSObject, UIApplicationDelegate {
+    /// The notification delegate must exist before the app finishes launching, or a tap that launched the app is lost.
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        MainActor.assumeIsolated { InboxWiring.install() }
+        return true
+    }
+
+    /// Push (dormant until the signed app carries `aps-environment`, see ios/README.md): iOS gave a device token…
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Task { @MainActor in await PushRegistrar.shared.didRegister(deviceToken: deviceToken) }
+    }
+
+    /// …or refused (no entitlement, simulator, no network). Push simply stays off: the Posta works without it.
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        Task { @MainActor in PushRegistrar.shared.didFail(error: error) }
+    }
+
     /// iOS relaunches the app (possibly in the background) to deliver the results of the background session.
     /// The completion handler must be called once the session has delivered its events: the transport does it
     /// in `urlSessionDidFinishEvents`. Touching the engine recreates the session, which is what makes the

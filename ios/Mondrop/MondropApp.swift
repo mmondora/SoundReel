@@ -46,11 +46,14 @@ struct MondropApp: App {
                 // foreground timer here too (it is stopped when the app goes to background).
                 EventUploader.shared.startForegroundTimer()
                 await EventUploader.shared.flush(.launch)
+                // The Posta: what happened to my shares while the app was closed (and the playlists the share sheet offers).
+                await InboxWiring.appBecameActive(first: true)
             }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
                 case .active:
                     EventUploader.shared.startForegroundTimer()              // every 15 minutes while in foreground
+                    Task { await InboxWiring.appBecameActive(first: false) } // the Posta, the sheet's playlists, the push token
                 case .background:
                     PlayRecorder.shared.checkpoint()                          // the open listen survives a kill
                     EventUploader.shared.stopForegroundTimer()

@@ -13,6 +13,10 @@
 			</array>
 		</dict>
 	</array>
+	<!-- Only standard HTTPS: exempt encryption. Without this key App Store Connect asks the export-compliance question
+	     for every build and holds it back from testers until someone answers. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<!-- HTTP only to local-network hosts (the home media server); everything else stays HTTPS. -->
