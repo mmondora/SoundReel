@@ -51,3 +51,7 @@ Two facts of the code explain it. (1) Mondrop's «Libreria» reads `GET /api/mon
 
 ## 5. Open questions
 None. Answered by Michele on 8 November (spec section 6): «Cerca» replaces the «Libreria» tab; a tap plays and queues the following tracks; the Playlist tab stays as it is; for the web player, «se siamo su internet parte da youtube, sempre. se siamo in casa parte da youtube nel frattempo».
+
+## Update (8 November 2026, SoundReel 2.16.0): the web playlist manager is a client of the same rule
+
+Michele: «anche la creazione delle playlist, la ricerca deve prendere da tutto e non solo dalla libreria». The only place where playlists are created and filled is the web playlist manager, which listed only the journal (796 songs: «Bassi Maestro» gave 0 rows against 11 in «Cerca»). Same decision, one more client: the SERVER decides what «everything» is. `GET /api/songs?scope=everything` returns the journal's songs plus the songs that exist only as files, one per song with the same identity (`songKey`) and the same grouping as «Cerca» (`songsOnlyAsFiles`); without `scope` nothing changes. The manager draws the first 300 rows (the list is 4,439 songs) and searches all of them. Spec `docs/superpowers/specs/2026-11-08-playlist-search-everything-design.md`.

@@ -1,6 +1,6 @@
 # L'icona di Mondrop, rifatta a vettore (richiesta 2026-11-08)
 
-Stato: **costruita** (Mondrop 1.7.0, build 8, ancora non su TestFlight: l'icona parte con quella build). Solo interfaccia: nessuna ADR (le regole d'interfaccia stanno nella spec).
+Stato: **costruita e su TestFlight** (Mondrop 1.7.0, build 8, caricata l'8 novembre alle 16:34, elaborata e VALID). Michele: «icona va bene». Solo interfaccia: nessuna ADR (le regole d'interfaccia stanno nella spec).
 Codice: `ios/scripts/make_app_icon.mjs` (disegno e cataloghi), sorgenti SVG in `ios/icon/`, prove `ios/scripts/make_app_icon.test.mjs` e `ios/MondropTests/AppIconAssetsTests.swift`.
 
 ## 1. Richieste di Michele (testuali)
@@ -59,5 +59,5 @@ cp house-1024.png ~/works/casamon-tv/docs/art/icon/casamon-tv-icon-v2-1024.png
 ## 7. Domande per Michele
 
 1. «home-ass» è l'app TV **Casamon**? (la mia deduzione, D6; **confermata** dal nome della sessione di Claude Code che lavora in `casamon-tv`, che si chiama «home-ass», e da Michele con «Sì, installala tu»).
-2. Le due versioni iOS 18 (scura e tinta) e l'icona del foglio di condivisione con la freccia vanno bene? (D3 e D4: sono miei default.)
+2. ~~Le due versioni iOS 18 (scura e tinta) e l'icona del foglio di condivisione con la freccia vanno bene? (D3 e D4: miei default.)~~ Risposta di Michele (8 novembre, dopo le anteprime): **«icona va bene»**. D3 e D4 confermate.
 3. ~~Installo io la gemella nell'altro repo (D7)?~~ Risposta di Michele: «Sì, installala tu». Fatto.

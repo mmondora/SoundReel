@@ -196,8 +196,8 @@ Spec `docs/superpowers/specs/2026-11-08-mondrop-search-spotify-style-design.md`,
 Spec `docs/superpowers/specs/2026-11-08-player-cover-art-design.md`, ADR-0019. Richiesta di Michele: «Nel player iOS voglio avere la copertina del disco o della canzone se non c'è trovale su Internet, come le parole.»
 - **Misurato:** un brano **solo-file** (NAS, geekom: quelli che «Cerca» fa suonare) non ha nessuna copertina vera; per gli altri l'app la scarica **direttamente dal sito del fornitore**, senza copia (offline sparisce) e senza passare da SoundReel.
 - **Proposto (SoundReel 2.14.0 + Mondrop 1.7.0, build 8, la stessa di «Cerca»):** il **server** trova la copertina (quella già nota, poi quella **dentro il file** MP3, poi **Internet**: iTunes e Deezer con riscontro forte), la ridimensiona e la **tiene**; rotta `GET /api/mondrop/songs/:key/cover` e campo `coverPath` nelle tracce; l'app la chiede solo a SoundReel, la **tiene sul telefono** (offline) e la usa nel player e sulla schermata di blocco.
-- **Risposte di Michele (8 novembre):** i **testi** («come le parole») **sì, cercali su Internet** quando mancano → release a parte (SoundReel 2.16.0, con la sua ADR); la copertina piccola nelle liste **no**, solo nel player.
-- Il piano di riproduzione del player web (scelto da Michele come prossimo lavoro) è la **2.15.0** (costruito); i testi vengono dopo, nella 2.16.0.
+- **Risposte di Michele (8 novembre):** i **testi** («come le parole») **sì, cercali su Internet** quando mancano → release a parte (SoundReel 2.17.0, con la sua ADR); la copertina piccola nelle liste **no**, solo nel player.
+- Il piano di riproduzione del player web (scelto da Michele come prossimo lavoro) è la **2.15.0** (costruito); i testi vengono dopo, nella 2.17.0.
 
 ## Fatto (in attesa di TestFlight) — l'icona di Mondrop rifatta a vettore, e la gemella dell'app TV (richiesta 2026-11-08)
 
@@ -207,11 +207,19 @@ Spec `docs/superpowers/specs/2026-11-08-mondrop-app-icon-design.md`. Richiesta d
 - **Fatto, con il sì di Michele:** la gemella (casa gialla con le onde su azzurro) installata nell'app TV **Casamon** (`casamon-tv/apps/tv-webos/shell/icon.png` 80 px e `largeIcon.png` 130 px, più il sorgente in `docs/art/icon/`), **senza commit** in quel repo. Non toccati (regola sopra): `appinfo.json`, `splash.png` col dipinto e i documenti di quel repo.
 - Domande aperte: le versioni scura e tinta e la freccia del foglio di condivisione vanno bene? (mie scelte di default, spec D3 e D4)
 
+## Fatto (in attesa di deploy) — creare le playlist: la ricerca prende da tutto, non solo dalla libreria (richiesta 2026-11-08)
+
+Spec `docs/superpowers/specs/2026-11-08-playlist-search-everything-design.md` (ADR-0018, nota in coda). Richiesta di Michele: «anche la creazione delle playlist, la ricerca deve prendere da tutto e non solo dalla libreria».
+- **Misurato:** il gestore delle playlist del sito (l'unico posto dove si creano e si riempiono; l'app non ha una schermata di creazione) caricava solo i **796 brani del diario**: «Bassi Maestro» dava 0 righe contro 11 di Cerca, e i brani solo-file messi in una playlist da Cerca comparivano come «non nel tuo journal» e la copia li saltava. La ricerca di Mondrop vede **4.439 brani** (796 del diario + 3.643 solo-file).
+- **SoundReel 2.16.0 + 2.16.1:** (la 2.16.1 corregge il piano di riproduzione per i brani solo-file, trovato dai controlli dopo il deploy) `GET /api/songs?scope=everything` (diario + solo-file, una riga per canzone come in Cerca); il pannello del gestore si chiama «Tutti i brani», badge «Solo file», prime 300 righe e «Mostra altri». Prove sui dati veri in sola lettura.
+- Domande aperte: «Scegli cosa suonare» del player web vuole tutto anche lui? Il nome «Tutti i brani» va bene?
+
 ## In corso — Mondrop su TestFlight, il gruppo «Family» come tester (richiesta 2026-11-08)
 
 Spec `docs/superpowers/specs/2026-11-08-mondrop-testflight-design.md`, ADR-0016. Richiesta di Michele: «Pubblica mondrop su testflight e metti il gruppo family come tester».
 - **Pronto nel repository:** privacy manifest (app ed estensione), conformità export, orientamenti iPad, entitlements push solo per la Release, `ios/scripts/testflight.sh` (archivio Release + upload, firma gestita dal cloud con la chiave API).
 - **Fatto da Michele (8 novembre):** la **chiave API** di App Store Connect (Key ID `7A4NS73W6Y`, `.p8` in `~/.config/soundreel/appstoreconnect/`) e il **record app** «Mondrop». Issuer ID dato e record verificato via API (bundle `it.mikesoft.mondrop`). **La chiave ha un ruolo troppo basso per scrivere** (firma cloud: «Cloud signing permission error»; gruppo: 403), quindi la build parte dall'**Apple ID di Xcode** (`testflight.sh` senza variabili `ASC_*`). Poi: gruppo esterno con i tester (le email dei familiari le ha date Michele), informazioni di test (serve il contatto per la revisione: nome, telefono, email), revisione beta di Apple (prima build di una versione per tester esterni) — via API con una chiave **Admin**, o nell'interfaccia web.
+- **Mondrop 1.7.0 (build 8) è su TestFlight** (8 novembre, 16:34): Michele ha rifatto il login in Xcode su vulcano e il caricamento è andato; Apple l'ha elaborata (VALID) e il gruppo interno «Family» (distribuzione automatica) la riceve. Dentro: Cerca, la regola P, le copertine, la cancellazione solo nelle Impostazioni e la nuova icona. Resta il gruppo esterno per Sara e Archimede (serve una chiave con ruolo Admin o la pagina web).
 - Domande aperte: il nome «Mondrop» è libero? l'informativa privacy (URL) che Apple può chiedere; test interni al posto degli esterni?
 
 ## Da misurare — FTPS al posto di SMB per la replica sul Fritz e per l'import dal Mac (idea di Michele, 2026-11-08)
