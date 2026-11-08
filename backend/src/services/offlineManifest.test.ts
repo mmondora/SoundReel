@@ -43,6 +43,7 @@ vi.mock('./localMedia', () => ({ rebuildLocalPaths: vi.fn() }));
 
 import {
   buildPlaylistOfflineManifest,
+  buildTracks,
   enqueueSongToSpooty,
   getTrack,
   isYoutubeVideoUrl,
@@ -140,6 +141,69 @@ describe('manifest: listening numbers and dynamic playlists (docs/mondrop-stats.
     await preparePlaylist('d1', 'mike');
     expect(m.enqueueSongDownload).toHaveBeenCalledTimes(1);
     expect(m.enqueueSongDownload).toHaveBeenCalledWith(expect.objectContaining({ songKey: KEY, priority: PRIORITY_SYNC }));
+  });
+});
+
+describe('manifest: album, genres and year on every track (ADR-0013: choosing what to play)', () => {
+  const dated = (over: Record<string, unknown> = {}) =>
+    song({ meta: { coverUrl: 'https://c/x.jpg', album: 'Church of Scars (Deluxe)', genres: ['Pop', 'Alternativa'], releaseYear: 2018 }, ...over });
+
+  it('carries the provider\'s album, the canonical genres (sorted, synonyms merged) and the release year', async () => {
+    m.getUserSongs.mockResolvedValue(new Map([[KEY, dated()]]));
+    expect(await manifestTrack()).toMatchObject({ album: 'Church of Scars (Deluxe)', genres: ['Alternative', 'Pop'], year: 2018 });
+  });
+
+  it('falls back to the mention\'s album; unknown genres and year are empty / null, never missing', async () => {
+    const track = await manifestTrack(); // song(): mention album only, meta without genres or year
+    expect(track.album).toBe('Church of Scars');
+    expect(track.genres).toEqual([]);
+    expect(track.year).toBeNull();
+    expect(Object.keys(track)).toEqual(expect.arrayContaining(['album', 'genres', 'year']));
+  });
+
+  it('a song with no metadata at all and no album is still a valid track', async () => {
+    m.getUserSongs.mockResolvedValue(new Map([[KEY, song({ album: null, meta: null })]]));
+    expect(await manifestTrack()).toMatchObject({ album: null, genres: [], year: null });
+  });
+
+  it('GET one song carries them too, and so does the placeholder of an unknown key', async () => {
+    m.getUserSongs.mockResolvedValue(new Map([[KEY, dated()]]));
+    expect(await getTrack(KEY, 'mike')).toMatchObject({ album: 'Church of Scars (Deluxe)', genres: ['Alternative', 'Pop'], year: 2018 });
+    m.getPlaylist.mockResolvedValue({ id: 'p1', name: 'Auto', songKeys: ['ghost::song'] });
+    expect((await buildPlaylistOfflineManifest('p1', 'mike'))!.tracks[0]).toMatchObject({ album: null, genres: [], year: null });
+  });
+
+  describe('buildTracks (one page of the library)', () => {
+    const other = song({ songKey: 'a::b', title: 'B', artist: 'A', album: null, meta: null });
+
+    it('builds the tracks of the songs given, in that order, with the user\'s plays and no lyrics', async () => {
+      m.getSongPlayStats.mockResolvedValue(new Map([['a::b', { plays: 7, lastPlayedAt: '2026-11-05T21:03:11Z' }]]));
+      const tracks = await buildTracks([other, dated()], 'mike');
+      expect(tracks.map((t) => t.songKey)).toEqual(['a::b', KEY]);
+      expect(tracks[0]).toMatchObject({ plays: 7, state: 'missing' });
+      expect(tracks[1]).toMatchObject({ year: 2018, lyrics: null });
+      expect(m.getSongFiles).toHaveBeenCalledWith(['a::b', KEY]);
+      expect(m.getSongPlayStats).toHaveBeenCalledWith('mike', ['a::b', KEY]);
+    });
+
+    it('reads state only: nothing is queued or written', async () => {
+      await buildTracks([dated()], 'mike');
+      expect(m.enqueueSongDownload).not.toHaveBeenCalled();
+      expect(m.markReady).not.toHaveBeenCalled();
+      expect(m.wakeSongDownloader).not.toHaveBeenCalled();
+    });
+
+    it('shows a song that is ready from the library as ready', async () => {
+      await writeSong();
+      m.findLibraryMatch.mockResolvedValue({ relPath: 'SoundReel/Bishop Briggs - White Flag.mp3', facts: { bytes: 10, mtimeMs: 5 } });
+      expect((await buildTracks([dated()], 'mike'))[0]).toMatchObject({ state: 'ready', bytes: 10, downloadPath: songFilePath(KEY) });
+    });
+
+    it('no songs, no work', async () => {
+      expect(await buildTracks([], 'mike')).toEqual([]);
+      expect(m.getSongFiles).not.toHaveBeenCalled();
+      expect(m.getSongPlayStats).not.toHaveBeenCalled();
+    });
   });
 });
 

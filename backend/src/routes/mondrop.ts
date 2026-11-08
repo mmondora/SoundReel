@@ -10,8 +10,11 @@ import { normalizeFamilyUser, ANONYMOUS_USER } from '../utils/requestUser';
 import { classifyNetwork } from '../utils/network';
 import { listPlaylists, getPlaylist } from '../services/playlists';
 import { resolveDetail, resolveSummaries } from '../services/playlistResolver';
+import { computeFacets, filterSongs, parseLibraryQuery, sortByArtistTitle } from '../services/libraryFacets';
+import { getUserSongs } from '../services/userSongs';
 import {
   buildPlaylistOfflineManifest,
+  buildTracks,
   enqueueSongToSpooty,
   getTrack,
   preparePlaylist,
@@ -190,6 +193,32 @@ export function registerMondropRoutes(app: FastifyInstance): void {
   );
 
   // One song, same object as in the manifest (first play re-checks it while the server prepares the file).
+  // Choosing what to play (ADR-0013): every song this user can see, filtered by genre / album / artist / decade /
+  // text, with the headings to choose from (counts, each one ignoring its own filter) and the tracks of ONE page
+  // (state, version, plays, album/genres/year). `facets=0` skips the headings when only paging.
+  app.get<{ Querystring: Record<string, unknown> }>('/api/mondrop/library', async (req, reply) => {
+    const auth = await requireMondrop(req, reply);
+    if (!auth) return;
+    const q = parseLibraryQuery(req.query);
+    if (!q.ok) return reply.code(400).send({ error: 'invalid_query', field: q.field });
+    try {
+      const all = [...(await getUserSongs(auth.userId, false)).values()];
+      const matching = sortByArtistTitle(filterSongs(all, q.filters));
+      const songs = await buildTracks(matching.slice(q.offset, q.offset + q.limit), auth.userId);
+      return {
+        songs,
+        total: matching.length,
+        offset: q.offset,
+        limit: q.limit,
+        ...(q.facets ? { facets: computeFacets(all, q.filters) } : {}),
+        user: auth.userId,
+      };
+    } catch (err) {
+      logError('GET /api/mondrop/library failed', { err: String(err) });
+      return reply.code(500).send({ error: 'library failed' });
+    }
+  });
+
   app.get<{ Params: { songKey: string } }>('/api/mondrop/songs/:songKey', async (req, reply) => {
     const auth = await requireMondrop(req, reply);
     if (!auth) return;

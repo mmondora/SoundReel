@@ -437,3 +437,9 @@ ALTER TABLE playlists ADD COLUMN IF NOT EXISTS rule JSONB;
 -- Where a song's file sits on the media server (volume-relative path). Set when the file was COPIED FROM the box
 -- (its original, no duplicate is ever mirrored back); otherwise the replica path is derived from rel_path.
 ALTER TABLE song_files ADD COLUMN IF NOT EXISTS media_rel_path TEXT;
+
+-- Release year of a song (ADR-0013, migration 018): from the enrichment (Deezer album date, else iTunes), plus a
+-- one-off background pass. `release_year_checked_at` is set even when no provider had a year, so a song is never
+-- asked about twice.
+ALTER TABLE song_meta ADD COLUMN IF NOT EXISTS release_year INTEGER CHECK (release_year BETWEEN 1900 AND 2100);
+ALTER TABLE song_meta ADD COLUMN IF NOT EXISTS release_year_checked_at TIMESTAMPTZ;

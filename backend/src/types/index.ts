@@ -380,6 +380,8 @@ export interface SongMetaRecord extends SongUserMeta {
   itunesId: number | null;
   genres: string[];
   album: string | null;
+  /** Release year from the provider's date (ADR-0013); null = unknown ("Senza anno" in the filters). */
+  releaseYear: number | null;
   coverUrl: string | null;
   previewUrl: string | null;
   deezerUrl: string | null;

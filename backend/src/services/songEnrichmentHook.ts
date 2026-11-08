@@ -1,5 +1,5 @@
 import { songKey, getSongMeta, upsertSongEnrichment } from './songMeta';
-import { enrichSong } from './songEnrichment';
+import { enrichSongWithYear } from './songEnrichment';
 import { isStale } from './streamingRefresher';
 import { logError } from '../utils/logger';
 
@@ -21,7 +21,7 @@ export function enqueueSongEnrichment(songs: Array<{ artist: string | null; titl
     void (async () => {
       const existingMeta = await getSongMeta(songMetaKey);
       if (existingMeta?.enrichedAt && !isStale(existingMeta.enrichedAt, SONG_ENRICHMENT_TTL_DAYS)) return;
-      const enrichment = await enrichSong(artist, song.title);
+      const enrichment = await enrichSongWithYear(artist, song.title);
       if (enrichment) {
         await upsertSongEnrichment({ songKey: songMetaKey, ...enrichment });
       }

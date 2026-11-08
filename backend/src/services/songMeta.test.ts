@@ -2,7 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../utils/db', () => ({ query: vi.fn() }));
 
-import { songKey, patchSongUserMeta, upsertSongEnrichment, listSongMeta, getSongMeta } from './songMeta';
+import {
+  songKey,
+  patchSongUserMeta,
+  upsertSongEnrichment,
+  listSongMeta,
+  getSongMeta,
+  listReleaseYearChecked,
+  setReleaseYear,
+} from './songMeta';
 import { query } from '../utils/db';
 
 describe('songKey', () => {
@@ -192,6 +200,114 @@ describe('upsertSongEnrichment', () => {
     });
     const sql = vi.mocked(query).mock.calls[0][0];
     expect(sql).toContain('enriched_at = now()');
+  });
+
+  describe('release year (ADR-0013)', () => {
+    const base = {
+      songKey: 'daft punk::one more time',
+      deezerId: 123,
+      itunesId: null,
+      genres: ['Electronic'],
+      album: 'Discovery',
+      coverUrl: null,
+      previewUrl: null,
+      deezerUrl: null,
+      itunesUrl: null,
+    };
+
+    it('stores the year and marks the song as checked', async () => {
+      vi.mocked(query).mockResolvedValueOnce([]);
+      await upsertSongEnrichment({ ...base, releaseYear: 2001 });
+      const [sql, params] = vi.mocked(query).mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('release_year_checked_at');
+      expect(sql).toContain('release_year_checked_at = now()');
+      // $10 is the year, wherever it sits in the column list
+      expect(sql).toMatch(/VALUES \(\$1, \$2, \$3, \$4, \$5, \$10, now\(\), \$6, \$7, \$8, \$9, now\(\)\)/);
+      expect(params[9]).toBe(2001);
+    });
+
+    it('a provider with no year never erases the one we already have, but still marks the song as checked', async () => {
+      vi.mocked(query).mockResolvedValueOnce([]);
+      await upsertSongEnrichment({ ...base, releaseYear: null });
+      const [sql, params] = vi.mocked(query).mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('release_year = COALESCE(EXCLUDED.release_year, song_meta.release_year)');
+      expect(sql).toContain('release_year_checked_at = now()');
+      expect(params[9]).toBeNull();
+    });
+
+    it('a caller that does not know about years (the field is optional) sends null', async () => {
+      vi.mocked(query).mockResolvedValueOnce([]);
+      await upsertSongEnrichment(base);
+      expect((vi.mocked(query).mock.calls[0][1] as unknown[])[9]).toBeNull();
+    });
+
+    it('uses every placeholder it declares', async () => {
+      vi.mocked(query).mockResolvedValueOnce([]);
+      await upsertSongEnrichment({ ...base, releaseYear: 1999 });
+      const [sql, params] = vi.mocked(query).mock.calls[0] as [string, unknown[]];
+      const used = new Set((sql.match(/\$\d+/g) ?? []).map((p) => Number(p.slice(1))));
+      for (let i = 1; i <= params.length; i++) expect(used.has(i)).toBe(true);
+      expect(Math.max(...used)).toBe(params.length);
+    });
+  });
+});
+
+describe('release year bookkeeping (ADR-0013)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('listReleaseYearChecked returns the keys a provider was already asked about', async () => {
+    vi.mocked(query).mockResolvedValueOnce([{ song_key: 'a::b' }, { song_key: 'c::d' }]);
+    const checked = await listReleaseYearChecked();
+    expect(checked).toEqual(new Set(['a::b', 'c::d']));
+    expect(vi.mocked(query).mock.calls[0][0]).toContain('release_year_checked_at IS NOT NULL');
+  });
+
+  it('setReleaseYear records the year and the check for ONE song, in one statement', async () => {
+    vi.mocked(query).mockResolvedValueOnce([]);
+    await setReleaseYear('a::b', 1984);
+    expect(query).toHaveBeenCalledTimes(1);
+    const [sql, params] = vi.mocked(query).mock.calls[0] as [string, unknown[]];
+    expect(params).toEqual(['a::b', 1984]);
+    expect(sql).toContain('release_year_checked_at');
+    expect(sql).toContain('ON CONFLICT (song_key) DO UPDATE SET');
+  });
+
+  it('setReleaseYear with no year never erases the one we have, but still marks the song as checked', async () => {
+    vi.mocked(query).mockResolvedValueOnce([]);
+    await setReleaseYear('a::b', null);
+    const [sql, params] = vi.mocked(query).mock.calls[0] as [string, unknown[]];
+    expect(params).toEqual(['a::b', null]);
+    expect(sql).toContain('release_year = COALESCE(EXCLUDED.release_year, song_meta.release_year)');
+    expect(sql).toContain('release_year_checked_at = now()');
+  });
+
+  it('setReleaseYear touches ONLY the year columns: no enrichment (cover, genres, links), no user state', async () => {
+    vi.mocked(query).mockResolvedValueOnce([]);
+    await setReleaseYear('a::b', 1984);
+    const sql = vi.mocked(query).mock.calls[0][0] as string;
+    expect(sql).not.toMatch(/\b(listened|favorite|downloaded|rating|score)\b/);
+    expect(sql).not.toMatch(/\b(genres|album|cover_url|preview_url|deezer_id|itunes_id|deezer_url|itunes_url|enriched_at)\b/);
+  });
+});
+
+describe('rowToRecord: release year', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('exposes release_year as releaseYear, null when the column is empty', async () => {
+    vi.mocked(query).mockResolvedValueOnce([{ ...ROW, release_year: 2001 }, { ...ROW, song_key: 'x::y', release_year: null }]);
+    const all = await listSongMeta();
+    expect(all.get('daft punk::one more time')?.releaseYear).toBe(2001);
+    expect(all.get('x::y')?.releaseYear).toBeNull();
+  });
+
+  it('reads the column in every select', async () => {
+    vi.mocked(query).mockResolvedValueOnce([ROW]);
+    await getSongMeta('daft punk::one more time');
+    expect(vi.mocked(query).mock.calls[0][0]).toContain('release_year');
   });
 });
 

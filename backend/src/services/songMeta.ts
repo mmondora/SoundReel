@@ -13,6 +13,7 @@ interface SongMetaRow {
   itunes_id: number | null;
   genres: string[];
   album: string | null;
+  release_year: number | null;
   cover_url: string | null;
   preview_url: string | null;
   deezer_url: string | null;
@@ -32,6 +33,7 @@ function rowToRecord(row: SongMetaRow): SongMetaRecord {
     itunesId: row.itunes_id,
     genres: row.genres,
     album: row.album,
+    releaseYear: row.release_year ?? null,
     coverUrl: row.cover_url,
     previewUrl: row.preview_url,
     deezerUrl: row.deezer_url,
@@ -46,7 +48,7 @@ function rowToRecord(row: SongMetaRow): SongMetaRecord {
 }
 
 const SELECT_COLS =
-  'song_key, deezer_id, itunes_id, genres, album, cover_url, preview_url, deezer_url, itunes_url, enriched_at, ' +
+  'song_key, deezer_id, itunes_id, genres, album, release_year, cover_url, preview_url, deezer_url, itunes_url, enriched_at, ' +
   'listened, favorite, downloaded, rating, score';
 
 export async function upsertSongEnrichment(input: {
@@ -55,19 +57,25 @@ export async function upsertSongEnrichment(input: {
   itunesId: number | null;
   genres: string[];
   album: string | null;
+  /** Release year (ADR-0013). A provider with no year never erases one we already have. */
+  releaseYear?: number | null;
   coverUrl: string | null;
   previewUrl: string | null;
   deezerUrl: string | null;
   itunesUrl: string | null;
 }): Promise<void> {
+  // `release_year_checked_at` is set whenever a provider was asked, even if it had no year: the one-off
+  // background pass (services/releaseYearBackfill.ts) then never asks about this song again.
   await query(
-    `INSERT INTO song_meta (song_key, deezer_id, itunes_id, genres, album, cover_url, preview_url, deezer_url, itunes_url, enriched_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+    `INSERT INTO song_meta (song_key, deezer_id, itunes_id, genres, album, release_year, release_year_checked_at, cover_url, preview_url, deezer_url, itunes_url, enriched_at)
+     VALUES ($1, $2, $3, $4, $5, $10, now(), $6, $7, $8, $9, now())
      ON CONFLICT (song_key) DO UPDATE SET
        deezer_id = EXCLUDED.deezer_id,
        itunes_id = EXCLUDED.itunes_id,
        genres = EXCLUDED.genres,
        album = EXCLUDED.album,
+       release_year = COALESCE(EXCLUDED.release_year, song_meta.release_year),
+       release_year_checked_at = now(),
        cover_url = EXCLUDED.cover_url,
        preview_url = EXCLUDED.preview_url,
        deezer_url = EXCLUDED.deezer_url,
@@ -84,7 +92,30 @@ export async function upsertSongEnrichment(input: {
       input.previewUrl,
       input.deezerUrl,
       input.itunesUrl,
+      input.releaseYear ?? null,
     ]
+  );
+}
+
+/** Songs a provider was already asked about for their release year (even if it had none). */
+export async function listReleaseYearChecked(): Promise<Set<string>> {
+  const rows = await query<{ song_key: string }>(`SELECT song_key FROM song_meta WHERE release_year_checked_at IS NOT NULL`);
+  return new Set(rows.map((r) => r.song_key));
+}
+
+/**
+ * Records the outcome of a year lookup for ONE song and touches nothing else: no cover, genre or link (a song that is
+ * already enriched must not be rewritten just to get a year), no user state. A null year never erases a year we have,
+ * but the song is marked as checked either way, so the one-off pass never asks about it twice.
+ */
+export async function setReleaseYear(key: string, year: number | null): Promise<void> {
+  await query(
+    `INSERT INTO song_meta (song_key, release_year, release_year_checked_at) VALUES ($1, $2, now())
+     ON CONFLICT (song_key) DO UPDATE SET
+       release_year = COALESCE(EXCLUDED.release_year, song_meta.release_year),
+       release_year_checked_at = now(),
+       updated_at = now()`,
+    [key, year],
   );
 }
 

@@ -4,7 +4,7 @@
  * songs recently enriched (within TTL).
  *
  * Reads up to 10,000 entries, dedupes mentions by songKey, compares against
- * existing song_meta, fetches enrichment via enrichSong() (Deezer first,
+ * existing song_meta, fetches enrichment via enrichSongWithYear() (Deezer first,
  * iTunes fallback), and upserts results. Respects a configurable TTL
  * (default 30 days) to avoid unnecessary calls for recently enriched songs.
  *
@@ -23,7 +23,7 @@
  */
 import { pool, listEntries } from '../utils/db';
 import { songKey, listSongMeta, upsertSongEnrichment } from '../services/songMeta';
-import { enrichSong } from '../services/songEnrichment';
+import { enrichSongWithYear } from '../services/songEnrichment';
 import { isStale } from '../services/streamingRefresher';
 
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
     }
 
     try {
-      const result = await enrichSong(song.artist, song.title);
+      const result = await enrichSongWithYear(song.artist, song.title);
       if (result) {
         await upsertSongEnrichment({ songKey: key, ...result });
         console.log(`[song-meta] OK    ${key} [${result.deezerId ? 'deezer' : 'itunes'}]`);

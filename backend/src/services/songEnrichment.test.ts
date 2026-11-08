@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn() }));
 
-import { enrichSong, _resetItunesThrottle } from './songEnrichment';
+import { enrichSong, enrichSongWithYear, lookupItunesYear, _resetItunesThrottle } from './songEnrichment';
 
 beforeEach(() => {
   // Every test gets a fresh 3s iTunes throttle window — without this, the
@@ -32,6 +32,7 @@ const DEEZER_TRACK = {
 
 const DEEZER_ALBUM_RESPONSE = {
   genres: { data: [{ id: 1, name: 'Electronic' }, { id: 2, name: 'Dance' }] },
+  release_date: '2001-03-13',
 };
 
 const ITUNES_TRACK = {
@@ -43,6 +44,7 @@ const ITUNES_TRACK = {
   primaryGenreName: 'Dance',
   artistName: 'Daft Punk',
   trackName: 'One More Time',
+  releaseDate: '2001-03-13T08:00:00Z',
 };
 
 describe('enrichSong — Deezer happy path', () => {
@@ -65,6 +67,8 @@ describe('enrichSong — Deezer happy path', () => {
       itunesId: null,
       genres: ['Electronic', 'Dance'],
       album: 'Discovery',
+      // the album carries release_date '2001-03-13' in the fixture, and it is deliberately NOT used (ADR-0013)
+      releaseYear: null,
       coverUrl: 'https://cdn-images.dzcdn.net/images/cover/222/medium.jpg',
       // Never persisted — Deezer preview URLs are signed and expire ~14min
       // after issue; on-demand resolution happens via GET
@@ -118,6 +122,18 @@ describe('enrichSong — Deezer happy path', () => {
     expect(result?.genres).toEqual([]);
   });
 
+  it('never takes the release year from Deezer: its album date is the date of an edition (Queen 1975 says 2005)', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [DEEZER_TRACK] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...DEEZER_ALBUM_RESPONSE, release_date: '2005-01-01' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await enrichSong('Daft Punk', 'One More Time');
+    expect(result?.deezerId).toBe(111);
+    expect(result?.releaseYear).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2); // search + album, nothing else
+  });
+
   it('skips the album genres call when the track has no album id', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       ok: true,
@@ -151,6 +167,7 @@ describe('enrichSong — Deezer miss / error → iTunes fallback', () => {
       itunesId: 333,
       genres: ['Dance'],
       album: 'Discovery',
+      releaseYear: 2001,
       coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/333.jpg',
       previewUrl: 'https://audio-ssl.itunes.apple.com/preview333.m4a',
       deezerUrl: null,
@@ -565,5 +582,153 @@ describe('tryItunes throttle — module-level min 3000ms interval, shared by eve
 
     expect(fetchMock2).toHaveBeenCalledTimes(2);
     expect(result?.itunesId).toBe(333);
+  });
+});
+
+describe('release year from iTunes (ADR-0013)', () => {
+  const itunes = (track: Record<string, unknown>) =>
+    vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [] }) }) // Deezer: no match
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [track] }) });
+
+  it('takes the year of the original release date, whatever the format', async () => {
+    vi.stubGlobal('fetch', itunes({ ...ITUNES_TRACK, releaseDate: '1975-10-31T07:00:00Z' }));
+    expect((await enrichSong('Daft Punk', 'One More Time'))?.releaseYear).toBe(1975);
+  });
+
+  it('has no year when iTunes gives none, an empty one, or an absurd one', async () => {
+    for (const releaseDate of [undefined, '', '0001-01-01T00:00:00Z', '2099-01-01T00:00:00Z']) {
+      _resetItunesThrottle();
+      vi.stubGlobal('fetch', itunes({ ...ITUNES_TRACK, releaseDate }));
+      const result = await enrichSong('Daft Punk', 'One More Time');
+      expect(result?.itunesId, String(releaseDate)).toBe(333); // the rest of the match is kept
+      expect(result?.releaseYear, String(releaseDate)).toBeNull();
+    }
+  });
+
+  it('trusts the date only of a STRONG match: artist and title both match', async () => {
+    // a different artist's song with the same title: the old fallback still gives cover and genre, but not its date
+    vi.stubGlobal('fetch', itunes({ ...ITUNES_TRACK, artistName: 'Some Cover Band', releaseDate: '2011-01-01T00:00:00Z' }));
+    const weakArtist = await enrichSong('Daft Punk', 'One More Time');
+    expect(weakArtist?.itunesId).toBe(333);
+    expect(weakArtist?.releaseYear).toBeNull();
+
+    _resetItunesThrottle();
+    vi.stubGlobal('fetch', itunes({ ...ITUNES_TRACK, trackName: 'Something Else Entirely', releaseDate: '2011-01-01T00:00:00Z' }));
+    expect((await enrichSong('Daft Punk', 'One More Time'))?.releaseYear).toBeNull();
+  });
+
+  it('does not trust a date when the mention has no artist (an empty artist matches everybody)', async () => {
+    vi.stubGlobal('fetch', itunes({ ...ITUNES_TRACK, releaseDate: '2001-03-13T08:00:00Z' }));
+    const result = await enrichSong('', 'One More Time');
+    expect(result?.itunesId).toBe(333);
+    expect(result?.releaseYear).toBeNull();
+  });
+});
+
+describe('enrichSongWithYear', () => {
+  const deezerThenItunes = (itunesResponse: unknown) =>
+    vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [DEEZER_TRACK] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => DEEZER_ALBUM_RESPONSE })
+      .mockResolvedValueOnce({ ok: true, json: async () => itunesResponse });
+
+  it('when iTunes was the provider the year is already there: no extra request', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ ...ITUNES_TRACK, releaseDate: '1991-09-10T07:00:00Z' }] }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await enrichSongWithYear('Daft Punk', 'One More Time');
+    expect(result).toMatchObject({ itunesId: 333, releaseYear: 1991 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('when Deezer was the provider, iTunes is asked for the year alone: Deezer\'s data is kept, iTunes\' year added', async () => {
+    const fetchMock = deezerThenItunes({ results: [{ ...ITUNES_TRACK, releaseDate: '2000-11-13T08:00:00Z' }] });
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await enrichSongWithYear('Daft Punk', 'One More Time');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[2][0]).toContain('itunes.apple.com/search');
+    expect(result).toMatchObject({ deezerId: 111, itunesId: null, genres: ['Electronic', 'Dance'], album: 'Discovery', releaseYear: 2000 });
+  });
+
+  it('when iTunes does not know the song well, the Deezer match stays without a year (better unknown than wrong)', async () => {
+    vi.stubGlobal('fetch', deezerThenItunes({ results: [] }));
+    expect(await enrichSongWithYear('Daft Punk', 'One More Time')).toMatchObject({ deezerId: 111, releaseYear: null });
+
+    _resetItunesThrottle();
+    vi.stubGlobal('fetch', deezerThenItunes({ results: [{ ...ITUNES_TRACK, artistName: 'Someone Else', releaseDate: '2011-01-01T00:00:00Z' }] }));
+    expect(await enrichSongWithYear('Daft Punk', 'One More Time')).toMatchObject({ deezerId: 111, releaseYear: null });
+  });
+
+  it('survives iTunes failing after a Deezer match', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [DEEZER_TRACK] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => DEEZER_ALBUM_RESPONSE })
+      .mockRejectedValueOnce(new Error('network down'));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await enrichSongWithYear('Daft Punk', 'One More Time')).toMatchObject({ deezerId: 111, releaseYear: null });
+  });
+
+  it('a song neither provider knows is null, as before', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [] }) });
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await enrichSongWithYear('Nobody', 'Nothing')).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('lookupItunesYear (the year alone, for songs that are already enriched)', () => {
+  const answer = (results: unknown[]) => vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ results }) });
+
+  it('is one iTunes request, and returns the year of the strong match', async () => {
+    const fetchMock = answer([{ ...ITUNES_TRACK, releaseDate: '1985-06-03T07:00:00Z' }]);
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await lookupItunesYear('Daft Punk', 'One More Time')).toEqual({ answered: true, year: 1985 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain('itunes.apple.com/search');
+  });
+
+  it('answered with no strong match: no year, but iTunes DID answer (a final "Senza anno", not an outage)', async () => {
+    vi.stubGlobal('fetch', answer([{ ...ITUNES_TRACK, artistName: 'Some Cover Band', releaseDate: '2011-01-01T00:00:00Z' }]));
+    expect(await lookupItunesYear('Daft Punk', 'One More Time')).toEqual({ answered: true, year: null });
+  });
+
+  it('answered with nothing at all: still "answered"', async () => {
+    vi.stubGlobal('fetch', answer([]));
+    expect(await lookupItunesYear('Nobody', 'Nothing')).toEqual({ answered: true, year: null });
+  });
+
+  it('picks the strong match even when a weaker result comes first', async () => {
+    vi.stubGlobal('fetch', answer([
+      { ...ITUNES_TRACK, trackId: 1, artistName: 'Daft Punk', trackName: 'Something Else', releaseDate: '2013-01-01T00:00:00Z' },
+      { ...ITUNES_TRACK, trackId: 2, releaseDate: '2000-11-13T08:00:00Z' },
+    ]));
+    expect(await lookupItunesYear('Daft Punk', 'One More Time')).toEqual({ answered: true, year: 2000 });
+  });
+
+  it('an iTunes that fails (HTTP error, network, unreadable body) is NOT "answered": it is an outage to retry', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: false, status: 503, text: async () => 'busy' }));
+    expect(await lookupItunesYear('Daft Punk', 'One More Time')).toEqual({ answered: false, year: null });
+
+    _resetItunesThrottle();
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('network down')));
+    expect(await lookupItunesYear('Daft Punk', 'One More Time')).toEqual({ answered: false, year: null });
+
+    _resetItunesThrottle();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: true, json: async () => { throw new SyntaxError('bad json'); } }));
+    expect(await lookupItunesYear('Daft Punk', 'One More Time')).toEqual({ answered: false, year: null });
+  });
+
+  it('never trusts a date when the mention has no artist', async () => {
+    vi.stubGlobal('fetch', answer([{ ...ITUNES_TRACK, releaseDate: '2001-03-13T08:00:00Z' }]));
+    expect(await lookupItunesYear('', 'One More Time')).toEqual({ answered: true, year: null });
   });
 });

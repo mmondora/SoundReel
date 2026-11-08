@@ -1,10 +1,13 @@
 import { logInfo, logWarning } from '../utils/logger';
+import { parseReleaseYear } from '../utils/releaseYear';
 
 export interface SongEnrichmentResult {
   deezerId: number | null;
   itunesId: number | null;
   genres: string[];
   album: string | null;
+  /** Release year from the provider's album/track date (ADR-0013), or null when it has none we trust. */
+  releaseYear: number | null;
   coverUrl: string | null;
   previewUrl: string | null;
   deezerUrl: string | null;
@@ -129,6 +132,10 @@ async function tryDeezer(artist: string, title: string): Promise<SongEnrichmentR
       itunesId: null,
       genres,
       album: track.album?.title ?? null,
+      // Never from Deezer (ADR-0013): its album `release_date` is the date of an EDITION (remasters, reissues:
+      // Queen's "A Night at the Opera" says 2005, Nirvana's "Nevermind" 2011), and the decade came out wrong for
+      // half of the classics we tried. iTunes keeps the track's original date: see enrichSongWithYear.
+      releaseYear: null,
       coverUrl: safeUrl(track.album?.cover_medium),
       // Deezer's `preview` is a signed URL that expires ~14min after being
       // issued (live-verified: `?hdnea=exp=...` → 403 once expired). By the
@@ -186,6 +193,8 @@ interface ItunesTrack {
   primaryGenreName?: string;
   artistName?: string;
   trackName?: string;
+  /** "2001-03-13T08:00:00Z" */
+  releaseDate?: string;
 }
 
 interface ItunesSearchResponse {
@@ -207,6 +216,11 @@ function selectItunesMatch(results: ItunesTrack[], artist: string, title: string
     results.find((r) => artistMatch(r) || trackMatch(r)) ??
     results[0]
   );
+}
+
+/** Artist AND track match, with a real artist to match (an empty one matches everybody): the bar for trusting the date. */
+function isStrongItunesMatch(r: ItunesTrack, artist: string, title: string): boolean {
+  return artist.trim() !== '' && looselyMatches(r.artistName ?? '', artist) && looselyMatches(r.trackName ?? '', title);
 }
 
 // iTunes' undocumented Search API rate-limits at roughly 20 req/min. This is
@@ -235,7 +249,11 @@ async function waitForItunesThrottle(): Promise<void> {
   lastItunesCall = Date.now();
 }
 
-async function tryItunes(artist: string, title: string): Promise<SongEnrichmentResult | null> {
+/**
+ * One throttled iTunes search. `null` means the request itself failed (HTTP error, network, unreadable body);
+ * `[]` means iTunes answered and has nothing: callers that must tell an outage from "not there" need the difference.
+ */
+async function searchItunes(artist: string, title: string): Promise<ItunesTrack[] | null> {
   try {
     await waitForItunesThrottle();
 
@@ -247,28 +265,46 @@ async function tryItunes(artist: string, title: string): Promise<SongEnrichmentR
     }
 
     const data = (await response.json()) as ItunesSearchResponse;
-    if (!data.results || data.results.length === 0) {
-      return null;
-    }
-
-    const match = selectItunesMatch(data.results, artist, title);
-
-    logInfo('Canzone trovata su iTunes', { itunesId: match.trackId, artist, title });
-    return {
-      deezerId: null,
-      itunesId: match.trackId ?? null,
-      genres: match.primaryGenreName ? [match.primaryGenreName] : [],
-      album: match.collectionName ?? null,
-      coverUrl: safeUrl(match.artworkUrl100),
-      // iTunes preview URLs are durable (unlike Deezer's), safe to persist.
-      previewUrl: safeUrl(match.previewUrl),
-      deezerUrl: null,
-      itunesUrl: safeUrl(match.trackViewUrl),
-    };
+    return data.results ?? [];
   } catch (error) {
     logWarning('iTunes errore rete', { error: error instanceof Error ? error.message : error });
     return null;
   }
+}
+
+async function tryItunes(artist: string, title: string): Promise<SongEnrichmentResult | null> {
+  const results = await searchItunes(artist, title);
+  if (!results || results.length === 0) return null;
+
+  const match = selectItunesMatch(results, artist, title);
+
+  logInfo('Canzone trovata su iTunes', { itunesId: match.trackId, artist, title });
+  return {
+    deezerId: null,
+    itunesId: match.trackId ?? null,
+    genres: match.primaryGenreName ? [match.primaryGenreName] : [],
+    album: match.collectionName ?? null,
+    // The year only from a STRONG match (artist and title both match, and there IS an artist to match): the
+    // weaker fallbacks above still give cover and genre, but their date could belong to another song.
+    releaseYear: isStrongItunesMatch(match, artist, title) ? parseReleaseYear(match.releaseDate) : null,
+    coverUrl: safeUrl(match.artworkUrl100),
+    // iTunes preview URLs are durable (unlike Deezer's), safe to persist.
+    previewUrl: safeUrl(match.previewUrl),
+    deezerUrl: null,
+    itunesUrl: safeUrl(match.trackViewUrl),
+  };
+}
+
+/**
+ * The release year of a song and nothing else (ADR-0013): for songs that are already enriched, whose cover, genres and
+ * links must not be rewritten just to add a year. `answered: false` = iTunes could not be asked (an outage, to be
+ * retried); `answered: true, year: null` = iTunes does not know the song well enough to trust a date. Never throws.
+ */
+export async function lookupItunesYear(artist: string, title: string): Promise<{ answered: boolean; year: number | null }> {
+  const results = await searchItunes(artist, title);
+  if (results === null) return { answered: false, year: null };
+  const strong = results.find((r) => isStrongItunesMatch(r, artist, title));
+  return { answered: true, year: strong ? parseReleaseYear(strong.releaseDate) : null };
 }
 
 // --- Public API ------------------------------------------------------------
@@ -288,4 +324,19 @@ export async function enrichSong(artist: string, title: string): Promise<SongEnr
   if (itunesResult) return itunesResult;
 
   return null;
+}
+
+/**
+ * `enrichSong` plus the release year (ADR-0013). iTunes keeps the ORIGINAL release date of a track, so its year is the
+ * one we trust: measured on eight classics it was right for all eight, while Deezer's album dates (those of the
+ * remaster or reissue edition) put the decade wrong for four (Queen 1975 as 2005, Nirvana 1991 as 2011…). So when
+ * iTunes was the provider the year is already there, and when Deezer was, iTunes is asked for the year alone.
+ * A song iTunes does not know well stays without a year ("Senza anno"): better unknown than wrong.
+ * Never throws.
+ */
+export async function enrichSongWithYear(artist: string, title: string): Promise<SongEnrichmentResult | null> {
+  const result = await enrichSong(artist, title);
+  if (!result || result.releaseYear !== null || result.itunesId !== null) return result; // iTunes already answered
+  const { year } = await lookupItunesYear(artist, title);
+  return year !== null ? { ...result, releaseYear: year } : result;
 }

@@ -23,6 +23,7 @@ import { registerStatsRoutes } from './routes/stats';
 import { registerNetRoutes } from './routes/net';
 import { registerLibraryRoutes } from './routes/library';
 import { startMusicFoldersSync } from './services/musicFolders';
+import { startReleaseYearBackfill } from './services/releaseYearBackfill';
 import { registerNotesRoutes } from './routes/notes';
 import { registerSoftwareRoutes } from './routes/software';
 import { registerTtsRoutes } from './routes/tts';
@@ -150,6 +151,9 @@ async function bootstrap(): Promise<void> {
   // The music folders the library search looks into (Spooty's folder + the ones set in the web configuration).
   const stopMusicFoldersSync = startMusicFoldersSync();
 
+  // One-off, gentle pass: the release year of the songs enriched before 2.9.0 ("anni 80", ADR-0013).
+  const stopReleaseYearBackfill = startReleaseYearBackfill();
+
   // Startup cleanup + daily schedule (orphan + retention purge)
   const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
   const kickCleanup = async (): Promise<void> => {
@@ -171,6 +175,7 @@ async function bootstrap(): Promise<void> {
       stopSongDownloader();
       stopMediaServerSync();
       stopMusicFoldersSync();
+      stopReleaseYearBackfill();
       await app.close();
       await pool.end();
       process.exit(0);

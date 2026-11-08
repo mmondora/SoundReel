@@ -8,13 +8,13 @@ vi.mock('./songMeta', async (importOriginal) => {
     upsertSongEnrichment: vi.fn(),
   };
 });
-vi.mock('./songEnrichment', () => ({ enrichSong: vi.fn() }));
+vi.mock('./songEnrichment', () => ({ enrichSongWithYear: vi.fn() }));
 vi.mock('./streamingRefresher', () => ({ isStale: vi.fn() }));
 vi.mock('../utils/logger', () => ({ logError: vi.fn() }));
 
 import { enqueueSongEnrichment } from './songEnrichmentHook';
 import { getSongMeta, upsertSongEnrichment, songKey } from './songMeta';
-import { enrichSong } from './songEnrichment';
+import { enrichSongWithYear } from './songEnrichment';
 import { isStale } from './streamingRefresher';
 import { logError } from '../utils/logger';
 
@@ -42,14 +42,14 @@ describe('enqueueSongEnrichment', () => {
 
   it('looks up existing meta by songKey(artist, title) and enriches when missing', async () => {
     vi.mocked(getSongMeta).mockResolvedValue(null);
-    vi.mocked(enrichSong).mockResolvedValue({
+    vi.mocked(enrichSongWithYear).mockResolvedValue({
       deezerId: 1, itunesId: null, genres: ['Electronic'], album: 'Discovery',
       coverUrl: null, previewUrl: null, deezerUrl: null, itunesUrl: null,
     });
     enqueueSongEnrichment([{ artist: 'Daft Punk', title: 'One More Time' }]);
     await flush();
     expect(getSongMeta).toHaveBeenCalledWith(songKey('Daft Punk', 'One More Time'));
-    expect(enrichSong).toHaveBeenCalledWith('Daft Punk', 'One More Time');
+    expect(enrichSongWithYear).toHaveBeenCalledWith('Daft Punk', 'One More Time');
     expect(upsertSongEnrichment).toHaveBeenCalledWith(expect.objectContaining({
       songKey: songKey('Daft Punk', 'One More Time'),
       deezerId: 1,
@@ -64,7 +64,7 @@ describe('enqueueSongEnrichment', () => {
     vi.mocked(isStale).mockReturnValue(false);
     enqueueSongEnrichment([{ artist: 'Daft Punk', title: 'One More Time' }]);
     await flush();
-    expect(enrichSong).not.toHaveBeenCalled();
+    expect(enrichSongWithYear).not.toHaveBeenCalled();
   });
 
   it('re-enriches when existing meta is stale', async () => {
@@ -73,20 +73,20 @@ describe('enqueueSongEnrichment', () => {
       enrichedAt: '2020-01-01T00:00:00.000Z',
     } as never);
     vi.mocked(isStale).mockReturnValue(true);
-    vi.mocked(enrichSong).mockResolvedValue(null);
+    vi.mocked(enrichSongWithYear).mockResolvedValue(null);
     enqueueSongEnrichment([{ artist: 'Daft Punk', title: 'One More Time' }]);
     await flush();
-    expect(enrichSong).toHaveBeenCalled();
+    expect(enrichSongWithYear).toHaveBeenCalled();
     expect(upsertSongEnrichment).not.toHaveBeenCalled();
   });
 
-  it('treats a null artist as empty string for the songKey and enrichSong call', async () => {
+  it('treats a null artist as empty string for the songKey and enrichSongWithYear call', async () => {
     vi.mocked(getSongMeta).mockResolvedValue(null);
-    vi.mocked(enrichSong).mockResolvedValue(null);
+    vi.mocked(enrichSongWithYear).mockResolvedValue(null);
     enqueueSongEnrichment([{ artist: null, title: 'Unknown Track' }]);
     await flush();
     expect(getSongMeta).toHaveBeenCalledWith(songKey('', 'Unknown Track'));
-    expect(enrichSong).toHaveBeenCalledWith('', 'Unknown Track');
+    expect(enrichSongWithYear).toHaveBeenCalledWith('', 'Unknown Track');
   });
 
   it('is fire-and-forget: returns synchronously without awaiting the enrichment', () => {
@@ -104,7 +104,7 @@ describe('enqueueSongEnrichment', () => {
 
   it('processes multiple songs independently', async () => {
     vi.mocked(getSongMeta).mockResolvedValue(null);
-    vi.mocked(enrichSong).mockResolvedValue(null);
+    vi.mocked(enrichSongWithYear).mockResolvedValue(null);
     enqueueSongEnrichment([
       { artist: 'Daft Punk', title: 'One More Time' },
       { artist: 'The Weeknd', title: 'Blinding Lights' },

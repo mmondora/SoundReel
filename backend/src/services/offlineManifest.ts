@@ -14,6 +14,7 @@
  *   missing    never asked for
  */
 import { getEntry } from '../utils/db';
+import { albumOf, genresOf, yearOf } from './libraryFacets';
 import { getPlaylist } from './playlists';
 import { resolveDetail } from './playlistResolver';
 import { getSongPlayStats } from './listeningStats';
@@ -47,6 +48,12 @@ export interface OfflineTrack {
   songKey: string;
   title: string;
   artist: string;
+  /** Album (the provider's name when known, else the mention's): what a client groups and filters by. */
+  album: string | null;
+  /** Canonical genre names (the "tipo"), sorted; empty when unknown. */
+  genres: string[];
+  /** Release year (ADR-0013); null = unknown. A decade is `year / 10 * 10`. */
+  year: number | null;
   /** Legacy (apps already installed): `ready` only when `state` is, else `missing`. */
   status: 'ready' | 'missing';
   state: TrackState;
@@ -196,6 +203,9 @@ function toTrack(song: AggregatedSong, r: Resolved, lyrics: string | null): Offl
     songKey: song.songKey,
     title: song.title,
     artist: song.artist,
+    album: albumOf(song),
+    genres: genresOf(song),
+    year: yearOf(song),
     status: ready ? 'ready' : 'missing',
     state: r.state,
     source: trackSource(r.source),
@@ -226,7 +236,7 @@ async function withPlayStats<T extends OfflineTrack>(tracks: T[], userId: string
 }
 
 const placeholderTrack = (songKey: string): OfflineTrack => ({
-  songKey, title: songKey, artist: '', status: 'missing', state: 'missing', source: 'none', downloadPath: null, mediaUrl: null,
+  songKey, title: songKey, artist: '', album: null, genres: [], year: null, status: 'missing', state: 'missing', source: 'none', downloadPath: null, mediaUrl: null,
   version: null, bytes: null, durationS: null, error: null, spotifyUrl: null, entryId: null, canEnqueueSpooty: false,
   coverUrl: null, lyrics: null, plays: 0, lastPlayedAt: null,
 });
@@ -341,6 +351,25 @@ export async function buildPlaylistOfflineManifest(
     ...countsOf(tracks),
     ...(playlist.kind === 'dynamic' ? { dynamic: true, generatedAt: playlist.generatedAt } : {}),
   };
+}
+
+/**
+ * The tracks (state, version, plays, facets) of these songs, in the order given: what `GET /api/mondrop/library`
+ * sends for one page. Reads only; nothing is queued. Lyrics are left out unless asked for (a list does not need them).
+ */
+export async function buildTracks(
+  songs: AggregatedSong[],
+  ownerUser: string,
+  options: { lyrics?: boolean } = {},
+): Promise<OfflineTrack[]> {
+  if (songs.length === 0) return [];
+  const [rows, open] = await Promise.all([getSongFiles(songs.map((s) => s.songKey)), openSpootyEntries(songs)]);
+  const built: OfflineTrack[] = [];
+  for (const song of songs) {
+    const resolved = await resolveSong(song, rows.get(song.songKey) ?? null, awaiting(song, open));
+    built.push(toTrack(song, resolved, options.lyrics === true ? await lyricsForSong(song) : null));
+  }
+  return withPlayStats(built, ownerUser);
 }
 
 /** Queue everything in the playlist that is not ready yet, then report the new state. Returns fast. */
