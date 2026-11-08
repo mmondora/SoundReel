@@ -21,6 +21,16 @@ Il sito va usato **dal telefono** almeno quanto dal computer: ogni pagina leggib
 - **Larghezze minime che a 390 px possono forzare lo scroll orizzontale:** `stats.css` `min-width: 520px`, `index.css` `min-width: 300px`, più vari 180–220 px (da verificare uno per uno).
 - **15 pagine:** Home, Voci, Canzoni, Player, Playlist manager, Statistiche, Film, Note, Software, Libreria, Licenze, Impostazioni, Prompt, Console, Admin.
 
+### Primi difetti misurati (browser headless, 390×844 e 360×800, contro un'API simulata, 2026-11-08)
+
+Li ha annotati chi ha costruito «Scegli cosa suonare» sulle pagine che ha dovuto toccare; **non** sostituiscono l'audit sul telefono vero (niente Safari, niente safe-area reale). Player e mini player, dopo i ritocchi della 2.9.0, non hanno difetti a 390 e 360 px.
+
+- **Playlist manager, bersagli sotto 44 px:** chip dei filtri (circa 1.330 nel DOM, alti ~28 px, compresi i chip «Anni»), righe dei brani (~30 px), bottoni F, schede dei pannelli ed etichette radio.
+- **Playlist manager, contenuto tagliato:** artista e titolo, la barra dei tasti F e alcuni chip escono dal bordo destro e vengono **tagliati, non scorrono**. La pagina non scorre di lato.
+- **Playlist manager, testo sotto 12 px:** etichetta del pannello 10,6 px, testo e conteggio dei chip 11,5 px, suggerimenti 11,5 px, legenda dei filtri 10,6 px, tasti `kbd` 11,2 px.
+- **Intestazione:** i 7 link di navigazione sono più bassi di 44 px e il nome dell'utente è a 10,4 px.
+- **Mini player:** nessun margine in basso per la safe-area, quindi sta sotto la barra home.
+
 ## 4. Decisioni prese con valori di default (da correggere se non vanno)
 
 | # | Decisione | Default scelto |
