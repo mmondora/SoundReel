@@ -275,7 +275,7 @@ export function usePlaylistManager(live: LiveSongState) {
   const load = useCallback(async (isReload: boolean) => {
     setLoading(true);
     setLoadError(null);
-    const [songsRes, playlistsRes, meRes] = await Promise.allSettled([fetchSongs(), fetchPlaylists(), fetchMe()]);
+    const [songsRes, playlistsRes, meRes] = await Promise.allSettled([fetchSongs('everything'), fetchPlaylists(), fetchMe()]);
     if (songsRes.status === 'rejected' && playlistsRes.status === 'rejected') {
       setLoadError(errorMessage(songsRes.reason));
       setLoading(false);
@@ -303,7 +303,8 @@ export function usePlaylistManager(live: LiveSongState) {
   }, []);
 
   // "Fonte" / "tag" facets: derive them from the journal when the backend does not send them.
-  const needsFacts = rawSongs.length > 0 && rawSongs.some((s) => s.platforms === undefined || s.tags === undefined);
+  // (a song that is only a file has no post: it never needs the journal's summaries)
+  const needsFacts = rawSongs.length > 0 && rawSongs.some((s) => !s.libraryOnly && (s.platforms === undefined || s.tags === undefined));
   useEffect(() => {
     if (!needsFacts) return;
     let cancelled = false;

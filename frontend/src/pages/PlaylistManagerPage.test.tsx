@@ -247,7 +247,7 @@ describe('marks and cursor', () => {
     fireEvent.click(row.querySelector('[data-mark]') as HTMLElement);
     expect(marked(listA)).toHaveLength(1);
     fireEvent.doubleClick(row);
-    expect(playSong).toHaveBeenCalledWith(DAFT, expect.any(Array), 'Library');
+    expect(playSong).toHaveBeenCalledWith(DAFT, expect.any(Array), 'All songs');
   });
 
   it('Enter plays the cursor song with the pane as the queue', async () => {
@@ -259,7 +259,7 @@ describe('marks and cursor', () => {
     const [songKey, queue, label] = playSong.mock.calls[0] as [string, AggregatedSong[], string];
     expect(songKey).toBe(BISHOP);
     expect(queue.map((s) => s.songKey)).toEqual([AIR, BISHOP, DAFT, LIVE, STUDIO]);
-    expect(label).toBe('Library');
+    expect(label).toBe('All songs');
   });
 });
 
@@ -434,7 +434,7 @@ describe('F8 remove / permissions', () => {
     const { listA } = await setup(BASE);
     focus(listA);
     key(listA, 'F8');
-    await waitFor(() => expect(statusText()).toMatch(/Not available in the Library pane/));
+    await waitFor(() => expect(statusText()).toMatch(/Not available in “All songs”/));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(api.removeSongFromPlaylist).not.toHaveBeenCalled();
   });
@@ -583,7 +583,7 @@ describe('help, details and the function bar', () => {
     const remove = screen.getByRole('button', { name: /F8\s*Remove/ });
     expect(remove).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(remove);
-    await waitFor(() => expect(statusText()).toMatch(/Not available in the Library pane/));
+    await waitFor(() => expect(statusText()).toMatch(/Not available in “All songs”/));
   });
 
   it('every function key has a button', async () => {

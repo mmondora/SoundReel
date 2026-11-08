@@ -463,6 +463,10 @@ export interface Translations {
   mgrTitle: string;
   mgrHint: string;
   mgrLibrary: string;
+  mgrFileOnly: string;
+  mgrFileOnlyHint: string;
+  mgrShowMore: string;
+  mgrShowing: string;
   mgrMine: string;
   mgrSharedWithMe: string;
   mgrPaneA: string;
@@ -1247,7 +1251,11 @@ export const translations: Record<Language, Translations> = {
 
     mgrTitle: 'Gestione playlist',
     mgrHint: 'Tab cambia pannello · Spazio segna · F5 copia · F6 sposta · F8 rimuove · F1 aiuto',
-    mgrLibrary: 'Libreria',
+    mgrLibrary: 'Tutti i brani',
+    mgrFileOnly: 'Solo file',
+    mgrFileOnlyHint: 'Esiste solo come file (geekom o media server): non è in nessun post del journal',
+    mgrShowMore: 'Mostra altri {n}',
+    mgrShowing: 'Mostrati {shown} di {total}',
     mgrMine: 'Le mie playlist',
     mgrSharedWithMe: 'Condivise con me',
     mgrPaneA: 'Pannello A',
@@ -1310,7 +1318,7 @@ export const translations: Record<Language, Translations> = {
     mgrFnUndo: 'Annulla',
     mgrWhyBusy: 'Operazione in corso',
     mgrWhyNothing: 'Nessun brano selezionato',
-    mgrWhyLibrary: 'Non disponibile nel pannello Libreria',
+    mgrWhyLibrary: 'Non disponibile in «Tutti i brani»',
     mgrWhyReadOnly: 'Playlist condivisa con te: sola lettura',
     mgrWhyNoTarget: 'Serve una playlist modificabile nell’altro pannello',
     mgrWhySamePlaylist: 'I due pannelli mostrano la stessa playlist',
@@ -2055,7 +2063,11 @@ export const translations: Record<Language, Translations> = {
 
     mgrTitle: 'Playlist manager',
     mgrHint: 'Tab switches pane · Space marks · F5 copy · F6 move · F8 remove · F1 help',
-    mgrLibrary: 'Library',
+    mgrLibrary: 'All songs',
+    mgrFileOnly: 'File only',
+    mgrFileOnlyHint: 'Exists only as a file (geekom or the media server): it is in no journal post',
+    mgrShowMore: 'Show {n} more',
+    mgrShowing: 'Showing {shown} of {total}',
     mgrMine: 'My playlists',
     mgrSharedWithMe: 'Shared with me',
     mgrPaneA: 'Pane A',
@@ -2118,7 +2130,7 @@ export const translations: Record<Language, Translations> = {
     mgrFnUndo: 'Undo',
     mgrWhyBusy: 'Operation in progress',
     mgrWhyNothing: 'No song selected',
-    mgrWhyLibrary: 'Not available in the Library pane',
+    mgrWhyLibrary: 'Not available in “All songs”',
     mgrWhyReadOnly: 'Shared with you: read-only',
     mgrWhyNoTarget: 'Needs an editable playlist in the other pane',
     mgrWhySamePlaylist: 'Both panes show the same playlist',

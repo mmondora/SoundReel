@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { MouseEvent, Ref } from 'react';
 import { interpolate, useLanguage } from '../../i18n';
 import { OTHER_PANE } from '../../hooks/usePlaylistManager';
@@ -28,6 +28,14 @@ export interface ManagerPaneProps {
 /** Marks dynamic playlists in the pickers. */
 const DYNAMIC_GLYPH = '◷';
 
+/**
+ * "Tutti i brani" is EVERYTHING SoundReel knows (the journal and the files of geekom and the NAS: thousands of songs), so only the
+ * first rows are drawn and «Mostra altri» adds more. The cursor is always drawn, so moving with the keyboard never loses it.
+ */
+const ROWS_AT_FIRST = 300;
+const ROWS_STEP = 300;
+const ROWS_AFTER_CURSOR = 40;
+
 const locationValue = (loc: PaneLocation): string => (loc.kind === 'library' ? 'library' : `playlist:${loc.id}`);
 const parseLocation = (value: string): PaneLocation =>
   value.startsWith('playlist:') ? { kind: 'playlist', id: value.slice('playlist:'.length) } : { kind: 'library' };
@@ -48,6 +56,15 @@ export function ManagerPane({ manager, paneId, paneLabel, live, listRef, onPlay,
   const cursorIndex = model.cursor !== null ? model.visibleKeys.indexOf(model.cursor) : -1;
   const cursorId = cursorIndex >= 0 ? `mgr-${paneId}-row-${cursorIndex}` : undefined;
 
+  // How many rows are drawn; a new place, sort or filter starts again from the first ones.
+  const [limit, setLimit] = useState(ROWS_AT_FIRST);
+  const placeKey = locationValue(model.state.location);
+  useEffect(() => {
+    setLimit(ROWS_AT_FIRST);
+  }, [placeKey, model.state.filters, model.state.sort]);
+  const drawn = Math.min(model.rows.length, Math.max(limit, cursorIndex >= 0 ? cursorIndex + 1 + ROWS_AFTER_CURSOR : 0));
+  const drawnRows = drawn < model.rows.length ? model.rows.slice(0, drawn) : model.rows;
+
   // Keep the cursor row on screen while moving with the keyboard.
   useEffect(() => {
     if (!isActive || !cursorId) return;
@@ -63,6 +80,14 @@ export function ManagerPane({ manager, paneId, paneLabel, live, listRef, onPlay,
   }
 
   function rowBadges(song: ManagerSong) {
+    // a song that is only a file has no post: no type, no platform; it says what it is instead
+    if (song.libraryOnly) {
+      return (
+        <span className="mgr-badges">
+          <span className="mgr-badge mgr-badge-file" title={t.mgrFileOnlyHint}>{t.mgrFileOnly}</span>
+        </span>
+      );
+    }
     const type = song.sources[0];
     const platform = song.platforms[0];
     const extraTypes = song.sources.length - 1;
@@ -224,7 +249,7 @@ export function ManagerPane({ manager, paneId, paneLabel, live, listRef, onPlay,
         data-pane={paneId}
         onFocus={() => manager.setActive(paneId)}
       >
-        {model.rows.map((song, index) => {
+        {drawnRows.map((song, index) => {
           const marked = model.marked.has(song.songKey);
           const isCursor = model.cursor === song.songKey;
           const d = dot(song);
@@ -267,6 +292,18 @@ export function ManagerPane({ manager, paneId, paneLabel, live, listRef, onPlay,
 
       <footer className="mgr-pane-foot">
         <span>{countLabel(model.rows.length, t.mgrItems, t.mgrItemOne)}{model.filtered ? ` / ${model.allRows.length}` : ''}</span>
+        {drawn < model.rows.length && (
+          <>
+            <span data-testid={`shown-${paneId}`}>{interpolate(t.mgrShowing, { shown: drawn, total: model.rows.length })}</span>
+            <button
+              type="button"
+              className="mgr-btn mgr-btn-small"
+              onClick={() => setLimit(drawn + ROWS_STEP)}
+            >
+              {interpolate(t.mgrShowMore, { n: Math.min(ROWS_STEP, model.rows.length - drawn) })}
+            </button>
+          </>
+        )}
         {model.marked.size > 0 && <span className="mgr-foot-marked">{interpolate(t.mgrMarked, { n: model.marked.size })}</span>}
         {model.missingCount > 0 && <span className="mgr-foot-missing">⚠ {countLabel(model.missingCount, t.mgrItems, t.mgrItemOne)} {t.mgrMissingSong}</span>}
       </footer>

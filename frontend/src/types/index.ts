@@ -165,6 +165,11 @@ export interface AggregatedSong {
   fsPath?: string | null;
   /** URL of the file on the media server (rule W8). */
   mediaUrl?: string | null;
+  /**
+   * The song exists only as a FILE (geekom's library, the NAS): no post, no mentions, no metadata. Only `GET /api/songs?scope=everything`
+   * sends these (the playlist manager, spec 2026-11-08-playlist-search-everything-design.md).
+   */
+  libraryOnly?: boolean;
 }
 
 /** Where a song's file lives: geekom's disk (FS) and/or the media server (MS, the Fritz). Neither = streaming only. */

@@ -534,8 +534,13 @@ export interface SongMetaPatchBody {
   score?: number | null;
 }
 
-export async function fetchSongs(): Promise<AggregatedSong[]> {
-  const res = await fetch(url('/api/songs'));
+/**
+ * The songs the user knows: the journal's (default), or EVERYTHING (`scope: 'everything'`): the journal's plus the songs that exist
+ * only as files (geekom's library, the NAS), flagged `libraryOnly`. The playlist manager asks for everything, so that searching
+ * for a song to put in a playlist takes from all the places SoundReel knows (ADR-0018, same rule as «Cerca» in Mondrop).
+ */
+export async function fetchSongs(scope: 'journal' | 'everything' = 'journal'): Promise<AggregatedSong[]> {
+  const res = await fetch(url(scope === 'everything' ? '/api/songs?scope=everything' : '/api/songs'));
   const data = await json<{ songs: AggregatedSong[] }>(res);
   return data.songs;
 }

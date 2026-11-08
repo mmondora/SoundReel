@@ -451,6 +451,12 @@
   color: var(--text-muted);
 }
 
+/* a song that exists only as a file (geekom, NAS): not in any post */
+.mgr-badge-file {
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
 .mgr-empty {
   padding: 1rem;
   color: var(--text-muted);
