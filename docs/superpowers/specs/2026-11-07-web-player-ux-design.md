@@ -2,6 +2,7 @@
 
 - **Data:** 2026-11-07
 - **Stato:** In implementazione (versione 2.8.0)
+- **Aggiornamento (2.15.0, regola P, `adr/0018-…`, spec `2026-11-08-mondrop-search-spotify-style-design.md` S11):** **le regole W5–W7 e S2–S5 sulla sorgente non si applicano più nel browser: le applica il server.** Il player chiede `GET /api/songs/:key/play?prefer=auto|internet|media` e segue la risposta (`from`: `media-server`, `disk` o `youtube`; `download`; `fileUrl`). Regola di Michele (8 novembre): «se siamo su internet parte da youtube, sempre. se siamo in casa parte da youtube nel frattempo.» — da internet YouTube **sempre** (anche se il file c'è), in casa il file se c'è e altrimenti YouTube mentre il server lo prepara. L'interruttore «Sorgente» resta come **preferenza** che il browser manda (`prefer`); `GET /api/net` non è più chiamato dal player. Le «funzioni pure» del §5 (sorgente effettiva da modo, rete e posizione) stanno ora in `backend/src/services/playPlan.ts` con gli stessi casi di prova.
 - **Owner:** Michele
 - **Correlati:** `docs/mondrop-sync.md` («Primo play»), `docs/mondrop-stats.md` §6–§8, `2026-11-07-listening-stats-dynamic-playlists-design.md`, `2026-11-07-mp3-store-media-server-design.md` §2.9, `adr/0010-web-plays-from-media-server-no-copy.md`
 

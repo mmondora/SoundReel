@@ -189,7 +189,7 @@ Spec `docs/superpowers/specs/2026-11-08-mondrop-search-spotify-style-design.md`,
 - **In produzione dall'8 novembre:** SoundReel 2.13.0 (`GET /api/mondrop/search`, brani solo-file serviti dal file esatto, `POST /api/mondrop/playlists/:id/songs`, niente `mediaUrl`, guardia del ritiro delle copie). **Prova reale:** la ricerca funzionava ma dava 21 righe per ~11 canzoni (la stessa registrazione con grafie diverse).
 - **Costruita e provata, aspetta l'OK di deploy di Michele:** SoundReel **2.13.1** (una riga per canzone: raggruppamento per titolo e artista accreditato in comune, album dal tag, `&` non separa i nomi, niente più radici comuni nel testo cercato; sui dati veri 21 → 11 righe).
 - **Mondrop 1.7.0 (build 8): costruita e provata** (scheda Cerca al posto della Libreria, tocco = questo e i seguenti, pressione prolungata, pagine artista e album, ricerche recenti, «Sfoglia»; l'app non ha più il percorso diretto al NAS né la scelta `home`, con `RulePTests`; 843 test, compila anche per macOS). **Aspetta l'OK di Michele per la build TestFlight.**
-- **A seguire, con il suo OK:** SoundReel 2.14.0 (piano di riproduzione del player web).
+- **Il piano di riproduzione del player web** (S11): costruito, SoundReel **2.15.0**, in attesa dell'OK di deploy di Michele.
 
 ## Da costruire — la copertina nel player di Mondrop, cercata su Internet (richiesta 2026-11-08)
 
@@ -197,7 +197,15 @@ Spec `docs/superpowers/specs/2026-11-08-player-cover-art-design.md`, ADR-0019. R
 - **Misurato:** un brano **solo-file** (NAS, geekom: quelli che «Cerca» fa suonare) non ha nessuna copertina vera; per gli altri l'app la scarica **direttamente dal sito del fornitore**, senza copia (offline sparisce) e senza passare da SoundReel.
 - **Proposto (SoundReel 2.14.0 + Mondrop 1.7.0, build 8, la stessa di «Cerca»):** il **server** trova la copertina (quella già nota, poi quella **dentro il file** MP3, poi **Internet**: iTunes e Deezer con riscontro forte), la ridimensiona e la **tiene**; rotta `GET /api/mondrop/songs/:key/cover` e campo `coverPath` nelle tracce; l'app la chiede solo a SoundReel, la **tiene sul telefono** (offline) e la usa nel player e sulla schermata di blocco.
 - **Risposte di Michele (8 novembre):** i **testi** («come le parole») **sì, cercali su Internet** quando mancano → release a parte (SoundReel 2.16.0, con la sua ADR); la copertina piccola nelle liste **no**, solo nel player.
-- Il piano di riproduzione del player web (scelto da Michele come prossimo lavoro) è la **2.15.0**; i testi vengono dopo, nella 2.16.0.
+- Il piano di riproduzione del player web (scelto da Michele come prossimo lavoro) è la **2.15.0** (costruito); i testi vengono dopo, nella 2.16.0.
+
+## Fatto (in attesa di TestFlight) — l'icona di Mondrop rifatta a vettore, e la gemella dell'app TV (richiesta 2026-11-08)
+
+Spec `docs/superpowers/specs/2026-11-08-mondrop-app-icon-design.md`. Richiesta di Michele: «volgio rifare l'icona di mondrop, mi sembra troppo poco professionale.» Risposta davanti alle prove: «la goccia con le onde ( sondo giallo e goccia nera ) per mondrop, mentre la casa gialla con le onde a sfondo azzurro per home-ass».
+- **Fatto (Mondrop 1.7.0, build 8):** goccia nera con le onde su giallo (disegnata a vettore da `ios/scripts/make_app_icon.mjs`), in tre versioni per iOS 18 (normale, scura, tinta), l'icona del foglio di condivisione con la stessa goccia e una freccia, i dieci tagli macOS. Nove prove sul generatore e tre sull'app (nessun alpha, buchi puliti, sorgenti non toccate a mano).
+- **Regola di Michele sulla TV:** «Non voglio due app diverse sulla tv - l'app è quella di prima e deve avere icona diversa e basta.» Una sola app (`dev.casamon.tv`), cambia solo l'icona: nient'altro.
+- **Fatto, con il sì di Michele:** la gemella (casa gialla con le onde su azzurro) installata nell'app TV **Casamon** (`casamon-tv/apps/tv-webos/shell/icon.png` 80 px e `largeIcon.png` 130 px, più il sorgente in `docs/art/icon/`), **senza commit** in quel repo. Non toccati (regola sopra): `appinfo.json`, `splash.png` col dipinto e i documenti di quel repo.
+- Domande aperte: le versioni scura e tinta e la freccia del foglio di condivisione vanno bene? (mie scelte di default, spec D3 e D4)
 
 ## In corso — Mondrop su TestFlight, il gruppo «Family» come tester (richiesta 2026-11-08)
 

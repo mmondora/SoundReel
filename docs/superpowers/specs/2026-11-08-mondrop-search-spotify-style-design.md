@@ -1,7 +1,7 @@
 # Mondrop e player web: cercare come su Spotify, e parlare sempre e solo con SoundReel (richiesta 2026-11-08)
 
 - **Data:** 2026-11-08
-- **Stato:** **Decisioni confermate da Michele l'8 novembre (sezione 6); in costruzione** (SoundReel 2.13.0 + Mondrop 1.7.0; il piano di riproduzione del player web, S11, in una release a parte). Le decisioni S1–S11 sono i default scelti, **confermati o corretti dalle sue risposte** (S11 è stato riscritto sulla sua risposta). L'architettura (cosa cerca la ricerca, come suona un brano che esiste solo come file) è nell'**ADR-0018**.
+- **Stato:** **Decisioni confermate da Michele l'8 novembre (sezione 6); in costruzione** (SoundReel 2.13.0 + Mondrop 1.7.0; il piano di riproduzione del player web, S11, in una release a parte: **costruito nella 2.15.0**). Le decisioni S1–S11 sono i default scelti, **confermati o corretti dalle sue risposte** (S11 è stato riscritto sulla sua risposta). L'architettura (cosa cerca la ricerca, come suona un brano che esiste solo come file) è nell'**ADR-0018**.
 - **Owner:** Michele
 - **Correlati:** `adr/0018-one-search-across-journal-library-and-nas.md`, `docs/superpowers/specs/2026-11-08-player-selection-and-filters-design.md` (ADR-0013: la Libreria di oggi), `docs/superpowers/specs/2026-11-07-library-search-music-folders-design.md` (ADR-0011: la ricerca del sito), `docs/mondrop-sync.md`
 
@@ -98,7 +98,7 @@ Le rotte che già servono i brani del diario (`GET /api/mondrop/songs/:key`, `�
 
 1. **SoundReel 2.13.0 (server):** `GET /api/mondrop/search`; i brani solo-file si servono e si scaricano (ADR-0018); `POST /api/mondrop/playlists/:id/songs`; il server smette di mandare `mediaUrl` ai client; test della regola P. Nella stessa uscita, trovata mentre si misurava: il ritiro delle copie (ADR-0010) **non** deve prendere come «originale» sul Fritz la replica della copia stessa (`findBoxOriginal`), altrimenti cancellerebbe l'unico file di un brano.
 2. **Mondrop 1.7.0 (app):** scheda **Cerca** (sezioni Brani / Artisti / Album / Playlist, pagine autore e album, tocco che suona e accoda, pressione prolungata con *Aggiungi in coda*, *Aggiungi a playlist…* e *Scarica sul telefono*, ricerche recenti, «Sfoglia»); via il percorso diretto verso il NAS e la scelta `home`; Libreria assorbita. **Costruita e provata l'8 novembre** (843 test, il target macOS compila, schermata controllata nel simulatore); la build TestFlight aspetta l'OK di Michele.
-3. **Release a parte (SoundReel 2.14.0): il piano di riproduzione del player web** (`GET /api/songs/:key/play`, S11), via `GET /api/net` dal browser.
+3. **Release a parte (SoundReel 2.15.0, costruita): il piano di riproduzione del player web** (`GET /api/songs/:key/play?prefer=…`, S11): il browser non chiama più `GET /api/net`, manda la preferenza e segue la risposta. Il 2.14.0 è stato preso dalle copertine.
 
 ## 8. La prova reale dopo la 2.13.0 (8 novembre): una riga per canzone, non per file (2.13.1)
 
