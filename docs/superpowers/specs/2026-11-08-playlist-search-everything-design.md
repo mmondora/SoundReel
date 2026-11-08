@@ -1,6 +1,6 @@
 # Creare le playlist: la ricerca prende da tutto, non solo dalla libreria (richiesta 2026-11-08)
 
-Stato: **costruita** (SoundReel 2.16.0), in attesa dell'OK di deploy di Michele. Nessun ADR nuovo: è la decisione dell'**ADR-0018** («una ricerca sola su diario, libreria di geekom e NAS», regola P) applicata a un cliente in più, il gestore delle playlist del sito (nota di aggiornamento in coda all'ADR).
+Stato: **costruita** (SoundReel 2.16.0, 2.16.1 e 2.17.0; le prime due in produzione, la terza in attesa dell'OK di deploy di Michele). Nessun ADR nuovo: è la decisione dell'**ADR-0018** («una ricerca sola su diario, libreria di geekom e NAS», regola P) applicata a un cliente in più, il gestore delle playlist del sito (nota di aggiornamento in coda all'ADR).
 Codice: `services/mondropSearch.ts` (`songsOnlyAsFiles`), `routes/songs.ts` (`GET /api/songs?scope=everything`), `frontend/src/hooks/usePlaylistManager.ts` e `components/manager/ManagerPane.tsx`.
 
 ## 1. Richiesta di Michele (testuale)
@@ -25,8 +25,9 @@ Si lega alla regola P dello stesso giorno («posso cercare anche senza avere/far
 | P3 | **Come si riconosce un brano solo-file** | Un badge «Solo file» (tratteggiato) al posto di tipo e piattaforma (non ha post); il pallino verde e il badge del luogo (FS / MS) come per gli altri, perché il server sa dov'è il file. Non ha tag, anno né genere: nei filtri conta come «senza» (nessun filtro lo esclude per errore finché non se ne sceglie uno che richiede quel dato) |
 | P4 | **Tetto alle righe disegnate** | 4.439 righe senza finestra renderebbero la pagina lenta: si disegnano le **prime 300** e «Mostra altri N» (footer: «Mostrati 300 di 4439»). **La ricerca e i filtri lavorano su tutte le righe, non solo su quelle disegnate** e ripartono dalle prime righe; il cursore (frecce, Fine) è sempre disegnato |
 | P5 | **Le playlist** | Un brano solo-file in una playlist è una **riga vera** (non «non nel tuo journal») e si copia, sposta e toglie come gli altri; resta segnaposto solo una chiave che nessuno conosce (né diario né file). Il gestore non salta più i brani messi da Cerca |
-| P6 | **Fuori da questa richiesta** | La pagina Canzoni (è il diario), il player («Scegli cosa suonare», domanda a Michele sotto), le playlist dinamiche (regole sugli ascolti, non una ricerca), l'app Mondrop (Cerca cerca già in tutto) |
-| P7 | **Versione** | SoundReel **2.16.0**; la ricerca dei testi su Internet, che aveva il numero 2.16.0, slitta alla **2.17.0** |
+| P6 | **Fuori da questa richiesta** | La pagina Canzoni (è il diario), le playlist dinamiche (regole sugli ascolti, non una ricerca), l'app Mondrop (Cerca cerca già in tutto). Il **player web** è entrato dopo, su risposta di Michele (P8) |
+| P7 | **Versione** | SoundReel **2.16.0** (gestore) e **2.16.1** (correzione, §3b); il player web **2.17.0**; la ricerca dei testi su Internet, che aveva il numero 2.16.0, slitta alla **2.18.0** |
+| P8 | **Il player web: «Scegli cosa suonare»** *(risposta di Michele: «Sì, anche il player»)* | Con il pannello aperto, o con una scelta ancora attiva, la lista «Tutte» prende da **tutto** (diario + solo-file): ricerca di testo, autore, album, anni lavorano su tutto. L'elenco grande si chiede **una volta e solo quando serve** (pannello aperto, una scelta attiva, una playlist scelta), non a ogni visita: la pagina si apre sul diario, come prima. **Gli altri scaffali** (preferiti, «mi piace», da ascoltare, scaricati) restano del diario: un solo-file non ha storia di ascolto e finirebbe tutto in «da ascoltare». **Una playlist** si risolve sull'elenco completo (può contenere solo-file). Si disegnano le prime 300 righe e «Mostra altri N». **La coda salvata** (sessionStorage) che contiene un solo-file si ricostruisce dall'elenco completo, una volta, e si salva intera (prima il player la ricostruiva dal solo diario: i solo-file sparivano e la coda più corta veniva salvata sopra quella vera); se l'elenco non arriva usa il diario, se nel frattempo l'utente ha avviato altro vince l'utente |
 
 ## 3b. Trovato dopo il deploy (2.16.1)
 
@@ -43,7 +44,7 @@ I controlli post-deploy della 2.16.0 hanno mostrato che **il piano di riproduzio
 - **Sito** (`PlaylistManagerPage.everything.test.tsx`, `api.songs.test.ts`; nessuno scaricamento dei riepiloghi del diario per i brani solo-file; 70 file, 995 test): il gestore chiede `everything` e il pannello si chiama «All songs (5)»; il brano solo-file è una riga con il badge, il pallino verde e il luogo; «bassi maestro» e «maestro bassi» e l'album trovano i file mai postati; **F5 copia** un brano solo-file nella playlist dell'altro pannello; una playlist che già lo contiene lo mostra come riga vera mentre una chiave sconosciuta resta segnaposto; 300 righe di 350 con «Mostra altri 50», la ricerca trova anche un brano fuori dalle prime 300 e riparte da 300, **Fine** disegna l'ultima riga. Provato rompendo il codice di proposito (niente `everything`, niente tetto, niente badge): ogni rottura fa fallire il test giusto.
 - **Prova reale** (sola lettura, `scratchpad/everything_sim.mts`): 3.643 brani solo-file, 4.439 in tutto, 11 di Bassi Maestro, nessuna chiave doppia.
 
-## 6. Domande per Michele
+## 6. Domande per Michele e risposte (8 novembre)
 
-1. Nel **player web** («Scegli cosa suonare») vuoi la stessa cosa, cioè tutto? Oggi cerca solo nel diario (P6).
-2. Il nome del pannello, **«Tutti i brani»**, va bene al posto di «Libreria»?
+1. Nel **player web** («Scegli cosa suonare») vuoi la stessa cosa, cioè tutto? **Risposta: «Sì, anche il player»** (P8, release 2.17.0 con il suo OK di deploy).
+2. Il nome del pannello del gestore, **«Tutti i brani»**, va bene al posto di «Libreria»? **Risposta: sì** (nome confermato).
