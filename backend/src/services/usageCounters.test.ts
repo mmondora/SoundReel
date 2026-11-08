@@ -62,6 +62,7 @@ describe('routeGroup', () => {
     ['/api/library/search', 'search'],
     ['/api/playlists/:id/songs', 'playlists'],
     ['/api/mondrop/playlists', 'playlists'],
+    ['/api/mondrop/home', 'home'],
     ['/api/mondrop/library', 'songs'],
     ['/api/songs/:key/file', 'songs'],
     ['/api/mondrop/songs/:songKey/file', 'songs'],

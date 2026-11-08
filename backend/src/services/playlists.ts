@@ -80,6 +80,33 @@ export async function listPlaylists(visibility?: PlaylistVisibility): Promise<Pl
   return result.rows.map(mapSummary);
 }
 
+/**
+ * The first `perPlaylist` song keys of each of these playlists, in the playlist's own order: what the Home of Mondrop draws as the
+ * mosaic of a cover (ADR-0020). One query for all of them. A dynamic playlist has no stored songs: the caller asks its rule.
+ */
+export async function firstSongKeys(playlistIds: string[], perPlaylist = 4): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (playlistIds.length === 0) return out;
+  const result = await pool.query<{ playlist_id: string; song_key: string }>(
+    `SELECT playlist_id, song_key
+       FROM (
+         SELECT playlist_id, song_key,
+                ROW_NUMBER() OVER (PARTITION BY playlist_id ORDER BY position ASC, added_at ASC) AS n
+           FROM playlist_songs
+          WHERE playlist_id = ANY($1::text[])
+       ) ranked
+      WHERE n <= $2
+      ORDER BY playlist_id, n`,
+    [playlistIds, perPlaylist],
+  );
+  for (const row of result.rows) {
+    const list = out.get(row.playlist_id) ?? [];
+    list.push(row.song_key);
+    out.set(row.playlist_id, list);
+  }
+  return out;
+}
+
 export async function getPlaylist(
   id: string,
   visibility?: PlaylistVisibility,

@@ -13,6 +13,7 @@ import { resolveDetail, resolveSummaries } from '../services/playlistResolver';
 import { computeFacets, filterSongs, parseLibraryQuery, sortByArtistTitle } from '../services/libraryFacets';
 import { getUserSongs } from '../services/userSongs';
 import { parseSearchQuery, searchEverything } from '../services/mondropSearch';
+import { buildHome } from '../services/mondropHome';
 import {
   buildPlaylistOfflineManifest,
   buildTracks,
@@ -272,6 +273,19 @@ export function registerMondropRoutes(app: FastifyInstance): void {
     } catch (err) {
       logError('GET /api/mondrop/search failed', { err: String(err) });
       return reply.code(500).send({ error: 'search failed' });
+    }
+  });
+
+  // The front page of the app (ADR-0020, spec 2026-11-08-mondrop-home-spotify-design.md): the SECTIONS ready to draw, decided here —
+  // which exist, in what order, with which songs (rule P: the app computes nothing). Reads only; a section that fails costs only itself.
+  app.get('/api/mondrop/home', async (req, reply) => {
+    const auth = await requireMondrop(req, reply);
+    if (!auth) return;
+    try {
+      return await buildHome(auth.userId);
+    } catch (err) {
+      logError('GET /api/mondrop/home failed', { err: String(err) });
+      return reply.code(500).send({ error: 'home failed' });
     }
   });
 

@@ -192,6 +192,31 @@ export async function getRecentPlays(f: { userIds: string[] | null; device?: str
   }));
 }
 
+/**
+ * The songs this user heard lately: newest first, one per song (a song heard five times is one row). Counted plays only: a skip is
+ * not listening. The Home of Mondrop's «Ascoltati di recente» (ADR-0020).
+ */
+export async function getRecentSongKeys(userId: string, limit: number): Promise<string[]> {
+  const rows = await query<{ song_key: string }>(
+    `SELECT song_key FROM play_events
+      WHERE user_id = $1 AND counted
+      GROUP BY song_key
+      ORDER BY MAX(started_at) DESC, song_key ASC
+      LIMIT $2`,
+    [userId, limit],
+  );
+  return rows.map((r) => r.song_key);
+}
+
+/** Every song this user has a counted play of (all devices, all time): what «Nuovi dai tuoi reel» leaves out (ADR-0020). */
+export async function getPlayedSongKeys(userId: string): Promise<Set<string>> {
+  const rows = await query<{ song_key: string }>(
+    `SELECT DISTINCT song_key FROM play_events WHERE user_id = $1 AND counted`,
+    [userId],
+  );
+  return new Set(rows.map((r) => r.song_key));
+}
+
 /** Counted plays of a user (all devices, all time) per song, for `plays` / `lastPlayedAt` on manifest tracks. */
 export async function getSongPlayStats(userId: string, songKeys: string[]): Promise<Map<string, { plays: number; lastPlayedAt: string | null }>> {
   const out = new Map<string, { plays: number; lastPlayedAt: string | null }>();

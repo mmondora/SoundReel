@@ -15,7 +15,7 @@ import { ANONYMOUS_USER, normalizeFamilyUser } from '../utils/requestUser';
 export type DeviceClass = 'mobile-web' | 'desktop-web' | 'app' | 'automation' | 'other';
 export type RouteGroup =
   | 'entries' | 'search' | 'playlists' | 'songs' | 'share' | 'analyze' | 'inbox' | 'stats' | 'software'
-  | 'films' | 'notes' | 'settings' | 'media' | 'other';
+  | 'films' | 'notes' | 'settings' | 'media' | 'home' | 'other';
 
 /** The Mondrop app (and its Share extension) identify themselves by name; scripts and monitors by their tool. */
 export function classifyDevice(userAgent: string | undefined): DeviceClass {
@@ -33,6 +33,7 @@ const GROUPS: Array<[RegExp, RouteGroup]> = [
   [/^\/api\/mondrop\/(inbox|received|push)\b/, 'inbox'],
   [/^\/api\/mondrop\/(plays|device-events)\b/, 'stats'],
   [/^\/api\/mondrop\/playlists\b/, 'playlists'],
+  [/^\/api\/mondrop\/home\b/, 'home'],
   [/^\/api\/mondrop\/(songs|library|net)\b/, 'songs'],
   [/^\/api\/entries\/:?[\w-]*\/?media\b/, 'media'],
   [/^\/api\/media\b/, 'media'],
