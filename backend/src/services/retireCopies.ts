@@ -13,9 +13,9 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { logInfo, logWarning } from '../utils/logger';
 import { logActivity, songLabel, SYSTEM_ACTOR } from './activityLog';
-import { findMediaServerMatch } from './fileResolver';
 import { invalidateLibraryTracks } from './libraryCache';
-import { headMediaFile, mediaUrlForVolumePath } from './mediaServer';
+import { chooseIndexHit, lookupMediaIndex, type IndexHit } from './mediaIndex';
+import { headMediaFile, mediaServerConfig, mediaUrlForVolumePath } from './mediaServer';
 import { absFromRel, fileFacts, libraryRoot, storeDir } from './musicStore';
 import { listLegacyCopies, markMediaOnly, type SongFile } from './songFiles';
 
@@ -30,7 +30,24 @@ interface Deps {
   findOriginal: (artist: string, title: string) => Promise<{ relPath: string; bytes: number | null } | null>;
 }
 
-const defaultDeps: Deps = { list: () => listLegacyCopies(), head: headMediaFile, findOriginal: findMediaServerMatch };
+/**
+ * The box's own original of a song, NEVER our replica. The nightly mirror puts a copy of our store folder on the box
+ * (`Music/SoundReel/<store>/…`): it has the very same bytes as the copy about to be removed, and when its name sorted
+ * first it could be chosen as "the original". Removing the local copy would then make the mirror delete the replica
+ * too, and the song would be gone from everywhere. A hit inside that folder is therefore never an original.
+ */
+export async function findBoxOriginal(
+  artist: string,
+  title: string,
+  deps: { lookup?: (artist: string, title: string) => Promise<IndexHit[]>; replicaOfStore?: string } = {},
+): Promise<IndexHit | null> {
+  const lookup = deps.lookup ?? lookupMediaIndex;
+  const own = deps.replicaOfStore ?? `${mediaServerConfig().replicaRoot}/${storeDir()}/`;
+  const hits = (await lookup(artist, title)).filter((h) => !h.relPath.startsWith(own));
+  return chooseIndexHit(hits, { artist, title });
+}
+
+const defaultDeps: Deps = { list: () => listLegacyCopies(), head: headMediaFile, findOriginal: findBoxOriginal };
 
 export async function retireMediaServerCopies(deps: Partial<Deps> = {}): Promise<RetireResult> {
   const { list, head, findOriginal } = { ...defaultDeps, ...deps };

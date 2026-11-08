@@ -11,7 +11,7 @@ vi.mock('./libraryCache', () => ({ invalidateLibraryTracks: m.invalidate }));
 vi.mock('./activityLog', async (orig) => ({ ...(await orig<typeof import('./activityLog')>()), logActivity: m.logActivity }));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn() }));
 
-import { retireMediaServerCopies } from './retireCopies';
+import { findBoxOriginal, retireMediaServerCopies } from './retireCopies';
 
 let lib: string;
 const BYTES = 1234;
@@ -101,5 +101,35 @@ describe('retireMediaServerCopies (ADR-0010: the song IS the box file, the 2.7.0
   it('does nothing without a library', async () => {
     delete process.env.MUSIC_LIBRARY_PATH;
     expect(await retireMediaServerCopies({ list: async () => [row()] })).toEqual({ retired: 0, kept: 0 });
+  });
+});
+
+describe('findBoxOriginal: our own replica is never "the original"', () => {
+  const REPLICA = 'Music/SoundReel/SoundReel/Kavinsky - Nightcall.mp3';
+  const ORIGINAL = 'Music/Kavinsky/Nightcall/01 - 2-01 Nightcall.mp3';
+  const idx = (relPath: string, bytes = 6_109_100) => ({ relPath, artist: 'Kavinsky', title: 'Nightcall', album: null, durationS: null, bytes, normKey: 'kavinsky|nightcall' });
+  const own = 'Music/SoundReel/SoundReel/';
+
+  it('chooses the box file even when the replica of the copy sorts before it', async () => {
+    // an artist folder that sorts after "SoundReel" would put the original second: the replica must still lose
+    const late = 'Music/Tame Impala/Currents/05 - The Less I Know The Better.mp3';
+    const lookup = async () => [idx(REPLICA), { ...idx(late), artist: 'Kavinsky', title: 'Nightcall' }];
+    const hit = await findBoxOriginal('Kavinsky', 'Nightcall', { lookup, replicaOfStore: own });
+    expect(hit?.relPath).toBe(late);
+  });
+
+  it('finds nothing, so the copy is kept, when the only hit is the replica of the copy itself', async () => {
+    expect(await findBoxOriginal('Kavinsky', 'Nightcall', { lookup: async () => [idx(REPLICA)], replicaOfStore: own })).toBeNull();
+  });
+
+  it('still takes a replica of ANOTHER library folder (those files live on geekom too)', async () => {
+    const spooty = 'Music/SoundReel/Mezzanine/Kavinsky - Nightcall.mp3';
+    const hit = await findBoxOriginal('Kavinsky', 'Nightcall', { lookup: async () => [idx(REPLICA), idx(spooty)], replicaOfStore: own });
+    expect(hit?.relPath).toBe(spooty);
+  });
+
+  it('uses the configured replica root and store folder by default', async () => {
+    const hit = await findBoxOriginal('Kavinsky', 'Nightcall', { lookup: async () => [idx(ORIGINAL), idx(REPLICA)] });
+    expect(hit?.relPath).toBe(ORIGINAL);
   });
 });
