@@ -160,9 +160,9 @@ Spec `docs/superpowers/specs/2026-11-08-web-mobile-ux-design.md` (solo interfacc
 - **Statistiche d'accesso raccolte l'8 novembre** (nella spec): dal sito si legge il journal ogni giorno (21 giorni su 30), si salva quasi solo da Telegram; playlist, ricerca e player hanno un giorno di storia. Il log di Traefik non ha lo user-agent: **contatori d'uso aggregati nel backend** (utente, tipo di dispositivo, rete, rotta) in 2.10.0 (**fatti**: `GET /api/admin/usage?days=14`), da rivedere dopo ~2 settimane dal deploy.
 - Domande aperte per Michele: quali pagine possono restare «solo desktop», barra in basso o menu in alto; l'ordine d'uso proposto va bene?
 
-## Fatto (in attesa di deploy) — Mondrop Share, esito di ritorno, playlist, condividere con la famiglia, posta nell'app (richieste 2026-11-08)
+## Fatto (SoundReel 2.10.0 in produzione dall'8 novembre; Mondrop su TestFlight) — Mondrop Share, esito di ritorno, playlist, condividere con la famiglia, posta nell'app (richieste 2026-11-08)
 
-**Fatto in SoundReel 2.10.0 + Mondrop 1.6.0, in attesa di deploy:** spec `docs/superpowers/specs/2026-11-08-mondrop-share-inbox-design.md`, ADR-0015 (**accettato**), contratto `docs/mondrop-inbox.md`. Resta da fare da parte di Michele: **la chiave APNs** (il push è costruito e spento fino ad allora; passi nella spec, §6) e dire se i default adottati per le domande 3–6 vanno bene (spec §7). Sotto, la richiesta com'era:
+**Fatto in SoundReel 2.10.0 (in produzione, 8 novembre 10:09) + Mondrop 1.6.0 (su TestFlight, poi la 1.7.0):** spec `docs/superpowers/specs/2026-11-08-mondrop-share-inbox-design.md`, ADR-0015 (**accettato**), contratto `docs/mondrop-inbox.md`. Resta da fare da parte di Michele: **la chiave APNs** (il push è costruito e spento fino ad allora; passi nella spec, §6) e dire se i default adottati per le domande 3–6 vanno bene (spec §7). Sotto, la richiesta com'era:
 - **Foglio di condivisione:** oggi «Invia» è un bottone di solo testo in alto a destra e dopo l'invio non torna niente. Bottone grande e pieno in fondo al foglio, gerarchia più chiara, esito visibile con «Riprova» in caso di errore.
 - **Esito di ritorno «come Telegram»:** riassunto, conteggi e link a fine analisi. La posta sta **sul server** (fonte di verità), l'app la legge quando si apre; il **push è solo il campanello** e richiede l'account sviluppatore Apple a pagamento: **confermato da Michele l'8 novembre**. Serve ancora che Michele crei la chiave APNs nel portale Apple (passi nella spec, §6) e mi dia il Key ID.
 - **Playlist** (default nessuna) per i link di musica/media: `playlistId` in `POST /api/share`; i brani noti subito vanno dentro subito, gli altri a fine analisi.
@@ -179,7 +179,7 @@ Spec `docs/superpowers/specs/2026-11-08-no-duplicates-and-post-links-design.md`,
 - **Aspetta Michele:** la qualità del riempimento dei software (circa una voce su sei è rumore: tenerlo, restringere il filtro alla lettura o annullarlo, che è preciso perché ogni entry toccata è segnata); il gruppo esterno per Sara e Archi su TestFlight (serve una chiave API con ruolo Admin, oppure il sito).
 - Poi: rivedere le 10 canzoni con un handle Instagram che sono in realtà album registrati come canzoni («Moon Safari», «Dummy», «Endtroducing»…); rivedere la pagina Software dopo il riempimento.
 
-## Da costruire — Mondrop: cercare come su Spotify, senza playlist (richiesta 2026-11-08)
+## Fatto (2.13.0 e 2.13.1 in produzione; Mondrop 1.7.0 su TestFlight) — Mondrop: cercare come su Spotify, senza playlist (richiesta 2026-11-08)
 
 Spec `docs/superpowers/specs/2026-11-08-mondrop-search-spotify-style-design.md`, ADR-0018. Richiesta di Michele: «Perché non c'è modo di trovare le musiche di bassi maestro? Ci sono sul nas?» e «La ricerca la trovo molto confusa. Io posso cercare anche senza avere/fare playlist, alla spotify».
 - **Misurato:** le musiche di Bassi Maestro ci sono (45 file sul NAS, 10 su geekom) ma nel diario sono 0, e la Libreria di Mondrop cerca **solo nel diario** (`/api/mondrop/library`); il servizio dei file parte dal diario (`findSong`), quindi un brano che esiste solo come file non si può nemmeno suonare. La schermata si apre sulle playlist e la ricerca filtra una «dimensione».
@@ -191,7 +191,7 @@ Spec `docs/superpowers/specs/2026-11-08-mondrop-search-spotify-style-design.md`,
 - **Mondrop 1.7.0 (build 8): costruita e provata** (scheda Cerca al posto della Libreria, tocco = questo e i seguenti, pressione prolungata, pagine artista e album, ricerche recenti, «Sfoglia»; l'app non ha più il percorso diretto al NAS né la scelta `home`, con `RulePTests`; 843 test, compila anche per macOS). **Aspetta l'OK di Michele per la build TestFlight.**
 - **Il piano di riproduzione del player web** (S11): costruito, SoundReel **2.15.0**, in attesa dell'OK di deploy di Michele.
 
-## Da costruire — la copertina nel player di Mondrop, cercata su Internet (richiesta 2026-11-08)
+## Fatto (2.14.0 in produzione; Mondrop 1.7.0 su TestFlight) — la copertina nel player di Mondrop, cercata su Internet (richiesta 2026-11-08); i testi vengono dopo, nella sezione qui sotto
 
 Spec `docs/superpowers/specs/2026-11-08-player-cover-art-design.md`, ADR-0019. Richiesta di Michele: «Nel player iOS voglio avere la copertina del disco o della canzone se non c'è trovale su Internet, come le parole.»
 - **Misurato:** un brano **solo-file** (NAS, geekom: quelli che «Cerca» fa suonare) non ha nessuna copertina vera; per gli altri l'app la scarica **direttamente dal sito del fornitore**, senza copia (offline sparisce) e senza passare da SoundReel.
@@ -199,7 +199,14 @@ Spec `docs/superpowers/specs/2026-11-08-player-cover-art-design.md`, ADR-0019. R
 - **Risposte di Michele (8 novembre):** i **testi** («come le parole») **sì, cercali su Internet** quando mancano → release a parte (SoundReel 2.19.0, con la sua ADR-0021); la copertina piccola nelle liste **no**, solo nel player.
 - Il piano di riproduzione del player web (scelto da Michele come prossimo lavoro) è la **2.15.0** (costruito); i testi vengono dopo, nella 2.19.0 (la 2.18.0 è la Home).
 
-## Fatto (in attesa di TestFlight) — l'icona di Mondrop rifatta a vettore, e la gemella dell'app TV (richiesta 2026-11-08)
+
+## Costruita, in attesa dell'OK (2.19.0 + Mondrop build 10) — i testi delle canzoni, cercati su Internet quando mancano (richiesta 2026-11-08)
+
+Spec `docs/superpowers/specs/2026-11-08-lyrics-from-the-internet-design.md`, ADR-0021. Richiesta di Michele (con la copertina): «…come le parole»; alla domanda se cercarli: **«Sì, cercale su Internet»**.
+- **Server (2.19.0, costruito e provato, non ancora deployato):** `GET /api/mondrop/songs/:key/lyrics` dà la trascrizione del post se c'è, altrimenti i testi trovati su **LRCLIB** (riscontro forte di titolo e autore, tenuti in `song_lyrics`, «non c'è» ricordato 7 giorni, un guasto no, un brano che è una versione ripiega sull'originale tranne Instrumental/Karaoke, strumentali dichiarati). Backend 2650 test; 22 rotture provate di proposito: 21 scoperte, la ventiduesima non cambiava il comportamento. Interruttore `LYRICS_ONLINE=0`.
+- **App (Mondrop 1.7.0 build 10, costruita e provata, non caricata):** il brano che parte senza testo lo chiede a SoundReel, lo tiene sul telefono (anche offline), il foglio «Parole» dice da dove viene («Testo trovato su Internet», «Trascrizione del post», «Scritto da te»), «Brano strumentale», «Cerco il testo…». Quello che scrive l'utente vince sempre. 997 test.
+- **Default da correggere se non vanno:** i testi di Internet **non** sostituiscono le trascrizioni dei post; «non c'è» 7 giorni; il ripiego sull'originale per le versioni.
+## Fatto (su TestFlight con le build 8 e 9) — l'icona di Mondrop rifatta a vettore, e la gemella dell'app TV (richiesta 2026-11-08)
 
 Spec `docs/superpowers/specs/2026-11-08-mondrop-app-icon-design.md`. Richiesta di Michele: «volgio rifare l'icona di mondrop, mi sembra troppo poco professionale.» Risposta davanti alle prove: «la goccia con le onde ( sondo giallo e goccia nera ) per mondrop, mentre la casa gialla con le onde a sfondo azzurro per home-ass».
 - **Fatto (Mondrop 1.7.0, build 8):** goccia nera con le onde su giallo (disegnata a vettore da `ios/scripts/make_app_icon.mjs`), in tre versioni per iOS 18 (normale, scura, tinta), l'icona del foglio di condivisione con la stessa goccia e una freccia, i dieci tagli macOS. Nove prove sul generatore e tre sull'app (nessun alpha, buchi puliti, sorgenti non toccate a mano).
@@ -207,25 +214,25 @@ Spec `docs/superpowers/specs/2026-11-08-mondrop-app-icon-design.md`. Richiesta d
 - **Fatto, con il sì di Michele:** la gemella (casa gialla con le onde su azzurro) installata nell'app TV **Casamon** (`casamon-tv/apps/tv-webos/shell/icon.png` 80 px e `largeIcon.png` 130 px, più il sorgente in `docs/art/icon/`), **senza commit** in quel repo. Non toccati (regola sopra): `appinfo.json`, `splash.png` col dipinto e i documenti di quel repo.
 - Domande aperte: le versioni scura e tinta e la freccia del foglio di condivisione vanno bene? (mie scelte di default, spec D3 e D4)
 
-## Fatto — creare le playlist: la ricerca prende da tutto, non solo dalla libreria (richiesta 2026-11-08; 2.16.0 e 2.16.1 in produzione, 2.17.0 in attesa di deploy)
+## Fatto — creare le playlist: la ricerca prende da tutto, non solo dalla libreria (richiesta 2026-11-08; 2.16.0, 2.16.1 e 2.17.0 in produzione)
 
 Spec `docs/superpowers/specs/2026-11-08-playlist-search-everything-design.md` (ADR-0018, nota in coda). Richiesta di Michele: «anche la creazione delle playlist, la ricerca deve prendere da tutto e non solo dalla libreria».
 - **Misurato:** il gestore delle playlist del sito (l'unico posto dove si creano e si riempiono; l'app non ha una schermata di creazione) caricava solo i **796 brani del diario**: «Bassi Maestro» dava 0 righe contro 11 di Cerca, e i brani solo-file messi in una playlist da Cerca comparivano come «non nel tuo journal» e la copia li saltava. La ricerca di Mondrop vede **4.439 brani** (796 del diario + 3.643 solo-file).
 - **SoundReel 2.16.0 + 2.16.1:** (la 2.16.1 corregge il piano di riproduzione per i brani solo-file, trovato dai controlli dopo il deploy) `GET /api/songs?scope=everything` (diario + solo-file, una riga per canzone come in Cerca); il pannello del gestore si chiama «Tutti i brani», badge «Solo file», prime 300 righe e «Mostra altri». Prove sui dati veri in sola lettura.
 - **Risposte di Michele:** «Scegli cosa suonare» del player web vuole tutto anche lui: **«Sì, anche il player»** → SoundReel **2.17.0** (pannello e playlist su tutto, 300 righe, la coda salvata ritrova i solo-file; costruita, in attesa del suo OK di deploy). Il nome «Tutti i brani» va bene.
 
-## Fatto (build 9, in attesa di TestFlight) — il Player su iPad, «Scarica tutti», il play che non parte da solo (richieste 2026-11-08)
+## Fatto (build 9, su TestFlight) — il Player su iPad, «Scarica tutti», il play che non parte da solo (richieste 2026-11-08)
 
 Spec `docs/superpowers/specs/2026-11-08-mondrop-ipad-player-design.md` e `2026-11-08-mondrop-bulk-download-design.md`. Richieste di Michele: «Questa la home su ipad - colori sbagliati e spazi da rivedere»; «In mondrop voglio anche poter scaricare tutto dopo una ricerca. E il play non deve essere automatico».
 - **Player:** una tavolozza sola, scura come l'icona, accento **giallo**; cover quadrata, colonna centrata, pulsanti affiancati; contrasti e geometria provati. **Scarica tutti:** nei risultati, negli artisti, negli album (fino a 200, con la domanda prima). **Play:** «Aggiungi in coda» non suona più da solo.
 - Risposte di Michele: l'accento giallo anche nel resto dell'app? **sì** («A, si giallo», vedi la Home qui sotto); «il play non deve essere automatico» era proprio l'aggiunta in coda? **«Sì, è questo»**. Ancora aperta: «Scarica tutti» anche in «Sfoglia»?
-- **La build 9 non è ancora caricata** («No aspetta, non mi piace il "cerca musica" - fai una proposta alla spotify»): ora porta anche la **Home** (sezione sotto) e aspetta il suo OK. Confermato da Michele: «il play non deve essere automatico» = aggiungere in coda non suona («Sì, è questo»).
+- **La build 9 è su TestFlight dall'8 novembre, 18:49** (dopo «No aspetta, non mi piace il "cerca musica" - fai una proposta alla spotify» porta anche la **Home**, sezione sotto). Confermato da Michele: «il play non deve essere automatico» = aggiungere in coda non suona («Sì, è questo»).
 
-## Fatto (2.18.0 in produzione; la build 9 aspetta il login di Xcode su vulcano) — la Home di Mondrop e il mini player (richiesta 2026-11-08)
+## Fatto (2.18.0 in produzione; build 9 su TestFlight) — la Home di Mondrop e il mini player (richiesta 2026-11-08)
 
 Spec `docs/superpowers/specs/2026-11-08-mondrop-home-spotify-design.md`, ADR-0020 (**accettato**). Richiesta di Michele: «No aspetta, non mi piace il "cerca musica" - fai una proposta alla spotify»; davanti al disegno: **«A, si giallo»**.
 - **SoundReel 2.18.0 (in produzione dall'8 novembre, 18:34, con l'OK di Michele):** `GET /api/mondrop/home`, le sezioni già pronte decise dal server (playlist con mosaico, ascoltati di recente, nuovi dai reel). Backend 2595 test, rotture provate, 154 controlli post-deploy passati.
-- **Mondrop 1.7.0 build 9 (OK di Michele arrivato: «Sì, carica la build 9»; archivio fatto, il caricamento si è fermato a «Failed to Use Accounts»: il login Apple ID di Xcode su vulcano è scaduto, serve il suo login e poi rilancio export e caricamento):** la Home come prima scheda, il mini player su tutte le schede e pagine (il Player a schermo intero), «Riprendi» con la coda salvata sul telefono, il giallo come accento di tutta l'app e l'app scura. 966 test; verificata a occhio sul simulatore, anche con il telefono in modo chiaro.
+- **Mondrop 1.7.0 build 9 (su TestFlight dall'8 novembre, 18:49, con l'OK di Michele: «Sì, carica la build 9»; la sezione TestFlight qui sotto dice come):** la Home come prima scheda, il mini player su tutte le schede e pagine (il Player a schermo intero), «Riprendi» con la coda salvata sul telefono, il giallo come accento di tutta l'app e l'app scura. 966 test; verificata a occhio sul simulatore, anche con il telefono in modo chiaro.
 - **Risposta di Michele:** l'app tutta scura va bene («Sì, tutta scura»). Se un giorno non va, si torna indietro con una riga (`UIUserInterfaceStyle`) e un accento più scuro per il chiaro. La sidebar di iPadOS 26 e «Mostra tutti» per le due file di brani non sono costruiti (spec §6).
 
 ## In corso — Mondrop su TestFlight, il gruppo «Family» come tester (richiesta 2026-11-08)

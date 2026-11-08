@@ -21,4 +21,5 @@
 | 0017 | One identity per thing, and every card links back to the post it came from | Accepted (song versions D5 proposed) | 2026-11-08 |
 | 0018 | One search across the journal, the library and the NAS, and tracks that exist only as files can be played | Accepted (2.13.0 + 2.13.1 in production; Mondrop 1.7.0 built, TestFlight pending) | 2026-11-08 |
 | 0019 | The server finds the covers (in the file, or on the Internet) and serves them; the clients only ask SoundReel | Accepted (2.14.0 in production; Mondrop 1.7.0 built, TestFlight pending; the lyrics on the Internet are a release of their own) | 2026-11-08 |
-| 0020 | The server decides what the Mondrop Home shows, in one route; the app draws it | Accepted (2.18.0 in production; Mondrop 1.7.0 build 9 built, TestFlight pending) | 2026-11-08 |
+| 0020 | The server decides what the Mondrop Home shows, in one route; the app draws it | Accepted (2.18.0 in production; Mondrop 1.7.0 build 9 on TestFlight) | 2026-11-08 |
+| 0021 | The server finds the lyrics on the Internet when a song has none, keeps them and serves them; the clients only ask SoundReel | Accepted (2.19.0, built; waiting for the deploy OK) | 2026-11-08 |

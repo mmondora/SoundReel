@@ -205,6 +205,20 @@ L'immagine della copertina (JPEG quadrata, al massimo 800×800) di un brano che 
 - Funziona anche per un brano che esiste **solo come file** (NAS, geekom): la copertina dentro il file si legge dal disco di geekom, o dal media server con due letture `Range` all'inizio del file (mai tutto il brano).
 - L'app **tiene sul telefono** le copertine viste: un brano scaricato mostra la sua anche offline.
 
+## `GET /api/mondrop/songs/:songKey/lyrics` — le parole
+
+Le parole di un brano, date dal **server** (ADR-0021, spec `2026-11-08-lyrics-from-the-internet-design.md`, regola P): la **trascrizione del post** se c'è, altrimenti quelle **trovate su Internet** e tenute. L'app chiede solo qui: non parla mai con un archivio di testi. Sola lettura; vale per ogni brano che l'utente può suonare, anche solo-file.
+
+```json
+{ "songKey": "…", "lyrics": "testo…", "source": "transcript", "instrumental": false }
+```
+
+- `source`: `transcript` (il post) o `internet` (cercato dal server). `instrumental: true` = il brano è strumentale: `lyrics` è `""` e l'app dice «Brano strumentale».
+- `404 { "error": "song not found" }` se nessuno conosce il brano; `404 { "error": "no lyrics" }` se non c'è niente; `500 { "error": "lyrics failed" }`; senza key valida `401`. `Cache-Control: private, max-age=86400`.
+- **Internet solo quando il testo manca**: una trascrizione non si sostituisce. Si accetta **solo un riscontro forte** (stesso titolo senza i segni tra parentesi o dopo un trattino, e un autore accreditato in comune; senza autore non si cerca): meglio nessun testo che quello di un'altra canzone. Un brano che è una **versione** (Speed, Slowed + Reverb, Remix…) senza testo suo ripiega sull'originale, tranne Instrumental e Karaoke.
+- Il testo trovato **resta** (tabella `song_lyrics`); «non c'è» si ricorda **7 giorni**; un guasto dell'archivio non si ricorda. Le richieste all'archivio (LRCLIB; esce solo autore e titolo) sono distanziate di almeno un secondo. `LYRICS_ONLINE=0` spegne la ricerca su Internet.
+- Le liste (`/library`, `/search`, `/home`) **non portano i testi**: l'app li chiede qui quando parte un brano senza testo, li tiene sul telefono (anche offline) e ricorda «nessun testo» per un giorno.
+
 ## Primo play: riproduci subito e scarica in parallelo
 
 Regola unica per tutti i client. Se il brano è **già scaricato** (sul device, o sul server per il web) si riproduce **il file locale**. Se no: si riproduce subito in streaming e **in parallelo** lo si scarica, così le volte successive è locale.
