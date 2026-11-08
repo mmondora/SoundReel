@@ -28,6 +28,9 @@
 	     «Rete locale» permission: this is what the question says. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Quando sei a casa, Mondrop parla con il server SoundReel direttamente sulla tua rete locale.</string>
+	<!-- The whole app is dark, whatever the phone's appearance is: the yellow of Mondrop does not read on white (spec 2026-11-08-mondrop-home-spotify-design.md H9). -->
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

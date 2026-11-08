@@ -94,7 +94,6 @@ struct LibraryView: View {
         .navigationTitle("Libreria")
         .searchable(text: $searchText, prompt: "Cerca autore, titolo, album")
         .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
-        .safeAreaInset(edge: .bottom, spacing: 0) { MiniPlayerBar(onOpenQueue: { showQueue = true }) }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -319,7 +318,6 @@ struct LibrarySelectionView: View {
     @ObservedObject private var player = LocalAudioPlayer.shared
     @ObservedObject private var engine = SyncEngine.shared
     @State private var localKeys: Set<String> = []
-    @State private var showQueue = false
 
     init(choice: LibraryChoice, title: String, inherited: LibraryFilters = .none, onlyOnPhone: Bool = false) {
         self.choice = choice
@@ -381,7 +379,6 @@ struct LibrarySelectionView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
-        .safeAreaInset(edge: .bottom, spacing: 0) { MiniPlayerBar(onOpenQueue: { showQueue = true }) }
         .task {
             await model.reload()
             localKeys = engine.store.localSongKeys()
@@ -392,7 +389,6 @@ struct LibrarySelectionView: View {
             localKeys = engine.store.localSongKeys()
         }
         .onChange(of: engine.revision) { _, _ in localKeys = engine.store.localSongKeys() }
-        .sheet(isPresented: $showQueue) { QueueView() }
     }
 
     private func play(from songKey: String?, shuffled: Bool) {

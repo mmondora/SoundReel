@@ -1,5 +1,5 @@
 // SongRows.swift — the pieces every song list shares: the spinner / mark next to a song, the row itself, the line at
-// the top that says what is going on, and the mini player. The wording and the choice of mark are decided by pure
+// the top that says what is going on. (The mini player lives in MiniPlayer.swift: one for the whole app.) The wording and the choice of mark are decided by pure
 // code in MondropKit (TrackRowStatus, SyncStatusLine); these views only draw them.
 
 import SwiftUI
@@ -154,65 +154,12 @@ struct SyncStatusBar: View {
     }
 }
 
-/// What is playing, with the transport, at the bottom of the screens that start music.
-struct MiniPlayerBar: View {
-    @ObservedObject private var player = LocalAudioPlayer.shared
-    @ObservedObject private var engine = SyncEngine.shared
-    var onOpenQueue: (() -> Void)?
-
-    var body: some View {
-        if !player.title.isEmpty {
-            VStack(spacing: 6) {
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(player.title).font(.subheadline.bold()).lineLimit(1)
-                        Text(player.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                    Spacer()
-                    if let onOpenQueue {
-                        Button(action: onOpenQueue) { Image(systemName: "list.bullet") }
-                            .accessibilityLabel("In coda")
-                    }
-                    Button { player.previous() } label: { Image(systemName: "backward.fill") }
-                    Button { player.toggle() } label: { Image(systemName: player.playing ? "pause.fill" : "play.fill") }
-                    Button { player.next() } label: { Image(systemName: "forward.fill") }
-                }
-                if let label = player.queueLabel, player.queue.count > 1 {
-                    HStack {
-                        Text("In coda: \(label) · \(player.index + 1) / \(player.queue.count)")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        Spacer()
-                    }
-                }
-                if let line = PlaybackStatusText.make(
-                    status: player.playbackStatus,
-                    progress: player.currentSongKey.flatMap { engine.progress[$0] }
-                ) {
-                    HStack(spacing: 6) {
-                        if player.playbackStatus == .preparing { ProgressView().controlSize(.small) }
-                        Text(line.text)
-                            .font(.caption)
-                            .foregroundStyle(line.isError ? Color.red : Color.secondary)
-                        Spacer()
-                    }
-                }
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
-        }
-    }
-}
-
 /// The queue («In coda»): what the user chose, the song playing now, what follows, each with its download state.
 struct QueueView: View {
     @ObservedObject private var player = LocalAudioPlayer.shared
     @ObservedObject private var engine = SyncEngine.shared
     @Environment(\.dismiss) private var dismiss
     @State private var localKeys: Set<String> = []
-    var onChooseMore: (() -> Void)?
 
     var body: some View {
         NavigationStack {
@@ -249,14 +196,6 @@ struct QueueView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Chiudi") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    if let onChooseMore {
-                        Button("Cerca") {
-                            dismiss()
-                            onChooseMore()
-                        }
-                    }
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }

@@ -34,12 +34,12 @@ struct ContentView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
                 ConnectKeyButton(title: "Ottieni API key")
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(MondropPillStyle(prominent: true))
             }
 
             if let openUrl = URL(string: backendUrl) {
                 Link("Apri \(host(of: backendUrl))", destination: openUrl)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(MondropPillStyle(prominent: true))
             }
 
             #if DEBUG

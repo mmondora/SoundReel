@@ -76,7 +76,6 @@ struct PlaylistOfflineView: View {
     @ObservedObject private var net = NetStatus.shared
     @State private var youtubeTarget: OfflineTrack?
     @State private var youtubeText = ""
-    @State private var showQueue = false
 
     init(playlist: MondropPlaylist) {
         self.playlist = playlist
@@ -172,8 +171,6 @@ struct PlaylistOfflineView: View {
         // The «Rete: casa / internet» line is information only (rule P): sync and play do not read it.
         .task { if net.info == nil { await net.refresh(api: MondropAPI()) } }
         .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
-        .safeAreaInset(edge: .bottom, spacing: 0) { MiniPlayerBar(onOpenQueue: { showQueue = true }) }
-        .sheet(isPresented: $showQueue) { QueueView() }
         .alert("Link YouTube", isPresented: Binding(
             get: { youtubeTarget != nil },
             set: { if !$0 { youtubeTarget = nil } }

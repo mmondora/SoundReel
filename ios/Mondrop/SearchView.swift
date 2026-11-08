@@ -15,7 +15,13 @@ struct SearchView: View {
     @State private var text = ""
     @State private var onlyOnPhone = false
     @State private var localKeys: Set<String> = []
-    @State private var showQueue = false
+    /// The field is active (keyboard up): the user is typing, or the field of the Home asked for it.
+    @State private var searchPresented = false
+    @State private var handledSearchRequests = 0
+    @ObservedObject private var router = RootRouter.shared
+    #if DEBUG
+    @State private var demoPush = false
+    #endif
     @State private var recent = RecentSearchesStore().load()
     private let recentStore = RecentSearchesStore()
 
@@ -46,13 +52,12 @@ struct SearchView: View {
         }
         .navigationTitle("Cerca")
         #if os(iOS)
-        .searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always), prompt: "Brani, artisti, album")
+        .searchable(text: $text, isPresented: $searchPresented, placement: .navigationBarDrawer(displayMode: .always), prompt: "Brani, artisti, album")
         #else
-        .searchable(text: $text, prompt: "Brani, artisti, album")
+        .searchable(text: $text, isPresented: $searchPresented, prompt: "Brani, artisti, album")
         #endif
         .onSubmit(of: .search) { remember(text) }
         .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
-        .safeAreaInset(edge: .bottom, spacing: 0) { MiniPlayerBar(onOpenQueue: { showQueue = true }) }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -76,13 +81,28 @@ struct SearchView: View {
             // Songs the server is preparing turn into marks while this screen is open.
             await model.pollWhilePreparing()
         }
-        .onAppear { localKeys = engine.store.localSongKeys() }
+        .onAppear {
+            localKeys = engine.store.localSongKeys()
+            takeSearchRequest()
+        }
+        .onChange(of: router.searchRequests) { _, _ in takeSearchRequest() }
         // Opening an artist, an album or the full list pushes a page over this one: the words were worth remembering.
         .onDisappear { remember(text) }
         .onChange(of: engine.revision) { _, _ in localKeys = engine.store.localSongKeys() }
-        .sheet(isPresented: $showQueue) { QueueView() }
         .trackActions(actions)
         .bulkDownload(downloader, model: model, actions: actions)
+        #if DEBUG
+        .navigationDestination(isPresented: $demoPush) { LibraryView(initialDimension: .playlists) }
+        .onAppear { if DemoData.push == "library" { demoPush = true } }
+        #endif
+    }
+
+    /// The field of the Home asks for THIS field, with the keyboard (spec 2026-11-08-mondrop-home-spotify-design.md H1). A request made
+    /// before this screen existed is not lost: the counter is compared with what was already taken.
+    private func takeSearchRequest() {
+        guard router.searchRequests > handledSearchRequests else { return }
+        handledSearchRequests = router.searchRequests
+        searchPresented = true
     }
 
     // MARK: before typing

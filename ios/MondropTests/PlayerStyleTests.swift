@@ -6,7 +6,7 @@ import XCTest
 /// system's dynamic colours, in light mode), the accents were three (green, blue, black) and none was the icon's yellow, the cover was a
 /// 320 × 650 rectangle and the slider ran edge to edge under a narrow column.
 final class PlayerStyleTests: XCTestCase {
-    private let ends = [PlayerPalette.backgroundTop, PlayerPalette.backgroundBottom]
+    private let ends = [MondropPalette.backgroundTop, MondropPalette.backgroundBottom]
 
     // MARK: the maths
 
@@ -27,37 +27,37 @@ final class PlayerStyleTests: XCTestCase {
 
     func testTheTextIsReadableOnTheBackground() {
         for background in ends {
-            XCTAssertGreaterThanOrEqual(RGB.contrast(PlayerPalette.text, background), 7, "the title was black on this")
+            XCTAssertGreaterThanOrEqual(RGB.contrast(MondropPalette.text, background), 7, "the title was black on this")
         }
     }
 
     func testTheSecondaryTextIsStillReadable() {
         for background in ends {
-            XCTAssertGreaterThanOrEqual(RGB.contrast(PlayerPalette.secondaryText(over: background), background), 4.5,
+            XCTAssertGreaterThanOrEqual(RGB.contrast(MondropPalette.secondaryText(over: background), background), 4.5,
                                         "the artist, the status line and the times")
         }
     }
 
     func testTheAccentAndTheErrorAreReadableOnTheBackground() {
         for background in ends {
-            XCTAssertGreaterThanOrEqual(RGB.contrast(PlayerPalette.accent, background), 7, "the play button, the slider, the wordmark")
-            XCTAssertGreaterThanOrEqual(RGB.contrast(PlayerPalette.error, background), 4.5)
+            XCTAssertGreaterThanOrEqual(RGB.contrast(MondropPalette.accent, background), 7, "the play button, the slider, the wordmark")
+            XCTAssertGreaterThanOrEqual(RGB.contrast(MondropPalette.error, background), 4.5)
         }
     }
 
     func testThePillsCanBeRead() {
         for background in ends {
-            let fill = PlayerPalette.pillFill(over: background)
-            XCTAssertGreaterThanOrEqual(RGB.contrast(PlayerPalette.text, fill), 4.5, "the words of «Parole» and «In coda»")
-            XCTAssertGreaterThanOrEqual(RGB.contrast(PlayerPalette.accent, fill), 3, "their icons")
+            let fill = MondropPalette.pillFill(over: background)
+            XCTAssertGreaterThanOrEqual(RGB.contrast(MondropPalette.text, fill), 4.5, "the words of «Parole» and «In coda»")
+            XCTAssertGreaterThanOrEqual(RGB.contrast(MondropPalette.accent, fill), 3, "their icons")
         }
     }
 
     func testTheBackgroundIsDarkAndTheAccentIsTheYellowOfTheIcon() {
         for background in ends { XCTAssertLessThan(background.luminance, 0.05) }
-        XCTAssertGreaterThan(PlayerPalette.accent.red, 0.95)
-        XCTAssertGreaterThan(PlayerPalette.accent.green, 0.7)
-        XCTAssertLessThan(PlayerPalette.accent.blue, 0.2)
+        XCTAssertGreaterThan(MondropPalette.accent.red, 0.95)
+        XCTAssertGreaterThan(MondropPalette.accent.green, 0.7)
+        XCTAssertLessThan(MondropPalette.accent.blue, 0.2)
     }
 
     // MARK: the geometry
@@ -108,9 +108,9 @@ final class PlayerStyleTests: XCTestCase {
         for banned in [".foregroundStyle(.primary)", ".foregroundStyle(.secondary)", "Color.secondary", "Color.primary", "Color.red",
                        ".ultraThinMaterial", ".foregroundColor(", "Color(red: 0.24"] {
             XCTAssertFalse(code.contains(banned),
-                           "«\(banned)»: the player is dark whatever the device's appearance is; its colours come from PlayerPalette")
+                           "«\(banned)»: the player is dark whatever the device's appearance is; its colours come from MondropPalette")
         }
-        XCTAssertTrue(code.contains("PlayerPalette"))
+        XCTAssertTrue(code.contains("MondropPalette"))
         XCTAssertTrue(code.contains(".environment(\\.colorScheme, .dark)"), "the controls are told to draw dark too (the slider's track)")
         XCTAssertTrue(code.contains(".frame(width: layout.coverSide, height: layout.coverSide)"), "the cover is a square asked of the frame itself")
         XCTAssertFalse(code.contains(".aspectRatio(1, contentMode: .fit)"), "that, after a frame(maxWidth:), made a 320 × 650 rectangle on an iPad")

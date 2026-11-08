@@ -89,11 +89,23 @@ public final class LocalAudioPlayer: ObservableObject {
     private var resolveTask: Task<Void, Never>?
     private var pendingSources: [PlaybackSource] = []
     private var artworkImage: MPMediaItemArtwork? = nil
+    /// Where the queue is kept between launches (`QueueSnapshot`).
+    private let snapshots: QueueSnapshotStore
+    /// Where the user was inside the song a restored queue points at: applied once, when that song starts, never before.
+    private var pendingResume: (songKey: String, seconds: Double)?
+    private var lastPositionSave = Date.distantPast
+    /// True while the saved queue is being put back: it must not be written over itself.
+    private var restoring = false
 
-    private init(store: OfflineStore = .shared, api: MondropAPIProtocol = MondropAPI(), recorder: PlayRecorder? = nil) {
+    /// Internal, not private: the tests build their own player on a folder of their own.
+    init(
+        store: OfflineStore = .shared, api: MondropAPIProtocol = MondropAPI(), recorder: PlayRecorder? = nil,
+        snapshots: QueueSnapshotStore = QueueSnapshotStore()
+    ) {
         self.store = store
         self.api = api
         self.recorder = recorder ?? PlayRecorder.shared
+        self.snapshots = snapshots
         configureSession()
         configureRemoteCommands()
         #if os(iOS)
@@ -105,6 +117,7 @@ public final class LocalAudioPlayer: ObservableObject {
             Task { @MainActor in self?.handleInterruption(note) }
         }
         #endif
+        restoreSavedQueue()
     }
 
     private func configureSession() {
@@ -157,9 +170,48 @@ public final class LocalAudioPlayer: ObservableObject {
         queue = items
         queuePlaylistId = playlistId
         queueLabel = label
-        guard !items.isEmpty else { return }
+        guard !items.isEmpty else {
+            persistQueue()                                   // an emptied queue is forgotten too
+            return
+        }
         let at = min(max(0, startAt), items.count - 1)
         if autoplay { play(at: at) } else { show(at: at) }
+    }
+
+    // MARK: - The queue survives a relaunch
+
+    /// The queue the phone kept (see `QueueSnapshot`), back in the player PAUSED — nothing starts by itself — on the song it was on and,
+    /// for «Riprendi», where the user was inside it.
+    private func restoreSavedQueue() {
+        guard let saved = snapshots.load() else { return }
+        restoring = true
+        setQueue(saved.queueItems, startAt: saved.index, playlistId: saved.playlistId, label: saved.label, autoplay: false)
+        restoring = false
+        guard queue.indices.contains(index), saved.positionSeconds > 0 else { return }
+        // A song that had been heard to its end starts over: there is nothing left to resume.
+        let atTheEnd = saved.durationSeconds > 0 && saved.positionSeconds >= saved.durationSeconds - 3
+        guard !atTheEnd else { return }
+        currentTime = saved.positionSeconds
+        duration = saved.durationSeconds
+        pendingResume = (queue[index].songKey, saved.positionSeconds)
+    }
+
+    private func persistQueue() {
+        guard !restoring else { return }
+        snapshots.save(QueueSnapshot.make(queue: queue, index: index, label: queueLabel, playlistId: queuePlaylistId))
+    }
+
+    /// Where the user is inside the song, kept every few seconds while it plays.
+    private func persistPositionIfDue() {
+        guard queue.indices.contains(index), Date().timeIntervalSince(lastPositionSave) >= 5 else { return }
+        savePositionNow()
+    }
+
+    /// Keeps where the user is inside the song, now: the app is going to the background and may not come back.
+    public func savePositionNow() {
+        guard queue.indices.contains(index), player != nil || currentTime > 0 else { return }
+        lastPositionSave = Date()
+        snapshots.save(position: queue[index].songKey, seconds: currentTime, duration: duration)
     }
 
     /// Local-only convenience: everything downloaded on the phone, as one explicit choice («Sul telefono»).
@@ -179,6 +231,7 @@ public final class LocalAudioPlayer: ObservableObject {
             return .addedToEmptyQueue(merged.added)
         }
         queue = merged.queue
+        persistQueue()
         return merged.outcome
     }
 
@@ -192,6 +245,7 @@ public final class LocalAudioPlayer: ObservableObject {
         teardownCurrentItem()
         playing = false
         index = i
+        persistQueue()
         let entry = queue[i]
         title = entry.title
         artist = entry.artist
@@ -213,6 +267,7 @@ public final class LocalAudioPlayer: ObservableObject {
         playing = false
         configureSession()
         index = i
+        persistQueue()
         let entry = queue[i]
         title = entry.title
         artist = entry.artist
@@ -241,7 +296,10 @@ public final class LocalAudioPlayer: ObservableObject {
         let config = MondropAPIConfig.current()
         // The user deleted this song from the phone to save space: stream it, never download it again behind his back.
         let skipListed = store.isSkipped(entry.songKey)
-        switch FirstPlay.decide(songKey: entry.songKey, track: entry.track, local: store.fileURL(songKey: entry.songKey), config: config, skipListed: skipListed) {
+        // A song brought back from the saved queue carries no view of itself from the server (addresses, state): ask for it now.
+        let known = await Self.serverView(of: entry, api: api)
+        guard !Task.isCancelled, index == i else { return }
+        switch FirstPlay.decide(songKey: entry.songKey, track: known, local: store.fileURL(songKey: entry.songKey), config: config, skipListed: skipListed) {
         case .local(let url):
             start(sources: [PlaybackSource.local(url)], status: .local)
         case .stream(let sources, let download):
@@ -279,6 +337,13 @@ public final class LocalAudioPlayer: ObservableObject {
         case .unavailable(let reason):
             playbackStatus = .failed(reason)
         }
+    }
+
+    /// The server's view of a queue item: the one it came with or — for an item restored from the saved queue — the one SoundReel gives now
+    /// (nil when it cannot be reached: the first-play rule then says why the song cannot start).
+    static func serverView(of entry: QueueItem, api: MondropAPIProtocol) async -> OfflineTrack? {
+        if let track = entry.track { return track }
+        return try? await api.track(songKey: entry.songKey)
     }
 
     // MARK: - AVPlayer plumbing
@@ -336,6 +401,11 @@ public final class LocalAudioPlayer: ObservableObject {
         }
         let newPlayer = AVPlayer(playerItem: item)
         player = newPlayer
+        // «Riprendi»: the first play of a restored queue starts where the user was (once, and only for that song).
+        if let resume = pendingResume, queue.indices.contains(index), queue[index].songKey == resume.songKey {
+            newPlayer.seek(to: CMTime(seconds: resume.seconds, preferredTimescale: 600))
+        }
+        pendingResume = nil
         // Only `.playing` counts as listening: pause, buffering stalls and interruptions are `.paused` /
         // `.waitingToPlayAtSpecifiedRate`. Runs in background and on the lock screen too (audio background mode).
         playerGeneration += 1
@@ -359,6 +429,7 @@ public final class LocalAudioPlayer: ObservableObject {
                     self.recorder.tracker.updateDuration(ms: Int(d * 1000))
                 }
                 self.recorder.tracker.tick()           // crash-safety checkpoint, throttled inside
+                self.persistPositionIfDue()
                 self.publishNowPlayingElapsed()
             }
         }

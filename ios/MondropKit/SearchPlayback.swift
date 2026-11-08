@@ -46,7 +46,7 @@ public enum QueueAppend {
             switch self {
             case .added(let n): return n == 1 ? "Aggiunto in coda" : "Aggiunti in coda: \(n) brani"
             case .addedToEmptyQueue(let n):
-                return n == 1 ? "Aggiunto in coda. Premi Riproduci nel Player" : "Aggiunti in coda: \(n) brani. Premi Riproduci nel Player"
+                return n == 1 ? "Aggiunto in coda. Premi ▶ nel mini player" : "Aggiunti in coda: \(n) brani. Premi ▶ nel mini player"
             case .alreadyQueued: return "È già in coda"
             case .notPlayable: return "Non si può ascoltare: nessuna sorgente trovata"
             }

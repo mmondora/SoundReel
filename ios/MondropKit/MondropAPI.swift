@@ -330,3 +330,19 @@ extension MondropAPI: EventTransport {
         return (try? JSONDecoder().decode(BatchAck.self, from: data)) ?? BatchAck()
     }
 }
+
+// MARK: - The Home (ADR-0020)
+
+/// What the Home needs from the backend (a fake in tests).
+public protocol HomeTransport: Sendable {
+    func home() async throws -> HomeResponse
+}
+
+extension MondropAPI: HomeTransport {
+    /// `GET /api/mondrop/home`: the sections, ready to draw. Read-only. An older server answers 404 (the Home then says it could
+    /// not load, and the field and «Riprendi» stay).
+    public func home() async throws -> HomeResponse {
+        let data = try await sendRequest(path: "/api/mondrop/home", timeout: 30)
+        return try decodeBody(HomeResponse.self, from: data)
+    }
+}

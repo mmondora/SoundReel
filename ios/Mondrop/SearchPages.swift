@@ -27,7 +27,6 @@ struct SearchResultsPage: View {
     @ObservedObject private var player = LocalAudioPlayer.shared
     @ObservedObject private var engine = SyncEngine.shared
     @State private var localKeys: Set<String> = []
-    @State private var showQueue = false
 
     init(kind: Kind) {
         self.kind = kind
@@ -103,7 +102,6 @@ struct SearchResultsPage: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
-        .safeAreaInset(edge: .bottom, spacing: 0) { MiniPlayerBar(onOpenQueue: { showQueue = true }) }
         .task {
             await model.reload()
             localKeys = engine.store.localSongKeys()
@@ -114,7 +112,6 @@ struct SearchResultsPage: View {
             localKeys = engine.store.localSongKeys()
         }
         .onChange(of: engine.revision) { _, _ in localKeys = engine.store.localSongKeys() }
-        .sheet(isPresented: $showQueue) { QueueView() }
         .trackActions(actions)
         .bulkDownload(downloader, model: model, actions: actions)
     }

@@ -12,6 +12,9 @@ struct MondropApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        #if DEBUG
+        DemoData.seedQueue()                       // before the player exists: it restores the queue, paused
+        #endif
         #if os(iOS)
         // `beginBackgroundTask` is UIKit: the share extension cannot link it, so the app plugs it in.
         EventUploader.shared.backgroundRunner = UIKitBackgroundTaskRunner()
@@ -23,6 +26,9 @@ struct MondropApp: App {
     var body: some Scene {
         WindowGroup {
             RootTabView()
+                // The whole app is dark and yellow (spec 2026-11-08-mondrop-home-spotify-design.md H9): the yellow does not read on white.
+                .preferredColorScheme(.dark)
+                .tint(Color(MondropPalette.accent))
                 .overlay(alignment: .bottom) {
                     if let deepLinkStatus {
                         Text(deepLinkStatus)
@@ -56,6 +62,7 @@ struct MondropApp: App {
                     Task { await InboxWiring.appBecameActive(first: false) } // the Posta, the sheet's playlists, the push token
                 case .background:
                     PlayRecorder.shared.checkpoint()                          // the open listen survives a kill
+                    LocalAudioPlayer.shared.savePositionNow()                 // «Riprendi» resumes where the user was
                     EventUploader.shared.stopForegroundTimer()
                     Task { await EventUploader.shared.flush(.background) }    // inside a background task
                 default:

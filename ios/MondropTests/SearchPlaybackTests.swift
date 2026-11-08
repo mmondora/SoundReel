@@ -301,8 +301,8 @@ private final class FakeSilentPicker: PlaylistPickerTransport, @unchecked Sendab
 /// «Il play non deve essere automatico» (Michele, 8 November): «Aggiungi in coda» with nothing queued loads the queue and waits.
 final class AddToQueueDoesNotPlayTests: XCTestCase {
     func testAddingToAnEmptyQueueSaysItWaitsForPlay() {
-        XCTAssertEqual(QueueAppend.Outcome.addedToEmptyQueue(1).message, "Aggiunto in coda. Premi Riproduci nel Player")
-        XCTAssertEqual(QueueAppend.Outcome.addedToEmptyQueue(3).message, "Aggiunti in coda: 3 brani. Premi Riproduci nel Player")
+        XCTAssertEqual(QueueAppend.Outcome.addedToEmptyQueue(1).message, "Aggiunto in coda. Premi ▶ nel mini player")
+        XCTAssertEqual(QueueAppend.Outcome.addedToEmptyQueue(3).message, "Aggiunti in coda: 3 brani. Premi ▶ nel mini player")
         XCTAssertEqual(QueueAppend.Result(queue: [], outcome: .addedToEmptyQueue(2)).added, 2)
     }
 

@@ -18,6 +18,8 @@ public enum LibraryChoice: Equatable, Sendable {
     /// Every song downloaded on this phone.
     case onPhone
     case everything
+    /// A row of songs the SERVER chose and named («Ascoltati di recente», «Nuovi dai tuoi reel» on the Home): the queue is called what the row is.
+    case collection(String)
 
     /// The words shown as «In coda: …».
     public var label: String {
@@ -31,6 +33,7 @@ public enum LibraryChoice: Equatable, Sendable {
         case .search(let text): return "Ricerca · «\(text.trimmingCharacters(in: .whitespacesAndNewlines))»"
         case .onPhone: return "Sul telefono"
         case .everything: return "Tutta la libreria"
+        case .collection(let name): return name
         }
     }
 
@@ -42,7 +45,7 @@ public enum LibraryChoice: Equatable, Sendable {
         case .genre(let name): return LibraryFilters(genre: name)
         case .decade(let decade): return LibraryFilters(decade: decade)
         case .search(let text): return LibraryFilters(q: text)
-        case .playlist, .song, .onPhone, .everything: return .none
+        case .playlist, .song, .onPhone, .everything, .collection: return .none
         }
     }
 

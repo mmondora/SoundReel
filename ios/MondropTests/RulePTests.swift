@@ -76,7 +76,7 @@ final class RulePTests: XCTestCase {
     func testTheScanReadsTheSourcesItGuards() throws {
         let names = Set(try appSources().map(\.fileName))
         for chooser in Self.sourceChoosers { XCTAssertTrue(names.contains(chooser), "\(chooser) was not scanned") }
-        for expected in ["NetStatus.swift", "OfflineStore.swift", "SettingsView.swift", "ShareComposeView.swift"] {
+        for expected in ["NetStatus.swift", "OfflineStore.swift", "SettingsView.swift", "ShareComposeView.swift", "HomeView.swift", "HomeModel.swift", "HomeModels.swift", "MiniPlayer.swift", "QueueSnapshot.swift"] {
             XCTAssertTrue(names.contains(expected), "\(expected) was not scanned")
         }
         XCTAssertGreaterThan(try appSources().count, 40)
