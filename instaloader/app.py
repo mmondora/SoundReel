@@ -13,6 +13,10 @@ Endpoints:
                                      same on-disk layout and response shape
                                      as /download so the backend pipeline
                                      (Whisper/OCR/vision/Shazam) is reusable.
+  POST /yt/audio {artist, title, ...} — find a song on YouTube and download it as
+                                     a tagged MP3 into a staging folder (see
+                                     yt_audio.py); the backend moves it into the
+                                     music library.
 
 Session login (for both endpoints):
   docker exec -it soundreel-instaloader instaloader -l <username>
@@ -38,6 +42,7 @@ from flask import Flask, jsonify, request
 from shazamio import Shazam
 
 from subtitles import fetch_subtitle_text
+from yt_audio import AudioRequest, download_audio, make_cover_fetcher
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("instaloader-sidecar")
@@ -985,6 +990,27 @@ def yt_url():
         log.warning("yt/url error: %s", exc)
 
     return jsonify({"url": None})
+
+
+@app.post("/yt/audio")
+def yt_audio():
+    """Download a song's audio from YouTube as a tagged MP3 (staging folder under MEDIA_ROOT).
+
+    Body: {artist, title, album?, coverUrl?, expectedDurationS?, videoUrl?, outDir?, basename}
+    Always 200 with {ok, ...} for a well-formed request (the backend reads `ok` / `code`);
+    400 only when the request itself is malformed.
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        req = AudioRequest.from_json(body, MEDIA_ROOT)
+    except ValueError as exc:
+        return jsonify({"ok": False, "code": "bad_request", "error": str(exc)}), 400
+
+    log.info("yt/audio start artist=%r title=%r override=%s expected=%s", req.artist, req.title,
+             bool(req.video_url), req.expected_duration_s)
+    result = download_audio(req, fetch_cover=make_cover_fetcher(requests.get))
+    log.info("yt/audio done ok=%s code=%s video=%s bytes=%s", result.ok, result.code, result.video_id, result.bytes)
+    return jsonify(result.to_json())
 
 
 if __name__ == "__main__":

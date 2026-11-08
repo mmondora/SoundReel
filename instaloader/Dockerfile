@@ -27,7 +27,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-COPY app.py subtitles.py ./
+COPY app.py subtitles.py yt_audio.py ./
 
 RUN mkdir -p /root/.config/instaloader /data/media
 
