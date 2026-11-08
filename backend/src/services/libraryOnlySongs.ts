@@ -37,20 +37,23 @@ export async function libraryEntries(maxAgeMs = TTL_MS): Promise<{ byKey: Map<st
   // The identity is the song KEY (the key of playlists, files and metadata), not a loose match: «S.I.C.» and
   // «S.I.C. (2019 Remastered)» are two songs, as they are everywhere else (ADR-0017, D5).
   const byKeyMap = new Map<string, LibraryEntry>();
-  const join = (artist: string, title: string, album: string | null, part: { local?: LocalFile; media?: MediaFile }): void => {
+  const join = (artist: string, title: string, part: { local?: LocalFile; media?: MediaFile }): void => {
     const key = songKey(artist, title);
     const known = byKeyMap.get(key);
-    if (known) {
-      if (part.local && !known.local) known.local = part.local;
-      if (part.media && !known.media) known.media = part.media;
-      if (!known.album && album) known.album = album;
+    if (!known) {
+      byKeyMap.set(key, { songKey: key, artist, title, album: null, local: part.local ?? null, media: part.media ?? null });
       return;
     }
-    byKeyMap.set(key, { songKey: key, artist, title, album, local: part.local ?? null, media: part.media ?? null });
+    if (part.local && !known.local) known.local = part.local;
+    // of several files of the box for one song, the one that carries a real album tag says which album it is on
+    if (part.media && (!known.media || (!known.media.album && part.media.album))) known.media = part.media;
   };
   // geekom first: when a song is on both, its key (and spelling) is the one of the file we can serve from disk
-  for (const f of getLocalFiles()) if (f.builtIn) join(f.artist, f.title, f.album ?? null, { local: f });
-  for (const f of (await getMediaSnapshot()).files) join(f.artist, f.title, f.album, { media: f });
+  for (const f of getLocalFiles()) if (f.builtIn) join(f.artist, f.title, { local: f });
+  for (const f of (await getMediaSnapshot()).files) join(f.artist, f.title, { media: f });
+  // The album: the box's TAG when it has one. A folder of geekom's library is a Spooty playlist name («Bassi Maestro»),
+  // not an album, so it is only the fallback.
+  for (const e of byKeyMap.values()) e.album = e.media?.album || e.local?.album || null;
   const all = [...byKeyMap.values()];
   cache = { at: Date.now(), byKey: byKeyMap, all };
   return cache;

@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 
 describe('libraryEntries: every song that is a file of geekom or of the box', () => {
-  it('joins the two sources by the song key, geekom first (its spelling and album win)', async () => {
+  it('joins the two sources by the song key, geekom first (its spelling wins) and the box\'s album TAG over a geekom folder name', async () => {
     m.getLocalFiles.mockReturnValue([local('Bassi Maestro', 'Foto di gruppo', 'Bassi Maestro')]);
     m.getMediaSnapshot.mockResolvedValue({ files: [media('Bassi Maestro', 'Foto di gruppo', 'Foto di gruppo'), media('Bassi Maestro', 'S.I.C.', 'Background')], byNormKey: new Map() });
     const { all, byKey } = await libraryEntries(0);
@@ -27,7 +27,8 @@ describe('libraryEntries: every song that is a file of geekom or of the box', ()
     const foto = byKey.get('bassi maestro::foto di gruppo')!;
     expect(foto.local).not.toBeNull();
     expect(foto.media).not.toBeNull();
-    expect(foto.album).toBe('Bassi Maestro'); // geekom's
+    expect(foto.artist).toBe('Bassi Maestro');
+    expect(foto.album).toBe('Foto di gruppo'); // the tag of the box's file; «Bassi Maestro» is only the folder of geekom's copy
     expect(byKey.get('bassi maestro::s.i.c.')).toMatchObject({ local: null, album: 'Background' });
   });
 
@@ -53,6 +54,33 @@ describe('libraryEntries: every song that is a file of geekom or of the box', ()
     invalidateLibraryEntries();
     await libraryEntries();
     expect(m.getMediaSnapshot).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('libraryEntries: the album and the file of the box that is kept', () => {
+  it('a folder of geekom\'s library is the album only when nothing better exists', async () => {
+    m.getLocalFiles.mockReturnValue([local('Edmea', 'Some song', 'ITALIAN SONGS REMIXED BY EDMEA'), local('Edmea', 'Other song', 'ITALIAN SONGS REMIXED BY EDMEA')]);
+    m.getMediaSnapshot.mockResolvedValue({ files: [media('Edmea', 'Other song', 'The real album')], byNormKey: new Map() });
+    const { byKey } = await libraryEntries(0);
+    expect(byKey.get('edmea::some song')!.album).toBe('ITALIAN SONGS REMIXED BY EDMEA'); // no tag anywhere: the folder
+    expect(byKey.get('edmea::other song')!.album).toBe('The real album'); // the box's tag wins
+  });
+
+  it('of several files of the box for one song, the one with an album tag is kept (a copy made from a file name has none)', async () => {
+    const copy = media('Bassi Maestro', 'Capirai', null); // the replica of geekom's file: no tag
+    const original = media('Bassi Maestro', 'Capirai', "L'ultimo testimone");
+    for (const files of [[copy, original], [original, copy]]) {
+      invalidateLibraryEntries();
+      m.getMediaSnapshot.mockResolvedValue({ files, byNormKey: new Map() });
+      const e = (await libraryEntries(0)).byKey.get('bassi maestro::capirai')!;
+      expect(e.media).toBe(original);
+      expect(e.album).toBe("L'ultimo testimone");
+    }
+  });
+
+  it('a song with no album anywhere has none', async () => {
+    m.getMediaSnapshot.mockResolvedValue({ files: [media('A', 'B', null)], byNormKey: new Map() });
+    expect((await libraryEntries(0)).byKey.get('a::b')!.album).toBeNull();
   });
 });
 
