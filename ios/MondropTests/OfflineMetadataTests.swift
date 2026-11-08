@@ -155,11 +155,13 @@ final class OfflineMetadataTests: XCTestCase {
 /// The description of a download task carries the descriptors too, and an old one without them still reads.
 final class JobInfoDescriptorTests: XCTestCase {
     func testTheDescriptorsRoundTrip() throws {
-        let info = JobInfo(songKey: "a", title: "A", artist: "X", kind: "proxy", album: "Thriller", genres: ["Pop"], year: 1982)
+        let info = JobInfo(songKey: "a", title: "A", artist: "X", album: "Thriller", genres: ["Pop"], year: 1982)
         let data = try JSONEncoder().encode(info)
         XCTAssertEqual(try JSONDecoder().decode(JobInfo.self, from: data), info)
     }
 
+    /// The description of a task started by build 1.6.0 (a background download iOS kept alive) still has `kind` and
+    /// `proxyPath`: reading it ignores them.
     func testATaskStartedByTheEarlierBuildStillReads() throws {
         let old = #"{"songKey":"a","title":"A","artist":"X","kind":"media","proxyPath":"/api/mondrop/songs/a/file","bytes":100}"#
         let info = try JSONDecoder().decode(JobInfo.self, from: Data(old.utf8))
@@ -181,7 +183,7 @@ final class DownloadedMetadataTests: XCTestCase {
         let r = try EngineRig()
         let dir = r.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
-        r.engine.enqueue([TestSupport.track("a", album: "Thriller", genres: ["Pop", "Rock"], year: 1982)], home: false)
+        r.engine.enqueue([TestSupport.track("a", album: "Thriller", genres: ["Pop", "Rock"], year: 1982)])
         XCTAssertEqual(r.transport.started.first?.info.album, "Thriller", "the descriptors travel with the task")
 
         try r.finish(try XCTUnwrap(r.transport.started.first).info)
@@ -197,7 +199,7 @@ final class DownloadedMetadataTests: XCTestCase {
         let dir = first.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         let list = ["a", "b", "c"].map { TestSupport.track($0, album: "Album \($0)", genres: ["Pop"], year: 1990) }
-        first.engine.enqueue(list, home: false)                         // c waits in the queue file
+        first.engine.enqueue(list)                         // c waits in the queue file
 
         let second = try EngineRig(persistQueue: true, root: first.root)
         await second.engine.attachExisting()

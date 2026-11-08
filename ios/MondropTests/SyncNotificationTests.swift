@@ -312,7 +312,7 @@ final class SyncEngineBatchTests: XCTestCase {
     func testItReportsOnceWhenTheLastSongOfTheSyncIsInstalled() throws {
         let r = try rig()
         let seen = listen(r)
-        r.engine.enqueue(tracks(["a", "b", "c"]), home: false)
+        r.engine.enqueue(tracks(["a", "b", "c"]))
 
         try r.finish(r.transport.started[0].info)           // a
         try r.finish(r.transport.started[1].info)           // b
@@ -324,7 +324,7 @@ final class SyncEngineBatchTests: XCTestCase {
     func testFailuresAreCounted() throws {
         let r = try rig()
         let seen = listen(r)
-        r.engine.enqueue(tracks(["a", "b", "c"]), home: false)
+        r.engine.enqueue(tracks(["a", "b", "c"]))
         try r.finish(r.transport.started[0].info)
         r.fail(r.transport.started[1].info, message: "timeout")
         try r.finish(r.transport.started[2].info)
@@ -334,7 +334,7 @@ final class SyncEngineBatchTests: XCTestCase {
     func testTheDownloadAFirstPlayStartsIsNotASync() throws {
         let r = try rig()
         let seen = listen(r)
-        r.engine.enqueue([TestSupport.track("play-me")], home: false, front: true, origin: .play)
+        r.engine.enqueue([TestSupport.track("play-me")], front: true, origin: .play)
         try r.finish(r.transport.started[0].info)
         XCTAssertTrue(seen.summaries.isEmpty, "a notification at every track change would be noise")
         XCTAssertNotNil(r.store.fileURL(songKey: "play-me"), "…but the song is downloaded all the same")
@@ -343,8 +343,8 @@ final class SyncEngineBatchTests: XCTestCase {
     func testAFirstPlayDownloadInTheMiddleOfASyncDoesNotCountNorCloseIt() throws {
         let r = try rig()
         let seen = listen(r)
-        r.engine.enqueue(tracks(["a", "b"]), home: false)
-        r.engine.enqueue([TestSupport.track("play-me")], home: false, front: true, origin: .play)   // queued behind a, b
+        r.engine.enqueue(tracks(["a", "b"]))
+        r.engine.enqueue([TestSupport.track("play-me")], front: true, origin: .play)   // queued behind a, b
         try r.finish(r.transport.started[0].info)           // a
         try r.finish(r.transport.started[1].info)           // b → the sync is done, play-me still downloading
         XCTAssertEqual(seen.summaries, [SyncBatchSummary(downloaded: 2, failed: 0)])
@@ -352,20 +352,21 @@ final class SyncEngineBatchTests: XCTestCase {
         XCTAssertEqual(seen.summaries.count, 1)
     }
 
-    func testAMediaServerFailureThatTheProxyRescuesIsNotAnError() throws {
+    /// Rule P: one address (SoundReel), so a failed download is a failed download: counted as an error of the sync, with no
+    /// second attempt at any other address.
+    func testAFailedDownloadIsAnErrorOfTheSyncAndIsNeverTriedAtAnotherAddress() throws {
         let r = try rig()
         let seen = listen(r)
-        r.engine.enqueue([TestSupport.track("a", mediaUrl: "http://192.168.178.10:49200/a.mp3")], home: true)
+        r.engine.enqueue([try TestSupport.trackFromAnOlderServer("a")])
         r.fail(r.transport.started[0].info, message: "server non raggiungibile")
-        XCTAssertTrue(seen.summaries.isEmpty, "the fallback is still the same download")
-        try r.finish(r.transport.started[1].info)
-        XCTAssertEqual(seen.summaries, [SyncBatchSummary(downloaded: 1, failed: 0)])
+        XCTAssertEqual(r.transport.started.count, 1, "no fallback")
+        XCTAssertEqual(seen.summaries, [SyncBatchSummary(downloaded: 0, failed: 1)])
     }
 
     func testAWrongSizeIsAnErrorOfTheSync() throws {
         let r = try rig()
         let seen = listen(r)
-        r.engine.enqueue([TestSupport.track("a", bytes: 100)], home: false)
+        r.engine.enqueue([TestSupport.track("a", bytes: 100)])
         try r.finish(r.transport.started[0].info, bytes: 7)
         XCTAssertEqual(seen.summaries, [SyncBatchSummary(downloaded: 0, failed: 1)])
     }
@@ -373,7 +374,7 @@ final class SyncEngineBatchTests: XCTestCase {
     func testRetryAfterTheEndStartsANewSync() throws {
         let r = try rig()
         let seen = listen(r)
-        r.engine.enqueue(tracks(["a", "b"]), home: false)
+        r.engine.enqueue(tracks(["a", "b"]))
         try r.finish(r.transport.started[0].info)
         r.fail(r.transport.started[1].info, message: "timeout")
         XCTAssertEqual(seen.summaries, [SyncBatchSummary(downloaded: 1, failed: 1)])
@@ -387,7 +388,7 @@ final class SyncEngineBatchTests: XCTestCase {
     func testCancellingEverythingSaysNothing() throws {
         let r = try rig()
         let seen = listen(r)
-        r.engine.enqueue(tracks(["a", "b", "c"]), home: false)
+        r.engine.enqueue(tracks(["a", "b", "c"]))
         r.engine.cancel(songKey: "c")
         r.engine.cancel(songKey: "a")
         r.fail(r.transport.started[0].info, message: "annullato", cancelled: true)
@@ -398,7 +399,7 @@ final class SyncEngineBatchTests: XCTestCase {
     func testCancellingTheLastOneClosesTheSyncOfTheOthers() throws {
         let r = try rig()
         let seen = listen(r)
-        r.engine.enqueue(tracks(["a", "b"]), home: false)
+        r.engine.enqueue(tracks(["a", "b"]))
         try r.finish(r.transport.started[0].info)
         r.engine.cancel(songKey: "b")
         XCTAssertEqual(seen.summaries, [SyncBatchSummary(downloaded: 1, failed: 0)])
@@ -408,7 +409,7 @@ final class SyncEngineBatchTests: XCTestCase {
         let r = try rig()
         let seen = listen(r)
         try r.installLocal("a", version: "100-1")
-        r.engine.enqueue([TestSupport.track("a", version: "100-1")], home: false)
+        r.engine.enqueue([TestSupport.track("a", version: "100-1")])
         XCTAssertTrue(seen.summaries.isEmpty)
     }
 
@@ -416,8 +417,8 @@ final class SyncEngineBatchTests: XCTestCase {
         let r = try rig()
         let seen = listen(r)
         let list = tracks(["a", "b", "c"])
-        r.engine.enqueue(list, home: false)
-        r.engine.enqueue(list, home: false)
+        r.engine.enqueue(list)
+        r.engine.enqueue(list)
         for index in 0..<3 { try r.finish(r.transport.started[index].info) }
         XCTAssertEqual(seen.summaries, [SyncBatchSummary(downloaded: 3, failed: 0)])
     }
@@ -425,8 +426,8 @@ final class SyncEngineBatchTests: XCTestCase {
     func testASyncPressedWhileAFirstPlayDownloadRunsAdoptsIt() throws {
         let r = try rig()
         let seen = listen(r)
-        r.engine.enqueue([TestSupport.track("a")], home: false, front: true, origin: .play)
-        r.engine.enqueue(tracks(["a", "b"]), home: false)    // the user taps Sync: a is already coming
+        r.engine.enqueue([TestSupport.track("a")], front: true, origin: .play)
+        r.engine.enqueue(tracks(["a", "b"]))    // the user taps Sync: a is already coming
         try r.finish(r.transport.started[0].info)
         try r.finish(r.transport.started[1].info)
         XCTAssertEqual(seen.summaries, [SyncBatchSummary(downloaded: 2, failed: 0)])
@@ -437,7 +438,7 @@ final class SyncEngineBatchTests: XCTestCase {
         let dir = r.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         let seen = listen(r)
-        r.engine.enqueue([TestSupport.track("a")], home: false)
+        r.engine.enqueue([TestSupport.track("a")])
         XCTAssertEqual(seen.summaries, [SyncBatchSummary(downloaded: 0, failed: 1)])
     }
 
@@ -445,7 +446,7 @@ final class SyncEngineBatchTests: XCTestCase {
 
     func testTheSyncIsRememberedAcrossARelaunchSoTheLastDownloadStillClosesIt() async throws {
         let first = try rig(persistQueue: true)
-        first.engine.enqueue(tracks(["a", "b", "c"]), home: false)           // a, b live; c queued
+        first.engine.enqueue(tracks(["a", "b", "c"]))           // a, b live; c queued
         XCTAssertNotNil(first.store.readBatchData(), "the batch is on disk")
 
         // killed; iOS relaunches the app in the background to deliver the downloads. `a` finished meanwhile, `b` still runs.
@@ -470,7 +471,7 @@ final class SyncEngineBatchTests: XCTestCase {
 
     func testABatchLeftByAnOldCrashIsForgottenNotAnnounced() async throws {
         let first = try rig(persistQueue: true)
-        first.engine.enqueue(tracks(["a", "b"]), home: false)
+        first.engine.enqueue(tracks(["a", "b"]))
         try first.finish(first.transport.started[0].info)              // a installed; b was still running when the app died
         XCTAssertNotNil(first.store.readBatchData())
         // …and the app comes back 7 hours later: nobody wants «Sync finito» now
@@ -486,7 +487,7 @@ final class SyncEngineBatchTests: XCTestCase {
 
     func testSongsThatAreNoLongerComingDoNotKeepASyncOpenForEver() async throws {
         let first = try rig(persistQueue: true)
-        first.engine.enqueue(tracks(["a", "b"]), home: false)
+        first.engine.enqueue(tracks(["a", "b"]))
         try first.finish(first.transport.started[0].info)                      // a installed; b still live
         // relaunch: b is gone from the background session (finished while we were dead, or cancelled by iOS)
         let second = try rig(persistQueue: true, root: first.root)
@@ -509,7 +510,7 @@ final class SyncStartedHookTests: XCTestCase {
         let activity = SyncActivity()
         let coordinator = PlaylistSyncCoordinator(
             playlist: MondropPlaylist(id: "pl1", name: "Road trip", songCount: 2),
-            api: api, engine: rig.engine, net: NetStatus(), clock: FakeClock().clock,
+            api: api, engine: rig.engine, clock: FakeClock().clock,
             activity: activity, onSyncStarted: { started += 1 }
         )
         api.scriptPrepare("pl1", [TestSupport.manifest("pl1", [TestSupport.track("a", album: "Thriller", genres: ["Pop"], year: 1982), TestSupport.track("b", state: "preparing")])])
@@ -530,7 +531,7 @@ final class SyncStartedHookTests: XCTestCase {
         try rig.installLocal("a", version: "100-1")
         let coordinator = PlaylistSyncCoordinator(
             playlist: MondropPlaylist(id: "pl1", name: "Road trip", songCount: 1),
-            api: api, engine: rig.engine, net: NetStatus(), clock: FakeClock().clock
+            api: api, engine: rig.engine, clock: FakeClock().clock
         )
         api.scriptManifests("pl1", [.success(TestSupport.manifest("pl1", [TestSupport.track("a", album: "Thriller", genres: ["Pop"], year: 1982)]))])
 
@@ -554,7 +555,7 @@ final class SyncStartedHookTests: XCTestCase {
         // reading only: pollTimeout 0 makes the re-read loop give up at once
         let coordinator = PlaylistSyncCoordinator(
             playlist: MondropPlaylist(id: "pl1", name: "P", songCount: 3),
-            api: api, engine: rig.engine, net: NetStatus(), clock: FakeClock().clock, pollTimeout: 0, activity: activity
+            api: api, engine: rig.engine, clock: FakeClock().clock, pollTimeout: 0, activity: activity
         )
         await coordinator.load()
         XCTAssertEqual(activity.preparingCount(), 2)

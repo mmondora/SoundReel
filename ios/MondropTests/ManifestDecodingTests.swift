@@ -69,7 +69,6 @@ final class ManifestDecodingTests: XCTestCase {
         let air = manifest.tracks[0]
         XCTAssertNil(air.state, "the old backend sends no state")
         XCTAssertEqual(air.resolvedState, .ready, "legacy status=ready → ready")
-        XCTAssertNil(air.mediaUrl)
         XCTAssertNil(air.version)
         XCTAssertEqual(air.bytes, 7_340_032)
         XCTAssertEqual(air.downloadPath, "/api/mondrop/songs/air%3A%3Asexy%20boy/file")
@@ -96,12 +95,26 @@ final class ManifestDecodingTests: XCTestCase {
         let manifest = try ManifestFixtures.decode(ManifestFixtures.current)
         let wf = manifest.tracks[0]
         XCTAssertEqual(wf.resolvedState, .ready)
-        XCTAssertEqual(wf.mediaUrl, "http://192.168.178.10:49200/AUDIO/DLNA-1-0/Music/White%20Flag.mp3")
+        XCTAssertEqual(wf.downloadPath, "/api/mondrop/songs/bishop%20briggs%3A%3Awhite%20flag/file")
         XCTAssertEqual(wf.version, "6291456-1794085004000")
         XCTAssertEqual(wf.bytes, 6_291_456)
         XCTAssertEqual(wf.durationS, 230)
         XCTAssertEqual(wf.source, "ytdlp")
         XCTAssertNil(wf.error)
+    }
+
+    /// Rule P (ADR-0018): a server older than 2.13.0 sends the address of a media-server file in every ready track. The
+    /// manifest still decodes, and the address is dropped: it is not kept, and so never persisted (the queue file, the
+    /// offline index) or used.
+    func testTheAddressOfAStoreFileIsReadAndDropped() throws {
+        let manifest = try ManifestFixtures.decode(ManifestFixtures.current)
+        let wf = manifest.tracks[0]
+        XCTAssertEqual(wf.songKey, "bishop briggs::white flag", "the track decodes as usual")
+        let again = String(decoding: try JSONEncoder().encode(wf), as: UTF8.self)
+        XCTAssertFalse(again.contains("mediaUrl"))
+        XCTAssertFalse(again.contains("192.168."))
+        XCTAssertFalse(again.contains("49200"))
+        XCTAssertEqual(try JSONDecoder().decode(OfflineTrack.self, from: Data(again.utf8)), wf)
     }
 
     func testEveryStateMapsAndUnknownOnesFallBackToMissing() throws {

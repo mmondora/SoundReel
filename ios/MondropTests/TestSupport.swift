@@ -17,7 +17,6 @@ enum TestSupport {
         state: String? = "ready",
         version: String? = "100-1",
         bytes: Int? = 100,
-        mediaUrl: String? = nil,
         downloadPath: String? = nil,
         error: String? = nil,
         status: String? = nil,
@@ -35,7 +34,6 @@ enum TestSupport {
             state: state,
             source: "ytdlp",
             downloadPath: downloadPath ?? MondropAPI.songPath(key, suffix: "/file"),
-            mediaUrl: mediaUrl,
             version: version,
             bytes: bytes,
             error: error,
@@ -44,6 +42,19 @@ enum TestSupport {
             genres: genres,
             year: year
         )
+    }
+
+    /// The address of a media-server file, as a server older than 2.13.0 put it in every ready track.
+    static let storeAddress = "http://192.168.178.10:49200/AUDIO/DLNA-1-0/Music/a.mp3"
+
+    /// A ready track exactly as an OLDER server sent it: it carries the address of a store file next to `downloadPath`.
+    /// The app decodes it and must never use that address (rule P). `address` may be anything, however odd.
+    static func trackFromAnOlderServer(_ key: String, address: String = storeAddress, bytes: Int = 100) throws -> OfflineTrack {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "songKey": key, "title": key, "artist": "Artist", "state": "ready", "status": "ready", "source": "existing",
+            "downloadPath": MondropAPI.songPath(key, suffix: "/file"), "mediaUrl": address, "version": "100-1", "bytes": bytes,
+        ] as [String: Any])
+        return try JSONDecoder().decode(OfflineTrack.self, from: data)
     }
 
     static func manifest(_ id: String = "pl1", _ tracks: [OfflineTrack]) -> OfflineManifest {

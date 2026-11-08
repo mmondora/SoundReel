@@ -2,42 +2,19 @@
 
 import Foundation
 
+/// Where a download or a stream comes from: SoundReel, and nothing else (rule P, ADR-0018). The app never talks to the
+/// media server or to any other store; that the files live on several of them is the server's business.
 public struct DownloadCandidate: Equatable, Sendable {
-    public enum Kind: String, Sendable {
-        /// Direct URL on the media server (LAN, HTTP).
-        case media
-        /// SoundReel proxy (`downloadPath`), HTTPS, needs the API key.
-        case proxy
-    }
-
-    public let kind: Kind
+    /// `<backend>/api/mondrop/songs/<key>/file`. The API key goes with it, and only to this host.
     public let url: URL
-
-    /// The API key only ever goes to the SoundReel proxy — never to the media server.
-    public var sendsAuth: Bool { kind == .proxy }
 }
 
 public enum DownloadURLChooser {
-    /// Ordered attempts: media server first (only at home, only when the server verified the file is there),
-    /// then the proxy, which is always valid for a ready track.
-    public static func candidates(for track: OfflineTrack, home: Bool, baseURL: String) -> [DownloadCandidate] {
-        var out: [DownloadCandidate] = []
-        if home, let media = mediaURL(track.mediaUrl) {
-            out.append(DownloadCandidate(kind: .media, url: media))
-        }
-        if let proxy = proxyURL(path: proxyPath(for: track), baseURL: baseURL) {
-            out.append(DownloadCandidate(kind: .proxy, url: proxy))
-        }
-        return out
-    }
-
-    /// http(s) with a host; anything else (file:, javascript:, garbage) is ignored.
-    public static func mediaURL(_ raw: String?) -> URL? {
-        guard let text = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty,
-              let url = URL(string: text),
-              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
-              let host = url.host, !host.isEmpty else { return nil }
-        return url
+    /// The attempts for a track: the SoundReel proxy (`downloadPath`), which is always valid for a ready track.
+    /// Whatever else a manifest may carry about where a file could be is never read.
+    public static func candidates(for track: OfflineTrack, baseURL: String) -> [DownloadCandidate] {
+        guard let proxy = proxyURL(path: proxyPath(for: track), baseURL: baseURL) else { return [] }
+        return [DownloadCandidate(url: proxy)]
     }
 
     /// The contract sends a path relative to the backend. An absolute URL there would make the app

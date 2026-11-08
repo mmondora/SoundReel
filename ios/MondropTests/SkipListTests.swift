@@ -76,7 +76,7 @@ final class SkipListEngineTests: XCTestCase {
     func testSyncNeverDownloadsASkipListedSong() throws {
         let r = try rig()
         r.store.addSkipped(["deleted"])
-        let plan = r.engine.enqueue([TestSupport.track("deleted"), TestSupport.track("kept")], home: false)
+        let plan = r.engine.enqueue([TestSupport.track("deleted"), TestSupport.track("kept")])
 
         XCTAssertEqual(r.transport.startedKeys, ["kept"])
         XCTAssertEqual(plan.removedByUser, ["deleted"])
@@ -87,16 +87,16 @@ final class SkipListEngineTests: XCTestCase {
     func testSyncAgainStillLeavesItAlone() throws {
         let r = try rig()
         r.store.addSkipped(["deleted"])
-        for _ in 0..<3 { r.engine.enqueue([TestSupport.track("deleted")], home: false) }
+        for _ in 0..<3 { r.engine.enqueue([TestSupport.track("deleted")]) }
         XCTAssertTrue(r.transport.started.isEmpty)
     }
 
     func testRiscaricaClearsTheEntryAndDownloadsAheadOfTheQueue() throws {
         let r = try rig()
         r.store.addSkipped(["deleted"])
-        r.engine.enqueue((1...4).map { TestSupport.track("q\($0)") }, home: false)         // q1, q2 running; q3, q4 queued
+        r.engine.enqueue((1...4).map { TestSupport.track("q\($0)") })         // q1, q2 running; q3, q4 queued
 
-        let plan = r.engine.redownload(TestSupport.track("deleted"), home: false)
+        let plan = r.engine.redownload(TestSupport.track("deleted"))
 
         XCTAssertFalse(r.store.isSkipped("deleted"), "the entry is cleared")
         XCTAssertEqual(plan.download.map(\.songKey), ["deleted"])
@@ -109,10 +109,10 @@ final class SkipListEngineTests: XCTestCase {
         let r = try rig()
         r.store.addSkipped(["deleted"])
         let t = TestSupport.track("deleted")
-        r.engine.redownload(t, home: false)
+        r.engine.redownload(t)
         try r.finish(try XCTUnwrap(r.transport.started.first).info)
         XCTAssertNotNil(r.store.fileURL(songKey: "deleted"))
-        XCTAssertTrue(r.engine.enqueue([t], home: false).skipped.contains("deleted"), "present now: skipped as usual")
+        XCTAssertTrue(r.engine.enqueue([t]).skipped.contains("deleted"), "present now: skipped as usual")
         XCTAssertFalse(r.store.isSkipped("deleted"))
     }
 
@@ -128,7 +128,7 @@ final class SkipListEngineTests: XCTestCase {
         let first = try EngineRig(persistQueue: true)
         let dir = first.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
-        first.engine.enqueue((1...4).map { TestSupport.track("q\($0)") }, home: false)      // q3, q4 queued and persisted
+        first.engine.enqueue((1...4).map { TestSupport.track("q\($0)") })      // q3, q4 queued and persisted
         first.store.addSkipped(["q4"])
 
         let second = try EngineRig(persistQueue: true, root: first.root)
@@ -142,7 +142,7 @@ final class SkipListEngineTests: XCTestCase {
         // A failed download keeps its job for "Riprova"; if the user deleted another copy meanwhile the planner decides.
         let r = try rig()
         let t = TestSupport.track("a")
-        r.engine.enqueue([t], home: false)
+        r.engine.enqueue([t])
         r.fail(try XCTUnwrap(r.transport.started.first).info, message: "timeout")
         r.store.addSkipped(["a"])
         r.engine.retry(songKey: "a")
@@ -153,26 +153,25 @@ final class SkipListEngineTests: XCTestCase {
 /// Playing a skip-listed song streams it and must NOT start the parallel download.
 final class SkipListFirstPlayTests: XCTestCase {
     private let cfg = MondropAPIConfig.test
-    private let media = "http://192.168.178.10:49200/AUDIO/DLNA-1-0/Music/a.mp3"
 
-    private func decide(_ track: OfflineTrack?, local: URL? = nil, home: Bool = false, skipListed: Bool) -> FirstPlayDecision {
-        FirstPlay.decide(songKey: "a", track: track, local: local, home: home, config: cfg, skipListed: skipListed)
+    private func decide(_ track: OfflineTrack?, local: URL? = nil, skipListed: Bool) -> FirstPlayDecision {
+        FirstPlay.decide(songKey: "a", track: track, local: local, config: cfg, skipListed: skipListed)
     }
 
     func testASkipListedReadySongStreamsWithoutAParallelDownload() {
         let t = TestSupport.track("a")
         guard case .streamWithoutDownload(let sources) = decide(t, skipListed: true) else { return XCTFail("expected streamWithoutDownload") }
-        XCTAssertEqual(sources.map(\.kind), [.proxy])
+        XCTAssertEqual(sources.map(\.isLocal), [false])
         XCTAssertEqual(sources[0].url.absoluteString, "https://soundreel.test/api/mondrop/songs/a/file")
     }
 
-    func testTheStreamSourcesAreTheSameAsForANormalFirstPlay() {
-        let t = TestSupport.track("a", mediaUrl: media)
-        guard case .stream(let normal, _) = decide(t, home: true, skipListed: false),
-              case .streamWithoutDownload(let skipped) = decide(t, home: true, skipListed: true) else { return XCTFail() }
-        XCTAssertEqual(normal, skipped, "same media-server-first order, same auth rules")
-        XCTAssertEqual(skipped.map(\.kind), [.media, .proxy])
-        XCTAssertTrue(skipped[0].headers.isEmpty)
+    func testTheStreamSourcesAreTheSameAsForANormalFirstPlay() throws {
+        let t = try TestSupport.trackFromAnOlderServer("a")
+        guard case .stream(let normal, _) = decide(t, skipListed: false),
+              case .streamWithoutDownload(let skipped) = decide(t, skipListed: true) else { return XCTFail() }
+        XCTAssertEqual(normal, skipped, "same address, same auth rules")
+        XCTAssertEqual(skipped.map(\.url.absoluteString), ["https://soundreel.test/api/mondrop/songs/a/file"], "SoundReel only, whatever the manifest carries")
+        XCTAssertFalse(skipped[0].headers.isEmpty)
     }
 
     func testNotSkipListedStillDownloadsInParallel() {
@@ -183,7 +182,7 @@ final class SkipListFirstPlayTests: XCTestCase {
 
     func testTheDefaultIsNotSkipListed() {
         let t = TestSupport.track("a")
-        guard case .stream = FirstPlay.decide(songKey: "a", track: t, local: nil, home: false, config: cfg) else { return XCTFail() }
+        guard case .stream = FirstPlay.decide(songKey: "a", track: t, local: nil, config: cfg) else { return XCTFail() }
     }
 
     func testALocalFileStillWinsOverTheSkipList() {
@@ -285,7 +284,7 @@ final class SkipListCoordinatorTests: XCTestCase {
         api.scriptPrepare("pl1", [TestSupport.manifest("pl1", [TestSupport.track("deleted"), TestSupport.track("kept")])])
         rig.store.addSkipped(["deleted"])
         let coordinator = PlaylistSyncCoordinator(
-            playlist: MondropPlaylist(id: "pl1", name: "P", songCount: 2), api: api, engine: rig.engine, net: NetStatus(),
+            playlist: MondropPlaylist(id: "pl1", name: "P", songCount: 2), api: api, engine: rig.engine,
             clock: FakeClock().clock
         )
 

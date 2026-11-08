@@ -85,7 +85,6 @@ struct PlaylistOfflineView: View {
                 playlist: playlist,
                 api: MondropAPI(),
                 engine: .shared,
-                net: .shared,
                 activity: .shared,
                 // The right moment to ask iOS for notifications, once: the user has just started a sync. And to refresh the
                 // playlists the share sheet offers.
@@ -170,6 +169,8 @@ struct PlaylistOfflineView: View {
         }
         .navigationTitle(playlist.name)
         .task { await model.load() }
+        // The «Rete: casa / internet» line is information only (rule P): sync and play do not read it.
+        .task { if net.info == nil { await net.refresh(api: MondropAPI()) } }
         .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
         .safeAreaInset(edge: .bottom, spacing: 0) { MiniPlayerBar(onOpenQueue: { showQueue = true }) }
         .sheet(isPresented: $showQueue) { QueueView() }

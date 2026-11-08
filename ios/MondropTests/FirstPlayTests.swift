@@ -4,11 +4,10 @@ import XCTest
 /// First-play rule: on the device → local file; otherwise stream NOW and download in parallel.
 final class FirstPlayDecisionTests: XCTestCase {
     private let cfg = MondropAPIConfig.test
-    private let media = "http://192.168.178.10:49200/AUDIO/DLNA-1-0/Music/a.mp3"
     private let file = URL(fileURLWithPath: "/var/mobile/Application Support/Mondrop/Offline/a.mp3")
 
-    private func decide(_ track: OfflineTrack?, local: URL? = nil, home: Bool = false) -> FirstPlayDecision {
-        FirstPlay.decide(songKey: "a", track: track, local: local, home: home, config: cfg)
+    private func decide(_ track: OfflineTrack?, local: URL? = nil) -> FirstPlayDecision {
+        FirstPlay.decide(songKey: "a", track: track, local: local, config: cfg)
     }
 
     func testAlreadyOnTheDevicePlaysTheLocalFileWhateverTheServerSays() {
@@ -23,25 +22,34 @@ final class FirstPlayDecisionTests: XCTestCase {
         guard case .stream(let sources, let download) = decide(t) else { return XCTFail("expected stream") }
         XCTAssertEqual(download, t, "the same track is what gets downloaded for next time")
         XCTAssertEqual(sources.count, 1)
-        XCTAssertEqual(sources[0].kind, .proxy)
         XCTAssertEqual(sources[0].url.absoluteString, "https://soundreel.test/api/mondrop/songs/a/file")
         XCTAssertEqual(sources[0].headers["X-SoundReel-Key"], "sr_test_key_0123456789abcdef")
         XCTAssertEqual(sources[0].headers["X-SoundReel-User"], "mike")
         XCTAssertFalse(sources[0].isLocal)
     }
 
-    func testAtHomeItStreamsFromTheMediaServerWithoutHeadersThenFallsBackToTheProxy() {
-        let t = TestSupport.track("a", mediaUrl: media)
-        guard case .stream(let sources, _) = decide(t, home: true) else { return XCTFail("expected stream") }
-        XCTAssertEqual(sources.map(\.kind), [.media, .proxy])
-        XCTAssertEqual(sources[0].url.absoluteString, media)
-        XCTAssertTrue(sources[0].headers.isEmpty, "the media server never sees the API key")
-        XCTAssertFalse(sources[1].headers.isEmpty)
+    /// Rule P (ADR-0018): a stream is SoundReel's, with the key, whatever the manifest carries and wherever the phone is.
+    func testAStreamIsAlwaysSoundReelWithTheKeyEvenWhenTheManifestCarriesAStoreAddress() throws {
+        let t = try TestSupport.trackFromAnOlderServer("a")
+        guard case .stream(let sources, let download) = decide(t) else { return XCTFail("expected stream") }
+        XCTAssertEqual(sources.map(\.url.absoluteString), ["https://soundreel.test/api/mondrop/songs/a/file"])
+        XCTAssertEqual(sources[0].headers["X-SoundReel-Key"], "sr_test_key_0123456789abcdef")
+        XCTAssertFalse(sources[0].isLocal)
+        XCTAssertEqual(download, t)
+        XCTAssertFalse(sources.contains { $0.url.absoluteString.contains("192.168.") || $0.url.port == 49200 })
     }
 
-    func testAwayFromHomeTheMediaServerIsNotEvenTried() {
-        guard case .stream(let sources, _) = decide(TestSupport.track("a", mediaUrl: media), home: false) else { return XCTFail("expected stream") }
-        XCTAssertEqual(sources.map(\.kind), [.proxy])
+    func testTheStreamSourcesDoNotDependOnAnythingButTheTrackAndTheConfig() {
+        let t = TestSupport.track("a")
+        XCTAssertEqual(FirstPlay.streamSources(for: t, config: cfg), FirstPlay.streamSources(for: t, config: cfg))
+        XCTAssertEqual(FirstPlay.streamSources(for: t, config: cfg).map(\.isLocal), [false])
+    }
+
+    func testALocalSourceIsAFileWithNoHeaders() {
+        let source = PlaybackSource.local(file)
+        XCTAssertTrue(source.isLocal)
+        XCTAssertTrue(source.headers.isEmpty)
+        XCTAssertEqual(source.url, file)
     }
 
     func testNotPreparedYetAsksTheServerWithPriority() {
@@ -62,7 +70,7 @@ final class FirstPlayDecisionTests: XCTestCase {
 
     func testReadyWithoutAnyUsableAddressIsUnavailable() {
         let noBase = MondropAPIConfig(baseURL: "", apiKey: "k", user: "u")
-        let d = FirstPlay.decide(songKey: "a", track: TestSupport.track("a"), local: nil, home: false, config: noBase)
+        let d = FirstPlay.decide(songKey: "a", track: TestSupport.track("a"), local: nil, config: noBase)
         guard case .unavailable = d else { return XCTFail("expected unavailable") }
     }
 

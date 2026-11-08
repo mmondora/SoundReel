@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum RootTab: Hashable {
-    case player, library, playlists, inbox, share, settings
+    case player, search, playlists, inbox, share, settings
 }
 
 struct RootTabView: View {
@@ -15,18 +15,19 @@ struct RootTabView: View {
     var body: some View {
         TabView(selection: $selection) {
             NavigationStack {
-                // Nothing in the queue → «Scegli dalla Libreria» takes the user to the place where music is chosen.
-                WinampPlayerView(onChoose: { selection = .library })
+                // Nothing in the queue → «Cerca musica» takes the user to the place where music is chosen.
+                WinampPlayerView(onChoose: { selection = .search })
             }
             .tabItem { Label("Player", systemImage: "hifispeaker") }
             .tag(RootTab.player)
 
             NavigationStack {
-                // Choosing starts the queue: the mini player and «In coda» stay on this screen, the user keeps browsing.
-                LibraryView()
+                // Like Spotify: one field, always visible. Choosing starts the queue; the mini player and «In coda» stay on
+                // this screen, the user keeps looking. The old «Libreria» (browse by album, author, year…) lives inside it.
+                SearchView()
             }
-            .tabItem { Label("Libreria", systemImage: "music.note.house") }
-            .tag(RootTab.library)
+            .tabItem { Label("Cerca", systemImage: "magnifyingglass") }
+            .tag(RootTab.search)
 
             NavigationStack {
                 PlaylistsView()

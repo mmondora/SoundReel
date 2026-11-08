@@ -121,65 +121,57 @@ final class SyncPlannerTests: XCTestCase {
 
 final class DownloadURLChooserTests: XCTestCase {
     private let base = "https://soundreel.test"
-    private let media = "http://192.168.178.10:49200/AUDIO/DLNA-1-0/Music/a.mp3"
+    private let proxy = "https://soundreel.test/api/mondrop/songs/a/file"
 
-    func testAtHomeMediaServerComesFirstThenTheProxy() {
-        let t = TestSupport.track("a", mediaUrl: media)
-        let c = DownloadURLChooser.candidates(for: t, home: true, baseURL: base)
-        XCTAssertEqual(c.map(\.kind), [.media, .proxy])
-        XCTAssertEqual(c[0].url.absoluteString, media)
-        XCTAssertEqual(c[1].url.absoluteString, "https://soundreel.test/api/mondrop/songs/a/file")
-    }
-
-    func testAwayFromHomeOnlyTheProxy() {
-        let t = TestSupport.track("a", mediaUrl: media)
-        let c = DownloadURLChooser.candidates(for: t, home: false, baseURL: base)
-        XCTAssertEqual(c.map(\.kind), [.proxy])
-    }
-
-    func testNoMediaUrlMeansProxyEvenAtHome() {
-        let c = DownloadURLChooser.candidates(for: TestSupport.track("a"), home: true, baseURL: base)
-        XCTAssertEqual(c.map(\.kind), [.proxy])
-    }
-
-    func testTheApiKeyNeverGoesToTheMediaServer() {
-        let c = DownloadURLChooser.candidates(for: TestSupport.track("a", mediaUrl: media), home: true, baseURL: base)
-        XCTAssertFalse(c[0].sendsAuth)
-        XCTAssertTrue(c[1].sendsAuth)
-    }
-
-    func testNonHttpMediaUrlsAreIgnored() {
-        for bad in ["file:///etc/passwd", "javascript:alert(1)", "ftp://192.168.178.10/a.mp3", "not a url", "", "http://"] {
-            let c = DownloadURLChooser.candidates(for: TestSupport.track("a", mediaUrl: bad), home: true, baseURL: base)
-            XCTAssertEqual(c.map(\.kind), [.proxy], "mediaUrl \(bad.debugDescription) must be ignored")
+    /// Rule P (ADR-0018): the only address of a song is SoundReel's. A server older than 2.13.0 still sends the address of a
+    /// store file next to `downloadPath`; the app decodes it and never uses it, whatever it looks like.
+    func testTheOnlyAddressIsSoundReelWhateverTheManifestCarries() throws {
+        let addresses = [
+            TestSupport.storeAddress,                                   // the media server's LAN address
+            "https://192.168.178.10:49200/a.mp3", "https://example.org/a.mp3",
+            "file:///etc/passwd", "javascript:alert(1)", "ftp://192.168.178.10/a.mp3", "not a url", "", "http://",
+        ]
+        for address in addresses {
+            let t = try TestSupport.trackFromAnOlderServer("a", address: address)
+            let c = DownloadURLChooser.candidates(for: t, baseURL: base)
+            XCTAssertEqual(c.map(\.url.absoluteString), [proxy], "the address \(address.debugDescription) must play no part")
         }
+    }
+
+    func testThereIsNoSecondAttemptAndNoAddressThatIsNotSoundReels() throws {
+        let c = DownloadURLChooser.candidates(for: try TestSupport.trackFromAnOlderServer("a"), baseURL: base)
+        XCTAssertEqual(c.count, 1)
+        XCTAssertEqual(c[0].url.host, "soundreel.test")
+        XCTAssertEqual(c[0].url.scheme, "https")
     }
 
     func testAbsoluteDownloadPathIsNeverFollowedWithTheKey() {
         // A path with a host in it would make the app hand its API key to that host.
         let evil = TestSupport.track("a", downloadPath: "https://evil.example/steal")
-        let c = DownloadURLChooser.candidates(for: evil, home: false, baseURL: base)
+        let c = DownloadURLChooser.candidates(for: evil, baseURL: base)
         XCTAssertEqual(c.count, 1)
         XCTAssertEqual(c[0].url.host, "soundreel.test")
         XCTAssertEqual(c[0].url.path, "/api/mondrop/songs/a/file")
         let protocolRelative = TestSupport.track("a", downloadPath: "//evil.example/x")
-        XCTAssertEqual(DownloadURLChooser.candidates(for: protocolRelative, home: false, baseURL: base)[0].url.host, "soundreel.test")
+        XCTAssertEqual(DownloadURLChooser.candidates(for: protocolRelative, baseURL: base)[0].url.host, "soundreel.test")
+        let local = TestSupport.track("a", downloadPath: TestSupport.storeAddress)
+        XCTAssertEqual(DownloadURLChooser.candidates(for: local, baseURL: base)[0].url.host, "soundreel.test", "a store address in downloadPath is no better")
     }
 
     func testBaseUrlTrailingSlashAndRelativePathAreNormalised() {
         let t = TestSupport.track("a", downloadPath: "api/mondrop/songs/a/file")
-        let c = DownloadURLChooser.candidates(for: t, home: false, baseURL: "https://soundreel.test/")
+        let c = DownloadURLChooser.candidates(for: t, baseURL: "https://soundreel.test/")
         XCTAssertEqual(c[0].url.absoluteString, "https://soundreel.test/api/mondrop/songs/a/file")
     }
 
     func testMissingDownloadPathFallsBackToTheCanonicalOne() {
         let t = OfflineTrack(songKey: "bishop briggs::white flag", state: "ready")
-        let c = DownloadURLChooser.candidates(for: t, home: false, baseURL: base)
+        let c = DownloadURLChooser.candidates(for: t, baseURL: base)
         XCTAssertEqual(c[0].url.absoluteString, "https://soundreel.test/api/mondrop/songs/bishop%20briggs%3A%3Awhite%20flag/file")
     }
 
     func testNoBaseUrlNoProxy() {
-        XCTAssertTrue(DownloadURLChooser.candidates(for: TestSupport.track("a"), home: false, baseURL: " / ").isEmpty)
+        XCTAssertTrue(DownloadURLChooser.candidates(for: TestSupport.track("a"), baseURL: " / ").isEmpty)
     }
 }
 

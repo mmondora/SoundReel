@@ -10,7 +10,6 @@ final class PlaylistSyncCoordinatorTests: XCTestCase {
         let api: FakeAPI
         let engineRig: EngineRig
         let clock: FakeClock
-        let net: NetStatus
         let coordinator: PlaylistSyncCoordinator
         var transport: FakeTransport { engineRig.transport }
         var engine: SyncEngine { engineRig.engine }
@@ -23,17 +22,15 @@ final class PlaylistSyncCoordinatorTests: XCTestCase {
         let dir = engineRig.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         let clock = FakeClock()
-        let net = NetStatus()
         let coordinator = PlaylistSyncCoordinator(
             playlist: MondropPlaylist(id: playlistId, name: "Road trip", songCount: 3),
             api: api,
             engine: engineRig.engine,
-            net: net,
             clock: clock.clock,
             pollInterval: 5,
             pollTimeout: pollTimeout
         )
-        return Rig(api: api, engineRig: engineRig, clock: clock, net: net, coordinator: coordinator)
+        return Rig(api: api, engineRig: engineRig, clock: clock, coordinator: coordinator)
     }
 
     private func m(_ tracks: [OfflineTrack]) -> OfflineManifest { TestSupport.manifest("pl1", tracks) }
@@ -47,8 +44,9 @@ final class PlaylistSyncCoordinatorTests: XCTestCase {
 
         await r.coordinator.sync()
 
-        XCTAssertEqual(r.api.calls.first, "net")
-        XCTAssertTrue(r.api.calls.contains("prepare:pl1:retry=false"))
+        // Rule P (ADR-0018): a sync never asks where the phone is; it prepares, then downloads from SoundReel.
+        XCTAssertEqual(r.api.calls.first, "prepare:pl1:retry=false")
+        XCTAssertFalse(r.api.calls.contains("net"), "the network the phone is on decides nothing")
         XCTAssertEqual(r.transport.startedKeys, ["a"], "only ready tracks are downloaded")
         XCTAssertEqual(r.coordinator.phase, .idle)
         XCTAssertNil(r.coordinator.errorText)
@@ -317,26 +315,15 @@ final class NetStatusTests: XCTestCase {
         XCTAssertNotNil(net.lastError)
     }
 
-    func testHomeIsCachedUntilItExpiresOrTheNetworkChanges() async {
+    func testTheNetworkChangingForgetsWhenItWasLastChecked() async {
         let api = FakeAPI()
         let clock = Clock()
         let net = NetStatus(now: { clock.now })
-
-        let first = await net.currentHome(maxAge: 120, api: api)
-        XCTAssertTrue(first)
-        clock.now.addTimeInterval(60)
-        _ = await net.currentHome(maxAge: 120, api: api)
-        XCTAssertEqual(api.calls.filter { $0 == "net" }.count, 1, "fresh answer reused: playing a track must not wait for the network")
-
-        clock.now.addTimeInterval(61)                              // expired
-        _ = await net.currentHome(maxAge: 120, api: api)
-        XCTAssertEqual(api.calls.filter { $0 == "net" }.count, 2)
-
+        await net.refresh(api: api)
+        XCTAssertNotNil(net.checkedAt)
         net.invalidate()                                           // Wi-Fi ↔ cellular
-        api.setNet(.success(NetInfo(viaCloudflare: true, home: false)))
-        let second = await net.currentHome(maxAge: 120, api: api)
-        XCTAssertFalse(second)
-        XCTAssertEqual(api.calls.filter { $0 == "net" }.count, 3)
+        XCTAssertNil(net.checkedAt)
+        XCTAssertEqual(net.label, "casa", "the last answer stays on screen until the next check")
     }
 
     func testWaitingForWifiHint() {
@@ -344,13 +331,5 @@ final class NetStatusTests: XCTestCase {
         XCTAssertFalse(WifiHint.isWaitingForWifi(onExpensivePath: false, allowCellular: false, activeDownloads: 2), "on Wi-Fi nothing waits")
         XCTAssertFalse(WifiHint.isWaitingForWifi(onExpensivePath: true, allowCellular: true, activeDownloads: 2), "the user allowed cellular")
         XCTAssertFalse(WifiHint.isWaitingForWifi(onExpensivePath: true, allowCellular: false, activeDownloads: 0), "nothing to wait for")
-    }
-
-    func testUnknownNetworkIsTreatedAsNotHome() async {
-        let api = FakeAPI()
-        api.setNet(.failure(MondropAPIError.transport("offline")))
-        let net = NetStatus()
-        let home = await net.currentHome(api: api)
-        XCTAssertFalse(home, "the proxy always works, the media server may not")
     }
 }

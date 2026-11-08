@@ -219,7 +219,7 @@ struct QueueView: View {
             List {
                 if player.queue.isEmpty {
                     Section {
-                        Text("Niente in coda. Scegli una playlist, un album, un autore, un tipo, un decennio o un brano dalla Libreria.")
+                        Text("Niente in coda. Cerca un brano, un artista o un album, o sfoglia per playlist, tipo e anno.")
                             .foregroundStyle(.secondary)
                     }
                 } else {
@@ -252,7 +252,7 @@ struct QueueView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     if let onChooseMore {
-                        Button("Libreria") {
+                        Button("Cerca") {
                             dismiss()
                             onChooseMore()
                         }

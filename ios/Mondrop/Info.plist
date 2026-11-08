@@ -19,14 +19,15 @@
 	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<!-- HTTP only to local-network hosts (the home media server); everything else stays HTTPS. -->
+		<!-- Everything is HTTPS and goes to SoundReel only (rule P, ADR-0018): no exception for the local network any more.
+		     The app has no direct path to the media server. -->
 		<key>NSAllowsArbitraryLoads</key>
 		<false/>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
 	</dict>
+	<!-- At home SoundReel's name resolves to an address of the local network (split-horizon DNS), and iOS then asks for the
+	     «Rete locale» permission: this is what the question says. -->
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Mondrop scarica i brani direttamente dal media server di casa, sulla tua rete locale.</string>
+	<string>Quando sei a casa, Mondrop parla con il server SoundReel direttamente sulla tua rete locale.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

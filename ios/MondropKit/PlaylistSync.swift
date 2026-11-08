@@ -23,7 +23,6 @@ public final class PlaylistSyncCoordinator: ObservableObject {
     public let playlist: MondropPlaylist
     private let api: MondropAPIProtocol
     private let engine: SyncEngine
-    private let net: NetStatus
     private let clock: PreparationClock
     private let pollInterval: TimeInterval
     private let pollTimeout: TimeInterval
@@ -38,7 +37,6 @@ public final class PlaylistSyncCoordinator: ObservableObject {
         playlist: MondropPlaylist,
         api: MondropAPIProtocol,
         engine: SyncEngine,
-        net: NetStatus,
         clock: PreparationClock = .real,
         pollInterval: TimeInterval = 5,
         pollTimeout: TimeInterval = 600,
@@ -48,7 +46,6 @@ public final class PlaylistSyncCoordinator: ObservableObject {
         self.playlist = playlist
         self.api = api
         self.engine = engine
-        self.net = net
         self.clock = clock
         self.pollInterval = pollInterval
         self.pollTimeout = pollTimeout
@@ -84,12 +81,11 @@ public final class PlaylistSyncCoordinator: ObservableObject {
         phase = .syncing
         message = "Preparo la playlist…"
         errorText = nil
-        let home = await net.currentHome(api: api)
         do {
             let prepared = try await api.prepare(playlistId: playlist.id, retryFailed: retryFailed)
             Self.syncRequested.insert(playlist.id)
             accept(prepared)
-            let plan = engine.enqueue(prepared.tracks, home: home)
+            let plan = engine.enqueue(prepared.tracks)
             message = Self.summary(plan: plan, manifest: prepared)
             phase = .idle
             await pollWhilePreparing(download: true)
@@ -111,7 +107,6 @@ public final class PlaylistSyncCoordinator: ObservableObject {
     private func pollWhilePreparing(download: Bool) async {
         guard phase == .idle, let first = manifest, first.preparingCount > 0 else { return }
         phase = .polling
-        let home = await net.currentHome(api: api)
         let started = clock.now()
         while let current = manifest, current.preparingCount > 0 {
             if clock.now().timeIntervalSince(started) >= pollTimeout {
@@ -128,7 +123,7 @@ public final class PlaylistSyncCoordinator: ObservableObject {
                 let next = try await api.offlineManifest(playlistId: playlist.id)
                 accept(next)
                 if download {
-                    let plan = engine.enqueue(next.tracks, home: home)
+                    let plan = engine.enqueue(next.tracks)
                     message = Self.summary(plan: plan, manifest: next)
                 }
                 errorText = nil
@@ -181,8 +176,7 @@ public final class PlaylistSyncCoordinator: ObservableObject {
     /// "Riscarica": the user wants a song they deleted back. Clears the skip-list entry and downloads it now.
     public func redownload(songKey: String) async {
         guard let track = manifest?.tracks.first(where: { $0.songKey == songKey }) else { return }
-        let home = await net.currentHome(api: api)
-        engine.redownload(track, home: home)
+        engine.redownload(track)
     }
 
     static func summary(plan: SyncPlan, manifest: OfflineManifest) -> String {

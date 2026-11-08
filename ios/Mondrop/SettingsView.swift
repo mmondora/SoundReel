@@ -108,6 +108,9 @@ struct SettingsView: View {
                         .foregroundStyle(.green)
                 }
             }
+
+            // Last, apart from the everyday options: deletion is a special option.
+            deletionSection
         }
         .navigationTitle("Impostazioni")
         #if os(iOS)
@@ -163,15 +166,26 @@ struct SettingsView: View {
             if let error = net.lastError {
                 Text(error).font(.footnote).foregroundStyle(.secondary)
             }
+        } header: {
+            Text("Sync")
+        } footer: {
+            Text("I download del Sync usano solo il Wi-Fi, salvo che attivi la rete cellulare. I brani arrivano sempre e solo da SoundReel, a casa e fuori casa. Quando un Sync finisce e l'app non è aperta ti arriva una notifica con quanti brani sono stati scaricati e quanti errori ci sono (iOS lo chiede la prima volta). Quanto pesano i brani e come toglierli: in «Cancellazione», qui sotto.")
+        }
+    }
+
+    /// The ONE place where songs are removed from the phone (spec 2026-11-08-mondrop-deletion-in-settings-design.md): not in the
+    /// player, not in the lists, not in the bar of the search. A section of its own, away from the everyday options.
+    private var deletionSection: some View {
+        Section {
             NavigationLink {
                 SpaceView()
             } label: {
                 Label("Spazio e brani scaricati", systemImage: "internaldrive")
             }
         } header: {
-            Text("Sync")
+            Text("Cancellazione")
         } footer: {
-            Text("I download del Sync usano solo il Wi-Fi, salvo che attivi la rete cellulare. A casa i brani arrivano direttamente dal media server (il file non passa da internet); fuori casa dal server SoundReel. Quando un Sync finisce e l'app non è aperta ti arriva una notifica con quanti brani sono stati scaricati e quanti errori ci sono (iOS lo chiede la prima volta). In «Spazio» vedi quanto pesano i brani, elimini i meno ascoltati (doppia conferma per più brani) e riscarichi ciò che serve.")
+            Text("È l'unico posto in cui Mondrop toglie brani dal telefono. Ogni cancellazione chiede conferma (più brani, due volte) e non si può annullare; i brani tolti restano su SoundReel e si possono riscaricare. Dal Player, da Cerca e dalle playlist non si cancella niente.")
         }
     }
 

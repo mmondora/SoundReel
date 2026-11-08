@@ -18,16 +18,20 @@ public struct QueueItem: Identifiable, Equatable, Sendable {
     public let songKey: String
     public let title: String
     public let artist: String
+    /// The provider's cover address (older servers). NOT fetched by the app any more: it asks SoundReel for `coverPath` (rule P).
     public let coverURL: String?
+    /// Relative path to ask SoundReel for the cover (ADR-0019); nil = the canonical path of the song.
+    public let coverPath: String?
     public let lyrics: String?
     /// Server view of the track (urls, state). nil for items that only exist on the device.
     public let track: OfflineTrack?
 
-    public init(songKey: String, title: String, artist: String, coverURL: String? = nil, lyrics: String? = nil, track: OfflineTrack? = nil) {
+    public init(songKey: String, title: String, artist: String, coverURL: String? = nil, coverPath: String? = nil, lyrics: String? = nil, track: OfflineTrack? = nil) {
         self.songKey = songKey
         self.title = title
         self.artist = artist
         self.coverURL = coverURL
+        self.coverPath = coverPath
         self.lyrics = lyrics
         self.track = track
     }
@@ -37,7 +41,7 @@ public struct QueueItem: Identifiable, Equatable, Sendable {
     }
 
     public init(track: OfflineTrack) {
-        self.init(songKey: track.songKey, title: track.title, artist: track.artist, coverURL: track.coverUrl, lyrics: track.lyrics, track: track)
+        self.init(songKey: track.songKey, title: track.title, artist: track.artist, coverURL: track.coverUrl, coverPath: track.coverPath, lyrics: track.lyrics, track: track)
     }
 }
 
@@ -57,7 +61,9 @@ public final class LocalAudioPlayer: ObservableObject {
 
     @Published public private(set) var title: String = ""
     @Published public private(set) var artist: String = ""
-    @Published public private(set) var coverURL: URL? = nil
+    /// The cover of the song playing (the image itself: SoundReel found it, the phone kept it), or nil when there is none and the
+    /// player draws its own.
+    @Published public private(set) var coverData: Data? = nil
     @Published public private(set) var lyrics: String = ""
     @Published public private(set) var playing: Bool = false
     @Published public private(set) var index: Int = 0
@@ -159,6 +165,20 @@ public final class LocalAudioPlayer: ObservableObject {
         setQueue(items.map { QueueItem(local: $0) }, startAt: startAt, playlistId: nil, label: LibraryChoice.onPhone.label)
     }
 
+    /// «Aggiungi in coda» (long press on a song of «Cerca»): after the songs already queued (see `QueueAppend`: a song already
+    /// in the queue stays where it is, one that cannot play is not queued). With nothing queued it simply starts.
+    @discardableResult
+    public func append(_ tracks: [OfflineTrack], isLocal: (String) -> Bool) -> QueueAppend.Outcome {
+        let merged = QueueAppend.merge(existing: queue, adding: tracks, isLocal: isLocal)
+        guard merged.added > 0 else { return merged.outcome }
+        if queue.isEmpty {
+            setQueue(merged.queue, startAt: 0, playlistId: nil, label: "Aggiunti dalla ricerca")
+        } else {
+            queue = merged.queue
+        }
+        return merged.outcome
+    }
+
     public func play(at i: Int) {
         guard queue.indices.contains(i) else { return }
         resolveTask?.cancel()
@@ -171,7 +191,7 @@ public final class LocalAudioPlayer: ObservableObject {
         let entry = queue[i]
         title = entry.title
         artist = entry.artist
-        coverURL = entry.coverURL.flatMap { URL(string: $0) }
+        coverData = CoverLoader.shared.cached(songKey: entry.songKey)       // what the phone already has, at once, offline too
         lyrics = store.lyrics(for: entry.songKey) ?? entry.lyrics ?? ""
         artworkImage = nil
         currentTime = 0
@@ -180,11 +200,11 @@ public final class LocalAudioPlayer: ObservableObject {
 
         // 1) already on the device → the file, no network at all.
         if let file = store.fileURL(songKey: entry.songKey) {
-            start(sources: [PlaybackSource(url: file, headers: [:], kind: nil)], status: .local)
+            start(sources: [PlaybackSource.local(file)], status: .local)
             return
         }
 
-        // 2) first play: decide with the freshest idea of "am I at home".
+        // 2) first play: SoundReel has it (or is asked to prepare it); the network the phone is on changes nothing.
         playbackStatus = .preparing
         resolveTask = Task { [weak self] in
             await self?.resolveRemote(entry, at: i)
@@ -192,16 +212,15 @@ public final class LocalAudioPlayer: ObservableObject {
     }
 
     private func resolveRemote(_ entry: QueueItem, at i: Int) async {
-        let home = await NetStatus.shared.currentHome(api: api)
         guard !Task.isCancelled, index == i else { return }
         let config = MondropAPIConfig.current()
         // The user deleted this song from the phone to save space: stream it, never download it again behind his back.
         let skipListed = store.isSkipped(entry.songKey)
-        switch FirstPlay.decide(songKey: entry.songKey, track: entry.track, local: store.fileURL(songKey: entry.songKey), home: home, config: config, skipListed: skipListed) {
+        switch FirstPlay.decide(songKey: entry.songKey, track: entry.track, local: store.fileURL(songKey: entry.songKey), config: config, skipListed: skipListed) {
         case .local(let url):
-            start(sources: [PlaybackSource(url: url, headers: [:], kind: nil)], status: .local)
+            start(sources: [PlaybackSource.local(url)], status: .local)
         case .stream(let sources, let download):
-            SyncEngine.shared.enqueue([download], home: home, front: true, origin: .play)   // in parallel, for next time
+            SyncEngine.shared.enqueue([download], front: true, origin: .play)   // in parallel, for next time
             start(sources: sources, status: .streaming)
         case .streamWithoutDownload(let sources):
             start(sources: sources, status: .streaming)
@@ -214,11 +233,11 @@ public final class LocalAudioPlayer: ObservableObject {
                 let ready = try await PlaybackPreparation.awaitReady(track, api: api)
                 guard !Task.isCancelled, index == i else { return }
                 store.recordServerNumbers(songKey: ready.songKey, plays: ready.plays, lastPlayedAt: ready.lastPlayedDate)
-                switch FirstPlay.decide(songKey: entry.songKey, track: ready, local: store.fileURL(songKey: entry.songKey), home: home, config: config, skipListed: skipListed) {
+                switch FirstPlay.decide(songKey: entry.songKey, track: ready, local: store.fileURL(songKey: entry.songKey), config: config, skipListed: skipListed) {
                 case .local(let url):
-                    start(sources: [PlaybackSource(url: url, headers: [:], kind: nil)], status: .local)
+                    start(sources: [PlaybackSource.local(url)], status: .local)
                 case .stream(let sources, let download):
-                    SyncEngine.shared.enqueue([download], home: home, front: true, origin: .play)
+                    SyncEngine.shared.enqueue([download], front: true, origin: .play)
                     start(sources: sources, status: .streaming)
                 case .streamWithoutDownload(let sources):
                     start(sources: sources, status: .streaming)
@@ -239,13 +258,13 @@ public final class LocalAudioPlayer: ObservableObject {
 
     // MARK: - AVPlayer plumbing
 
-    /// Tries the sources in order; a stream that fails to load (e.g. media server refused) falls back to the next.
+    /// Tries the sources in order (today there is one: the file, or SoundReel); a source that fails to load falls back to the next.
     private func start(sources: [PlaybackSource], status: PlaybackStatus) {
         pendingSources = sources
         playbackStatus = status
         if queue.indices.contains(index) {
             let entry = queue[index]
-            // One listening session per song start (a media-server → proxy fallback stays the same session).
+            // One listening session per song start (a fallback to the next source stays the same session).
             recorder.tracker.begin(
                 songKey: entry.songKey,
                 durationMs: entry.track?.durationS.map { $0 * 1000 },
@@ -430,26 +449,35 @@ public final class LocalAudioPlayer: ObservableObject {
 
     // MARK: - Artwork + Now Playing
 
+    /// The cover is SoundReel's business (ADR-0019): the phone's own copy if it has one, otherwise `GET coverPath`. Until it arrives,
+    /// and when the server has none, the lock screen shows the drawn cover.
     private func loadArtwork(for item: QueueItem) {
-        guard let raw = item.coverURL, let url = URL(string: raw) else {
-            artworkImage = Self.generatedArtwork(title: item.title, artist: item.artist, seed: item.songKey)
+        if let data = coverData, let art = Self.artwork(from: data) {
+            artworkImage = art
             publishNowPlaying()
             return
         }
-        Task {
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                #if canImport(UIKit)
-                if let img = UIImage(data: data) {
-                    artworkImage = MPMediaItemArtwork(boundsSize: img.size) { _ in img }
-                    publishNowPlaying()
-                    return
-                }
-                #endif
-            } catch { /* fall through */ }
-            artworkImage = Self.generatedArtwork(title: item.title, artist: item.artist, seed: item.songKey)
-            publishNowPlaying()
+        artworkImage = Self.generatedArtwork(title: item.title, artist: item.artist, seed: item.songKey)
+        publishNowPlaying()
+        let songKey = item.songKey
+        Task { [weak self] in
+            guard let data = await CoverLoader.shared.data(songKey: songKey, coverPath: item.coverPath) else { return }
+            guard let self, self.queue.indices.contains(self.index), self.queue[self.index].songKey == songKey else { return }   // the song changed meanwhile
+            self.coverData = data
+            if let art = Self.artwork(from: data) {
+                self.artworkImage = art
+                self.publishNowPlaying()
+            }
         }
+    }
+
+    private static func artwork(from data: Data) -> MPMediaItemArtwork? {
+        #if canImport(UIKit)
+        guard let img = UIImage(data: data) else { return nil }
+        return MPMediaItemArtwork(boundsSize: img.size) { _ in img }
+        #else
+        return nil
+        #endif
     }
 
     private static func generatedArtwork(title: String, artist: String, seed: String) -> MPMediaItemArtwork? {

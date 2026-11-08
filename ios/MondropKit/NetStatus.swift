@@ -1,4 +1,7 @@
-// NetStatus.swift — "Rete: casa / internet" from GET /api/mondrop/net, cached, reset when the network changes.
+// NetStatus.swift — "Rete: casa / internet" from GET /api/mondrop/net, reset when the network changes.
+//
+// INFORMATION for the Settings row, nothing else. Sync and play must never read it to choose where a file comes from:
+// the app talks to SoundReel only, whatever the network is (rule P, ADR-0018; Mondrop/RulePTests guards it).
 
 import Foundation
 import Network
@@ -25,7 +28,7 @@ public final class NetStatus: ObservableObject {
                 let expensive = path.isExpensive
                 Task { @MainActor in
                     self?.onExpensivePath = expensive
-                    self?.invalidate()   // Wi-Fi ↔ cellular ↔ other Wi-Fi: home may have changed
+                    self?.invalidate()   // Wi-Fi ↔ cellular ↔ other Wi-Fi: the answer may have changed
                 }
             }
             monitor.start(queue: DispatchQueue(label: "it.mikesoft.mondrop.netstatus", qos: .utility))
@@ -58,13 +61,6 @@ public final class NetStatus: ObservableObject {
             checkedAt = nil
             lastError = (error as? MondropAPIError)?.description ?? error.localizedDescription
         }
-    }
-
-    /// Cached for `maxAge`; on failure assume NOT home (the proxy always works, the media server may not).
-    public func currentHome(maxAge: TimeInterval = 120, api: MondropAPIProtocol) async -> Bool {
-        if let info, let checkedAt, now().timeIntervalSince(checkedAt) < maxAge { return info.home }
-        await refresh(api: api)
-        return info?.home ?? false
     }
 }
 

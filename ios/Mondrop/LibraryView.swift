@@ -1,6 +1,7 @@
-// LibraryView.swift — «Libreria»: where music is chosen. One playlist, one album, an artist, a tipo, a decade
-// («Anni 80») or a single song, with search; the choice becomes the queue shown as «In coda»
-// (spec 2026-11-08-player-selection-and-filters-design.md §X1–X3).
+// LibraryView.swift — «Libreria»: browse the music by playlist, album, author, tipo, decade («Anni 80») or song, with a
+// filter; the choice becomes the queue shown as «In coda» (spec 2026-11-08-player-selection-and-filters-design.md §X1–X3).
+// Since 1.7.0 it is no longer a tab: «Cerca» replaced the tab and opens this screen from its «Sfoglia» list
+// (spec 2026-11-08-mondrop-search-spotify-style-design.md S5).
 //
 // Online it browses `GET /api/mondrop/library`; offline — or with «Solo sul telefono» — it browses what is downloaded.
 // The rules (filters, headings, queue) are pure code in MondropKit; this file only draws and wires them.
@@ -57,12 +58,13 @@ struct LibraryView: View {
     @ObservedObject private var engine = SyncEngine.shared
     @State private var dimension: LibraryDimension = .playlists
     @State private var searchText = ""
-    @State private var onlyOnPhone = false
+    @State private var onlyOnPhone: Bool
     @State private var localKeys: Set<String> = []
     @State private var showQueue = false
 
-    init(initialDimension: LibraryDimension = .playlists) {
+    init(initialDimension: LibraryDimension = .playlists, onlyOnPhone: Bool = false) {
         _dimension = State(initialValue: initialDimension)
+        _onlyOnPhone = State(initialValue: onlyOnPhone)
         _model = StateObject(
             wrappedValue: LibraryBrowseModel(api: MondropAPI(), store: .shared, activity: .shared)
         )
@@ -100,13 +102,6 @@ struct LibraryView: View {
                     Button("Ricarica") { Task { await refresh() } }
                 } label: {
                     Label("Opzioni", systemImage: onlyOnPhone ? "iphone" : "ellipsis.circle")
-                }
-            }
-            ToolbarItem(placement: .navigation) {
-                NavigationLink {
-                    SpaceView()
-                } label: {
-                    Label("Spazio", systemImage: "internaldrive")
                 }
             }
         }

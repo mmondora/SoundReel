@@ -4,20 +4,22 @@
 
 import Foundation
 
-/// Where an AVPlayer item can be loaded from.
+/// Where an AVPlayer item can be loaded from: a file on the device, or SoundReel (rule P: nothing else).
 public struct PlaybackSource: Equatable, Sendable {
     public let url: URL
-    /// Auth headers for the proxy; EMPTY for the media server and for local files.
+    /// The SoundReel API-key headers for a stream; EMPTY for a file on the device.
     public let headers: [String: String]
-    /// nil = a file on the device.
-    public let kind: DownloadCandidate.Kind?
+    /// A file on the device (no network at all) rather than a stream from SoundReel.
+    public let isLocal: Bool
 
-    public var isLocal: Bool { kind == nil }
-
-    public init(url: URL, headers: [String: String], kind: DownloadCandidate.Kind?) {
+    public init(url: URL, headers: [String: String], isLocal: Bool) {
         self.url = url
         self.headers = headers
-        self.kind = kind
+        self.isLocal = isLocal
+    }
+
+    public static func local(_ url: URL) -> PlaybackSource {
+        PlaybackSource(url: url, headers: [:], isLocal: true)
     }
 }
 
@@ -40,7 +42,6 @@ public enum FirstPlay {
         songKey: String,
         track: OfflineTrack?,
         local: URL?,
-        home: Bool,
         config: MondropAPIConfig,
         skipListed: Bool = false
     ) -> FirstPlayDecision {
@@ -50,7 +51,7 @@ public enum FirstPlay {
         }
         switch track.resolvedState {
         case .ready:
-            let sources = streamSources(for: track, home: home, config: config)
+            let sources = streamSources(for: track, config: config)
             if sources.isEmpty { return .unavailable("nessun indirizzo per l'ascolto") }
             return skipListed ? .streamWithoutDownload(sources: sources) : .stream(sources: sources, download: track)
         case .preparing, .missing, .failed:
@@ -61,10 +62,10 @@ public enum FirstPlay {
         }
     }
 
-    /// Media server first at home (no auth headers), then the proxy (with auth). Same order as downloads.
-    public static func streamSources(for track: OfflineTrack, home: Bool, config: MondropAPIConfig) -> [PlaybackSource] {
-        DownloadURLChooser.candidates(for: track, home: home, baseURL: config.baseURL).map {
-            PlaybackSource(url: $0.url, headers: $0.sendsAuth ? config.authHeaders : [:], kind: $0.kind)
+    /// SoundReel, with the API key: the same address a download uses. The network the phone is on changes nothing.
+    public static func streamSources(for track: OfflineTrack, config: MondropAPIConfig) -> [PlaybackSource] {
+        DownloadURLChooser.candidates(for: track, baseURL: config.baseURL).map {
+            PlaybackSource(url: $0.url, headers: config.authHeaders, isLocal: false)
         }
     }
 }

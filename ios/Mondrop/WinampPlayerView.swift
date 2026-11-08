@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// Lightweight Winamp-style local player: cover, transport, lyrics. No video.
 struct WinampPlayerView: View {
@@ -9,7 +14,7 @@ struct WinampPlayerView: View {
     @State private var editingLyrics = false
     @State private var showQueue = false
 
-    /// «Scegli dalla Libreria»: the player has nothing to play until something is chosen.
+    /// «Cerca musica»: the player has nothing to play until something is chosen.
     var onChoose: () -> Void = {}
 
     var body: some View {
@@ -28,7 +33,7 @@ struct WinampPlayerView: View {
                     .foregroundStyle(Color(red: 0.24, green: 0.86, blue: 0.59))
 
                 CoverView(
-                    coverURL: player.coverURL,
+                    coverData: player.coverData,
                     title: player.title.isEmpty ? "—" : player.title,
                     artist: player.artist,
                     seed: player.queue.indices.contains(player.index)
@@ -44,7 +49,7 @@ struct WinampPlayerView: View {
                         .font(.title2.bold())
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
-                    Text(player.artist.isEmpty ? "Scegli cosa suonare dalla Libreria" : player.artist)
+                    Text(player.artist.isEmpty ? "Cerca cosa suonare" : player.artist)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     statusLine
@@ -158,12 +163,12 @@ struct WinampPlayerView: View {
     }
 
     /// «In coda: Album · Thriller · 3 / 9» (tap: the queue, with the state of every song), or — nothing chosen yet —
-    /// the way to the Libreria.
+    /// the way to «Cerca».
     @ViewBuilder
     private var queueButton: some View {
         if player.queue.isEmpty {
             Button(action: onChoose) {
-                Label("Scegli dalla Libreria", systemImage: "music.note.house")
+                Label("Cerca musica", systemImage: "magnifyingglass")
                     .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -213,8 +218,9 @@ struct WinampPlayerView: View {
     }
 }
 
+/// The real cover when SoundReel has found one (the image comes from the server, kept on the phone), else a drawn one.
 private struct CoverView: View {
-    let coverURL: URL?
+    let coverData: Data?
     let title: String
     let artist: String
     let seed: String
@@ -222,17 +228,20 @@ private struct CoverView: View {
     var body: some View {
         ZStack {
             GeneratedCover(title: title, artist: artist, seed: seed)
-            if let coverURL {
-                AsyncImage(url: coverURL) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable().scaledToFill()
-                    default:
-                        EmptyView()
-                    }
-                }
+            if let coverData, let image = Self.image(from: coverData) {
+                image.resizable().scaledToFill()
             }
         }
+    }
+
+    private static func image(from data: Data) -> Image? {
+        #if canImport(UIKit)
+        return UIImage(data: data).map { Image(uiImage: $0) }
+        #elseif canImport(AppKit)
+        return NSImage(data: data).map { Image(nsImage: $0) }
+        #else
+        return nil
+        #endif
     }
 }
 

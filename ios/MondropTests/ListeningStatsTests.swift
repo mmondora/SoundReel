@@ -84,7 +84,7 @@ final class DynamicPlaylistSyncTests: XCTestCase {
         api.scriptPrepare("dyn", [OfflineManifest(playlistId: "dyn", name: "Mattina", tracks: [TestSupport.track("a"), TestSupport.track("b")], dynamic: true, generatedAt: "2026-11-08T06:55:00Z")])
         let coordinator = PlaylistSyncCoordinator(
             playlist: MondropPlaylist(id: "dyn", name: "Mattina", songCount: 0, kind: "dynamic", ruleSummary: "Più ascoltate"),
-            api: api, engine: rig.engine, net: NetStatus(), clock: FakeClock().clock
+            api: api, engine: rig.engine, clock: FakeClock().clock
         )
         await coordinator.sync()
         XCTAssertEqual(rig.transport.startedKeys, ["a", "b"])

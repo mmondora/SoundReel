@@ -11,8 +11,8 @@ options:
 settings:
   base:
     DEVELOPMENT_TEAM: 5NZADC9YQ2
-    MARKETING_VERSION: "1.6.0"
-    CURRENT_PROJECT_VERSION: "7"
+    MARKETING_VERSION: "1.7.0"
+    CURRENT_PROJECT_VERSION: "8"
     SWIFT_VERSION: "5.9"
     CODE_SIGN_STYLE: Automatic
 
@@ -55,7 +55,7 @@ targets:
         # The app targets iPad too (TARGETED_DEVICE_FAMILY 1,2): App Store Connect refuses the upload (ITMS-90474) unless
         # the iPad lists all four orientations (or the app opts out of multitasking).
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-        # ATS lives in Mondrop/Info.plist (NSAllowsLocalNetworking for the home media server, arbitrary loads off):
+        # ATS lives in Mondrop/Info.plist (arbitrary loads off, no exception: the app talks only to SoundReel, over HTTPS):
         # a nested INFOPLIST_KEY_NSAppTransportSecurity_* build setting is silently ignored by Xcode.
     entitlements:
       path: Mondrop/Mondrop.entitlements
@@ -80,9 +80,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: it.mikesoft.mondrop.share
         PRODUCT_NAME: MondropShare
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon # share-sheet icon (own arrow icon, not the app's)
-        MARKETING_VERSION: "1.6.0"
-        CURRENT_PROJECT_VERSION: "7"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon # share-sheet icon (the same drop with a down arrow, not the app's equalizer)
+        MARKETING_VERSION: "1.7.0"
+        CURRENT_PROJECT_VERSION: "8"
         CODE_SIGN_ENTITLEMENTS: MondropShare/MondropShare.entitlements
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: MondropShare/Info.plist

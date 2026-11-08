@@ -1,5 +1,5 @@
 // SyncEngine.swift — the download queue of the sync: at most 2 downloads at a time, skip-present,
-// media-server → proxy fallback, resume data, installs into the OfflineStore.
+// resume data, installs into the OfflineStore. Every download comes from SoundReel (rule P, ADR-0018).
 //
 // The engine knows nothing about URLSession: it talks to a `DownloadTransport`
 // (BackgroundDownloadTransport in the app, a fake in tests).
@@ -42,7 +42,8 @@ public struct EngineConfig: Sendable, Equatable {
 }
 
 /// Travels with every URLSession task (`taskDescription`), so a relaunched app can still install the
-/// file and fall back to the proxy for a download it did not start in this process.
+/// file of a download it did not start in this process. A description written by an older build may carry fields
+/// this one no longer has (`kind`, `proxyPath`): decoding ignores them.
 public struct JobInfo: Codable, Equatable, Sendable {
     public var songKey: String
     public var title: String
@@ -51,10 +52,6 @@ public struct JobInfo: Codable, Equatable, Sendable {
     public var lyrics: String?
     public var version: String?
     public var bytes: Int?
-    /// `DownloadCandidate.Kind.rawValue` of THIS attempt.
-    public var kind: String
-    /// Relative proxy path to retry with when a media-server attempt fails.
-    public var proxyPath: String?
     /// Server numbers at the time of the download (docs/mondrop-stats.md §3); optional like every new field.
     public var plays: Int?
     public var lastPlayedAt: String?
@@ -66,7 +63,7 @@ public struct JobInfo: Codable, Equatable, Sendable {
 
     public init(
         songKey: String, title: String, artist: String, coverUrl: String? = nil, lyrics: String? = nil,
-        version: String? = nil, bytes: Int? = nil, kind: String, proxyPath: String? = nil,
+        version: String? = nil, bytes: Int? = nil,
         plays: Int? = nil, lastPlayedAt: String? = nil,
         album: String? = nil, genres: [String]? = nil, year: Int? = nil
     ) {
@@ -77,8 +74,6 @@ public struct JobInfo: Codable, Equatable, Sendable {
         self.lyrics = lyrics
         self.version = version
         self.bytes = bytes
-        self.kind = kind
-        self.proxyPath = proxyPath
         self.plays = plays
         self.lastPlayedAt = lastPlayedAt
         self.album = album
@@ -122,9 +117,9 @@ public enum DownloadOrigin: Sendable {
     case play
 }
 
+/// One song waiting in the queue. The queue file of an older build also has a flag per job (where the phone was): ignored.
 struct QueuedJob: Codable, Equatable {
     var track: OfflineTrack
-    var home: Bool
 }
 
 @MainActor
@@ -190,7 +185,7 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
 
     /// Plans (skip-present / adopt / download) and queues the downloads. Idempotent.
     @discardableResult
-    public func enqueue(_ tracks: [OfflineTrack], home: Bool, front: Bool = false, origin: DownloadOrigin = .sync) -> SyncPlan {
+    public func enqueue(_ tracks: [OfflineTrack], front: Bool = false, origin: DownloadOrigin = .sync) -> SyncPlan {
         queueLoaded = true
         let inFlight = Set(active.keys).union(queue.map { $0.track.songKey })
         let plan = SyncPlanner.plan(
@@ -205,7 +200,7 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
                 store.adoptVersion(songKey: key, version: version)
             }
         }
-        let jobs = plan.download.map { QueuedJob(track: $0, home: home) }
+        let jobs = plan.download.map { QueuedJob(track: $0) }
         for job in jobs {
             failedJobs.removeValue(forKey: job.track.songKey)
             progress[job.track.songKey] = .queued
@@ -224,15 +219,15 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
     /// "Riscarica": the user wants a song they deleted back on the phone. Clears the skip-list entry, then downloads
     /// it ahead of the queue.
     @discardableResult
-    public func redownload(_ track: OfflineTrack, home: Bool) -> SyncPlan {
+    public func redownload(_ track: OfflineTrack) -> SyncPlan {
         store.clearSkipped(track.songKey)
-        return enqueue([track], home: home, front: true)
+        return enqueue([track], front: true)
     }
 
     /// Download failed on the device: try again from scratch (resume data is reused when still valid).
     public func retry(songKey: String) {
         guard let job = failedJobs[songKey] else { return }
-        enqueue([job.track], home: job.home, front: true)
+        enqueue([job.track], front: true)
     }
 
     public func cancel(songKey: String) {
@@ -290,7 +285,7 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
     private func startFirstAttempt(_ job: QueuedJob) {
         let cfg = config()
         let track = job.track
-        let candidates = DownloadURLChooser.candidates(for: track, home: job.home, baseURL: cfg.baseURL)
+        let candidates = DownloadURLChooser.candidates(for: track, baseURL: cfg.baseURL)
         guard let first = candidates.first else {
             progress[track.songKey] = .failed("nessun indirizzo di download")
             failedJobs[track.songKey] = job
@@ -306,8 +301,6 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
             lyrics: track.lyrics,
             version: track.version,
             bytes: track.bytes,
-            kind: first.kind.rawValue,
-            proxyPath: first.kind == .media ? DownloadURLChooser.proxyPath(for: track) : nil,
             plays: track.plays,
             lastPlayedAt: track.lastPlayedAt,
             album: track.album,
@@ -334,7 +327,7 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
         }
     }
 
-    /// Wi-Fi only unless the user opted into cellular; the key is attached to the proxy path only.
+    /// Wi-Fi only unless the user opted into cellular. The key goes with the request: its host is SoundReel's, always.
     static func makeRequest(for candidate: DownloadCandidate, config: EngineConfig) -> URLRequest {
         var request = URLRequest(url: candidate.url)
         request.httpMethod = "GET"
@@ -343,9 +336,7 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
         request.allowsExpensiveNetworkAccess = config.allowCellular
         // Low Data Mode is about background chatter; this is an explicit user action.
         request.allowsConstrainedNetworkAccess = true
-        if candidate.sendsAuth {
-            for (name, value) in config.api.authHeaders { request.setValue(value, forHTTPHeaderField: name) }
-        }
+        for (name, value) in config.api.authHeaders { request.setValue(value, forHTTPHeaderField: name) }
         return request
     }
 
@@ -392,8 +383,7 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
             return
         }
         if let expected = info.bytes, size != expected {
-            // Truncated, or not the file the manifest described (e.g. a stale replica on the media server):
-            // never record it. A media-server attempt falls back to downloadPath, a proxy attempt fails visibly.
+            // Truncated, or not the file the manifest described: never record it. The row fails visibly, «Riprova» asks again.
             try? fm.removeItem(at: stagedFile)
             processFailure(
                 info: info,
@@ -446,18 +436,9 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
         processFailure(info: info, message: message, resumeData: resumeData, requestURL: requestURL)
     }
 
-    /// A media-server attempt that fails (permission denied, timeout, non-2xx) gets one more try via the proxy.
+    /// A failed download is a failure: there is one address (SoundReel), so there is nothing else to try. The row says why
+    /// and «Riprova» starts again (with the resume data when the system gave some).
     private func processFailure(info: JobInfo, message: String, resumeData: Data?, requestURL: URL?) {
-        if info.kind == DownloadCandidate.Kind.media.rawValue, let path = info.proxyPath {
-            let cfg = config()
-            if let url = DownloadURLChooser.proxyURL(path: path, baseURL: cfg.baseURL) {
-                var next = info
-                next.kind = DownloadCandidate.Kind.proxy.rawValue
-                next.proxyPath = nil
-                launch(info: next, candidate: DownloadCandidate(kind: .proxy, url: url), config: cfg)
-                return
-            }
-        }
         if let resumeData, let requestURL {
             store.saveResumeData(resumeData, songKey: info.songKey, url: requestURL.absoluteString)
         }

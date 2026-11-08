@@ -142,7 +142,7 @@ final class OfflineStoreTests: XCTestCase {
         let item = try install(store, "a", version: "1-1", bytes: 64)
         try Data().write(to: try XCTUnwrap(store.fileURL(for: item)))
 
-        let decision = FirstPlay.decide(songKey: "a", track: TestSupport.track("a"), local: store.fileURL(songKey: "a"), home: false, config: .test)
+        let decision = FirstPlay.decide(songKey: "a", track: TestSupport.track("a"), local: store.fileURL(songKey: "a"), config: .test)
         guard case .stream = decision else { return XCTFail("expected stream, got \(decision)") }
     }
 

@@ -1,8 +1,8 @@
 // SyncModels.swift — manifest / net / ack models of the sync contract (docs/mondrop-sync.md)
 //
 // Everything here is decoded defensively: the app must keep working against the OLD manifest
-// (no `state`, no `mediaUrl`, no `version`, `entry_*` sources) and against fields the backend
-// may add later. Unknown values never crash decoding.
+// (no `state`, no `version`, `entry_*` sources) and against fields the backend may add later or has dropped
+// (an older server still sends the address of a store file: it is not read, rule P). Unknown values never crash decoding.
 
 import Foundation
 
@@ -38,8 +38,6 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
     public let source: String?
     /// Relative API path, always valid when the track is ready (needs auth, supports Range).
     public let downloadPath: String?
-    /// Absolute HTTP URL on the media server, LAN only, never to be sent the API key.
-    public let mediaUrl: String?
     /// Changes when the file changes (`<bytes>-<mtimeMs>`); equal version = nothing to download.
     public let version: String?
     public let bytes: Int?
@@ -50,6 +48,9 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
     public let canEnqueueSpooty: Bool
     public let coverUrl: String?
     public let lyrics: String?
+    /// 2.14.0 (ADR-0019): relative path to GET the cover from SoundReel (with the API key), like `downloadPath`. The SERVER finds the
+    /// cover (the one it knows, the picture inside the file, the Internet); the answer is the image or 404. nil on an older backend.
+    public let coverPath: String?
     /// Counted listens of the user on ALL devices, ever (docs/mondrop-stats.md §3). nil on an older backend.
     public let plays: Int?
     /// ISO date of the last counted listen; nil = never played (or an older backend).
@@ -77,7 +78,6 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
         state: String? = nil,
         source: String? = nil,
         downloadPath: String? = nil,
-        mediaUrl: String? = nil,
         version: String? = nil,
         bytes: Int? = nil,
         durationS: Int? = nil,
@@ -86,6 +86,7 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
         entryId: String? = nil,
         canEnqueueSpooty: Bool = false,
         coverUrl: String? = nil,
+        coverPath: String? = nil,
         lyrics: String? = nil,
         plays: Int? = nil,
         lastPlayedAt: String? = nil,
@@ -100,7 +101,6 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
         self.state = state
         self.source = source
         self.downloadPath = downloadPath
-        self.mediaUrl = mediaUrl
         self.version = version
         self.bytes = bytes
         self.durationS = durationS
@@ -109,6 +109,7 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
         self.entryId = entryId
         self.canEnqueueSpooty = canEnqueueSpooty
         self.coverUrl = coverUrl
+        self.coverPath = coverPath
         self.lyrics = lyrics
         self.plays = plays
         self.lastPlayedAt = lastPlayedAt
@@ -118,8 +119,8 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case songKey, title, artist, status, state, source, downloadPath, mediaUrl, version
-        case bytes, durationS, error, spotifyUrl, entryId, canEnqueueSpooty, coverUrl, lyrics
+        case songKey, title, artist, status, state, source, downloadPath, version
+        case bytes, durationS, error, spotifyUrl, entryId, canEnqueueSpooty, coverUrl, coverPath, lyrics
         case plays, lastPlayedAt, album, genres, year
     }
 
@@ -134,7 +135,6 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
         state = try? c.decodeIfPresent(String.self, forKey: .state)
         source = try? c.decodeIfPresent(String.self, forKey: .source)
         downloadPath = try? c.decodeIfPresent(String.self, forKey: .downloadPath)
-        mediaUrl = try? c.decodeIfPresent(String.self, forKey: .mediaUrl)
         version = try? c.decodeIfPresent(String.self, forKey: .version)
         bytes = Self.flexibleInt(c, .bytes)
         durationS = Self.flexibleInt(c, .durationS)
@@ -143,6 +143,7 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
         entryId = try? c.decodeIfPresent(String.self, forKey: .entryId)
         canEnqueueSpooty = (try? c.decodeIfPresent(Bool.self, forKey: .canEnqueueSpooty)) ?? false
         coverUrl = try? c.decodeIfPresent(String.self, forKey: .coverUrl)
+        coverPath = try? c.decodeIfPresent(String.self, forKey: .coverPath)
         lyrics = try? c.decodeIfPresent(String.self, forKey: .lyrics)
         plays = Self.flexibleInt(c, .plays)
         lastPlayedAt = try? c.decodeIfPresent(String.self, forKey: .lastPlayedAt)
@@ -243,10 +244,11 @@ public struct OfflineManifest: Codable, Sendable, Equatable {
     public var missingCount: Int { tracks.count - readyCount }
 }
 
-/// `GET /api/mondrop/net`
+/// `GET /api/mondrop/net`: INFORMATION for the Settings row «Rete: casa / internet», nothing more. Sync and play never
+/// read it: the app downloads and streams from SoundReel whatever the network is (rule P, ADR-0018).
 public struct NetInfo: Codable, Sendable, Equatable {
     public let viaCloudflare: Bool
-    /// True when the request reached Traefik directly (split-horizon DNS): the media server is reachable.
+    /// True when the request reached Traefik directly (split-horizon DNS).
     public let home: Bool
 
     public init(viaCloudflare: Bool, home: Bool) {
