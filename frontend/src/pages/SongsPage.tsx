@@ -1,17 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { SongCard } from '../components/SongCard';
 import { DateGroupedList } from '../components/DateGroupedList';
 import { FilterPanel } from '../components/FilterPanel';
 import type { FilterSection } from '../components/FilterPanel';
+import { AddToPlaylistModal } from '../components/AddToPlaylistModal';
+import { PlaylistPanel, removeFromActivePlaylist } from '../components/PlaylistPanel';
+import { ElsewhereHint } from '../components/library/ElsewhereHint';
+import { LibrarySearchResults } from '../components/library/LibrarySearchResults';
+import { ScopeSelect } from '../components/library/ScopeSelect';
+import { useLibrarySearch } from '../hooks/useLibrarySearch';
 import { fetchSongs, patchSongMeta } from '../services/api';
 import type { SongMetaPatchBody } from '../services/api';
 import { filterSongs, collectGenres, sortSongs } from '../utils/songFilters';
 import type { ListenedFilter, DownloadedFilter, SongSortMode } from '../utils/songFilters';
-import { useAllEntries } from '../hooks/useJournal';
 import { useLanguage } from '../i18n';
-import type { AggregatedSong, SongMetaRecord, JournalStats } from '../types';
+import { usePlayer } from '../player/PlayerContext';
+import { canSearch, scopeCount } from '../utils/librarySearch';
+import type { AggregatedSong, LibraryScope, PlaylistDetail, SongMetaRecord } from '../types';
 
 function createDefaultMeta(songKey: string): SongMetaRecord {
   return {
@@ -51,8 +58,9 @@ export function mergePatch(meta: SongMetaRecord | null, songKey: string, patch: 
 }
 
 export function SongsPage() {
-  const { entries } = useAllEntries();
   const { t } = useLanguage();
+  const navigate = useNavigate();
+  const player = usePlayer();
 
   const [songs, setSongs] = useState<AggregatedSong[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,6 +71,11 @@ export function SongsPage() {
   const [downloadedFilter, setDownloadedFilter] = useState<DownloadedFilter>('all');
   const [panelOpen, setPanelOpen] = useState(false);
   const [sortMode, setSortMode] = useState<SongSortMode>('date');
+  // "Cerca in": the journal songs (the page as it always was) or the files — media server, local folders, both.
+  const [scope, setScope] = useState<LibraryScope>('songs');
+  const search = useLibrarySearch(textFilter);
+  const [activePlaylist, setActivePlaylist] = useState<PlaylistDetail | null>(null);
+  const [songToAdd, setSongToAdd] = useState<string | null>(null);
   // Per-songKey monotonic counter so a slow/out-of-order PATCH response
   // (success or failure) can never clobber a newer patch already applied to
   // that song.
@@ -72,27 +85,26 @@ export function SongsPage() {
     fetchSongs().then(setSongs).catch(() => setSongs([])).finally(() => setLoading(false));
   }, []);
 
-  const stats: JournalStats = {
-    totalEntries: entries.length,
-    totalSongs: entries.reduce((acc, e) => acc + e.results.songs.length, 0),
-    totalFilms: entries.reduce((acc, e) => acc + e.results.films.length, 0),
-    totalNotes: entries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0),
-  };
-
   const sortedSongs = useMemo(() => sortSongs(songs, sortMode), [songs, sortMode]);
 
   const genres = useMemo(() => collectGenres(sortedSongs), [sortedSongs]);
-  const visible = useMemo(
-    () =>
-      filterSongs(sortedSongs, {
-        genres: genreFilter,
-        listened: listenedFilter,
-        favorite: favoriteOnly,
-        downloaded: downloadedFilter,
-        text: textFilter,
-      }),
-    [sortedSongs, genreFilter, listenedFilter, favoriteOnly, downloadedFilter, textFilter]
-  );
+  const visible = useMemo(() => {
+    let list = filterSongs(sortedSongs, {
+      genres: genreFilter,
+      listened: listenedFilter,
+      favorite: favoriteOnly,
+      downloaded: downloadedFilter,
+      text: textFilter,
+    });
+    if (activePlaylist) {
+      // Keep playlist order when browsing a playlist.
+      const byKey = new Map(list.map((s) => [s.songKey, s]));
+      list = activePlaylist.songKeys
+        .map((k) => byKey.get(k))
+        .filter((s): s is AggregatedSong => !!s);
+    }
+    return list;
+  }, [sortedSongs, genreFilter, listenedFilter, favoriteOnly, downloadedFilter, textFilter, activePlaylist]);
 
   function toggleGenre(genre: string) {
     setGenreFilter((prev) => (prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]));
@@ -110,7 +122,28 @@ export function SongsPage() {
     genreFilter.length +
     (listenedFilter !== 'all' ? 1 : 0) +
     (favoriteOnly ? 1 : 0) +
-    (downloadedFilter !== 'all' ? 1 : 0);
+    (downloadedFilter !== 'all' ? 1 : 0) +
+    (activePlaylist ? 1 : 0);
+
+  function handlePlaylistSelect(playlist: PlaylistDetail | null) {
+    setActivePlaylist(playlist);
+  }
+
+  async function handleRemoveFromPlaylist(songKey: string) {
+    if (!activePlaylist) return;
+    try {
+      const updated = await removeFromActivePlaylist(activePlaylist.id, songKey);
+      setActivePlaylist(updated);
+    } catch {
+      // leave list as-is; panel shows its own errors on other actions
+    }
+  }
+
+  function playActivePlaylist() {
+    if (!activePlaylist || visible.length === 0) return;
+    player.playSong(visible[0].songKey, visible, activePlaylist.name);
+    navigate('/player');
+  }
 
   // Optimistic patch: apply locally, PATCH, roll back on failure. Rollback and
   // the success write are both scoped to this one song's meta (never the
@@ -152,6 +185,10 @@ export function SongsPage() {
     { key: 'no', label: t.songsFilterNotDownloaded },
   ];
 
+  const showingFiles = scope !== 'songs';
+  // The counts belong to the text now typed; while a newer search runs they are not shown (they would be stale).
+  const counts = search.data && !search.stale ? search.data.counts : null;
+
   const listenedLabel = listenedOptions.find((o) => o.key === listenedFilter)?.label ?? '';
   const downloadedLabel = downloadedOptions.find((o) => o.key === downloadedFilter)?.label ?? '';
 
@@ -164,11 +201,12 @@ export function SongsPage() {
 
   return (
     <div className="list-page">
-      <Header stats={stats} />
+      <Header />
       <div className="list-page-content">
         <div className="list-page-header">
           <Link to="/" className="list-page-back">{t.back}</Link>
           <h1>{t.allSongs}</h1>
+          <Link to="/player" className="songs-open-player">{t.playerOpen}</Link>
         </div>
 
         {!loading && (
@@ -181,24 +219,44 @@ export function SongsPage() {
                 value={textFilter}
                 onChange={(e) => setTextFilter(e.target.value)}
               />
-              <span className="filter-result-count">{visible.length}</span>
-              <select
-                className="sort-select"
-                value={sortMode}
-                aria-label={t.sortLabel}
-                onChange={(e) => setSortMode(e.target.value as SongSortMode)}
-              >
-                <option value="date">{t.sortByDate}</option>
-                <option value="mentions">{t.sortByMentions}</option>
-                <option value="artist">{t.sortByArtist}</option>
-              </select>
-              <button type="button" className="filter-open-btn" onClick={() => setPanelOpen(true)}>
-                {t.filtersButton}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-              </button>
+              <ScopeSelect value={scope} onChange={setScope} counts={counts} />
+              <span className="filter-result-count">
+                {showingFiles ? (counts ? scopeCount(counts, scope) : 0) : visible.length}
+              </span>
+              {!showingFiles && (
+                <>
+                  <select
+                    className="sort-select"
+                    value={sortMode}
+                    aria-label={t.sortLabel}
+                    onChange={(e) => setSortMode(e.target.value as SongSortMode)}
+                  >
+                    <option value="date">{t.sortByDate}</option>
+                    <option value="mentions">{t.sortByMentions}</option>
+                    <option value="artist">{t.sortByArtist}</option>
+                  </select>
+                  <button type="button" className="filter-open-btn" onClick={() => setPanelOpen(true)}>
+                    {t.filtersButton}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+                  </button>
+                </>
+              )}
             </div>
 
-            {activeFilterCount > 0 && (
+            {showingFiles && (
+              <LibrarySearchResults search={search} scope={scope} text={textFilter} onScope={setScope} />
+            )}
+
+            {!showingFiles && visible.length === 0 && counts && canSearch(textFilter) && (
+              <ElsewhereHint counts={counts} current="songs" onPick={setScope} />
+            )}
+
+            {!showingFiles && activeFilterCount > 0 && (
               <div className="active-chips">
+                {activePlaylist && (
+                  <button type="button" className="genre-chip active" onClick={() => setActivePlaylist(null)}>
+                    {t.playlistActiveChip}: {activePlaylist.name} ×
+                  </button>
+                )}
                 {genreFilter.map((genre) => (
                   <button key={genre} type="button" className="genre-chip active" onClick={() => toggleGenre(genre)}>
                     {genre} ×
@@ -222,25 +280,58 @@ export function SongsPage() {
               </div>
             )}
 
-            <FilterPanel
-              open={panelOpen}
-              onClose={() => setPanelOpen(false)}
-              title={t.filtersTitle}
-              onReset={resetFilters}
-              resetLabel={t.filtersReset}
-              sections={filterSections}
-            />
+            {!showingFiles && (
+              <FilterPanel
+                open={panelOpen}
+                onClose={() => setPanelOpen(false)}
+                title={t.filtersTitle}
+                onReset={resetFilters}
+                resetLabel={t.filtersReset}
+                sections={filterSections}
+              />
+            )}
+
+            {!showingFiles && (
+              <PlaylistPanel
+                activeId={activePlaylist?.id ?? null}
+                onSelect={handlePlaylistSelect}
+              />
+            )}
+
+            {songToAdd && (
+              <AddToPlaylistModal
+                songKey={songToAdd}
+                songLabel={
+                  (() => {
+                    const s = songs.find((x) => x.songKey === songToAdd);
+                    return s ? `${s.title} — ${s.artist || '—'}` : undefined;
+                  })()
+                }
+                onClose={() => setSongToAdd(null)}
+                onDone={(pl) => {
+                  if (activePlaylist?.id === pl.id) setActivePlaylist(pl);
+                }}
+              />
+            )}
+
+            {!showingFiles && activePlaylist && visible.length > 0 && (
+              <div className="playlist-play-row">
+                <button type="button" className="player-play-all" onClick={playActivePlaylist}>
+                  {t.playlistPlay} · {activePlaylist.name}
+                </button>
+              </div>
+            )}
           </>
         )}
 
-        {loading ? (
+        {showingFiles ? null : loading ? (
           <div className="journal-loading">
             <span className="spinner" />
             <p>{t.loading}</p>
           </div>
         ) : visible.length === 0 ? (
           <div className="list-page-empty">{t.noSongsYet}</div>
-        ) : sortMode === 'date' ? (
+        ) : sortMode === 'date' && !activePlaylist ? (
           <DateGroupedList
             items={visible}
             pageSize={50}
@@ -252,6 +343,8 @@ export function SongsPage() {
                 onPatch={(patch) => {
                   void applyPatch(song.songKey, patch);
                 }}
+                onAddToPlaylist={setSongToAdd}
+                onRemoveFromPlaylist={activePlaylist ? handleRemoveFromPlaylist : undefined}
               />
             )}
           />
@@ -263,6 +356,8 @@ export function SongsPage() {
               onPatch={(patch) => {
                 void applyPatch(song.songKey, patch);
               }}
+              onAddToPlaylist={setSongToAdd}
+              onRemoveFromPlaylist={activePlaylist ? handleRemoveFromPlaylist : undefined}
             />
           ))
         )}

@@ -31,6 +31,7 @@ const PLATFORM_LABEL: Record<string, string> = {
   soundcloud: 'SC',
   twitch: 'TV',
   spotify: 'SP',
+  shazam: 'SZ',
   linkedin: 'LI',
   pinterest: 'PIN',
   snapchat: 'SNAP',
@@ -118,13 +119,15 @@ export function Home() {
   const [filterUser, setFilterUser] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
   const [filterVerdict, setFilterVerdict] = useState<string | null>(null);
+  const [filterTag, setFilterTag] = useState<string | null>(null);
 
   const {
-    entries, stats, loading: journalLoading,
-    availablePlatforms, availableChannels, availableUsers, availableCategories, availableVerdicts, filteredCount,
+    entries, loading: journalLoading,
+    availablePlatforms, availableChannels, availableUsers, availableCategories, availableVerdicts,
+    availableTags, filteredCount,
   } = useJournal(20, {
     platform: filterPlatform, channel: filterChannel, user: filterUser,
-    category: filterCategory, verdict: filterVerdict,
+    category: filterCategory, verdict: filterVerdict, tag: filterTag,
   });
   const { analyze, loading: analyzeLoading, error, successStatus, clearError } = useAnalyze();
   const { t } = useLanguage();
@@ -139,16 +142,17 @@ export function Home() {
 
   const { results: searchResults, expandedTerms, loading: searchLoading } = useSearch(q);
 
-  const hasFilter = !!(filterPlatform || filterChannel || filterUser || filterCategory || filterVerdict);
+  const hasFilter = !!(filterPlatform || filterChannel || filterUser || filterCategory || filterVerdict || filterTag);
   const clearFilters = useCallback(() => {
     setFilterPlatform(null); setFilterChannel(null); setFilterUser(null);
-    setFilterCategory(null); setFilterVerdict(null);
+    setFilterCategory(null); setFilterVerdict(null); setFilterTag(null);
   }, []);
   const togglePlatform = useCallback((p: string) => setFilterPlatform(prev => prev === p ? null : p), []);
   const toggleChannel = useCallback((ch: string) => setFilterChannel(prev => prev === ch ? null : ch), []);
   const toggleUser = useCallback((u: string) => setFilterUser(prev => prev === u ? null : u), []);
   const toggleCategory = useCallback((c: string) => setFilterCategory(prev => prev === c ? null : c), []);
   const toggleVerdict = useCallback((v: string) => setFilterVerdict(prev => prev === v ? null : v), []);
+  const toggleTag = useCallback((tag: string) => setFilterTag(prev => prev === tag ? null : tag), []);
 
   // Auto-select from query param ?entry=id. On mobile this must also open
   // the inspector panel (CSS hides it behind `.mobile-visible` below 768px) —
@@ -254,12 +258,13 @@ export function Home() {
       availableChannels.length > 1 ||
       availableCategories.length > 0 ||
       availableVerdicts.length > 0 ||
-      availableUsers.length > 1);
+      availableUsers.length > 1 ||
+      availableTags.length > 0);
   const filtersVisible = filtersOpen || hasFilter;
 
   return (
     <div className="home home--inbox">
-      <Header stats={stats} />
+      <Header />
 
       <div className="url-input-bar inbox-input-bar">
         <UrlInput
@@ -267,6 +272,7 @@ export function Home() {
           loading={analyzeLoading}
           error={error}
           successStatus={successStatus}
+          hero
         />
       </div>
 
@@ -355,6 +361,22 @@ export function Home() {
                       onClick={() => toggleVerdict(verdict)}
                     >
                       {VERDICT_ICON[verdict as EnrichmentVerdictLabel]} {verdict.toUpperCase()}
+                      <span className="filter-chip-count"> {count}</span>
+                    </button>
+                  ))}
+                </>
+              )}
+              {availableTags.length > 0 && (
+                <>
+                  <span className="filter-divider" />
+                  {availableTags.slice(0, 24).map(({ tag, count }) => (
+                    <button
+                      key={tag}
+                      className={`filter-chip ${filterTag === tag ? 'active' : ''}`}
+                      onClick={() => toggleTag(tag)}
+                      title={tag}
+                    >
+                      {tag}
                       <span className="filter-chip-count"> {count}</span>
                     </button>
                   ))}

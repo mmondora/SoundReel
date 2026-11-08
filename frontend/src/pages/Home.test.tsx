@@ -23,6 +23,21 @@ vi.mock('../services/api', () => ({
   deleteEntry: vi.fn(),
   retryEntry: vi.fn(),
   enrichEntry: vi.fn(),
+  fetchJournalStats: vi.fn().mockResolvedValue({
+    totalEntries: 0,
+    totalSongs: 0,
+    totalFilms: 0,
+    totalNotes: 0,
+    totalSoftware: 0,
+  }),
+  // Header and the inspector ask who is signed in.
+  fetchMe: vi.fn().mockResolvedValue({
+    user: 'mike',
+    displayName: 'Mike',
+    isAdmin: false,
+    authenticated: true,
+    family: [],
+  }),
   fetchEntryMedia: vi.fn().mockResolvedValue({
     entryId: '',
     videoUrl: null,
@@ -80,6 +95,7 @@ function mockJournal(entries: Entry[]) {
     availableUsers: [],
     availableCategories: [],
     availableVerdicts: [],
+    availableTags: [],
     filteredCount: entries.length,
   });
 }

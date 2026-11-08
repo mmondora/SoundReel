@@ -1,5 +1,6 @@
 import type { LogFilters as LogFiltersType, LogLevel } from '../types';
 import { useLanguage } from '../i18n';
+import { ACTIVITY_FILTER } from '../utils/logActor';
 
 interface LogFiltersProps {
   filters: LogFiltersType;
@@ -45,6 +46,7 @@ export function LogFilters({
             }
           >
             <option value="all">{t.allFunctions}</option>
+            <option value={ACTIVITY_FILTER}>{t.logsActivity}</option>
             {availableFunctions.map((fn) => (
               <option key={fn} value={fn}>
                 {fn}

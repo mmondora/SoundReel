@@ -2,7 +2,7 @@ export interface Song {
   title: string;
   artist: string;
   album: string | null;
-  source: 'audio_fingerprint' | 'ai_analysis' | 'both' | 'music_list';
+  source: 'audio_fingerprint' | 'ai_analysis' | 'both' | 'music_list' | 'spotify_link' | 'shazam_link';
   spotifyUri: string | null;
   spotifyUrl: string | null;
   youtubeUrl: string | null;
@@ -111,6 +111,9 @@ export interface SongMention {
   createdAt: string;
 }
 
+/** Server-side file state of a song (docs/mondrop-sync.md). */
+export type SongFileStateName = 'ready' | 'preparing' | 'failed' | 'no_source' | 'missing';
+
 export interface AggregatedSong {
   songKey: string;
   title: string;
@@ -120,6 +123,121 @@ export interface AggregatedSong {
   spotifyUrl: string | null;
   mentions: SongMention[];
   meta: SongMetaRecord | null;
+  /** True when an MP3 for this song exists under the music library. */
+  inLibrary?: boolean;
+  /**
+   * Optional facets. Newer backends may send them; the playlist manager also derives
+   * `platforms` / `tags` client-side from the journal entries when they are absent.
+   */
+  /** How the song was found (`Song.source` values across the mentions). */
+  sources?: Song['source'][];
+  /** Platforms of the entries that mention the song (instagram, tiktok, shazam…). */
+  platforms?: string[];
+  /** Tags of the entries that mention the song. */
+  tags?: string[];
+  /** Server-side file state, when the backend reports it. */
+  fileState?: SongFileStateName;
+  /** Where the file is (docs/mondrop-stats.md §6). Absent on an old backend: `inLibrary` then means FS. */
+  fs?: boolean;
+  mediaServer?: boolean;
+  /** Display path of the file on geekom's disk, e.g. "~/Music/SoundReel/X.mp3" (rule W8). */
+  fsPath?: string | null;
+  /** URL of the file on the media server (rule W8). */
+  mediaUrl?: string | null;
+}
+
+/** Where a song's file lives: geekom's disk (FS) and/or the media server (MS, the Fritz). Neither = streaming only. */
+export interface SongLocation {
+  fs: boolean;
+  mediaServer: boolean;
+}
+
+/**
+ * `SongLocation` plus the addresses behind it (rule W8). `streamUrl` is the YouTube watch URL when it is known.
+ * Every address is optional: an older backend sends none of them.
+ */
+export interface SongPlace extends SongLocation {
+  fsPath: string | null;
+  mediaUrl: string | null;
+  streamUrl: string | null;
+}
+
+/** What `GET /api/songs/:key/state` sends as `location`: the flags always, the addresses when the backend has them. */
+export type SongStateLocation = SongLocation & Partial<Pick<SongPlace, 'fsPath' | 'mediaUrl' | 'streamUrl'>>;
+
+/** `GET /api/net`: where the request comes from, decided by the server (rule W7). */
+export type NetworkKind = 'internal' | 'external';
+export interface NetworkInfo {
+  network: NetworkKind;
+}
+
+/** `GET /api/songs/:songKey/state` */
+export interface SongStateResponse {
+  state: SongFileStateName;
+  source: string | null;
+  version: string | null;
+  bytes: number | null;
+  error: string | null;
+  inLibrary: boolean;
+  location?: SongStateLocation;
+}
+
+/** `POST /api/songs/:songKey/download` */
+export interface SongDownloadResponse {
+  ok: boolean;
+  state: SongFileStateName;
+  track?: unknown;
+}
+
+/** Dynamic playlists (docs/mondrop-stats.md §4): a rule re-evaluated on every request. */
+export type DynamicOrder = 'most_played' | 'least_played' | 'recent' | 'never_played';
+
+export interface DynamicRuleWindow {
+  /** "HH:MM", the listener's LOCAL time. `from > to` crosses midnight. */
+  from: string;
+  to: string;
+  /** ISO weekdays, 1 = Monday … 7 = Sunday; omitted = every day. */
+  days?: number[];
+}
+
+export interface DynamicRule {
+  v: 1;
+  scope: 'me' | 'family';
+  period: { days: number } | 'all';
+  window?: DynamicRuleWindow;
+  order: DynamicOrder;
+  /** 1–200. */
+  limit: number;
+  minPlays: number;
+  genres?: string[];
+  downloadedOnly: boolean;
+}
+
+export interface DynamicPreset {
+  id: string;
+  label: string;
+  rule: DynamicRule;
+}
+
+export interface PlaylistSummary {
+  id: string;
+  name: string;
+  songCount: number;
+  createdAt: string;
+  updatedAt: string;
+  /** Authelia user that owns the playlist (only the owner can edit/share it). */
+  ownerUser?: string;
+  /** Absent on an old backend = static. */
+  kind?: 'static' | 'dynamic';
+  rule?: DynamicRule | null;
+  /** Human-readable rule ("Più ascoltate · 07:00–08:00 · ultimi 30 giorni"). */
+  ruleSummary?: string | null;
+  /** When the backend last evaluated a dynamic playlist. */
+  generatedAt?: string | null;
+}
+
+export interface PlaylistDetail extends PlaylistSummary {
+  songKeys: string[];
 }
 
 export interface NoteMetaRecord {
@@ -285,6 +403,7 @@ export type SocialPlatform =
   | 'vimeo'
   | 'twitch'
   | 'spotify'
+  | 'shazam'
   | 'soundcloud'
   | 'other';
 
@@ -294,6 +413,8 @@ export interface Entry {
   sourcePlatform: SocialPlatform;
   inputChannel: 'telegram' | 'web' | 'ios';
   inputUser: string | null;
+  /** Authelia username (`mike` / `archi` / `sara`) or `anonymous`. */
+  ownerUser?: string;
   caption: string | null;
   thumbnailUrl: string | null;
   mediaUrl: string | null;
@@ -303,12 +424,36 @@ export interface Entry {
   createdAt: string;
 }
 
+export interface MeResponse {
+  user: string;
+  displayName: string;
+  isAdmin: boolean;
+  authenticated: boolean;
+  family: Array<{ id: string; displayName: string }>;
+}
+
 export interface JournalStats {
   totalEntries: number;
   totalSongs: number;
   totalFilms: number;
   totalNotes: number;
   totalSoftware?: number;
+}
+
+/** Lean entry row for /entries list — no full results/actionLog. */
+export interface EntrySummary {
+  id: string;
+  sourceUrl: string;
+  sourcePlatform: string;
+  caption: string | null;
+  thumbnailUrl: string | null;
+  status: string;
+  createdAt: string;
+  summary: string | null;
+  songCount: number;
+  filmCount: number;
+  noteCount: number;
+  tags: string[];
 }
 
 export interface SpotifyConfig {
@@ -391,4 +536,152 @@ export interface SearchResponse {
   results: SearchResult[];
   expandedTerms: string[];
   total: number;
+}
+
+// --- Listening events and statistics (docs/mondrop-stats.md §1, §5) ---
+
+export interface PlayEvent {
+  /** Fresh UUID per event: resending it is safe (the server is idempotent). */
+  id: string;
+  songKey: string;
+  /** ISO 8601 UTC: when the song started playing. */
+  startedAt: string;
+  /** Minutes EAST of UTC at that moment (60 in winter in Italy) = -getTimezoneOffset(). */
+  tzOffsetMin: number;
+  /** Milliseconds really listened (pauses and seeks do not count). */
+  listenedMs: number;
+  durationMs: number | null;
+  completed: boolean;
+  origin: 'web';
+  playlistId: string | null;
+}
+
+export interface ListeningTotals {
+  /** Counted plays (the server decides what counts). */
+  plays: number;
+  skips: number;
+  listenedMs: number;
+  songs: number;
+  artists: number;
+  devices: number;
+}
+
+export interface ListeningDay {
+  /** YYYY-MM-DD. */
+  day: string;
+  plays: number;
+  listenedMs: number;
+}
+
+export interface ListeningRank {
+  key: string;
+  label: string;
+  /** Second line (the artist of a song). */
+  sublabel: string | null;
+  plays: number;
+  listenedMs: number | null;
+}
+
+export interface ListeningStats {
+  totals: ListeningTotals;
+  perDay: ListeningDay[];
+  /** 7 rows (Monday = 0) × 24 hours (the listener's local hour). */
+  heatmap: number[][];
+  topSongs: ListeningRank[];
+  topArtists: ListeningRank[];
+  topGenres: ListeningRank[];
+  perDevice: ListeningRank[];
+  perOrigin: ListeningRank[];
+  neverPlayed: number;
+  period: { from: string | null; to: string | null };
+}
+
+export interface RecentPlay {
+  id: string;
+  songKey: string;
+  title: string;
+  artist: string;
+  user: string | null;
+  device: string | null;
+  origin: string | null;
+  startedAt: string;
+  listenedMs: number;
+  counted: boolean | null;
+}
+
+// --- Library search over three scopes, and the music folders it reads (spec 2026-11-07-library-search-music-folders) ---
+
+export type LibraryScope = 'all' | 'songs' | 'media' | 'local';
+export type LibraryHitScope = Exclude<LibraryScope, 'all'>;
+
+/** One match: information about where a file is (finding it never imports or plays it, rule L6). */
+export interface LibraryHit {
+  scope: LibraryHitScope;
+  artist: string;
+  title: string;
+  album: string | null;
+  /** "Libreria", "Media server", or the label of the local folder. */
+  folder: string;
+  /** URL on the media server, or path on disk ("~/Music/…"); null for a journal song. */
+  location: string | null;
+  bytes: number | null;
+  songKey: string;
+  /** The song is already in the journal (so it already shows in the Songs page). */
+  inJournal: boolean;
+}
+
+/** Matches per scope BEFORE the limit. The backend only counts the scopes it searched. */
+export interface LibrarySearchCounts {
+  songs: number;
+  media: number;
+  local: number;
+}
+
+export interface LibrarySearchResponse {
+  q: string;
+  scope: LibraryScope;
+  counts: LibrarySearchCounts;
+  results: LibraryHit[];
+}
+
+export type MusicFolderStatus = 'ok' | 'scanning' | 'pending' | 'missing' | 'off';
+
+/** A place the backend may read music from (the folders mounted in the container). */
+export interface MusicFolderRoot {
+  path: string;
+  label: string;
+  builtIn: boolean;
+}
+
+export interface MusicFolder {
+  id: string;
+  path: string;
+  label: string;
+  enabled: boolean;
+  /** The library of Spooty (`/music`): always searched, never editable. */
+  builtIn: boolean;
+  status: MusicFolderStatus;
+  files: number;
+  /** The scan hit the file limit: there are more files than the index holds. */
+  truncated: boolean;
+  scannedAt: string | null;
+}
+
+export interface MusicFoldersPayload {
+  roots: MusicFolderRoot[];
+  folders: MusicFolder[];
+}
+
+/** What is sent to replace the list of extra folders. */
+export interface MusicFolderInput {
+  path: string;
+  label?: string;
+  enabled?: boolean;
+}
+
+/** `GET /api/config/music-folders/browse`: the subfolders of an allowed place (no path = the allowed roots). */
+export interface FolderBrowse {
+  path: string | null;
+  parent: string | null;
+  dirs: Array<{ name: string; path: string }>;
 }

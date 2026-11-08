@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getLogs, clearLogs as apiClearLogs } from '../services/api';
 import type { LogEntry, LogFilters, LogLevel } from '../types';
+import { categoryParamFor, matchesFunction, mergeFunctions } from '../utils/logActor';
 
 const LOGS_LIMIT = 200;
 const POLL_INTERVAL_MS = 3000;
@@ -38,8 +39,10 @@ export function useLogs(filters: LogFilters) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [availableFunctions, setAvailableFunctions] = useState<string[]>([]);
+  const [availableFunctions, setAvailableFunctions] = useState<string[]>(() => mergeFunctions(new Set(), []));
   const mountedRef = useRef(true);
+  // With a server-side filter a fetch only holds the selected category: remember every function ever seen.
+  const seenFunctionsRef = useRef(new Set<string>());
 
   useEffect(() => {
     mountedRef.current = true;
@@ -47,18 +50,22 @@ export function useLogs(filters: LogFilters) {
 
     const fetchOnce = async (): Promise<void> => {
       try {
+        // The function is the log category: let the server filter, so activity lines are not pushed out of the
+        // latest 200 rows by pipeline noise.
         const raw = (await getLogs({
           level: filters.level !== 'all' ? filters.level : undefined,
           entryId: filters.entryId || undefined,
+          category: categoryParamFor(filters.function),
           limit: LOGS_LIMIT,
         })) as unknown as LogRecord[];
         if (!mountedRef.current) return;
 
         let items = raw.map(adapt);
-        const functionsSet = new Set<string>(items.map((l) => l.function));
+        for (const l of items) seenFunctionsRef.current.add(l.function);
 
+        // Safety net: an old backend ignores `category`.
         if (filters.function !== 'all') {
-          items = items.filter((l) => l.function === filters.function);
+          items = items.filter((l) => matchesFunction(l.function, filters.function));
         }
         if (filters.search) {
           const s = filters.search.toLowerCase();
@@ -72,7 +79,7 @@ export function useLogs(filters: LogFilters) {
         }
 
         setLogs(items);
-        setAvailableFunctions(Array.from(functionsSet).sort());
+        setAvailableFunctions(mergeFunctions(seenFunctionsRef.current, []));
         setLoading(false);
         setError(null);
       } catch (err) {

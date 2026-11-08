@@ -1,0 +1,1128 @@
+/* Tesla / car-mode full-screen player + floating mini-player. */
+
+.player-car {
+  min-height: 100dvh;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  color: #f5f5f5;
+  padding: 0.75rem 1rem 1.25rem;
+  box-sizing: border-box;
+}
+
+.player-car-top {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+  flex-shrink: 0;
+}
+
+.player-car-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  min-width: 56px;
+  padding: 0 1.1rem;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #eee;
+  text-decoration: none;
+  font-weight: 650;
+  font-size: 1.05rem;
+  border: 1px solid #2a2a2a;
+  flex-shrink: 0;
+}
+
+.player-car-back:hover {
+  background: #222;
+}
+
+.player-car-shelves {
+  display: flex;
+  flex: 1;
+  gap: 0.45rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.15rem 0;
+}
+
+.player-car-shelves::-webkit-scrollbar {
+  display: none;
+}
+
+.player-car-chip {
+  flex-shrink: 0;
+  min-height: 56px;
+  min-width: 56px;
+  padding: 0 1rem;
+  border-radius: 999px;
+  border: 1px solid #2a2a2a;
+  background: #141414;
+  color: #ddd;
+  font-size: 1.05rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.player-car-chip.active {
+  background: #3ddc97;
+  color: #04140c;
+  border-color: #3ddc97;
+  font-weight: 700;
+}
+
+.player-car-playlists {
+  margin-bottom: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* Stage: media + transport */
+.player-car-stage {
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) 1fr;
+  gap: 1.25rem 1.5rem;
+  align-items: center;
+  padding: 0.5rem 0 1rem;
+  flex-shrink: 0;
+}
+
+.player-car-media {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.player-yt-slot {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0a0a0a;
+  border: 1px solid #222;
+}
+
+.player-car-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-radius: 20px;
+  background: #121212;
+  border: 1px solid #2a2a2a;
+  box-shadow: 0 10px 40px #0008;
+}
+
+.player-yt-slot iframe,
+.player-yt-slot .sr-yt-target {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+/* ---- Picture box (rule W4) ----------------------------------------------------------------------------
+   ONE fixed box at the top of the player with two layers: the album cover and the single YouTube host.
+   Swapping video <-> cover only toggles visibility: the box never changes size (no layout shift), the iframe
+   is never moved or re-created (YouTube pauses an iframe that is display:none, so it stays rendered), and no
+   focus is touched. In cover mode the video layer is visibility:hidden, i.e. out of the tab order and the
+   accessibility tree. */
+.player-car-picture {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #111;
+  border: 1px solid #222;
+  box-shadow: 0 12px 40px #000a;
+}
+
+.player-car-picture-cover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.player-car-picture-cover.empty {
+  font-size: 4rem;
+  color: #333;
+}
+
+.player-car-picture-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.player-car-picture-video {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.player-car-picture.is-video .player-car-picture-video {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* The iframe is fitted INSIDE the box ("contain"): full width, 16:9, letter-boxed vertically. */
+.player-car-picture-video iframe,
+.player-car-picture-video .sr-yt-target {
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  display: block;
+}
+
+.player-car-where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 1.4rem;
+}
+
+.player-car-where .dl-chip {
+  margin: 0;
+}
+
+/* List window (rule W3): the status row above the queue */
+.player-car-window {
+  margin: 0 0 0.4rem;
+  padding: 0 0.15rem;
+  font-size: 0.78rem;
+  color: #8a8f99;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hidden host used when leaving /player so YouTube keeps playing for the mini-player. */
+.sr-yt-fallback {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  left: -9999px;
+  top: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.player-car-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.player-car-meta {
+  text-align: left;
+}
+
+.player-car-title {
+  font-size: clamp(1.6rem, 3.2vw, 2.6rem);
+  font-weight: 750;
+  line-height: 1.15;
+  color: #fff;
+  overflow-wrap: anywhere;
+}
+
+.player-car-artist {
+  margin-top: 0.35rem;
+  font-size: clamp(1.1rem, 2vw, 1.45rem);
+  color: #9a9a9a;
+  overflow-wrap: anywhere;
+}
+
+.player-car-context {
+  margin-top: 0.4rem;
+  font-size: 0.95rem;
+  color: #3ddc97;
+  font-weight: 600;
+}
+
+.player-car-browse-hint {
+  font-size: 0.85rem;
+  color: #888;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-car-seek {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  max-width: 720px;
+}
+
+.player-car-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
+  color: #888;
+  min-width: 2.6rem;
+}
+
+.player-car-seek-range {
+  flex: 1;
+  min-height: 52px;
+  accent-color: #3ddc97;
+  cursor: pointer;
+}
+
+.player-car-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.player-car-ctrl {
+  min-width: 64px;
+  min-height: 64px;
+  border-radius: 999px;
+  border: 1px solid #2a2a2a;
+  background: #161616;
+  color: #eee;
+  font-size: 1.45rem;
+  cursor: pointer;
+}
+
+.player-car-ctrl-skip {
+  min-width: 76px;
+  min-height: 76px;
+  font-size: 1.7rem;
+}
+
+.player-car-ctrl-play {
+  min-width: 104px;
+  min-height: 104px;
+  font-size: 2.2rem;
+  background: #3ddc97;
+  color: #04140c;
+  border-color: #3ddc97;
+  font-weight: 700;
+}
+
+.player-car-ctrl-play:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.player-car-ctrl.active {
+  border-color: #3ddc97;
+  color: #3ddc97;
+  background: #0f1f18;
+}
+
+.player-car-actions {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.player-car-action {
+  min-width: 64px;
+  min-height: 64px;
+  border-radius: 16px;
+  border: 1px solid #2a2a2a;
+  background: #141414;
+  color: #ddd;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.player-car-action.active {
+  border-color: #3ddc97;
+  background: #12261c;
+  color: #3ddc97;
+}
+
+.player-car-error {
+  color: #fecaca;
+  font-size: 1.05rem;
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: 14px;
+  background: #3f1515;
+  border: 1px solid #7f1d1d;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.player-car-error-hint {
+  color: #fca5a5;
+  font-size: 0.92rem;
+}
+
+.player-car-error-skip {
+  min-height: 48px;
+  min-width: 88px;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  border: 1px solid #f87171;
+  background: #7f1d1d;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.player-car-error a {
+  color: #fecaca;
+}
+
+/* Queue */
+.player-car-queue {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.25rem;
+  border-top: 1px solid #1c1c1c;
+  padding-top: 0.85rem;
+}
+
+.player-car-queue-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.65rem;
+  flex-shrink: 0;
+}
+
+.player-car-queue-bar h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 650;
+  color: #eee;
+}
+
+.player-car-count {
+  font-size: 0.95rem;
+  color: #888;
+  background: #1a1a1a;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+}
+
+.player-car-queue-btn {
+  min-width: 56px;
+  min-height: 56px;
+  margin-left: auto;
+  border-radius: 999px;
+  border: none;
+  background: #3ddc97;
+  color: #04140c;
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.player-car-queue-btn.ghost {
+  margin-left: 0;
+  background: #1a1a1a;
+  color: #eee;
+  border: 1px solid #2a2a2a;
+}
+
+.player-car-empty {
+  color: #888;
+  text-align: center;
+  padding: 2rem 0.5rem;
+}
+
+.player-car-empty-hint {
+  font-size: 0.95rem;
+  color: #555;
+}
+
+.player-car-tracks {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1;
+}
+
+.player-car-track {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 72px;
+  padding: 0.65rem 0.85rem;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: #111;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.player-car-track.active {
+  border-color: #3ddc97;
+  background: #0d1c15;
+}
+
+.player-car-track-art {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  background: #1c1c1c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  font-size: 1.3rem;
+}
+
+.player-car-track-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.player-car-track-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.player-car-track-title {
+  font-weight: 650;
+  font-size: 1.1rem;
+  color: #f2f2f2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-car-track-artist {
+  color: #888;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-car-track-fav,
+.player-car-track-eq {
+  flex-shrink: 0;
+  font-size: 1.2rem;
+}
+
+.player-car-track-eq {
+  color: #3ddc97;
+}
+
+/* Narrow / portrait: stack media above controls */
+@media (max-width: 820px) {
+  .player-car {
+    padding: 0.6rem 0.75rem 1rem;
+  }
+
+  .player-car-stage {
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+  }
+
+  /* One box (cover or video): centred, never wider than the screen allows */
+  .player-car-picture {
+    max-width: min(100%, 360px);
+    margin: 0 auto;
+  }
+
+  .player-car-meta {
+    text-align: center;
+  }
+
+  .player-car-controls,
+  .player-car-actions {
+    justify-content: center;
+  }
+
+  .player-car-seek {
+    max-width: none;
+  }
+
+  .player-car-ctrl-play {
+    min-width: 92px;
+    min-height: 92px;
+  }
+}
+
+/* Wide Tesla-like landscape: stage denser, queue fills rest */
+@media (min-width: 1100px) and (min-height: 700px) {
+  .player-car-stage {
+    grid-template-columns: 280px 1fr;
+    align-items: start;
+  }
+
+  .player-car-controls {
+    justify-content: center;
+    gap: 1rem;
+  }
+
+  .player-car-ctrl-play {
+    min-width: 128px;
+    min-height: 128px;
+    font-size: 2.6rem;
+  }
+
+  .player-car-ctrl-skip {
+    min-width: 100px;
+    min-height: 100px;
+    font-size: 2rem;
+  }
+
+  .player-car-dock {
+    position: sticky;
+    top: 0.35rem;
+    z-index: 5;
+  }
+}
+
+/* Short landscape (Tesla browser chrome eats height): prioritize transport dock */
+@media (min-width: 900px) and (max-height: 820px) {
+  .player-car-stage {
+    grid-template-columns: 200px 1fr;
+    gap: 0.85rem;
+  }
+
+  .player-car-picture {
+    max-width: 200px;
+  }
+
+  .player-car-ctrl-play {
+    min-width: 112px;
+    min-height: 112px;
+  }
+
+  .player-car-ctrl-skip {
+    min-width: 96px;
+    min-height: 96px;
+  }
+}
+
+/* Mini player — fixed bottom bar on other routes */
+.mini-player {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.6rem;
+  background: #121212ee;
+  border-top: 1px solid #2a2a2a;
+  backdrop-filter: blur(8px);
+  min-height: 64px;
+}
+
+.mini-player-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.mini-player-art {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: #222;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.mini-player-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mini-player-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mini-player-title {
+  font-weight: 600;
+  color: #f2f2f2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-player-artist {
+  font-size: 0.85rem;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-player-toggle,
+.mini-player-next {
+  min-width: 48px;
+  min-height: 48px;
+  border: none;
+  border-radius: 999px;
+  background: #1f1f1f;
+  color: #eee;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.mini-player-toggle {
+  background: #3ddc97;
+  color: #0b0b0b;
+}
+
+body:has(.mini-player) .list-page-content,
+body:has(.mini-player) .home--inbox {
+  padding-bottom: 5.5rem;
+}
+
+/* --- Add-to-playlist picker sheet --- */
+.playlist-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: #000c;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0.75rem;
+  box-sizing: border-box;
+}
+
+.playlist-picker {
+  width: min(520px, 100%);
+  max-height: min(80dvh, 640px);
+  overflow: auto;
+  background: #121212;
+  border: 1px solid #2a2a2a;
+  border-radius: 20px 20px 16px 16px;
+  padding: 1rem 1.1rem 1.25rem;
+  box-shadow: 0 -8px 40px #000a;
+}
+
+.playlist-picker-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.playlist-picker-header h2 {
+  margin: 0;
+  flex: 1;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f2f2f2;
+}
+
+.playlist-picker-close {
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 999px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #ddd;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.playlist-picker-song {
+  margin: 0 0 0.85rem;
+  color: #9a9a9a;
+  font-size: 1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playlist-picker-list {
+  list-style: none;
+  margin: 0 0 0.85rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.playlist-picker-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 64px;
+  padding: 0.65rem 0.9rem;
+  border-radius: 14px;
+  border: 1px solid #2a2a2a;
+  background: #1a1a1a;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-size: 1.1rem;
+}
+
+.playlist-picker-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.playlist-picker-item:hover,
+.playlist-picker-item:focus-visible {
+  border-color: #3ddc97;
+  background: #13261e;
+}
+
+.playlist-picker-new {
+  width: 100%;
+  min-height: 64px;
+  border-radius: 14px;
+  border: 1px dashed #3ddc97;
+  background: #0f1f18;
+  color: #3ddc97;
+  font-size: 1.15rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.playlist-picker-create {
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+
+.playlist-picker-cancel-create {
+  min-height: 44px;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #ddd;
+  cursor: pointer;
+}
+
+@media (min-width: 720px) {
+  .playlist-picker-backdrop {
+    align-items: center;
+  }
+
+  .playlist-picker {
+    border-radius: 18px;
+  }
+}
+
+/* --- Playlists (shared with Songs page) --- */
+.playlist-panel {
+  margin: 0.75rem 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  background: #161616;
+  border: 1px solid #2a2a2a;
+}
+
+.playlist-panel.compact {
+  padding: 0.7rem 0.85rem;
+  margin: 0;
+}
+
+.playlist-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.playlist-panel-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--text-primary, #eee);
+}
+
+.playlist-clear {
+  margin-left: auto;
+  min-height: 44px;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid #3a3a3a;
+  background: transparent;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.playlist-add-hint {
+  margin: 0 0 0.55rem;
+  font-size: 0.85rem;
+  color: #3ddc97;
+}
+
+.playlist-create-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.playlist-create-row .filter-search {
+  flex: 1;
+  min-width: 0;
+}
+
+.playlist-create-btn {
+  min-height: 44px;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: none;
+  background: #3ddc97;
+  color: #0b0b0b;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.playlist-create-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.playlist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.playlist-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.35rem;
+  border-radius: 8px;
+}
+
+.playlist-row.active {
+  background: #1f2a24;
+}
+
+.playlist-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0.35rem 0.4rem;
+  min-height: 44px;
+}
+
+.playlist-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+
+.playlist-count {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  color: #999;
+  background: #222;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+}
+
+.playlist-actions {
+  display: flex;
+  gap: 0.2rem;
+  flex-shrink: 0;
+}
+
+.playlist-actions button {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #ddd;
+  cursor: pointer;
+}
+
+.playlist-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.playlist-rename-row {
+  display: flex;
+  flex: 1;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.playlist-rename-row .filter-search {
+  flex: 1;
+  min-width: 0;
+}
+
+.playlist-rename-row button {
+  min-height: 44px;
+  padding: 0.3rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #ddd;
+  cursor: pointer;
+}
+
+.playlist-play-row {
+  margin: 0.4rem 0 0.9rem;
+}
+
+.playlist-save-queue {
+  background: #2a2a2a !important;
+  color: #eee !important;
+}
+
+/* Legacy class used by Songs play button */
+.player-play-all {
+  margin-left: auto;
+  min-height: 44px;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  border: none;
+  background: #3ddc97;
+  color: #0b0b0b;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .playlist-create-row {
+    flex-wrap: wrap;
+  }
+
+  .playlist-create-btn {
+    flex: 1 1 auto;
+  }
+}
+
+/* ---------- source switch (rule W5) and "playing from" chip ---------- */
+
+.player-car-source {
+  margin-top: 0.5rem;
+}
+
+.source-switch-hint {
+  margin: 0.3rem 0 0;
+  min-height: 1.1rem;
+  font-size: 0.72rem;
+  color: var(--text-muted, #7a808c);
+}
+
+.source-switch-compact select {
+  max-width: 6.5rem;
+  min-height: 36px;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  background: #1a1a1a;
+  color: #cfcfcf;
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.source-switch-compact select:focus-visible {
+  outline: 2px solid #3ddc97;
+  outline-offset: 1px;
+}
+
+.from-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0.02rem 0.45rem;
+  border: 1px solid #2f3340;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: #b9bfcb;
+  white-space: nowrap;
+}
+
+.from-chip-k {
+  color: #7a808c;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.6rem;
+}
+
+.from-chip-media-server { border-color: rgba(108, 182, 255, 0.45); }
+.from-chip-disk { border-color: rgba(61, 220, 151, 0.45); }
+.from-chip-youtube { border-color: rgba(255, 99, 99, 0.45); }
+
+.mini-player-artist .from-chip {
+  margin-left: 0.4rem;
+}
+
+@media (max-width: 480px) {
+  .source-switch-compact select {
+    max-width: 5rem;
+  }
+}

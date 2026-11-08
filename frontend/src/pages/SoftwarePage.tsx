@@ -7,9 +7,8 @@ import { DateGroupedList } from '../components/DateGroupedList';
 import { fetchSoftware } from '../services/api';
 import { filterSoftware, collectSoftwareTags, sortSoftware } from '../utils/softwareFilters';
 import type { SoftwareSortMode } from '../utils/softwareFilters';
-import { useAllEntries } from '../hooks/useJournal';
 import { useLanguage } from '../i18n';
-import type { AggregatedSoftware, SoftwareTag, JournalStats } from '../types';
+import type { AggregatedSoftware, SoftwareTag } from '../types';
 import type { Translations } from '../i18n/translations';
 
 const TAG_ICONS: Record<SoftwareTag, string> = {
@@ -90,7 +89,6 @@ function SoftwareRow({ item }: { item: AggregatedSoftware }) {
 }
 
 export function SoftwarePage() {
-  const { entries } = useAllEntries();
   const { t } = useLanguage();
 
   const [items, setItems] = useState<AggregatedSoftware[]>([]);
@@ -120,14 +118,6 @@ export function SoftwarePage() {
     return () => { cancelled = true; };
   }, []);
 
-  const stats: JournalStats = {
-    totalEntries: entries.length,
-    totalSongs: entries.reduce((acc, e) => acc + e.results.songs.length, 0),
-    totalFilms: entries.reduce((acc, e) => acc + e.results.films.length, 0),
-    totalNotes: entries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0),
-    totalSoftware: items.length,
-  };
-
   const sorted = useMemo(() => sortSoftware(items, sortMode), [items, sortMode]);
   const tags = useMemo(() => collectSoftwareTags(sorted), [sorted]);
   const visible = useMemo(
@@ -155,7 +145,7 @@ export function SoftwarePage() {
 
   return (
     <div className="list-page">
-      <Header stats={stats} />
+      <Header />
       <div className="list-page-content">
         <div className="list-page-header">
           <Link to="/" className="list-page-back">{t.back}</Link>

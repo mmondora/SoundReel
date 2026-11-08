@@ -9,9 +9,8 @@ import { fetchFilms, patchFilmMeta, refreshFilmStreaming, archiveLookupFilm, arc
 import type { FilmMetaPatchBody } from '../services/api';
 import { filterFilms, collectGenres, sortFilms, platformPlayUrl, filmOnPlatform, PLATFORM_SHELF_KEYS } from '../utils/filmFilters';
 import type { WatchedFilter, AvailabilityFilter, FilmSortMode, PlatformShelfFilter } from '../utils/filmFilters';
-import { useAllEntries } from '../hooks/useJournal';
 import { useLanguage } from '../i18n';
-import type { AggregatedFilm, FilmMetaRecord, JournalStats, StreamingUrls } from '../types';
+import type { AggregatedFilm, FilmMetaRecord, StreamingUrls } from '../types';
 
 function createDefaultMeta(filmKey: string): FilmMetaRecord {
   return {
@@ -63,7 +62,6 @@ export function mergePatch(meta: FilmMetaRecord | null, filmKey: string, patch: 
 }
 
 export function FilmsPage() {
-  const { entries } = useAllEntries();
   const { t } = useLanguage();
 
   const [films, setFilms] = useState<AggregatedFilm[]>([]);
@@ -82,13 +80,6 @@ export function FilmsPage() {
   useEffect(() => {
     fetchFilms().then(setFilms).catch(() => setFilms([])).finally(() => setLoading(false));
   }, []);
-
-  const stats: JournalStats = {
-    totalEntries: entries.length,
-    totalSongs: entries.reduce((acc, e) => acc + e.results.songs.length, 0),
-    totalFilms: entries.reduce((acc, e) => acc + e.results.films.length, 0),
-    totalNotes: entries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0),
-  };
 
   const sortedFilms = useMemo(() => sortFilms(films, sortMode), [films, sortMode]);
 
@@ -234,7 +225,7 @@ export function FilmsPage() {
 
   return (
     <div className="list-page">
-      <Header stats={stats} />
+      <Header />
       <div className="list-page-content">
         <div className="list-page-header">
           <Link to="/" className="list-page-back">{t.back}</Link>

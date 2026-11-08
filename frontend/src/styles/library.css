@@ -1,0 +1,439 @@
+/* Library search (three scopes) and the music folders section of the settings. Dark only. */
+
+.lib-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+
+.lib-scope-k {
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.lib-scope-select {
+  max-width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.lib-scope-select:focus-visible,
+.lib-retry:focus-visible,
+.lib-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.lib-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  transition: opacity 0.15s;
+}
+
+.lib-results.is-stale {
+  opacity: 0.55;
+}
+
+.lib-summary {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.lib-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.lib-elsewhere {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.lib-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.lib-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.75rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  background: var(--error-soft);
+  font-size: 0.85rem;
+}
+
+.lib-retry {
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.lib-group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0.4rem 0 0.2rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.lib-group-count {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.lib-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.lib-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.lib-hit:last-child {
+  border-bottom: 0;
+}
+
+.lib-hit-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.6rem;
+}
+
+.lib-hit-title {
+  flex: 1 1 14rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.lib-hit-artist {
+  font-weight: 600;
+}
+
+.lib-hit-size {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.lib-badge {
+  flex: 0 0 auto;
+  padding: 0.02rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.lib-badge-songs { color: var(--accent); border-color: rgba(61, 220, 151, 0.45); }
+.lib-badge-media { color: #6cb6ff; border-color: rgba(108, 182, 255, 0.45); }
+.lib-badge-local { color: #ffcf6b; border-color: rgba(255, 207, 107, 0.45); }
+
+.lib-mark {
+  flex: 0 0 auto;
+  padding: 0.02rem 0.45rem;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.66rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lib-hit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.lib-hit-where {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.lib-hit-location {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .lib-scope-k {
+    /* visually hidden, NOT display:none: the select keeps its accessible name from this label */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .lib-hit {
+    padding: 0.6rem 0.7rem;
+  }
+}
+
+/* ---------- music folders (settings, admin only) ---------- */
+
+.mf-intro,
+.mf-note {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.mf-note {
+  margin-top: 0.75rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.mf-roots {
+  margin: 0.5rem 0 0.9rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.mf-roots code {
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  color: var(--text-secondary);
+}
+
+.mf-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+}
+
+.mf-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.4rem 0.8rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+}
+
+.mf-item.is-bad {
+  border-color: var(--error);
+}
+
+.mf-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.mf-label {
+  width: 100%;
+  max-width: 24rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+.mf-label:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.mf-label-static {
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.mf-path {
+  overflow-wrap: anywhere;
+  user-select: text;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.mf-status {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.6rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.mf-chip {
+  padding: 0.02rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mf-chip-ok { color: var(--accent); border-color: rgba(61, 220, 151, 0.45); }
+.mf-chip-scanning,
+.mf-chip-pending { color: var(--warning); border-color: rgba(255, 159, 10, 0.45); }
+.mf-chip-missing { color: var(--error); border-color: rgba(255, 69, 58, 0.5); }
+.mf-chip-off { color: var(--text-muted); }
+
+.mf-pill {
+  padding: 0.02rem 0.5rem;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.mf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.mf-btn {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.mf-btn:hover:not(:disabled) { background: var(--bg-hover); }
+.mf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.mf-btn-danger { color: var(--error); }
+.mf-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.mf-error {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  background: var(--error-soft);
+  font-size: 0.85rem;
+}
+
+.mf-busy {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.mf-picker-path {
+  margin: 0 0 0.5rem;
+  overflow-wrap: anywhere;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.mf-picker-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  max-height: 50vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.mf-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.mf-picker-row:last-child { border-bottom: 0; }
+
+.mf-picker-open {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.35rem 0.25rem;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.mf-picker-open:hover { color: var(--accent); }
+.mf-picker-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+@media (max-width: 640px) {
+  .mf-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .mf-item .mf-actions {
+    grid-column: 1 / -1;
+  }
+}

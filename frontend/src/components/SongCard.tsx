@@ -9,6 +9,10 @@ import { fetchSongPreview, fetchSongFileInfo } from '../services/api';
 interface SongCardProps {
   song: AggregatedSong;
   onPatch: (patch: SongMetaPatchBody) => void;
+  /** Opens the add-to-playlist picker for this song. */
+  onAddToPlaylist?: (songKey: string) => void;
+  /** Removes this song from the currently browsed playlist. */
+  onRemoveFromPlaylist?: (songKey: string) => void;
 }
 
 // A single shared <audio> element so starting one preview always stops
@@ -138,7 +142,7 @@ export function youtubeSearchUrl(artist: string, title: string): string {
 }
 
 /** One deduplicated song row: cover art, genre badges, rating slider and quick actions. */
-export function SongCard({ song, onPatch }: SongCardProps) {
+export function SongCard({ song, onPatch, onAddToPlaylist, onRemoveFromPlaylist }: SongCardProps) {
   const { t } = useLanguage();
   const meta = song.meta;
   // Slider position while dragging; null when idle (shows the stored score).
@@ -448,6 +452,26 @@ export function SongCard({ song, onPatch }: SongCardProps) {
               onClick={togglePreview}
             >
               {playing ? '⏸' : '▶'}
+            </button>
+          )}
+          {onAddToPlaylist && (
+            <button
+              type="button"
+              className="song-preview-btn"
+              title={t.playlistAddSong}
+              onClick={() => onAddToPlaylist(song.songKey)}
+            >
+              ＋
+            </button>
+          )}
+          {onRemoveFromPlaylist && (
+            <button
+              type="button"
+              className="song-preview-btn"
+              title={t.playlistRemoveSong}
+              onClick={() => onRemoveFromPlaylist(song.songKey)}
+            >
+              −
             </button>
           )}
         </div>

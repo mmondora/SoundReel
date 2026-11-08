@@ -3,7 +3,10 @@ import type { Entry, Note } from '../types';
 import { SongItem } from './SongItem';
 import { FilmItem } from './FilmItem';
 import { ActivityTimeline } from './ActivityTimeline';
-import { deleteEntry, retryEntry, enrichEntry, fetchEntryMedia } from '../services/api';
+import {
+  deleteEntry, retryEntry, enrichEntry, fetchEntryMedia,
+  fetchEntryShares, shareEntryWith, unshareEntryWith, fetchMe,
+} from '../services/api';
 import type { EntryMediaUrls } from '../services/api';
 import { useLanguage, interpolate } from '../i18n';
 import { VERDICT_TONE, VERDICT_ICON } from '../utils/enrichmentVerdict';
@@ -65,7 +68,7 @@ function getPlatformLabel(platform: string): string {
     instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', facebook: 'Facebook',
     twitter: 'X', threads: 'Threads', snapchat: 'Snapchat', pinterest: 'Pinterest',
     linkedin: 'LinkedIn', reddit: 'Reddit', vimeo: 'Vimeo', twitch: 'Twitch',
-    spotify: 'Spotify', soundcloud: 'SoundCloud'
+    spotify: 'Spotify', soundcloud: 'SoundCloud', shazam: 'Shazam'
   };
   return labels[platform] || 'Web';
 }
@@ -104,6 +107,11 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
   const [shareCopied, setShareCopied] = useState(false);
   const [localMedia, setLocalMedia] = useState<EntryMediaUrls | null>(null);
   const [frameIndex, setFrameIndex] = useState(0);
+  const [familyOpen, setFamilyOpen] = useState(false);
+  const [familyTargets, setFamilyTargets] = useState<string[]>([]);
+  const [sharedWith, setSharedWith] = useState<string[]>([]);
+  const [familyBusy, setFamilyBusy] = useState(false);
+  const [canManageShare, setCanManageShare] = useState(false);
   const { t, language } = useLanguage();
 
   useEffect(() => {
@@ -119,6 +127,22 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
       });
     return () => { cancelled = true; };
   }, [entry.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFamilyOpen(false);
+    setSharedWith([]);
+    setFamilyTargets([]);
+    setCanManageShare(false);
+    void fetchMe()
+      .then((me) => {
+        if (cancelled) return;
+        const owner = entry.ownerUser ?? 'mike';
+        setCanManageShare(me.authenticated && me.user === owner);
+      })
+      .catch(() => { /* ignore */ });
+    return () => { cancelled = true; };
+  }, [entry.id, entry.ownerUser]);
 
   const videoSrc = localMedia?.videoUrl || entry.mediaUrl;
   const isLocalVideo = !!localMedia?.videoUrl;
@@ -192,6 +216,37 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
     setTimeout(() => setShareCopied(false), 2000);
   };
 
+  const openFamilyShare = async () => {
+    setFamilyBusy(true);
+    try {
+      const data = await fetchEntryShares(entry.id);
+      setFamilyTargets(data.family);
+      setSharedWith(data.sharedWith);
+      setFamilyOpen(true);
+    } catch {
+      alert(language === 'it' ? 'Condivisione non disponibile' : 'Sharing unavailable');
+    } finally {
+      setFamilyBusy(false);
+    }
+  };
+
+  const toggleFamilyShare = async (userId: string) => {
+    setFamilyBusy(true);
+    try {
+      if (sharedWith.includes(userId)) {
+        const data = await unshareEntryWith(entry.id, userId);
+        setSharedWith(data.sharedWith);
+      } else {
+        const data = await shareEntryWith(entry.id, [...sharedWith, userId]);
+        setSharedWith(data.sharedWith);
+      }
+    } catch {
+      alert(language === 'it' ? 'Errore condivisione' : 'Share error');
+    } finally {
+      setFamilyBusy(false);
+    }
+  };
+
   // Truncated transcript preview (3 lines ~ 200 chars)
   const transcriptPreview = transcript && transcript.length > 200
     ? transcript.substring(0, 200) + '...'
@@ -218,6 +273,11 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
           )}
           <div className="inspector-meta">
             <span className="inspector-platform-badge">{getPlatformLabel(entry.sourcePlatform)}</span>
+            {entry.ownerUser && (
+              <span className="inspector-platform-badge" title="owner">
+                {entry.ownerUser}
+              </span>
+            )}
             <span className={`inspector-status-badge ${entry.status}`}>
               {entry.status === 'processing' ? t.processing : entry.status === 'error' ? t.error : 'completed'}
             </span>
@@ -257,7 +317,38 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
             <button className="inspector-action-btn" onClick={handleShareEntry} title={t.shareEntry}>
               {shareCopied ? '✓' : '🔗'}
             </button>
+            {canManageShare && (
+              <button
+                className="inspector-action-btn"
+                onClick={() => { void openFamilyShare(); }}
+                disabled={familyBusy}
+                title={language === 'it' ? 'Condividi in famiglia' : 'Share with family'}
+              >
+                {familyBusy ? '...' : '👥'}
+              </button>
+            )}
           </div>
+          {familyOpen && (
+            <div className="inspector-family-share">
+              <div className="inspector-family-share-title">
+                {language === 'it' ? 'Condividi con' : 'Share with'}
+              </div>
+              {familyTargets.map((id) => (
+                <label key={id} className="inspector-family-share-row">
+                  <input
+                    type="checkbox"
+                    checked={sharedWith.includes(id)}
+                    disabled={familyBusy}
+                    onChange={() => { void toggleFamilyShare(id); }}
+                  />
+                  <span>{id}</span>
+                </label>
+              ))}
+              {familyTargets.length === 0 && (
+                <span className="inspector-family-share-empty">—</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

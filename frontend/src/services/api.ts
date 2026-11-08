@@ -1,6 +1,9 @@
 import type {
-  Entry, SearchResponse, EnrichmentResult, AggregatedFilm, FilmMetaRecord, AvailabilityStatus,
+  Entry, EntrySummary, SearchResponse, EnrichmentResult, AggregatedFilm, FilmMetaRecord, AvailabilityStatus,
   AggregatedSong, SongMetaRecord, SongRating, AggregatedNote, AggregatedSoftware,
+  PlaylistSummary, PlaylistDetail, JournalStats, MeResponse, SongStateResponse, SongDownloadResponse,
+  DynamicPreset, DynamicRule, PlayEvent, NetworkInfo, NetworkKind,
+  LibraryScope, LibrarySearchResponse, MusicFoldersPayload, MusicFolderInput, FolderBrowse,
 } from '../types';
 
 // When served from the same origin as the backend, relative paths work.
@@ -51,6 +54,76 @@ export async function analyzeUrl(sourceUrl: string): Promise<AnalyzeResponse> {
 export async function listEntries(limit = 200): Promise<Entry[]> {
   const res = await fetch(url(`/api/entries?limit=${limit}`));
   return json<Entry[]>(res);
+}
+
+export interface EntrySummaryPage {
+  entries: EntrySummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export async function listEntrySummaries(limit = 40, offset = 0): Promise<EntrySummaryPage> {
+  const params = new URLSearchParams({
+    view: 'summary',
+    limit: String(limit),
+    offset: String(offset),
+  });
+  const res = await fetch(url(`/api/entries?${params}`));
+  return json<EntrySummaryPage>(res);
+}
+
+/** Every entry summary visible to the user (pages of 1000, the backend cap). */
+export async function fetchAllEntrySummaries(pageSize = 1000): Promise<EntrySummary[]> {
+  const all: EntrySummary[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await listEntrySummaries(pageSize, offset);
+    all.push(...page.entries);
+    if (page.entries.length === 0 || all.length >= page.total) break;
+  }
+  return all;
+}
+
+export async function fetchJournalStats(): Promise<JournalStats> {
+  const res = await fetch(url('/api/stats'));
+  const data = await json<{ stats: JournalStats }>(res);
+  return data.stats;
+}
+
+export async function fetchMe(): Promise<MeResponse> {
+  const res = await fetch(url('/api/me'));
+  return json<MeResponse>(res);
+}
+
+export async function shareEntryWith(
+  entryId: string,
+  withUsers: string[],
+): Promise<{ entryId: string; sharedWith: string[] }> {
+  const res = await fetch(url(`/api/entries/${encodeURIComponent(entryId)}/share`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ with: withUsers }),
+  });
+  return json(res);
+}
+
+export async function unshareEntryWith(
+  entryId: string,
+  withUser: string,
+): Promise<{ entryId: string; sharedWith: string[] }> {
+  const params = new URLSearchParams({ with: withUser });
+  const res = await fetch(
+    url(`/api/entries/${encodeURIComponent(entryId)}/share?${params}`),
+    { method: 'DELETE' },
+  );
+  return json(res);
+}
+
+export async function fetchEntryShares(
+  entryId: string,
+): Promise<{ entryId: string; sharedWith: string[]; family: string[] }> {
+  const res = await fetch(url(`/api/entries/${encodeURIComponent(entryId)}/shares`));
+  return json(res);
 }
 
 export async function getEntry(id: string): Promise<Entry> {
@@ -268,6 +341,8 @@ export async function addSongToSpotify(
 export interface LogsFilters {
   level?: string;
   entryId?: string;
+  /** Comma-separated categories (= the "function" of a log line): `playlist,sync`. */
+  category?: string;
   limit?: number;
 }
 
@@ -275,6 +350,7 @@ export async function getLogs(filters: LogsFilters = {}): Promise<Array<Record<s
   const params = new URLSearchParams();
   if (filters.level && filters.level !== 'all') params.set('level', filters.level);
   if (filters.entryId) params.set('entryId', filters.entryId);
+  if (filters.category) params.set('category', filters.category);
   if (filters.limit) params.set('limit', String(filters.limit));
   const qs = params.toString();
   const res = await fetch(url(`/api/logs${qs ? `?${qs}` : ''}`));
@@ -486,6 +562,18 @@ export async function fetchSongPreview(songKey: string): Promise<string> {
   return data.url;
 }
 
+export interface SongYoutubeSource {
+  videoId: string;
+  watchUrl: string;
+  source: 'stored_url' | 'yt_search';
+}
+
+/** Resolve a playable YouTube video for the web player (online stream). */
+export async function fetchSongYoutube(songKey: string): Promise<SongYoutubeSource> {
+  const res = await fetch(url(`/api/songs/${encodeURIComponent(songKey)}/youtube`));
+  return json<SongYoutubeSource>(res);
+}
+
 export interface SongFileInfo {
   inLibrary: boolean;
   relPath: string | null;
@@ -498,6 +586,39 @@ export interface SongFileInfo {
 export async function fetchSongFileInfo(songKey: string): Promise<SongFileInfo> {
   const res = await fetch(url(`/api/songs/${encodeURIComponent(songKey)}/file-info`));
   return json<SongFileInfo>(res);
+}
+
+/**
+ * First play: ask the server to download the MP3 for a song that has no file yet.
+ * `play` jumps the Sync queue (somebody is listening to it right now). Idempotent.
+ * Contract: docs/mondrop-sync.md "Primo play".
+ */
+export async function requestSongDownload(
+  songKey: string,
+  priority: 'play' | 'sync' = 'play',
+): Promise<SongDownloadResponse> {
+  const res = await fetch(url(`/api/songs/${encodeURIComponent(songKey)}/download`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ priority }),
+  });
+  return json<SongDownloadResponse>(res);
+}
+
+/** Server-side file state of one song (ready / preparing / failed / no_source / missing). */
+export async function fetchSongState(songKey: string): Promise<SongStateResponse> {
+  const res = await fetch(url(`/api/songs/${encodeURIComponent(songKey)}/state`));
+  return json<SongStateResponse>(res);
+}
+
+/**
+ * Where this browser is: "internal" (the home network, straight to Traefik) or "external" (through Cloudflare).
+ * The browser cannot tell by itself, so the server decides (rule W7). Any failure is the caller's to treat as external.
+ */
+export async function fetchNetwork(): Promise<NetworkKind> {
+  const res = await fetch(url('/api/net'));
+  const data = await json<Partial<NetworkInfo>>(res);
+  return data.network === 'internal' ? 'internal' : 'external';
 }
 
 export async function patchSongMeta(
@@ -513,10 +634,235 @@ export async function patchSongMeta(
   return data.meta;
 }
 
+// --- Playlists ---
+
+export async function fetchPlaylists(): Promise<PlaylistSummary[]> {
+  const res = await fetch(url('/api/playlists'));
+  const data = await json<{ playlists: PlaylistSummary[] }>(res);
+  return data.playlists;
+}
+
+export async function fetchPlaylist(id: string): Promise<PlaylistDetail> {
+  const res = await fetch(url(`/api/playlists/${encodeURIComponent(id)}`));
+  const data = await json<{ playlist: PlaylistDetail }>(res);
+  return data.playlist;
+}
+
+export async function createPlaylist(name: string, songKeys: string[] = []): Promise<PlaylistDetail> {
+  const res = await fetch(url('/api/playlists'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, songKeys }),
+  });
+  const data = await json<{ playlist: PlaylistDetail }>(res);
+  return data.playlist;
+}
+
+export async function renamePlaylist(id: string, name: string): Promise<PlaylistDetail> {
+  const res = await fetch(url(`/api/playlists/${encodeURIComponent(id)}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  const data = await json<{ playlist: PlaylistDetail }>(res);
+  return data.playlist;
+}
+
+export async function deletePlaylist(id: string): Promise<void> {
+  const res = await fetch(url(`/api/playlists/${encodeURIComponent(id)}`), { method: 'DELETE' });
+  await json<{ ok: boolean }>(res);
+}
+
+export async function addSongToPlaylist(id: string, songKey: string): Promise<PlaylistDetail> {
+  const res = await fetch(url(`/api/playlists/${encodeURIComponent(id)}/songs`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ songKey }),
+  });
+  const data = await json<{ playlist: PlaylistDetail }>(res);
+  return data.playlist;
+}
+
+export async function removeSongFromPlaylist(id: string, songKey: string): Promise<PlaylistDetail> {
+  const res = await fetch(
+    url(`/api/playlists/${encodeURIComponent(id)}/songs/${encodeURIComponent(songKey)}`),
+    { method: 'DELETE' },
+  );
+  const data = await json<{ playlist: PlaylistDetail }>(res);
+  return data.playlist;
+}
+
+/** Rewrites the order of a playlist (keys not listed keep their relative order at the end). */
+export async function reorderPlaylist(id: string, songKeys: string[]): Promise<PlaylistDetail> {
+  const res = await fetch(url(`/api/playlists/${encodeURIComponent(id)}/songs`), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ songKeys }),
+  });
+  const data = await json<{ playlist: PlaylistDetail }>(res);
+  return data.playlist;
+}
+
+export interface PlaylistSharesResponse {
+  playlistId: string;
+  sharedWith: string[];
+  /** Users the owner can still share with (everybody but the owner). Only on GET. */
+  family?: string[];
+}
+
+/** Owner only (the backend answers 404 to anybody else). */
+export async function fetchPlaylistShares(id: string): Promise<PlaylistSharesResponse & { family: string[] }> {
+  const res = await fetch(url(`/api/playlists/${encodeURIComponent(id)}/shares`));
+  return json<PlaylistSharesResponse & { family: string[] }>(res);
+}
+
+export async function sharePlaylistWith(id: string, withUsers: string[]): Promise<PlaylistSharesResponse> {
+  const res = await fetch(url(`/api/playlists/${encodeURIComponent(id)}/share`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ with: withUsers }),
+  });
+  return json<PlaylistSharesResponse>(res);
+}
+
+export async function unsharePlaylistWith(id: string, withUser: string): Promise<PlaylistSharesResponse> {
+  const params = new URLSearchParams({ with: withUser });
+  const res = await fetch(
+    url(`/api/playlists/${encodeURIComponent(id)}/share?${params}`),
+    { method: 'DELETE' },
+  );
+  return json<PlaylistSharesResponse>(res);
+}
+
+// --- Dynamic playlists (docs/mondrop-stats.md §4) ---
+
+export async function fetchDynamicPresets(): Promise<DynamicPreset[]> {
+  const res = await fetch(url('/api/playlists/dynamic/presets'));
+  const data = await json<DynamicPreset[] | { presets: DynamicPreset[] }>(res);
+  return Array.isArray(data) ? data : (data.presets ?? []);
+}
+
+export async function createDynamicPlaylist(name: string, rule: DynamicRule): Promise<PlaylistDetail> {
+  const res = await fetch(url('/api/playlists'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, kind: 'dynamic', rule }),
+  });
+  const data = await json<{ playlist: PlaylistDetail }>(res);
+  return data.playlist;
+}
+
+/** Edits the RULE of a dynamic playlist (its name cannot change: the backend answers 409 playlist_is_dynamic). */
+export async function updatePlaylistRule(id: string, rule: DynamicRule): Promise<PlaylistDetail> {
+  const res = await fetch(url(`/api/playlists/${encodeURIComponent(id)}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rule }),
+  });
+  const data = await json<{ playlist: PlaylistDetail }>(res);
+  return data.playlist;
+}
+
+// --- Listening events + statistics (docs/mondrop-stats.md §1, §5) ---
+
+/**
+ * Sends a batch of listening events. Resolves with the HTTP status (it does NOT throw on non-2xx): the caller keeps
+ * the events until it sees a 200. `keepalive` lets the request outlive the page (visibilitychange / pagehide).
+ */
+export async function sendPlays(events: PlayEvent[], opts: { keepalive?: boolean } = {}): Promise<number> {
+  const res = await fetch(url('/api/plays'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ events }),
+    keepalive: opts.keepalive === true,
+  });
+  return res.status;
+}
+
+export interface StatsQuery {
+  scope: 'me' | 'all';
+  from?: string;
+  to?: string;
+  user?: string;
+  device?: string;
+  tz?: string;
+}
+
+function statsParams(q: StatsQuery): URLSearchParams {
+  const params = new URLSearchParams({ scope: q.scope });
+  if (q.from) params.set('from', q.from);
+  if (q.to) params.set('to', q.to);
+  if (q.user) params.set('user', q.user);
+  if (q.device) params.set('device', q.device);
+  if (q.tz) params.set('tz', q.tz);
+  return params;
+}
+
+/** Raw payload: `normalizeStats` (utils/statsView) turns it into a `ListeningStats` whatever fields are missing. */
+export async function fetchListeningStats(q: StatsQuery): Promise<unknown> {
+  const res = await fetch(url(`/api/stats/listening?${statsParams(q)}`));
+  return json<unknown>(res);
+}
+
+export async function fetchRecentPlays(q: StatsQuery, limit = 50): Promise<unknown> {
+  const params = statsParams(q);
+  params.set('limit', String(limit));
+  const res = await fetch(url(`/api/stats/listening/recent?${params}`));
+  return json<unknown>(res);
+}
+
 // --- Notes ---
 
 export async function fetchNotes(): Promise<AggregatedNote[]> {
   const res = await fetch(url('/api/notes'));
   const data = await json<{ notes: AggregatedNote[] }>(res);
   return data.notes;
+}
+
+// --- Library search (any signed-in user) ---
+
+/**
+ * One search over the journal songs, the whole media server and the local music folders. `limit` is per scope
+ * (the server caps it at 100). The server only counts the scopes it searched, so ask for "all" when the three
+ * counts matter. Failures keep the server's `{error}` body in the message: see utils/apiError.
+ */
+export async function searchLibrary(
+  q: string,
+  scope: LibraryScope = 'all',
+  limit = 100,
+  signal?: AbortSignal,
+): Promise<LibrarySearchResponse> {
+  const params = new URLSearchParams({ q, scope, limit: String(limit) });
+  const res = await fetch(url(`/api/library/search?${params}`), { signal });
+  return json<LibrarySearchResponse>(res);
+}
+
+// --- Music folders (admin only: the server answers 403 to everybody else) ---
+
+export async function getMusicFolders(): Promise<MusicFoldersPayload> {
+  const res = await fetch(url('/api/config/music-folders'));
+  return json<MusicFoldersPayload>(res);
+}
+
+/** REPLACES the list of extra folders: send the whole list. The built-in library is never part of it. */
+export async function saveMusicFolders(folders: MusicFolderInput[]): Promise<MusicFoldersPayload> {
+  const res = await fetch(url('/api/config/music-folders'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folders }),
+  });
+  return json<MusicFoldersPayload>(res);
+}
+
+/** Subfolders of `path` (a container path inside an allowed root); without a path, the allowed roots themselves. */
+export async function browseMusicFolders(path?: string | null): Promise<FolderBrowse> {
+  const query = path ? `?${new URLSearchParams({ path })}` : '';
+  const res = await fetch(url(`/api/config/music-folders/browse${query}`));
+  return json<FolderBrowse>(res);
+}
+
+/** Ask for a rescan now (the server answers 202 and scans in the background). */
+export async function rescanMusicFolders(): Promise<void> {
+  const res = await fetch(url('/api/config/music-folders/rescan'), { method: 'POST' });
+  if (!res.ok) await json<unknown>(res);
 }

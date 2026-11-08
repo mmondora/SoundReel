@@ -6,9 +6,8 @@ import type { FilterSection } from '../components/FilterPanel';
 import { fetchNotes } from '../services/api';
 import { filterNotes, collectCategories, sortNotes } from '../utils/noteFilters';
 import type { NoteSortMode } from '../utils/noteFilters';
-import { useAllEntries } from '../hooks/useJournal';
 import { useLanguage } from '../i18n';
-import type { AggregatedNote, NoteCategory, JournalStats } from '../types';
+import type { AggregatedNote, NoteCategory } from '../types';
 import type { Translations } from '../i18n/translations';
 
 const CATEGORY_ICONS: Record<NoteCategory, string> = {
@@ -123,7 +122,6 @@ function NoteRow({ note }: NoteRowProps) {
 }
 
 export function NotesPage() {
-  const { entries } = useAllEntries();
   const { t } = useLanguage();
 
   const [notes, setNotes] = useState<AggregatedNote[]>([]);
@@ -136,13 +134,6 @@ export function NotesPage() {
   useEffect(() => {
     fetchNotes().then(setNotes).catch(() => setNotes([])).finally(() => setLoading(false));
   }, []);
-
-  const stats: JournalStats = {
-    totalEntries: entries.length,
-    totalSongs: entries.reduce((acc, e) => acc + e.results.songs.length, 0),
-    totalFilms: entries.reduce((acc, e) => acc + e.results.films.length, 0),
-    totalNotes: entries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0),
-  };
 
   const sortedNotes = useMemo(() => sortNotes(notes, sortMode), [notes, sortMode]);
 
@@ -187,7 +178,7 @@ export function NotesPage() {
 
   return (
     <div className="list-page">
-      <Header stats={stats} />
+      <Header />
       <div className="list-page-content">
         <div className="list-page-header">
           <Link to="/" className="list-page-back">{t.back}</Link>

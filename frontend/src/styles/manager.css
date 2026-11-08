@@ -1,0 +1,999 @@
+/* Playlist manager ("Norton Commander") + first-play download chip. Dark only, editorial mono. */
+
+.mgr-page {
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+.mgr-content {
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: 1rem 1.25rem 6rem; /* room for the floating mini-player */
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mgr-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.mgr-head h1 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.mgr-hint {
+  margin-top: 0.15rem;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* ---------- controls ---------- */
+
+.mgr-btn,
+.mgr-select,
+.mgr-input {
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.38rem 0.65rem;
+}
+
+.mgr-btn {
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.mgr-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.mgr-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mgr-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mgr-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0a0f0c;
+  font-weight: 600;
+}
+
+.mgr-btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.mgr-btn-danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: #fff;
+  font-weight: 600;
+}
+
+.mgr-btn-small {
+  padding: 0.18rem 0.5rem;
+  font-size: 0.72rem;
+}
+
+.mgr-input,
+.mgr-select {
+  min-width: 0;
+}
+
+.mgr-btn:focus-visible,
+.mgr-select:focus-visible,
+.mgr-input:focus-visible,
+.mgr-chip:focus-visible,
+.mgr-fn:focus-visible,
+.mgr-tab:focus-visible,
+.mgr-radio input:focus-visible,
+.mgr-check input:focus-visible,
+.mgr-dialog-x:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The dialog box itself only receives focus programmatically; the controls inside show the ring. */
+.mgr-dialog:focus {
+  outline: none;
+}
+
+.mgr-error {
+  color: var(--error);
+  font-size: 0.85rem;
+}
+
+/* ---------- panes ---------- */
+
+.mgr-switcher {
+  display: none;
+  gap: 0.35rem;
+}
+
+.mgr-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.45rem 0.6rem;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mgr-tab.on {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.mgr-panes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.mgr-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: clamp(360px, calc(100vh - 330px), 900px);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.mgr-pane.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+.mgr-pane-head {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  max-height: 62%;
+  overflow-y: auto;
+}
+
+.mgr-pane-top {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mgr-pane-tag {
+  flex: 0 0 auto;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.mgr-pane.is-active .mgr-pane-tag {
+  color: var(--accent);
+}
+
+.mgr-pane-top .mgr-select {
+  flex: 1 1 auto;
+}
+
+.mgr-select-sort {
+  flex: 0 0 auto !important;
+}
+
+.mgr-owner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.mgr-pill {
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.mgr-pill.mine {
+  color: var(--accent);
+  border-color: rgba(61, 220, 151, 0.4);
+}
+
+.mgr-pill.ro {
+  color: var(--warning);
+  border-color: rgba(255, 159, 10, 0.45);
+}
+
+.mgr-filter-bar {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.mgr-search {
+  flex: 1 1 auto;
+}
+
+/* ---------- filters ---------- */
+
+.mgr-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.55rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+}
+
+.mgr-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  align-items: flex-end;
+}
+
+.mgr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  flex: 1 1 8rem;
+}
+
+.mgr-check,
+.mgr-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.mgr-facet {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.mgr-facet legend {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0;
+  margin-bottom: 0.2rem;
+}
+
+.mgr-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  max-height: 4.6rem;
+  overflow-y: auto;
+}
+
+.mgr-radios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.75rem;
+}
+
+.mgr-chip {
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.12rem 0.55rem;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mgr-chip.on {
+  color: #0a0f0c;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.mgr-chip-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.mgr-filter-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ---------- list ---------- */
+
+.mgr-list {
+  flex: 1 1 auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.mgr-list:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.mgr-row {
+  display: grid;
+  grid-template-columns: 1.1rem auto minmax(0, 1fr) minmax(0, 26%) auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid var(--border-light);
+  cursor: default;
+}
+
+.mgr-row.is-cursor {
+  background: var(--bg-hover);
+}
+
+.mgr-pane.is-active .mgr-row.is-cursor {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.mgr-row.is-marked .mgr-title {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.mgr-row.is-marked .mgr-mark {
+  color: var(--warning);
+}
+
+.mgr-row.is-missing {
+  opacity: 0.65;
+  font-style: italic;
+}
+
+.mgr-mark {
+  text-align: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.mgr-dl-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 1rem;
+}
+
+.mgr-dl {
+  text-align: center;
+  font-size: 0.7rem;
+}
+
+.mgr-dl-yes { color: var(--accent); }
+.mgr-dl-wip { color: var(--warning); }
+.mgr-dl-no,
+.mgr-dl-unknown { color: var(--text-muted); }
+
+.mgr-main {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mgr-title { color: var(--text-primary); }
+.mgr-artist { color: var(--text-secondary); }
+
+.mgr-album {
+  min-width: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mgr-badges {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.mgr-badge {
+  font-size: 0.62rem;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.mgr-badge-source {
+  color: var(--text-muted);
+}
+
+.mgr-empty {
+  padding: 1rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  list-style: none;
+}
+
+.mgr-pane-foot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  padding: 0.35rem 0.65rem;
+  border-top: 1px solid var(--border);
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.mgr-foot-marked { color: var(--warning); }
+.mgr-foot-missing { color: var(--text-muted); }
+
+/* ---------- function bar + result ---------- */
+
+.mgr-fnbar {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.3rem;
+  overflow-x: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.mgr-fn {
+  flex: 1 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 2.2rem;
+  padding: 0.3rem 0.6rem;
+  font: inherit;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.mgr-fn:hover {
+  background: var(--bg-hover);
+}
+
+.mgr-fn.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mgr-fn-key {
+  padding: 0.02rem 0.35rem;
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #0a0f0c;
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.mgr-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 2.2rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.mgr-result-empty {
+  visibility: hidden;
+}
+
+.mgr-result.has-problems {
+  border-color: var(--warning);
+}
+
+.mgr-result-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+}
+
+.mgr-result-actions {
+  display: inline-flex;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+
+.mgr-progress {
+  width: 100%;
+  height: 0.5rem;
+  accent-color: var(--accent);
+}
+
+.mgr-notice-error { color: var(--error); }
+.mgr-notice-info { color: var(--text-secondary); }
+
+.mgr-failures {
+  margin: 0;
+  padding-left: 1.1rem;
+  max-height: 9rem;
+  overflow-y: auto;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.74rem;
+}
+
+.mgr-failure-error { color: var(--error); }
+.mgr-failure-step { color: var(--text-muted); }
+
+/* ---------- dialogs ---------- */
+
+.mgr-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.mgr-dialog {
+  width: min(540px, 100%);
+  max-height: 86vh;
+  overflow: auto;
+  padding: 1rem 1.1rem 1.1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+
+.mgr-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.mgr-dialog-head h2 {
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.mgr-dialog-x {
+  font: inherit;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.1rem 0.45rem;
+  cursor: pointer;
+}
+
+.mgr-dialog-foot,
+.mgr-dialog-foot-inline {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
+
+.mgr-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.mgr-label {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.mgr-help {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 0.25rem 0;
+}
+
+.mgr-message {
+  font-size: 0.9rem;
+}
+
+.mgr-help-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.78rem;
+}
+
+.mgr-share-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.mgr-share-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.mgr-share-id {
+  margin-left: auto;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.mgr-details-title {
+  font-size: 1.05rem;
+}
+
+.mgr-details-artist {
+  color: var(--text-secondary);
+  margin-bottom: 0.6rem;
+}
+
+.mgr-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 0.9rem;
+  font-size: 0.82rem;
+}
+
+.mgr-details dt {
+  color: var(--text-muted);
+}
+
+.mgr-details dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mgr-details-note {
+  color: var(--text-muted);
+}
+
+.mgr-details-link {
+  margin-right: 0.5rem;
+  color: var(--accent);
+}
+
+/* ---------- first-play download chip (player) ---------- */
+
+.dl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0.2rem 0 0 0.4rem;
+  padding: 0.08rem 0.5rem;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.dl-chip-ready {
+  color: var(--accent);
+  border-color: rgba(61, 220, 151, 0.45);
+}
+
+.dl-chip-failed,
+.dl-chip-unavailable {
+  color: var(--error);
+  border-color: rgba(255, 69, 58, 0.45);
+}
+
+.dl-chip-timeout {
+  color: var(--warning);
+  border-color: rgba(255, 159, 10, 0.45);
+}
+
+/* ---------- narrow screens: one pane at a time ---------- */
+
+@media (max-width: 720px) {
+  .mgr-content {
+    padding: 0.75rem 0.75rem 6rem;
+  }
+
+  .mgr-switcher {
+    display: flex;
+  }
+
+  .mgr-panes {
+    grid-template-columns: 1fr;
+  }
+
+  .mgr-pane {
+    display: none;
+    height: clamp(320px, calc(100vh - 380px), 700px);
+  }
+
+  .mgr-pane.is-active {
+    display: flex;
+  }
+
+  .mgr-row {
+    grid-template-columns: 1.4rem auto minmax(0, 1fr);
+    padding: 0.5rem 0.6rem;
+  }
+
+  .mgr-album,
+  .mgr-badges {
+    display: none;
+  }
+
+  .mgr-fn {
+    min-height: 2.6rem;
+  }
+
+  .mgr-head {
+    align-items: flex-start;
+  }
+}
+
+/* ---------- where the file is (rule W2): FS / MS / FS+MS ---------- */
+
+.loc-badge {
+  display: inline-block;
+  flex: 0 0 auto;
+  padding: 0.02rem 0.35rem;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.loc-badge-fs {
+  color: var(--accent);
+  border-color: rgba(61, 220, 151, 0.45);
+  background: rgba(61, 220, 151, 0.08);
+}
+
+.loc-badge-ms {
+  color: #6cb6ff;
+  border-color: rgba(108, 182, 255, 0.45);
+  background: rgba(108, 182, 255, 0.08);
+}
+
+.loc-badge-both {
+  color: #0a0f0c;
+  border-color: var(--accent);
+  background: linear-gradient(90deg, var(--accent), #6cb6ff);
+}
+
+.mini-player-artist .loc-badge,
+.player-car-track .loc-badge {
+  margin-left: 0.4rem;
+}
+
+/* ---------- dynamic playlists ---------- */
+
+.mgr-dialog-wide {
+  width: min(680px, 100%);
+}
+
+.dyn-form {
+  gap: 0.7rem;
+}
+
+.dyn-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+.dyn-midnight {
+  color: var(--warning);
+}
+
+.dyn-summary {
+  padding: 0.45rem 0.6rem;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+}
+
+.dyn-issues {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+}
+
+.mgr-dynamic {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+.mgr-dynamic-rule {
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  color: var(--text-primary);
+}
+
+.mgr-dynamic-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  color: var(--text-muted);
+}
+
+.mgr-pill.dyn {
+  color: #6cb6ff;
+  border-color: rgba(108, 182, 255, 0.45);
+}
+
+.mgr-dyn-icon {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 0.25em;
+  vertical-align: -0.08em;
+}
+
+/* ---------- where the file is, in words (rule W8): detail line, copy buttons ---------- */
+
+.mgr-btn-paths.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.mgr-where {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  padding-left: 1.6rem;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.mgr-where-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.mgr-where-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
+  color: var(--text-secondary);
+}
+
+.mgr-where a.mgr-where-text,
+.mgr-where-item a.mgr-where-value {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mgr-where a.mgr-where-text:hover,
+.mgr-where-item a.mgr-where-value:hover {
+  color: var(--accent);
+}
+
+.loc-badge-yt {
+  color: #ff8a80;
+  border-color: rgba(255, 99, 99, 0.45);
+  background: rgba(255, 99, 99, 0.08);
+}
+
+.mgr-where-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.mgr-where-item {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  align-items: baseline;
+  gap: 0.2rem 0.5rem;
+}
+
+.mgr-where-item .mgr-where-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+  font-family: 'SF Mono', Monaco, 'Inconsolata', ui-monospace, monospace;
+  font-size: 0.74rem;
+}
+
+.mgr-where-item .mgr-where-note {
+  grid-column: 2 / -1;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.mgr-copy.is-done {
+  border-color: var(--accent);
+  color: var(--accent);
+}

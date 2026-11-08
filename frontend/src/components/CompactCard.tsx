@@ -45,7 +45,7 @@ function getPlatformLabel(platform: string): string {
     instagram: 'IG', tiktok: 'TT', youtube: 'YT', facebook: 'FB',
     twitter: 'X', threads: 'TH', snapchat: 'SC', pinterest: 'PIN',
     linkedin: 'LI', reddit: 'RD', vimeo: 'VM', twitch: 'TW',
-    spotify: 'SP', soundcloud: 'SND'
+    spotify: 'SP', soundcloud: 'SND', shazam: 'SZ'
   };
   return labels[platform] || 'WEB';
 }
@@ -66,6 +66,7 @@ export function CompactCard({ entry, selected, onSelect }: CompactCardProps) {
     return seen.size;
   })();
   const hasTranscript = !!(entry.results.transcript || entry.results.transcription);
+  const tags = (entry.results.tags ?? []).filter((t) => typeof t === 'string' && t.trim()).slice(0, 4);
 
   const verdict = entry.results.enrichments?.verdict;
 
@@ -100,6 +101,13 @@ export function CompactCard({ entry, selected, onSelect }: CompactCardProps) {
           )}
         </div>
         <p className="compact-summary">{previewText}</p>
+        {tags.length > 0 && (
+          <div className="compact-tags">
+            {tags.map((tag) => (
+              <span key={tag} className="compact-tag">{tag}</span>
+            ))}
+          </div>
+        )}
         <div className="compact-bottom">
           <div className="compact-counts">
             {linksCount > 0 && <span className="compact-count">🔗 {linksCount}</span>}

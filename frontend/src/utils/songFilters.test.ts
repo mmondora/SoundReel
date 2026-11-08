@@ -50,6 +50,28 @@ describe('filterSongs', () => {
     expect(filterSongs(SONGS, { genres: [], listened: 'all', favorite: false, downloaded: 'no' }).map((s) => s.songKey)).toEqual(['b', 'c']);
   });
 
+  it('downloaded yes also matches inLibrary even without meta.downloaded', () => {
+    const withLib = [
+      ...SONGS,
+      { ...song('d', { downloaded: false }), inLibrary: true },
+    ];
+    expect(
+      filterSongs(withLib, { genres: [], listened: 'all', favorite: false, downloaded: 'yes' }).map((s) => s.songKey),
+    ).toEqual(['a', 'd']);
+  });
+
+  it('liked filter uses rating like or score ≥ 80', () => {
+    const pool = [
+      song('like', { rating: 'like', score: null }),
+      song('score', { rating: null, score: 85 }),
+      song('mid', { rating: null, score: 50 }),
+      song('none', null),
+    ];
+    expect(
+      filterSongs(pool, { genres: [], listened: 'all', favorite: false, downloaded: 'all', liked: true }).map((s) => s.songKey),
+    ).toEqual(['like', 'score']);
+  });
+
   it('combines filters (AND across categories, OR within genres)', () => {
     const out = filterSongs(SONGS, { genres: ['Pop'], listened: 'all', favorite: false, downloaded: 'no' });
     expect(out.map((s) => s.songKey)).toEqual(['b']);

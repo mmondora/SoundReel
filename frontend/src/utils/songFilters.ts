@@ -9,11 +9,24 @@ export interface SongFilterOptions {
   /** true = show only favorites; false = no favorite filtering. */
   favorite: boolean;
   downloaded: DownloadedFilter;
+  /** true = show only liked (rating like or score ≥ 80); false = no liked filtering. */
+  liked?: boolean;
   /** Case-insensitive containment search over title, artist, album. Empty/omitted = no filtering. */
   text?: string;
 }
 
-export function filterSongs(songs: AggregatedSong[], opts: SongFilterOptions): AggregatedSong[] {
+function songIsDownloaded(song: AggregatedSong): boolean {
+  return song.inLibrary === true || (song.meta?.downloaded ?? false);
+}
+
+function songIsLiked(song: AggregatedSong): boolean {
+  const meta = song.meta;
+  if (!meta) return false;
+  if (meta.rating === 'like') return true;
+  return meta.score != null && meta.score >= 80;
+}
+
+export function filterSongs<T extends AggregatedSong>(songs: T[], opts: SongFilterOptions): T[] {
   const query = opts.text?.trim().toLowerCase() ?? '';
   return songs.filter((song) => {
     if (opts.genres.length > 0) {
@@ -29,8 +42,11 @@ export function filterSongs(songs: AggregatedSong[], opts: SongFilterOptions): A
       const favorite = song.meta?.favorite ?? false;
       if (!favorite) return false;
     }
+    if (opts.liked) {
+      if (!songIsLiked(song)) return false;
+    }
     if (opts.downloaded !== 'all') {
-      const downloaded = song.meta?.downloaded ?? false;
+      const downloaded = songIsDownloaded(song);
       if (opts.downloaded === 'yes' && !downloaded) return false;
       if (opts.downloaded === 'no' && downloaded) return false;
     }
@@ -59,8 +75,8 @@ function latestMentionTime(song: AggregatedSong): number {
  * mention count desc, ties by most recent mention; 'artist' = artist
  * alphabetical (songs without an artist last), ties by most recent mention.
  */
-export function sortSongs(songs: AggregatedSong[], mode: SongSortMode): AggregatedSong[] {
-  const byDate = (a: AggregatedSong, b: AggregatedSong) => latestMentionTime(b) - latestMentionTime(a);
+export function sortSongs<T extends AggregatedSong>(songs: T[], mode: SongSortMode): T[] {
+  const byDate = (a: T, b: T) => latestMentionTime(b) - latestMentionTime(a);
   const sorted = [...songs];
   if (mode === 'mentions') {
     sorted.sort((a, b) => b.mentions.length - a.mentions.length || byDate(a, b));

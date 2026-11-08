@@ -7,6 +7,10 @@ export interface Translations {
   films: string;
   notes: string;
   software: string;
+  navInbox: string;
+  navLinks: string;
+  navKbLabel: string;
+  navSearchPlaceholder: string;
   libraryNav: string;
   libraryTitle: string;
   libraryHint: string;
@@ -25,8 +29,13 @@ export interface Translations {
   inputPlaceholder: string;
   analyze: string;
   analyzing: string;
+  analyzeHeroTitle: string;
+  analyzeHeroSub: string;
+  analyzeHeroPlatforms: string;
   urlAlreadyAnalyzed: string;
   analysisComplete: string;
+  loadMoreEntries: string;
+  entriesCountLabel: string;
 
   // Journal
   loading: string;
@@ -158,6 +167,8 @@ export interface Translations {
   entryId: string;
   allLevels: string;
   allFunctions: string;
+  logsActivity: string;
+  logsActor: string;
   searchLogs: string;
   clearLogsError: string;
 
@@ -214,6 +225,54 @@ export interface Translations {
 
   // Danger Zone
   dangerZone: string;
+  mfTitle: string;
+  mfIntro: string;
+  mfBuiltIn: string;
+  mfBuiltInNote: string;
+  mfRoots: string;
+  mfMountNote: string;
+  mfNoExtra: string;
+  mfAdd: string;
+  mfRescan: string;
+  mfLabelOf: string;
+  mfSwitchOf: string;
+  mfRemove: string;
+  mfRemoveOf: string;
+  mfRemoveHint: string;
+  mfStatusOk: string;
+  mfStatusScanning: string;
+  mfStatusPending: string;
+  mfStatusMissing: string;
+  mfStatusOff: string;
+  mfFiles: string;
+  mfFileOne: string;
+  mfTruncated: string;
+  mfScannedAt: string;
+  mfNeverScanned: string;
+  mfSaving: string;
+  mfLoading: string;
+  mfLoadError: string;
+  mfRetry: string;
+  mfPickerTitle: string;
+  mfPickerRoots: string;
+  mfPickerCurrent: string;
+  mfPickerHere: string;
+  mfPickerUp: string;
+  mfPickerOpen: string;
+  mfPickerAdd: string;
+  mfPickerEmpty: string;
+  mfPickerNoRoots: string;
+  mfPickerLoading: string;
+  mfErrOutside: string;
+  mfErrMissing: string;
+  mfErrNotDir: string;
+  mfErrIncluded: string;
+  mfErrTooMany: string;
+  mfErrInvalid: string;
+  mfErrForbidden: string;
+  mfErrNetwork: string;
+  mfErrUnknown: string;
+  mfErrAt: string;
   deleteAllDescription: string;
 
   // Errors
@@ -266,6 +325,32 @@ export interface Translations {
   openEntry: string;
   today: string;
   noSongsYet: string;
+  libScopeLabel: string;
+  libScopeSongs: string;
+  libScopeMedia: string;
+  libScopeLocal: string;
+  libScopeAll: string;
+  libScopeTitle: string;
+  libMinChars: string;
+  libSearching: string;
+  libResultsLabel: string;
+  libSummaryAll: string;
+  libSummaryOne: string;
+  libSummarySingle: string;
+  libNone: string;
+  libElsewhere: string;
+  libNoSongsHere: string;
+  libShownOf: string;
+  libInfoOnly: string;
+  libInJournal: string;
+  libInJournalTitle: string;
+  libCopyPath: string;
+  libCopyUrl: string;
+  libErrForbidden: string;
+  libErrNetwork: string;
+  libErrServer: string;
+  libErrInvalid: string;
+  libRetry: string;
   noFilmsYet: string;
   noNotesYet: string;
 
@@ -338,6 +423,324 @@ export interface Translations {
   songsFileMissing: string;
   songsPreview: string;
   songsMentions: string;
+  playerNav: string;
+  playerTitle: string;
+  playerOpen: string;
+  playerEmpty: string;
+  playerEmptyHint: string;
+  playerFilterAll: string;
+  playerFilterLiked: string;
+  playerPreviewOnly: string;
+  playerShuffle: string;
+  playerRepeatOff: string;
+  playerRepeatAll: string;
+  playerRepeatOne: string;
+  playerNowPlaying: string;
+  playerQueue: string;
+  playerBrowseHint: string;
+  playlistsTitle: string;
+  playlistCreate: string;
+  playlistCreateNew: string;
+  playlistNamePlaceholder: string;
+  playlistEmpty: string;
+  playlistShowAll: string;
+  playlistAddHint: string;
+  playlistAddSong: string;
+  playlistRemoveSong: string;
+  playlistRename: string;
+  playlistDelete: string;
+  playlistDeleteConfirm: string;
+  playlistSave: string;
+  playlistCancel: string;
+  playlistError: string;
+  playlistPlay: string;
+  playlistActiveChip: string;
+
+  // Playlist manager (Norton Commander) + first-play download chip
+  mgrTitle: string;
+  mgrHint: string;
+  mgrLibrary: string;
+  mgrMine: string;
+  mgrSharedWithMe: string;
+  mgrPaneA: string;
+  mgrPaneB: string;
+  mgrPanes: string;
+  mgrLocationLabel: string;
+  mgrReload: string;
+  mgrLoadError: string;
+  mgrNoSongs: string;
+  mgrEmptyPlaylist: string;
+  mgrItems: string;
+  mgrItemOne: string;
+  mgrMarked: string;
+  mgrOwnerYou: string;
+  mgrOwnerOf: string;
+  mgrReadOnly: string;
+  mgrSharedWith: string;
+  mgrNotShared: string;
+  mgrMissingSong: string;
+  mgrDownloaded: string;
+  mgrNotDownloaded: string;
+  mgrPreparing: string;
+  mgrFavorite: string;
+  mgrFilters: string;
+  mgrFilterText: string;
+  mgrFilterArtist: string;
+  mgrFilterAlbum: string;
+  mgrFilterType: string;
+  mgrFilterSource: string;
+  mgrFilterGenre: string;
+  mgrFilterState: string;
+  mgrFilterTags: string;
+  mgrFilterMembership: string;
+  mgrMembershipAll: string;
+  mgrMembershipIn: string;
+  mgrMembershipNotIn: string;
+  mgrFilterFavorites: string;
+  mgrFilterListened: string;
+  mgrFiltersReset: string;
+  mgrStateAll: string;
+  mgrSort: string;
+  mgrTypeAudio: string;
+  mgrTypeAi: string;
+  mgrTypeBoth: string;
+  mgrTypeList: string;
+  mgrTypeSpotify: string;
+  mgrTypeShazam: string;
+  mgrFnBar: string;
+  mgrFnHelp: string;
+  mgrFnDetails: string;
+  mgrFnRename: string;
+  mgrFnCopy: string;
+  mgrFnMove: string;
+  mgrFnNew: string;
+  mgrFnRemove: string;
+  mgrFnShare: string;
+  mgrFnPlay: string;
+  mgrFnUndo: string;
+  mgrWhyBusy: string;
+  mgrWhyNothing: string;
+  mgrWhyLibrary: string;
+  mgrWhyReadOnly: string;
+  mgrWhyNoTarget: string;
+  mgrWhySamePlaylist: string;
+  mgrWhyNotOwner: string;
+  mgrWhyFiltered: string;
+  mgrWhyNotAuth: string;
+  mgrWhyNoUndo: string;
+  mgrProgress: string;
+  mgrOpCopy: string;
+  mgrOpMove: string;
+  mgrOpRemove: string;
+  mgrOpUndo: string;
+  mgrResAdded: string;
+  mgrResAlready: string;
+  mgrResRemoved: string;
+  mgrResFailed: string;
+  mgrResNotTried: string;
+  mgrResNothing: string;
+  mgrResDetails: string;
+  mgrResHide: string;
+  mgrResRetry: string;
+  mgrResUndo: string;
+  mgrResUndone: string;
+  mgrResDismiss: string;
+  mgrResStepAdd: string;
+  mgrResStepRemove: string;
+  mgrResStepReorder: string;
+  mgrReorderFailed: string;
+  mgrNewTitle: string;
+  mgrNewPlaceholder: string;
+  mgrNewDone: string;
+  mgrRenameTitle: string;
+  mgrRenameDone: string;
+  mgrRemoveTitle: string;
+  mgrRemoveConfirm: string;
+  mgrMarkTitle: string;
+  mgrUnmarkTitle: string;
+  mgrPatternHelp: string;
+  mgrPatternPlaceholder: string;
+  mgrShareTitle: string;
+  mgrShareHint: string;
+  mgrShareNobody: string;
+  mgrShareOwner: string;
+  mgrShareLoading: string;
+  mgrShareError: string;
+  mgrClose: string;
+  mgrConfirm: string;
+  mgrDetailsTitle: string;
+  mgrDetailsAlbum: string;
+  mgrDetailsGenres: string;
+  mgrDetailsType: string;
+  mgrDetailsSource: string;
+  mgrDetailsTags: string;
+  mgrDetailsMentions: string;
+  mgrDetailsFile: string;
+  mgrDetailsFilePresent: string;
+  mgrDetailsFileMissing: string;
+  mgrShowPaths: string;
+  mgrShowPathsHint: string;
+  mgrDetailsWhere: string;
+  mgrWhereFs: string;
+  mgrWhereMs: string;
+  mgrWhereYoutube: string;
+  mgrWhereNone: string;
+  mgrWhereNoPath: string;
+  mgrWhereSearch: string;
+  mgrCopy: string;
+  mgrCopied: string;
+  mgrCopyFailed: string;
+  mgrCopyWhat: string;
+  mgrDetailsOpen: string;
+  mgrDetailsPlaceholder: string;
+  mgrCannotPlay: string;
+  mgrHelpTitle: string;
+  mgrFnDynamic: string;
+  mgrFnRule: string;
+  mgrWhyDynamic: string;
+  mgrWhyNotDynamic: string;
+  mgrDynamicPill: string;
+  mgrDynamicEvaluated: string;
+  mgrDynamicRefresh: string;
+  mgrDynamicNever: string;
+  mgrRuleCreated: string;
+  mgrRuleUpdated: string;
+  dynTitleNew: string;
+  dynTitleEdit: string;
+  dynIntro: string;
+  dynPresetNone: string;
+  dynPreset: string;
+  dynName: string;
+  dynNameFixed: string;
+  dynScope: string;
+  dynScopeMe: string;
+  dynScopeFamily: string;
+  dynPeriod: string;
+  dynPeriodDays: string;
+  dynPeriodAll: string;
+  dynWindowEnable: string;
+  dynFrom: string;
+  dynTo: string;
+  dynWindowLocal: string;
+  dynCrossesMidnight: string;
+  dynWindowIgnored: string;
+  dynDays: string;
+  dynDaysAll: string;
+  dynDaysShort: string[];
+  dynDaysLong: string[];
+  dynGenres: string;
+  dynGenresHint: string;
+  dynOrder: string;
+  dynOrderMost: string;
+  dynOrderLeast: string;
+  dynOrderRecent: string;
+  dynOrderNever: string;
+  dynLimit: string;
+  dynMinPlays: string;
+  dynDownloadedOnly: string;
+  dynSummary: string;
+  dynMax: string;
+  dynFamily: string;
+  dynDownloadedShort: string;
+  dynMidnightShort: string;
+  dynIssueNameRequired: string;
+  dynIssueNameLong: string;
+  dynIssueLimit: string;
+  dynIssueMinPlays: string;
+  dynIssueWindowTime: string;
+  dynIssueWindowEmpty: string;
+  dynCreate: string;
+  dynSave: string;
+  statsNav: string;
+  statsTitle: string;
+  statsSubtitleMe: string;
+  statsSubtitleAll: string;
+  statsSubtitleUser: string;
+  statsPeriod: string;
+  statsPeriodDays: string;
+  statsPeriodAll: string;
+  statsScope: string;
+  statsScopeMe: string;
+  statsScopeAll: string;
+  statsUser: string;
+  statsAllUsers: string;
+  statsDevice: string;
+  statsAllDevices: string;
+  statsReload: string;
+  statsLoading: string;
+  statsError: string;
+  statsEmptyTitle: string;
+  statsEmptyBody: string;
+  statsEmptyNever: string;
+  statsTotals: string;
+  statsPlays: string;
+  statsSkips: string;
+  statsListened: string;
+  statsSongs: string;
+  statsArtists: string;
+  statsDevices: string;
+  statsNeverPlayed: string;
+  statsNeverPlayedHint: string;
+  statsPerDay: string;
+  statsPerDaySummary: string;
+  statsDayTip: string;
+  statsHeatmap: string;
+  statsHeatmapSummary: string;
+  statsHeatmapNone: string;
+  statsHeatmapTip: string;
+  statsTopSongs: string;
+  statsTopArtists: string;
+  statsTopGenres: string;
+  statsPerDevice: string;
+  statsPerOrigin: string;
+  statsOriginLocal: string;
+  statsOriginStream: string;
+  statsOriginWeb: string;
+  statsRankEmpty: string;
+  statsPlaysCount: string;
+  statsPlaysOne: string;
+  statsRecent: string;
+  statsColWhen: string;
+  statsColSong: string;
+  statsColUser: string;
+  statsColDevice: string;
+  statsColListened: string;
+  statsColCounts: string;
+  statsCounted: string;
+  statsSkipped: string;
+  statsTable: string;
+  statsColDay: string;
+  playerDlRequesting: string;
+  playerDlDownloading: string;
+  playerDlReady: string;
+  playerDlFailed: string;
+  playerDlUnavailable: string;
+  playerDlTimeout: string;
+  locFs: string;
+  locMs: string;
+  locFsMs: string;
+  locYoutube: string;
+  sourceLabel: string;
+  sourceAuto: string;
+  sourceInternet: string;
+  sourceMedia: string;
+  sourceAutoTitle: string;
+  sourceInternetTitle: string;
+  sourceMediaTitle: string;
+  sourceHintInternal: string;
+  sourceHintExternal: string;
+  sourceHintFailed: string;
+  sourceNextSong: string;
+  sourcePlayingFrom: string;
+  sourceFromMedia: string;
+  sourceFromDisk: string;
+  sourceFromYoutube: string;
+  playerVideoTitle: string;
+  playerVideoIdle: string;
+  playerWindowStatus: string;
+  playerWindowHidden: string;
+  playerWindowHiddenOne: string;
+  mgrHelpLines: string[];
 
   // Notes page filters & categories
   notesMentions: string;
@@ -360,6 +763,10 @@ export const translations: Record<Language, Translations> = {
     films: 'film',
     notes: 'note',
     software: 'software',
+    navInbox: 'Inbox',
+    navLinks: 'Link',
+    navKbLabel: 'KB',
+    navSearchPlaceholder: 'Cerca nella libreria…',
     libraryNav: 'Libreria',
     libraryTitle: 'Libreria media',
     libraryHint: 'Contenuti salvati in locale — aprili senza tornare online.',
@@ -378,8 +785,13 @@ export const translations: Record<Language, Translations> = {
     inputPlaceholder: 'Incolla un link da Instagram, TikTok, YouTube...',
     analyze: 'Analizza',
     analyzing: 'Analisi...',
+    analyzeHeroTitle: 'Salva un link nella libreria',
+    analyzeHeroSub: 'Estrae canzoni, film e note. Aggiunge le tracce a Spotify.',
+    analyzeHeroPlatforms: 'Instagram · TikTok · YouTube · web',
     urlAlreadyAnalyzed: 'URL già analizzato in precedenza',
     analysisComplete: 'Analisi completata!',
+    loadMoreEntries: 'Carica altri link',
+    entriesCountLabel: '{shown} di {total} link',
 
     // Journal
     loading: 'Caricamento...',
@@ -511,6 +923,8 @@ export const translations: Record<Language, Translations> = {
     entryId: 'Entry ID',
     allLevels: 'Tutti',
     allFunctions: 'Tutte',
+    logsActivity: 'Attività',
+    logsActor: 'Chi',
     searchLogs: 'Cerca nei log...',
     clearLogsError: 'Errore durante la cancellazione dei log',
 
@@ -567,6 +981,54 @@ export const translations: Record<Language, Translations> = {
 
     // Danger Zone
     dangerZone: 'Zona pericolosa',
+    mfTitle: 'Cartelle musica',
+    mfIntro: 'La ricerca nei file locali legge la cartella di Spooty e le cartelle extra che aggiungi qui. Sono lette in sola lettura: il backend non le modifica mai.',
+    mfBuiltIn: 'Integrata',
+    mfBuiltInNote: 'Sempre inclusa, non modificabile.',
+    mfRoots: 'Posizioni consentite (montate nel container)',
+    mfMountNote: 'Per cercare altre cartelle del computer vanno montate in sola lettura in docker-compose.yml sotto MUSIC_EXTRA_ROOTS (di solito /music-extra) e rilasciate con un deploy: da qui si scelgono solo quelle già montate.',
+    mfNoExtra: 'Nessuna cartella extra. Aggiungine una per cercare anche lì.',
+    mfAdd: 'Aggiungi cartella',
+    mfRescan: 'Rianalizza ora',
+    mfLabelOf: 'Etichetta della cartella {path}',
+    mfSwitchOf: 'Cerca in {label}',
+    mfRemove: 'Rimuovi',
+    mfRemoveOf: 'Rimuovi la cartella {label} dall’elenco',
+    mfRemoveHint: 'Toglie la cartella dalla ricerca; i file non vengono toccati.',
+    mfStatusOk: 'pronta',
+    mfStatusScanning: 'scansione in corso…',
+    mfStatusPending: 'in attesa della scansione',
+    mfStatusMissing: 'cartella non trovata',
+    mfStatusOff: 'disattivata',
+    mfFiles: '{n} file',
+    mfFileOne: '1 file',
+    mfTruncated: 'oltre il limite: alcuni file non sono indicizzati',
+    mfScannedAt: 'ultima scansione {time}',
+    mfNeverScanned: 'mai scansionata',
+    mfSaving: 'Salvo…',
+    mfLoading: 'Carico le cartelle…',
+    mfLoadError: 'Cartelle musica non disponibili',
+    mfRetry: 'Riprova',
+    mfPickerTitle: 'Scegli una cartella',
+    mfPickerRoots: 'Posizioni consentite',
+    mfPickerCurrent: 'Cartella corrente',
+    mfPickerHere: 'Aggiungi questa cartella',
+    mfPickerUp: 'Su',
+    mfPickerOpen: 'Apri {name}',
+    mfPickerAdd: 'Aggiungi {name}',
+    mfPickerEmpty: 'Nessuna sottocartella.',
+    mfPickerNoRoots: 'Nessuna cartella extra montata. Montane una in docker-compose.yml sotto MUSIC_EXTRA_ROOTS.',
+    mfPickerLoading: 'Carico…',
+    mfErrOutside: 'La cartella è fuori dalle posizioni consentite (solo quelle montate nel container).',
+    mfErrMissing: 'La cartella non esiste (o non è montata nel container).',
+    mfErrNotDir: 'Il percorso non è una cartella.',
+    mfErrIncluded: 'Questa cartella fa già parte della libreria di Spooty: si cerca per intero.',
+    mfErrTooMany: 'Troppe cartelle: il massimo è 20.',
+    mfErrInvalid: 'Percorso non valido: serve un percorso assoluto.',
+    mfErrForbidden: 'Solo l’admin può cambiare le cartelle musica.',
+    mfErrNetwork: 'Server non raggiungibile.',
+    mfErrUnknown: 'Operazione non riuscita: {detail}',
+    mfErrAt: '«{path}»: {message}',
     deleteAllDescription: 'Elimina tutte le entry dal database. Questa azione non può essere annullata.',
 
     // Errors
@@ -582,14 +1044,14 @@ export const translations: Record<Language, Translations> = {
     // Recent section
     recentEntries: 'Oggi',
     filterToggle: 'Filtra',
-    seeAllJournal: 'Vedi tutto il journal →',
+    seeAllJournal: 'Apri tutta la libreria →',
     inboxEmptyHint: 'Incolla un link sopra, oppure apri una card recente.',
 
     // Pagination & List Pages
     previousPage: '← Precedente',
     nextPage: 'Successiva →',
     pageOf: 'Pagina {page} di {total}',
-    allEntries: 'Tutte le entries',
+    allEntries: 'Libreria link',
     allSongs: 'Tutte le canzoni',
     allFilms: 'Tutti i film',
     allNotes: 'Tutte le note',
@@ -616,6 +1078,32 @@ export const translations: Record<Language, Translations> = {
     openEntry: 'Apri →',
     today: 'Oggi',
     noSongsYet: 'Nessuna canzone trovata',
+    libScopeLabel: 'Cerca in',
+    libScopeSongs: 'Libreria',
+    libScopeMedia: 'Media server',
+    libScopeLocal: 'File locali',
+    libScopeAll: 'Tutto',
+    libScopeTitle: 'Dove cercare: le canzoni della libreria, il catalogo del media server, i file su disco (cartella di Spooty e cartelle extra)',
+    libMinChars: 'Scrivi almeno 2 caratteri per cercare nei file.',
+    libSearching: 'Cerco…',
+    libResultsLabel: 'Risultati della ricerca',
+    libSummaryAll: 'Libreria {songs} · Media server {media} · File locali {local}',
+    libSummaryOne: '{n} risultati in {scope}',
+    libSummarySingle: '1 risultato in {scope}',
+    libNone: 'Nessun risultato per «{q}» in {scope}.',
+    libElsewhere: 'Trovati altrove:',
+    libNoSongsHere: 'Nessun brano della libreria corrisponde.',
+    libShownOf: 'Mostro i primi {shown} di {total}',
+    libInfoOnly: 'La ricerca dice dove stanno i brani: trovarli non li importa nella libreria e non li suona.',
+    libInJournal: 'già in libreria',
+    libInJournalTitle: 'Questo brano è già tra le canzoni della libreria',
+    libCopyPath: 'percorso',
+    libCopyUrl: 'URL',
+    libErrForbidden: 'Non hai il permesso di cercare nei file.',
+    libErrNetwork: 'Server non raggiungibile.',
+    libErrServer: 'Ricerca non disponibile in questo momento.',
+    libErrInvalid: 'Ricerca non valida.',
+    libRetry: 'Riprova',
     noFilmsYet: 'Nessun film trovato',
     noNotesYet: 'Nessuna nota trovata',
 
@@ -685,6 +1173,348 @@ export const translations: Record<Language, Translations> = {
     songsFileMissing: 'File non trovato nella libreria musicale',
     songsPreview: 'Anteprima',
     songsMentions: 'menzioni',
+    playerNav: 'Player',
+    playerTitle: 'Player',
+    playerOpen: '▶ Player',
+    playerEmpty: 'Nessun brano in questa vista',
+    playerEmptyHint: 'Cambia filtro — la riproduzione è su YouTube',
+    playerFilterAll: 'Tutte',
+    playerFilterLiked: 'Liked',
+    playerPreviewOnly: 'solo preview',
+    playerShuffle: 'Shuffle',
+    playerRepeatOff: 'Repeat off',
+    playerRepeatAll: 'Repeat all',
+    playerRepeatOne: 'Repeat one',
+    playerNowPlaying: 'In riproduzione',
+    playerQueue: 'Coda',
+    playerBrowseHint: 'Tocca un brano per impostare la coda',
+    playlistsTitle: 'Playlist',
+    playlistCreate: 'Crea',
+    playlistCreateNew: 'Crea nuova',
+    playlistNamePlaceholder: 'Nome playlist…',
+    playlistEmpty: 'Nessuna playlist — creane una',
+    playlistShowAll: 'Mostra tutte',
+    playlistAddHint: 'Scegli una playlist per aggiungere il brano',
+    playlistAddSong: 'Aggiungi a playlist',
+    playlistRemoveSong: 'Rimuovi dalla playlist',
+    playlistRename: 'Rinomina',
+    playlistDelete: 'Elimina',
+    playlistDeleteConfirm: 'Eliminare questa playlist?',
+    playlistSave: 'Salva',
+    playlistCancel: 'Annulla',
+    playlistError: 'Operazione playlist non riuscita',
+    playlistPlay: '▶ Riproduci',
+    playlistActiveChip: 'Playlist',
+
+    mgrTitle: 'Gestione playlist',
+    mgrHint: 'Tab cambia pannello · Spazio segna · F5 copia · F6 sposta · F8 rimuove · F1 aiuto',
+    mgrLibrary: 'Libreria',
+    mgrMine: 'Le mie playlist',
+    mgrSharedWithMe: 'Condivise con me',
+    mgrPaneA: 'Pannello A',
+    mgrPaneB: 'Pannello B',
+    mgrPanes: 'Pannelli',
+    mgrLocationLabel: 'Contenuto del pannello',
+    mgrReload: 'Ricarica',
+    mgrLoadError: 'Caricamento non riuscito',
+    mgrNoSongs: 'Nessun brano con questi filtri',
+    mgrEmptyPlaylist: 'Playlist vuota — con F5 copia qui dei brani dall’altro pannello',
+    mgrItems: '{n} brani',
+    mgrItemOne: '1 brano',
+    mgrMarked: '{n} segnati',
+    mgrOwnerYou: 'tua',
+    mgrOwnerOf: 'di {name}',
+    mgrReadOnly: 'sola lettura',
+    mgrSharedWith: 'Condivisa con: {names}',
+    mgrNotShared: 'Non condivisa',
+    mgrMissingSong: 'non nel tuo journal',
+    mgrDownloaded: 'scaricata',
+    mgrNotDownloaded: 'da scaricare',
+    mgrPreparing: 'in preparazione',
+    mgrFavorite: 'preferita',
+    mgrFilters: 'Filtri',
+    mgrFilterText: 'Cerca titolo, artista, album…',
+    mgrFilterArtist: 'Autore',
+    mgrFilterAlbum: 'Album',
+    mgrFilterType: 'Riconosciuta da',
+    mgrFilterSource: 'Fonte',
+    mgrFilterGenre: 'Tipo (genere)',
+    mgrFilterState: 'Stato',
+    mgrFilterTags: 'Tag',
+    mgrFilterMembership: 'Rispetto all’altro pannello',
+    mgrMembershipAll: 'Tutti',
+    mgrMembershipIn: 'Già nell’altra playlist',
+    mgrMembershipNotIn: 'Non ancora nell’altra playlist',
+    mgrFilterFavorites: 'Solo preferite',
+    mgrFilterListened: 'Ascolto',
+    mgrFiltersReset: 'Azzera i filtri',
+    mgrStateAll: 'Tutti',
+    mgrSort: 'Ordina',
+    mgrTypeAudio: 'Riconoscimento audio',
+    mgrTypeAi: 'Analisi AI',
+    mgrTypeBoth: 'Audio + AI',
+    mgrTypeList: 'Lista',
+    mgrTypeSpotify: 'Link Spotify',
+    mgrTypeShazam: 'Link Shazam',
+    mgrFnBar: 'Comandi',
+    mgrFnHelp: 'Aiuto',
+    mgrFnDetails: 'Dettagli',
+    mgrFnRename: 'Rinomina',
+    mgrFnCopy: 'Copia',
+    mgrFnMove: 'Sposta',
+    mgrFnNew: 'Nuova',
+    mgrFnRemove: 'Rimuovi',
+    mgrFnShare: 'Condividi',
+    mgrFnPlay: 'Play',
+    mgrFnUndo: 'Annulla',
+    mgrWhyBusy: 'Operazione in corso',
+    mgrWhyNothing: 'Nessun brano selezionato',
+    mgrWhyLibrary: 'Non disponibile nel pannello Libreria',
+    mgrWhyReadOnly: 'Playlist condivisa con te: sola lettura',
+    mgrWhyNoTarget: 'Serve una playlist modificabile nell’altro pannello',
+    mgrWhySamePlaylist: 'I due pannelli mostrano la stessa playlist',
+    mgrWhyNotOwner: 'Solo chi ha creato la playlist può condividerla o cambiarne la regola',
+    mgrWhyFiltered: 'Togli i filtri per riordinare',
+    mgrWhyNotAuth: 'Serve il login per condividere',
+    mgrWhyNoUndo: 'Niente da annullare',
+    mgrProgress: '{op} {done}/{total}…',
+    mgrOpCopy: 'Copia',
+    mgrOpMove: 'Sposta',
+    mgrOpRemove: 'Rimuovi',
+    mgrOpUndo: 'Annulla',
+    mgrResAdded: '{n} aggiunti',
+    mgrResAlready: '{n} già presenti',
+    mgrResRemoved: '{n} rimossi',
+    mgrResFailed: '{n} non riusciti',
+    mgrResNotTried: '{n} non tentati (operazione interrotta)',
+    mgrResNothing: 'Niente da fare',
+    mgrResDetails: 'Dettagli',
+    mgrResHide: 'Nascondi',
+    mgrResRetry: 'Riprova gli errori',
+    mgrResUndo: 'Annulla',
+    mgrResUndone: 'Operazione annullata',
+    mgrResDismiss: 'Chiudi',
+    mgrResStepAdd: 'aggiunta',
+    mgrResStepRemove: 'rimozione',
+    mgrResStepReorder: 'ordine',
+    mgrReorderFailed: 'Riordino non riuscito: {error}',
+    mgrNewTitle: 'Nuova playlist',
+    mgrNewPlaceholder: 'Nome della playlist',
+    mgrNewDone: 'Playlist “{name}” creata (vuota)',
+    mgrRenameTitle: 'Rinomina playlist',
+    mgrRenameDone: 'Playlist rinominata',
+    mgrRemoveTitle: 'Rimuovi dalla playlist',
+    mgrRemoveConfirm: 'Rimuovere {n} brani da “{name}”? Restano in libreria.',
+    mgrMarkTitle: 'Segna per testo',
+    mgrUnmarkTitle: 'Togli il segno per testo',
+    mgrPatternHelp: 'Testo libero, oppure * e ? come jolly (es. *live*)',
+    mgrPatternPlaceholder: 'es. *live*',
+    mgrShareTitle: 'Condividi “{name}”',
+    mgrShareHint: 'Chi la riceve la vede e la ascolta in sola lettura.',
+    mgrShareNobody: 'Nessun altro utente con cui condividere',
+    mgrShareOwner: 'Proprietario: {name}',
+    mgrShareLoading: 'Carico le condivisioni…',
+    mgrShareError: 'Condivisione non riuscita',
+    mgrClose: 'Chiudi',
+    mgrConfirm: 'Conferma',
+    mgrDetailsTitle: 'Dettagli brano',
+    mgrDetailsAlbum: 'Album',
+    mgrDetailsGenres: 'Generi',
+    mgrDetailsType: 'Tipo',
+    mgrDetailsSource: 'Fonte',
+    mgrDetailsTags: 'Tag',
+    mgrDetailsMentions: 'Menzioni nel journal',
+    mgrDetailsFile: 'File',
+    mgrDetailsFilePresent: 'MP3 sul server',
+    mgrDetailsFileMissing: 'nessun MP3 sul server (il download parte al primo play)',
+    mgrShowPaths: 'Mostra percorsi',
+    mgrShowPathsHint: 'Sotto ogni brano: dove sta il file (disco, media server) o il link YouTube',
+    mgrDetailsWhere: 'Posizione',
+    mgrWhereFs: 'Disco di geekom (FS)',
+    mgrWhereMs: 'Media server (MS)',
+    mgrWhereYoutube: 'YouTube',
+    mgrWhereNone: 'non c’è',
+    mgrWhereNoPath: 'percorso non comunicato dal server',
+    mgrWhereSearch: 'ricerca: il video non è ancora noto',
+    mgrCopy: 'Copia',
+    mgrCopied: 'Copiato',
+    mgrCopyFailed: 'Copia non riuscita',
+    mgrCopyWhat: 'Copia {what}',
+    mgrDetailsOpen: 'Apri',
+    mgrDetailsPlaceholder: 'Brano di una playlist condivisa: non è nel tuo journal, quindi da qui non si può riprodurre.',
+    mgrCannotPlay: 'Brano non riproducibile da qui (non è nel tuo journal)',
+    mgrHelpTitle: 'Scorciatoie',
+    mgrFnDynamic: 'Dinamica',
+    mgrFnRule: 'Regola',
+    mgrWhyDynamic: 'Playlist dinamica: i brani li sceglie la regola (si cambia la regola, non i brani)',
+    mgrWhyNotDynamic: 'Solo le playlist dinamiche hanno una regola',
+    mgrDynamicPill: 'dinamica',
+    mgrDynamicEvaluated: 'valutata alle {time}',
+    mgrDynamicRefresh: 'Ricalcola',
+    mgrDynamicNever: 'non ancora valutata',
+    mgrRuleCreated: 'Playlist dinamica “{name}” creata: {n} brani',
+    mgrRuleUpdated: 'Regola aggiornata: {n} brani',
+    dynTitleNew: 'Nuova playlist dinamica',
+    dynTitleEdit: 'Regola di “{name}”',
+    dynIntro: 'Si ricalcola a ogni richiesta (e a ogni Sync): i brani cambiano con gli ascolti. I brani non si aggiungono né si tolgono a mano.',
+    dynPresetNone: 'Parti da un preset…',
+    dynPreset: 'Preset',
+    dynName: 'Nome',
+    dynNameFixed: 'Il nome di una playlist dinamica non si cambia.',
+    dynScope: 'Di chi sono gli ascolti',
+    dynScopeMe: 'Solo i miei',
+    dynScopeFamily: 'Di tutta la famiglia',
+    dynPeriod: 'Periodo',
+    dynPeriodDays: 'ultimi {n} giorni',
+    dynPeriodAll: 'da sempre',
+    dynWindowEnable: 'Solo ascolti in una fascia oraria',
+    dynFrom: 'Dalle',
+    dynTo: 'Alle',
+    dynWindowLocal: 'Ora locale dell’ascolto (non quella del server).',
+    dynCrossesMidnight: 'Attraversa la mezzanotte: dalle {from} di sera alle {to} del giorno dopo.',
+    dynWindowIgnored: 'La fascia oraria non si applica ai brani mai ascoltati.',
+    dynDays: 'Giorni',
+    dynDaysAll: 'Nessuno scelto = tutti i giorni',
+    dynDaysShort: [
+      'lun',
+      'mar',
+      'mer',
+      'gio',
+      'ven',
+      'sab',
+      'dom',
+    ],
+    dynDaysLong: [
+      'lunedì',
+      'martedì',
+      'mercoledì',
+      'giovedì',
+      'venerdì',
+      'sabato',
+      'domenica',
+    ],
+    dynGenres: 'Tipo (genere)',
+    dynGenresHint: 'Nessuno scelto = tutti i generi',
+    dynOrder: 'Ordine',
+    dynOrderMost: 'Più ascoltate',
+    dynOrderLeast: 'Meno ascoltate',
+    dynOrderRecent: 'Ascoltate di recente',
+    dynOrderNever: 'Mai ascoltate',
+    dynLimit: 'Numero massimo di brani (1–200)',
+    dynMinPlays: 'Ascolti minimi',
+    dynDownloadedOnly: 'Solo brani già scaricati',
+    dynSummary: 'Riepilogo',
+    dynMax: 'max {n}',
+    dynFamily: 'famiglia',
+    dynDownloadedShort: 'solo scaricate',
+    dynMidnightShort: 'oltre la mezzanotte',
+    dynIssueNameRequired: 'Serve un nome.',
+    dynIssueNameLong: 'Il nome è troppo lungo (max 80 caratteri).',
+    dynIssueLimit: 'Il numero massimo di brani va da 1 a 200.',
+    dynIssueMinPlays: 'Gli ascolti minimi sono un numero intero, 0 o più.',
+    dynIssueWindowTime: 'Gli orari non sono validi (formato HH:MM).',
+    dynIssueWindowEmpty: 'Inizio e fine coincidono: la fascia sarebbe vuota.',
+    dynCreate: 'Crea la playlist',
+    dynSave: 'Salva la regola',
+    statsNav: 'Statistiche',
+    statsTitle: 'Statistiche di ascolto',
+    statsSubtitleMe: 'I tuoi ascolti',
+    statsSubtitleAll: 'Gli ascolti di tutti',
+    statsSubtitleUser: 'Gli ascolti di {user}',
+    statsPeriod: 'Periodo',
+    statsPeriodDays: '{n} giorni',
+    statsPeriodAll: 'Tutto',
+    statsScope: 'Ascolti di',
+    statsScopeMe: 'Solo i miei',
+    statsScopeAll: 'Tutti',
+    statsUser: 'Utente',
+    statsAllUsers: 'Tutti gli utenti',
+    statsDevice: 'Dispositivo',
+    statsAllDevices: 'Tutti i dispositivi',
+    statsReload: 'Aggiorna',
+    statsLoading: 'Carico le statistiche…',
+    statsError: 'Statistiche non disponibili',
+    statsEmptyTitle: 'Ancora nessun ascolto registrato',
+    statsEmptyBody: 'Gli ascolti si registrano dal player web e da Mondrop. Ascolta qualche brano (almeno 3 secondi) e torna qui: contano quelli ascoltati per 30 secondi o per metà brano, il resto sono salti.',
+    statsEmptyNever: 'Brani della libreria mai ascoltati: {n}',
+    statsTotals: 'Totali',
+    statsPlays: 'Ascolti',
+    statsSkips: 'Salti',
+    statsListened: 'Tempo ascoltato',
+    statsSongs: 'Brani distinti',
+    statsArtists: 'Artisti distinti',
+    statsDevices: 'Dispositivi',
+    statsNeverPlayed: 'Mai ascoltati',
+    statsNeverPlayedHint: 'brani della libreria',
+    statsPerDay: 'Ascolti per giorno',
+    statsPerDaySummary: 'Ascolti per giorno: {days} giorni, {plays} ascolti in totale, il massimo in un giorno è {max}.',
+    statsDayTip: '{day}: {plays} ascolti, {time}',
+    statsHeatmap: 'Quando ascolti (ora locale)',
+    statsHeatmapSummary: 'Mappa degli ascolti per giorno della settimana e ora locale. Picco: {day} alle {hour}, {n} ascolti.',
+    statsHeatmapNone: 'Mappa degli ascolti per giorno della settimana e ora locale: nessun ascolto.',
+    statsHeatmapTip: '{day} {hour}: {n} ascolti',
+    statsTopSongs: 'Brani più ascoltati',
+    statsTopArtists: 'Artisti più ascoltati',
+    statsTopGenres: 'Tipi (generi) più ascoltati',
+    statsPerDevice: 'Per dispositivo',
+    statsPerOrigin: 'Per origine',
+    statsOriginLocal: 'Sul telefono (file scaricato)',
+    statsOriginStream: 'In streaming dal server',
+    statsOriginWeb: 'Player web',
+    statsRankEmpty: 'Nessun dato nel periodo',
+    statsPlaysCount: '{n} ascolti',
+    statsPlaysOne: '1 ascolto',
+    statsRecent: 'Ultimi ascolti',
+    statsColWhen: 'Quando',
+    statsColSong: 'Brano',
+    statsColUser: 'Utente',
+    statsColDevice: 'Dispositivo',
+    statsColListened: 'Ascoltato',
+    statsColCounts: 'Esito',
+    statsCounted: 'conta',
+    statsSkipped: 'salto',
+    statsTable: 'Tabella dei dati',
+    statsColDay: 'Giorno',
+    playerDlRequesting: 'richiedo il download…',
+    playerDlDownloading: 'scarico in parallelo…',
+    playerDlReady: 'scaricata — la prossima volta è locale',
+    playerDlFailed: 'download non riuscito',
+    playerDlUnavailable: 'nessuna sorgente trovata',
+    playerDlTimeout: 'ancora in preparazione',
+    locFs: 'File sul disco di geekom (server)',
+    locMs: 'Sul media server (Fritz)',
+    locFsMs: 'Sul disco di geekom e sul media server',
+    locYoutube: 'In streaming: link YouTube',
+    sourceLabel: 'Sorgente',
+    sourceAuto: 'Auto',
+    sourceInternet: 'Internet',
+    sourceMedia: 'Media server',
+    sourceAutoTitle: 'Automatica: in rete interna suona dal media server, da internet suona da Internet (YouTube)',
+    sourceInternetTitle: 'Sempre da Internet (YouTube): il video prende il posto della copertina',
+    sourceMediaTitle: 'Il file di casa, passando dal server (anche da internet). Se il brano non c’è suona da Internet e parte il download',
+    sourceHintInternal: 'Auto: rete interna → media server',
+    sourceHintExternal: 'Auto: da internet → Internet',
+    sourceHintFailed: 'Auto: rete non rilevata → Internet',
+    sourceNextSong: 'Vale dal prossimo brano',
+    sourcePlayingFrom: 'Suona da',
+    sourceFromMedia: 'Media server',
+    sourceFromDisk: 'Disco di casa',
+    sourceFromYoutube: 'Internet (YouTube)',
+    playerVideoTitle: 'Video: {title} — {artist}',
+    playerVideoIdle: 'Video del brano in riproduzione',
+    playerWindowStatus: '{shown} di {total}',
+    playerWindowHidden: '{n} già ascoltate nascoste',
+    playerWindowHiddenOne: '1 già ascoltata nascosta',
+    mgrHelpLines: [
+      'Tab — passa all’altro pannello (Maiusc+Tab esce dalla lista)',
+      '↑ ↓ Home Fine PagSu PagGiù — muovi il cursore',
+      'Spazio / Ins — segna e scendi · + segna per testo · - toglie il segno · * inverte · Ctrl+A tutti',
+      'Invio — riproduci · F3 — dettagli',
+      'F4 rinomina · F5 copia nell’altro pannello · F6 sposta · F7 nuova playlist · F8 (o Canc) rimuovi · F9 condividi',
+      'Ctrl+↑ / Ctrl+↓ — riordina nella playlist · Ctrl+Z annulla l’ultima operazione',
+      'F2 nuova playlist dinamica (regola: fascia oraria, giorni, periodo, tipo, ordine) · F4 su una dinamica modifica la regola',
+      'Esc — chiude, toglie i segni, poi porta ai comandi',
+    ],
 
     notesMentions: 'menzioni',
     categorySectionLabel: 'Categoria',
@@ -705,6 +1535,10 @@ export const translations: Record<Language, Translations> = {
     films: 'films',
     notes: 'notes',
     software: 'software',
+    navInbox: 'Inbox',
+    navLinks: 'Links',
+    navKbLabel: 'KB',
+    navSearchPlaceholder: 'Search the library…',
     libraryNav: 'Library',
     libraryTitle: 'Media library',
     libraryHint: 'Saved local media — review offline without going back online.',
@@ -723,8 +1557,13 @@ export const translations: Record<Language, Translations> = {
     inputPlaceholder: 'Paste a link from Instagram, TikTok, YouTube...',
     analyze: 'Analyze',
     analyzing: 'Analyzing...',
+    analyzeHeroTitle: 'Save a link to your library',
+    analyzeHeroSub: 'Extracts songs, films and notes. Adds tracks to Spotify.',
+    analyzeHeroPlatforms: 'Instagram · TikTok · YouTube · web',
     urlAlreadyAnalyzed: 'URL already analyzed',
     analysisComplete: 'Analysis complete!',
+    loadMoreEntries: 'Load more links',
+    entriesCountLabel: '{shown} of {total} links',
 
     // Journal
     loading: 'Loading...',
@@ -856,6 +1695,8 @@ export const translations: Record<Language, Translations> = {
     entryId: 'Entry ID',
     allLevels: 'All',
     allFunctions: 'All',
+    logsActivity: 'Activity',
+    logsActor: 'Who',
     searchLogs: 'Search logs...',
     clearLogsError: 'Error clearing logs',
 
@@ -912,6 +1753,54 @@ export const translations: Record<Language, Translations> = {
 
     // Danger Zone
     dangerZone: 'Danger Zone',
+    mfTitle: 'Music folders',
+    mfIntro: 'The local files search reads Spooty’s folder and the extra folders you add here. They are read-only: the backend never changes them.',
+    mfBuiltIn: 'Built-in',
+    mfBuiltInNote: 'Always included, cannot be changed.',
+    mfRoots: 'Allowed places (mounted in the container)',
+    mfMountNote: 'To search other folders of the computer they must be mounted read-only in docker-compose.yml under MUSIC_EXTRA_ROOTS (usually /music-extra) and deployed: from here you can only pick folders that are already mounted.',
+    mfNoExtra: 'No extra folders. Add one to search there too.',
+    mfAdd: 'Add folder',
+    mfRescan: 'Rescan now',
+    mfLabelOf: 'Label of folder {path}',
+    mfSwitchOf: 'Search in {label}',
+    mfRemove: 'Remove',
+    mfRemoveOf: 'Remove folder {label} from the list',
+    mfRemoveHint: 'Takes the folder out of the search; the files are not touched.',
+    mfStatusOk: 'ready',
+    mfStatusScanning: 'scanning…',
+    mfStatusPending: 'waiting to be scanned',
+    mfStatusMissing: 'folder not found',
+    mfStatusOff: 'off',
+    mfFiles: '{n} files',
+    mfFileOne: '1 file',
+    mfTruncated: 'over the limit: some files are not indexed',
+    mfScannedAt: 'last scan {time}',
+    mfNeverScanned: 'never scanned',
+    mfSaving: 'Saving…',
+    mfLoading: 'Loading folders…',
+    mfLoadError: 'Music folders unavailable',
+    mfRetry: 'Try again',
+    mfPickerTitle: 'Choose a folder',
+    mfPickerRoots: 'Allowed places',
+    mfPickerCurrent: 'Current folder',
+    mfPickerHere: 'Add this folder',
+    mfPickerUp: 'Up',
+    mfPickerOpen: 'Open {name}',
+    mfPickerAdd: 'Add {name}',
+    mfPickerEmpty: 'No subfolders.',
+    mfPickerNoRoots: 'No extra folder is mounted. Mount one in docker-compose.yml under MUSIC_EXTRA_ROOTS.',
+    mfPickerLoading: 'Loading…',
+    mfErrOutside: 'The folder is outside the allowed places (only folders mounted in the container).',
+    mfErrMissing: 'The folder does not exist (or is not mounted in the container).',
+    mfErrNotDir: 'The path is not a folder.',
+    mfErrIncluded: 'This folder is already part of Spooty’s library: it is searched whole.',
+    mfErrTooMany: 'Too many folders: the maximum is 20.',
+    mfErrInvalid: 'Invalid path: an absolute path is needed.',
+    mfErrForbidden: 'Only the admin can change the music folders.',
+    mfErrNetwork: 'Server not reachable.',
+    mfErrUnknown: 'The operation failed: {detail}',
+    mfErrAt: '“{path}”: {message}',
     deleteAllDescription: 'Delete all entries from the database. This action cannot be undone.',
 
     // Errors
@@ -927,14 +1816,14 @@ export const translations: Record<Language, Translations> = {
     // Recent section
     recentEntries: 'Today',
     filterToggle: 'Filter',
-    seeAllJournal: 'See full journal →',
+    seeAllJournal: 'Open full library →',
     inboxEmptyHint: 'Paste a link above, or open a recent card.',
 
     // Pagination & List Pages
     previousPage: '← Previous',
     nextPage: 'Next →',
     pageOf: 'Page {page} of {total}',
-    allEntries: 'All entries',
+    allEntries: 'Link library',
     allSongs: 'All songs',
     allFilms: 'All films',
     allNotes: 'All notes',
@@ -961,6 +1850,32 @@ export const translations: Record<Language, Translations> = {
     openEntry: 'Open →',
     today: 'Today',
     noSongsYet: 'No songs found',
+    libScopeLabel: 'Search in',
+    libScopeSongs: 'Library',
+    libScopeMedia: 'Media server',
+    libScopeLocal: 'Local files',
+    libScopeAll: 'Everything',
+    libScopeTitle: 'Where to search: the library songs, the media server catalogue, the files on disk (Spooty’s folder and extra folders)',
+    libMinChars: 'Type at least 2 characters to search the files.',
+    libSearching: 'Searching…',
+    libResultsLabel: 'Search results',
+    libSummaryAll: 'Library {songs} · Media server {media} · Local files {local}',
+    libSummaryOne: '{n} results in {scope}',
+    libSummarySingle: '1 result in {scope}',
+    libNone: 'No results for “{q}” in {scope}.',
+    libElsewhere: 'Found elsewhere:',
+    libNoSongsHere: 'No library song matches.',
+    libShownOf: 'Showing the first {shown} of {total}',
+    libInfoOnly: 'Search tells you where the songs are: finding them does not import them into the library, nor play them.',
+    libInJournal: 'already in the library',
+    libInJournalTitle: 'This song is already among the library songs',
+    libCopyPath: 'path',
+    libCopyUrl: 'URL',
+    libErrForbidden: 'You are not allowed to search the files.',
+    libErrNetwork: 'Server not reachable.',
+    libErrServer: 'Search is not available right now.',
+    libErrInvalid: 'Invalid search.',
+    libRetry: 'Try again',
     noFilmsYet: 'No films found',
     noNotesYet: 'No notes found',
 
@@ -1030,6 +1945,348 @@ export const translations: Record<Language, Translations> = {
     songsFileMissing: 'File not found in the music library',
     songsPreview: 'Preview',
     songsMentions: 'mentions',
+    playerNav: 'Player',
+    playerTitle: 'Player',
+    playerOpen: '▶ Player',
+    playerEmpty: 'No songs in this view',
+    playerEmptyHint: 'Change filter — playback is via YouTube',
+    playerFilterAll: 'All',
+    playerFilterLiked: 'Liked',
+    playerPreviewOnly: 'preview only',
+    playerShuffle: 'Shuffle',
+    playerRepeatOff: 'Repeat off',
+    playerRepeatAll: 'Repeat all',
+    playerRepeatOne: 'Repeat one',
+    playerNowPlaying: 'Now playing',
+    playerQueue: 'Queue',
+    playerBrowseHint: 'Tap a track to set the queue',
+    playlistsTitle: 'Playlists',
+    playlistCreate: 'Create',
+    playlistCreateNew: 'Create new',
+    playlistNamePlaceholder: 'Playlist name…',
+    playlistEmpty: 'No playlists yet — create one',
+    playlistShowAll: 'Show all',
+    playlistAddHint: 'Pick a playlist to add the song',
+    playlistAddSong: 'Add to playlist',
+    playlistRemoveSong: 'Remove from playlist',
+    playlistRename: 'Rename',
+    playlistDelete: 'Delete',
+    playlistDeleteConfirm: 'Delete this playlist?',
+    playlistSave: 'Save',
+    playlistCancel: 'Cancel',
+    playlistError: 'Playlist operation failed',
+    playlistPlay: '▶ Play',
+    playlistActiveChip: 'Playlist',
+
+    mgrTitle: 'Playlist manager',
+    mgrHint: 'Tab switches pane · Space marks · F5 copy · F6 move · F8 remove · F1 help',
+    mgrLibrary: 'Library',
+    mgrMine: 'My playlists',
+    mgrSharedWithMe: 'Shared with me',
+    mgrPaneA: 'Pane A',
+    mgrPaneB: 'Pane B',
+    mgrPanes: 'Panes',
+    mgrLocationLabel: 'Pane content',
+    mgrReload: 'Reload',
+    mgrLoadError: 'Loading failed',
+    mgrNoSongs: 'No songs match these filters',
+    mgrEmptyPlaylist: 'Empty playlist — press F5 to copy songs here from the other pane',
+    mgrItems: '{n} songs',
+    mgrItemOne: '1 song',
+    mgrMarked: '{n} marked',
+    mgrOwnerYou: 'yours',
+    mgrOwnerOf: 'by {name}',
+    mgrReadOnly: 'read-only',
+    mgrSharedWith: 'Shared with: {names}',
+    mgrNotShared: 'Not shared',
+    mgrMissingSong: 'not in your journal',
+    mgrDownloaded: 'downloaded',
+    mgrNotDownloaded: 'not downloaded',
+    mgrPreparing: 'preparing',
+    mgrFavorite: 'favorite',
+    mgrFilters: 'Filters',
+    mgrFilterText: 'Search title, artist, album…',
+    mgrFilterArtist: 'Artist',
+    mgrFilterAlbum: 'Album',
+    mgrFilterType: 'Found by',
+    mgrFilterSource: 'Source',
+    mgrFilterGenre: 'Type (genre)',
+    mgrFilterState: 'State',
+    mgrFilterTags: 'Tags',
+    mgrFilterMembership: 'Versus the other pane',
+    mgrMembershipAll: 'All',
+    mgrMembershipIn: 'Already in the other playlist',
+    mgrMembershipNotIn: 'Not yet in the other playlist',
+    mgrFilterFavorites: 'Favorites only',
+    mgrFilterListened: 'Listening',
+    mgrFiltersReset: 'Reset filters',
+    mgrStateAll: 'All',
+    mgrSort: 'Sort',
+    mgrTypeAudio: 'Audio recognition',
+    mgrTypeAi: 'AI analysis',
+    mgrTypeBoth: 'Audio + AI',
+    mgrTypeList: 'List',
+    mgrTypeSpotify: 'Spotify link',
+    mgrTypeShazam: 'Shazam link',
+    mgrFnBar: 'Commands',
+    mgrFnHelp: 'Help',
+    mgrFnDetails: 'Details',
+    mgrFnRename: 'Rename',
+    mgrFnCopy: 'Copy',
+    mgrFnMove: 'Move',
+    mgrFnNew: 'New',
+    mgrFnRemove: 'Remove',
+    mgrFnShare: 'Share',
+    mgrFnPlay: 'Play',
+    mgrFnUndo: 'Undo',
+    mgrWhyBusy: 'Operation in progress',
+    mgrWhyNothing: 'No song selected',
+    mgrWhyLibrary: 'Not available in the Library pane',
+    mgrWhyReadOnly: 'Shared with you: read-only',
+    mgrWhyNoTarget: 'Needs an editable playlist in the other pane',
+    mgrWhySamePlaylist: 'Both panes show the same playlist',
+    mgrWhyNotOwner: 'Only the owner can share it or change its rule',
+    mgrWhyFiltered: 'Clear the filters to reorder',
+    mgrWhyNotAuth: 'Sign in to share',
+    mgrWhyNoUndo: 'Nothing to undo',
+    mgrProgress: '{op} {done}/{total}…',
+    mgrOpCopy: 'Copy',
+    mgrOpMove: 'Move',
+    mgrOpRemove: 'Remove',
+    mgrOpUndo: 'Undo',
+    mgrResAdded: '{n} added',
+    mgrResAlready: '{n} already there',
+    mgrResRemoved: '{n} removed',
+    mgrResFailed: '{n} failed',
+    mgrResNotTried: '{n} not attempted (run aborted)',
+    mgrResNothing: 'Nothing to do',
+    mgrResDetails: 'Details',
+    mgrResHide: 'Hide',
+    mgrResRetry: 'Retry the failures',
+    mgrResUndo: 'Undo',
+    mgrResUndone: 'Operation undone',
+    mgrResDismiss: 'Dismiss',
+    mgrResStepAdd: 'add',
+    mgrResStepRemove: 'remove',
+    mgrResStepReorder: 'order',
+    mgrReorderFailed: 'Reorder failed: {error}',
+    mgrNewTitle: 'New playlist',
+    mgrNewPlaceholder: 'Playlist name',
+    mgrNewDone: 'Playlist “{name}” created (empty)',
+    mgrRenameTitle: 'Rename playlist',
+    mgrRenameDone: 'Playlist renamed',
+    mgrRemoveTitle: 'Remove from playlist',
+    mgrRemoveConfirm: 'Remove {n} songs from “{name}”? They stay in the library.',
+    mgrMarkTitle: 'Mark by text',
+    mgrUnmarkTitle: 'Unmark by text',
+    mgrPatternHelp: 'Free text, or * and ? as wildcards (e.g. *live*)',
+    mgrPatternPlaceholder: 'e.g. *live*',
+    mgrShareTitle: 'Share “{name}”',
+    mgrShareHint: 'Whoever receives it can see and play it, read-only.',
+    mgrShareNobody: 'Nobody else to share with',
+    mgrShareOwner: 'Owner: {name}',
+    mgrShareLoading: 'Loading shares…',
+    mgrShareError: 'Sharing failed',
+    mgrClose: 'Close',
+    mgrConfirm: 'Confirm',
+    mgrDetailsTitle: 'Song details',
+    mgrDetailsAlbum: 'Album',
+    mgrDetailsGenres: 'Genres',
+    mgrDetailsType: 'Type',
+    mgrDetailsSource: 'Source',
+    mgrDetailsTags: 'Tags',
+    mgrDetailsMentions: 'Journal mentions',
+    mgrDetailsFile: 'File',
+    mgrDetailsFilePresent: 'MP3 on the server',
+    mgrDetailsFileMissing: 'no MP3 on the server (the download starts on first play)',
+    mgrShowPaths: 'Show paths',
+    mgrShowPathsHint: 'Under each song: where the file is (disk, media server) or the YouTube link',
+    mgrDetailsWhere: 'Location',
+    mgrWhereFs: 'geekom disk (FS)',
+    mgrWhereMs: 'Media server (MS)',
+    mgrWhereYoutube: 'YouTube',
+    mgrWhereNone: 'not there',
+    mgrWhereNoPath: 'path not reported by the server',
+    mgrWhereSearch: 'search: the video is not known yet',
+    mgrCopy: 'Copy',
+    mgrCopied: 'Copied',
+    mgrCopyFailed: 'Copy failed',
+    mgrCopyWhat: 'Copy {what}',
+    mgrDetailsOpen: 'Open',
+    mgrDetailsPlaceholder: 'Song of a shared playlist: it is not in your journal, so it cannot be played from here.',
+    mgrCannotPlay: 'Cannot be played from here (not in your journal)',
+    mgrHelpTitle: 'Keyboard shortcuts',
+    mgrFnDynamic: 'Dynamic',
+    mgrFnRule: 'Rule',
+    mgrWhyDynamic: 'Dynamic playlist: the rule picks the songs (change the rule, not the songs)',
+    mgrWhyNotDynamic: 'Only dynamic playlists have a rule',
+    mgrDynamicPill: 'dynamic',
+    mgrDynamicEvaluated: 'evaluated at {time}',
+    mgrDynamicRefresh: 'Recalculate',
+    mgrDynamicNever: 'not evaluated yet',
+    mgrRuleCreated: 'Dynamic playlist “{name}” created: {n} songs',
+    mgrRuleUpdated: 'Rule updated: {n} songs',
+    dynTitleNew: 'New dynamic playlist',
+    dynTitleEdit: 'Rule of “{name}”',
+    dynIntro: 'Recalculated on every request (and every Sync): the songs follow your listening. Songs are not added or removed by hand.',
+    dynPresetNone: 'Start from a preset…',
+    dynPreset: 'Preset',
+    dynName: 'Name',
+    dynNameFixed: 'The name of a dynamic playlist cannot be changed.',
+    dynScope: 'Whose listening',
+    dynScopeMe: 'Only mine',
+    dynScopeFamily: 'The whole family',
+    dynPeriod: 'Period',
+    dynPeriodDays: 'last {n} days',
+    dynPeriodAll: 'all time',
+    dynWindowEnable: 'Only listening within a time window',
+    dynFrom: 'From',
+    dynTo: 'To',
+    dynWindowLocal: 'Local time of the listening (not the server’s).',
+    dynCrossesMidnight: 'Crosses midnight: from {from} in the evening to {to} the next day.',
+    dynWindowIgnored: 'The time window does not apply to never-played songs.',
+    dynDays: 'Days',
+    dynDaysAll: 'None picked = every day',
+    dynDaysShort: [
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+      'Sun',
+    ],
+    dynDaysLong: [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ],
+    dynGenres: 'Type (genre)',
+    dynGenresHint: 'None picked = every genre',
+    dynOrder: 'Order',
+    dynOrderMost: 'Most played',
+    dynOrderLeast: 'Least played',
+    dynOrderRecent: 'Recently played',
+    dynOrderNever: 'Never played',
+    dynLimit: 'Maximum songs (1–200)',
+    dynMinPlays: 'Minimum plays',
+    dynDownloadedOnly: 'Downloaded songs only',
+    dynSummary: 'Summary',
+    dynMax: 'max {n}',
+    dynFamily: 'family',
+    dynDownloadedShort: 'downloaded only',
+    dynMidnightShort: 'past midnight',
+    dynIssueNameRequired: 'A name is required.',
+    dynIssueNameLong: 'The name is too long (80 characters max).',
+    dynIssueLimit: 'The maximum number of songs is 1 to 200.',
+    dynIssueMinPlays: 'Minimum plays is a whole number, 0 or more.',
+    dynIssueWindowTime: 'The times are not valid (HH:MM).',
+    dynIssueWindowEmpty: 'Start and end are the same: the window would be empty.',
+    dynCreate: 'Create the playlist',
+    dynSave: 'Save the rule',
+    statsNav: 'Statistics',
+    statsTitle: 'Listening statistics',
+    statsSubtitleMe: 'Your listening',
+    statsSubtitleAll: 'Everybody’s listening',
+    statsSubtitleUser: 'Listening of {user}',
+    statsPeriod: 'Period',
+    statsPeriodDays: '{n} days',
+    statsPeriodAll: 'All time',
+    statsScope: 'Listening of',
+    statsScopeMe: 'Only mine',
+    statsScopeAll: 'Everybody',
+    statsUser: 'User',
+    statsAllUsers: 'All users',
+    statsDevice: 'Device',
+    statsAllDevices: 'All devices',
+    statsReload: 'Refresh',
+    statsLoading: 'Loading statistics…',
+    statsError: 'Statistics unavailable',
+    statsEmptyTitle: 'No listening recorded yet',
+    statsEmptyBody: 'Listening is recorded from the web player and from Mondrop. Play a few songs (at least 3 seconds) and come back: a play counts at 30 seconds or half the song, anything shorter is a skip.',
+    statsEmptyNever: 'Library songs never played: {n}',
+    statsTotals: 'Totals',
+    statsPlays: 'Plays',
+    statsSkips: 'Skips',
+    statsListened: 'Time listened',
+    statsSongs: 'Distinct songs',
+    statsArtists: 'Distinct artists',
+    statsDevices: 'Devices',
+    statsNeverPlayed: 'Never played',
+    statsNeverPlayedHint: 'library songs',
+    statsPerDay: 'Plays per day',
+    statsPerDaySummary: 'Plays per day: {days} days, {plays} plays in total, the busiest day has {max}.',
+    statsDayTip: '{day}: {plays} plays, {time}',
+    statsHeatmap: 'When you listen (local hour)',
+    statsHeatmapSummary: 'Plays by weekday and local hour. Peak: {day} at {hour}, {n} plays.',
+    statsHeatmapNone: 'Plays by weekday and local hour: no plays.',
+    statsHeatmapTip: '{day} {hour}: {n} plays',
+    statsTopSongs: 'Most played songs',
+    statsTopArtists: 'Most played artists',
+    statsTopGenres: 'Most played types (genres)',
+    statsPerDevice: 'By device',
+    statsPerOrigin: 'By origin',
+    statsOriginLocal: 'On the phone (downloaded file)',
+    statsOriginStream: 'Streamed from the server',
+    statsOriginWeb: 'Web player',
+    statsRankEmpty: 'No data in this period',
+    statsPlaysCount: '{n} plays',
+    statsPlaysOne: '1 play',
+    statsRecent: 'Recent plays',
+    statsColWhen: 'When',
+    statsColSong: 'Song',
+    statsColUser: 'User',
+    statsColDevice: 'Device',
+    statsColListened: 'Listened',
+    statsColCounts: 'Result',
+    statsCounted: 'counted',
+    statsSkipped: 'skip',
+    statsTable: 'Data table',
+    statsColDay: 'Day',
+    playerDlRequesting: 'requesting the download…',
+    playerDlDownloading: 'downloading in parallel…',
+    playerDlReady: 'downloaded — next time it plays from the file',
+    playerDlFailed: 'download failed',
+    playerDlUnavailable: 'no source found',
+    playerDlTimeout: 'still being prepared',
+    locFs: 'File on geekom’s disk (server)',
+    locMs: 'On the media server (Fritz)',
+    locFsMs: 'On geekom’s disk and on the media server',
+    locYoutube: 'Streaming: YouTube link',
+    sourceLabel: 'Source',
+    sourceAuto: 'Auto',
+    sourceInternet: 'Internet',
+    sourceMedia: 'Media server',
+    sourceAutoTitle: 'Automatic: on the home network it plays from the media server, from the internet it plays from Internet (YouTube)',
+    sourceInternetTitle: 'Always from Internet (YouTube): the video replaces the cover',
+    sourceMediaTitle: 'The file at home, streamed through the server (also from the internet). If the song is not there it plays from Internet and the download starts',
+    sourceHintInternal: 'Auto: home network → media server',
+    sourceHintExternal: 'Auto: from the internet → Internet',
+    sourceHintFailed: 'Auto: network not detected → Internet',
+    sourceNextSong: 'Applies from the next song',
+    sourcePlayingFrom: 'Playing from',
+    sourceFromMedia: 'Media server',
+    sourceFromDisk: 'Home disk',
+    sourceFromYoutube: 'Internet (YouTube)',
+    playerVideoTitle: 'Video: {title} — {artist}',
+    playerVideoIdle: 'Video of the song being played',
+    playerWindowStatus: '{shown} of {total}',
+    playerWindowHidden: '{n} already played hidden',
+    playerWindowHiddenOne: '1 already played hidden',
+    mgrHelpLines: [
+      'Tab — switch to the other pane (Shift+Tab leaves the list)',
+      '↑ ↓ Home End PgUp PgDn — move the cursor',
+      'Space / Ins — mark and move down · + mark by text · - unmark · * invert · Ctrl+A all',
+      'Enter — play · F3 — details',
+      'F4 rename · F5 copy to the other pane · F6 move · F7 new playlist · F8 (or Del) remove · F9 share',
+      'Ctrl+↑ / Ctrl+↓ — reorder inside the playlist · Ctrl+Z undoes the last operation',
+      'F2 new dynamic playlist (rule: time window, days, period, type, order) · F4 on a dynamic one edits its rule',
+      'Esc — closes, clears the marks, then jumps to the command bar',
+    ],
 
     notesMentions: 'mentions',
     categorySectionLabel: 'Category',

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { LogEntry as LogEntryType } from '../types';
 import { useLanguage } from '../i18n';
+import { actorLabel, readActor } from '../utils/logActor';
 
 interface LogEntryProps {
   log: LogEntryType;
@@ -41,6 +42,7 @@ export function LogEntry({ log }: LogEntryProps) {
   };
 
   const hasDetails = log.data || log.error || log.durationMs;
+  const actor = readActor(log.data);
 
   return (
     <div
@@ -57,6 +59,14 @@ export function LogEntry({ log }: LogEntryProps) {
         </span>
         <span className="log-time">{formatTime(log.timestamp)}</span>
         <span className="log-function">{log.function}</span>
+        {actor && (
+          <span
+            className={`log-actor${actor.user === 'sistema' ? ' log-actor-system' : ''}`}
+            title={actor.channel ? `${t.logsActor}: ${actorLabel(actor)} (${actor.channel})` : `${t.logsActor}: ${actorLabel(actor)}`}
+          >
+            {actorLabel(actor)}
+          </span>
+        )}
         <span className="log-message">{log.message}</span>
         {log.entryId && (
           <span className="log-entry-id" title={log.entryId}>

@@ -105,7 +105,8 @@ function getPlatformLabel(platform: string): string {
     vimeo: 'VM',
     twitch: 'TW',
     spotify: 'SP',
-    soundcloud: 'SND'
+    soundcloud: 'SND',
+    shazam: 'SZ'
   };
   return labels[platform] || 'WEB';
 }

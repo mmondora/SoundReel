@@ -3,12 +3,9 @@ import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { fetchLibrary } from '../services/api';
 import type { LibraryItem } from '../services/api';
-import { useAllEntries } from '../hooks/useJournal';
 import { useLanguage } from '../i18n';
-import type { JournalStats } from '../types';
 
 export function LibraryPage() {
-  const { entries } = useAllEntries();
   const { t, language } = useLanguage();
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,18 +17,11 @@ export function LibraryPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const stats: JournalStats = {
-    totalEntries: entries.length,
-    totalSongs: entries.reduce((acc, e) => acc + e.results.songs.length, 0),
-    totalFilms: entries.reduce((acc, e) => acc + e.results.films.length, 0),
-    totalNotes: entries.reduce((acc, e) => acc + (e.results.notes?.length || 0), 0),
-  };
-
   const dateLocale = language === 'it' ? 'it-IT' : 'en-US';
 
   return (
     <div className="list-page">
-      <Header stats={stats} />
+      <Header />
       <div className="list-page-content">
         <div className="list-page-header">
           <Link to="/" className="list-page-back">{t.back}</Link>

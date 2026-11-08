@@ -19,6 +19,8 @@ export interface JournalFilter {
   user?: string | null;
   category?: string | null;
   verdict?: string | null;
+  /** Match any entry that has this tag (AI or Telegram comment). */
+  tag?: string | null;
 }
 
 export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter) {
@@ -60,9 +62,12 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter)
   const filterUser = filter?.user ?? null;
   const filterCategory = filter?.category ?? null;
   const filterVerdict = filter?.verdict ?? null;
+  const filterTag = filter?.tag ?? null;
 
   // Reset to page 1 when filter changes
-  useEffect(() => { setCurrentPage(1); }, [filterPlatform, filterChannel, filterUser, filterCategory, filterVerdict]);
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterPlatform, filterChannel, filterUser, filterCategory, filterVerdict, filterTag]);
 
   const filteredEntries = useMemo(() => {
     let result = allEntries;
@@ -71,8 +76,16 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter)
     if (filterUser) result = result.filter(e => e.inputUser === filterUser);
     if (filterCategory) result = result.filter(e => e.results.enrichments?.category === filterCategory);
     if (filterVerdict) result = result.filter(e => e.results.enrichments?.verdict?.label === filterVerdict);
+    if (filterTag) {
+      const needle = filterTag.replace(/^[#@]/, '').toLowerCase();
+      result = result.filter((e) =>
+        (e.results.tags ?? []).some(
+          (t) => t.replace(/^[#@]/, '').toLowerCase() === needle
+        )
+      );
+    }
     return result;
-  }, [allEntries, filterPlatform, filterChannel, filterUser, filterCategory, filterVerdict]);
+  }, [allEntries, filterPlatform, filterChannel, filterUser, filterCategory, filterVerdict, filterTag]);
 
   const availablePlatforms = useMemo(() => {
     const seen = new Map<string, number>();
@@ -124,6 +137,20 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter)
       .map(([verdict, count]) => ({ verdict, count }));
   }, [allEntries]);
 
+  const availableTags = useMemo(() => {
+    const seen = new Map<string, number>();
+    for (const e of allEntries) {
+      for (const tag of e.results.tags ?? []) {
+        const key = tag.trim();
+        if (!key) continue;
+        seen.set(key, (seen.get(key) ?? 0) + 1);
+      }
+    }
+    return Array.from(seen.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([tag, count]) => ({ tag, count }));
+  }, [allEntries]);
+
   const totalCount = filteredEntries.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const entries = paginate(filteredEntries, currentPage, pageSize);
@@ -160,6 +187,7 @@ export function useJournal(pageSize = DEFAULT_PAGE_SIZE, filter?: JournalFilter)
     availableUsers,
     availableCategories,
     availableVerdicts,
+    availableTags,
     filteredCount: totalCount,
   };
 }

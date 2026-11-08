@@ -4,6 +4,7 @@ import { initiateSpotifyAuth } from '../services/spotify';
 import { getFeatures, updateFeatures, FeaturesConfig, getOpenAIConfig, updateOpenAIConfig, OpenAIConfigResponse, deleteAllEntries, getSpotifyStatus } from '../services/api';
 import { useLanguage, Language, interpolate } from '../i18n';
 import type { SpotifyConfig } from '../types';
+import { MusicFoldersSection } from '../components/settings/MusicFoldersSection';
 
 export function Settings() {
   const [searchParams] = useSearchParams();
@@ -465,6 +466,9 @@ export function Settings() {
         </section>
 
         {/* Danger Zone */}
+        {/* Music folders searched next to the library (admin only: the section hides itself for everybody else) */}
+        <MusicFoldersSection />
+
         <section className="settings-section" style={{ borderColor: 'var(--error)', borderWidth: '1px' }}>
           <h2 style={{ color: 'var(--error)' }}>{t.dangerZone}</h2>
           <div className="feature-toggle">
