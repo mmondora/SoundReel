@@ -162,13 +162,40 @@ Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/search», «POST /api/mond
   Carica i risultati (fino a 200), **dice che cosa succederebbe** («Scaricare N brani? X pronti, circa Y MB; Z da preparare sul server; …») e solo dopo il sì parte: i pronti vanno ai download, gli altri si chiedono
   al server e si scaricano appena sono pronti, finché la schermata è aperta. Non riporta i brani tolti dal telefono, non tocca il Player.
 - **Il play non è mai automatico**: «Aggiungi in coda» con la coda vuota carica la coda e mostra il primo brano, e aspetta «Riproduci».
-- **Il Player** (build 9, spec `2026-11-08-mondrop-ipad-player-design.md`): scuro per costruzione, colori dalla tavolozza `PlayerPalette` (`MondropKit/PlayerStyle.swift`, contrasti provati), accento giallo, una colonna centrata (560 pt su iPad), cover quadrata.
-- **Schede**: Player, **Cerca**, Playlist, Posta, Share, Impostazioni. La Libreria non è più una scheda (si apre da «Sfoglia»); il Player senza coda
-  propone «Cerca musica».
+- **Il Player** (build 9, spec `2026-11-08-mondrop-ipad-player-design.md`): scuro per costruzione, colori dalla tavolozza `MondropPalette` (`MondropKit/MondropPalette.swift`, contrasti provati), accento giallo, una colonna centrata (560 pt su iPad), cover quadrata. Dalla Home (sotto) non è più una scheda: si apre a schermo intero dal mini player.
+- **Schede**: **Home**, **Cerca**, Playlist, Posta, Share, Impostazioni. La Libreria non è più una scheda (si apre da «Sfoglia»). «Cerca musica» non esiste più.
 - **Test** nuovi (`SearchModelsTests`, `SearchModelTests`, `SearchPlaybackTests`): la richiesta sul filo (parole, `+`, `&`, accenti, limiti), la
   risposta documentata e quelle storte, la ricerca online / sul telefono / con server che non risponde, risposta tardiva scartata, pagine, polling dei
   brani in preparazione, le playlist trovate per nome, «tocca = questo e i seguenti», «Aggiungi in coda», le ricerche recenti, il selettore delle playlist
   con i rifiuti del server in parole semplici.
+
+## Home, mini player e giallo (1.7.0 build 9 · SoundReel 2.18.0)
+
+Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/home») · ADR-0020 · spec `docs/superpowers/specs/2026-11-08-mondrop-home-spotify-design.md`
+(richiesta di Michele, 8 novembre: «No aspetta, non mi piace il "cerca musica" - fai una proposta alla spotify»; scelta: «A, si giallo»).
+
+- **La Home è la prima scheda**: il saluto (secondo l'ora del telefono, con il nome che manda il server), il campo **«Cosa vuoi ascoltare?»** (un tocco apre Cerca con la
+  tastiera già su: `RootRouter` + `searchable(isPresented:)`), **«Riprendi»** e le **sezioni che manda il server** (`HomeSection`: `playlists` con il mosaico delle copertine,
+  `recent`, `fresh`). L'app **non calcola niente** e ignora un `kind` che non conosce (`HomeModels.swift`, decodifica che perdona). Un tocco su un brano suona quello e i
+  seguenti della fila (la coda si chiama come la sezione: `LibraryChoice.collection`); pressione prolungata: le azioni di Cerca; in «Nuovi dai tuoi reel» c'è anche il
+  pulsante per scaricare. Mai una pagina vuota: senza risposta (o col server più vecchio, che dà 404) restano il campo, «Riprendi», «Brani sul telefono» e «Sfoglia».
+- **Il mini player è uno solo** (`MiniPlayer.swift`): sta sopra la barra delle schede di **ogni** scheda e di ogni pagina che si apre da lì (`.miniPlayer(open:)` sulla
+  `NavigationStack`, **mai** a mano in una pagina: `HomeStructureTests` lo controlla). Un tocco apre il **Player a schermo intero** (`fullScreenCover`; un foglio sul Mac);
+  la freccia in giù lo chiude. Il suo pulsante «In coda» è nel Player.
+- **La coda si salva** (`QueueSnapshot.swift`): `Application Support/Mondrop/queue.json` (brani compatti, al massimo 500) più, a parte, dove eri nel brano (ogni 5 secondi e
+  quando l'app va in secondo piano). Al lancio la coda ricompare **ferma**; il primo play riprende dal secondo salvato e chiede al server indirizzi e stato del brano
+  (`LocalAudioPlayer.serverView`). È ciò che «Riprendi» riprende: vale **per questo telefono**.
+- **Giallo e scuro ovunque**: l'accento è il giallo dell'icona (`AccentColor` + `.tint`), e tutta l'app è scura (`UIUserInterfaceStyle` = Dark, `.preferredColorScheme(.dark)`:
+  il giallo su bianco ha contrasto 1,4). I colori sono `MondropPalette` (contrasti provati in `MondropPaletteTests`); un pulsante giallo è `MondropPillStyle`, con il testo **nero**
+  (il `.borderedProminent` di sistema lo fa bianco: un test lo vieta, tranne per il rosso di «Elimina…»). L'estensione di condivisione resta com'è.
+- **Per guardarla senza server** (solo build DEBUG, mai in TestFlight: `DemoData.swift`): sul simulatore, `xcrun simctl launch <udid> it.mikesoft.mondrop -MondropDemo`
+  (dati finti, una coda a metà brano) e, a scelta, `-MondropDemoTab search|playlists|inbox|share|settings`, `-MondropDemoPlayer`, `-MondropDemoSearch` (come un tocco sul campo
+  della Home), `-MondropDemoPush playlist|library` (una pagina aperta sopra la scheda, per vedere il mini player). Senza `-MondropDemo` la Home è quella vera (sul simulatore non ha
+  la key: mostra «Non riesco a caricare la Home»).
+- **Test** nuovi (+75: 966): `HomeModelsTests` (decodifica), `HomeModelTests` (saluto, scheda «Riprendi», stato della schermata, caricamento), `QueueSnapshotTests` (coda salvata
+  e ripristinata ferma, posizione solo del brano giusto, finestra sulle code lunghe, la vista del server per un brano ripristinato), `MondropPaletteTests` (contrasti, `AccentColor`
+  uguale alla tavolozza, app scura, nessun pulsante giallo con le parole bianche), `HomeStructureTests` (le schede, un solo mini player, niente «Cerca musica», il campo della
+  Home, nessuna lettura della rete). Provati anche rompendo il codice di proposito.
 
 ## Libreria, stati e notifiche (2.9.0)
 
@@ -260,7 +287,7 @@ Contratto: `docs/mondrop-inbox.md` · spec `docs/superpowers/specs/2026-11-08-mo
   non compare finché non si reinstalla l'app (o si attiva «Badge» in Impostazioni iOS → Notifiche → Mondrop, se la voce c'è). Il numero sulla scheda funziona sempre.
 - **Non fatto**: l'aggiornamento in background (`BGAppRefreshTask`) — iOS decide se e quando eseguirlo, richiede modifiche a Info.plist e non è verificabile senza un dispositivo; il risveglio per i download
   in background legge comunque la Posta dopo un sync. «Aggiungi a playlist» da una condivisione ricevuta — non esiste una rotta Mondrop per aggiungere una voce già nota a una playlist (dalla 2.13.0 c'è `POST /api/mondrop/playlists/:id/songs` per i singoli brani: la usa Cerca).
-- **Schede** (1.6.0; dalla 1.7.0 «Libreria» è diventata «Cerca»): sono 6 (Player, Libreria, Playlist, **Posta**, Share, Impostazioni); su iPhone la barra ne mostra 4 più «Altro», perciò la Posta è la quarta (il suo badge resta visibile) e Share e Impostazioni stanno in «Altro».
+- **Schede** (1.6.0; dalla 1.7.0 «Libreria» è diventata «Cerca», dalla build 9 il Player non è più una scheda ed è arrivata la «Home»): sono 6 (Home, Cerca, Playlist, **Posta**, Share, Impostazioni); su iPhone la barra ne mostra 4 più «Altro», perciò la Posta è la quarta (il suo badge resta visibile) e Share e Impostazioni stanno in «Altro».
 - **Compatibilità**: ogni campo nuovo è opzionale (un backend senza Posta risponde 404 alla lettura: la scheda lo dice quietamente); la risposta di `POST /api/share` si legge anche nella forma vecchia.
 - **Test** nuovi: corpo della richiesta (`playlistId` / `shareWith` solo se scelti), risposte vecchie e nuove, classificazione dei link, cache delle playlist, testi di successo e di errore, decodifica della Posta,
   conteggio dei non letti (una condivisione ricevuta una volta sola), errori visibili a prescindere dalla scadenza, letto / elimina / visto (con annullamento, anche della voce collegata, se il server non conferma),

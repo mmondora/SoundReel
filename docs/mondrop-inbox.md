@@ -148,7 +148,7 @@ Configurazione (`docker-compose.yml`, valori in `.env`; mai la chiave): `APNS_KE
 
 ## Contatori d'uso (solo server)
 
-Per capire come si usa il sito (spec `2026-11-08-web-mobile-ux-design.md`, M8) il backend tiene contatori **aggregati** per giorno: utente, tipo di dispositivo ricavato dallo user-agent (`mobile-web`, `desktop-web`, `app`, `automation`, `other`), rete (`internal` o `external`, dagli header Cloudflare), gruppo di rotta (`entries`, `search`, `playlists`, `songs`, `share`, `analyze`, `inbox`, `stats`, `software`, `films`, `notes`, `settings`, `media`, `other`) e numero di chiamate. **Mai** un indirizzo IP, uno user-agent, un percorso o una query. Non conta ciò che non è una chiamata API (pagine, file, health) né il server che chiama se stesso (il worker verso `/api/analyze`). Si scrive in memoria e si salva ogni minuto.
+Per capire come si usa il sito (spec `2026-11-08-web-mobile-ux-design.md`, M8) il backend tiene contatori **aggregati** per giorno: utente, tipo di dispositivo ricavato dallo user-agent (`mobile-web`, `desktop-web`, `app`, `automation`, `other`), rete (`internal` o `external`, dagli header Cloudflare), gruppo di rotta (`entries`, `search`, `playlists`, `songs`, `share`, `analyze`, `inbox`, `stats`, `software`, `films`, `notes`, `settings`, `media`, `home` (dalla 2.18.0: la prima schermata dell'app, `GET /api/mondrop/home`), `other`) e numero di chiamate. **Mai** un indirizzo IP, uno user-agent, un percorso o una query. Non conta ciò che non è una chiamata API (pagine, file, health) né il server che chiama se stesso (il worker verso `/api/analyze`). Si scrive in memoria e si salva ogni minuto.
 
 Lo legge solo l'admin (Authelia, gruppo `admins`; altrimenti `403`): `GET /api/admin/usage?days=14` (1–90) →
 

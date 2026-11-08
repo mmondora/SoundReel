@@ -78,6 +78,32 @@ Risposta: lo stesso manifest di `GET …/offline` (così il client vede subito g
 
 Un solo brano, **stesso oggetto** `track` del manifest (`state`, `downloadPath`, `mediaUrl`, `version`, `bytes`, `error`, …). Serve al primo play per ricontrollare lo stato. `404` se il brano non è dell'utente e nessun file della libreria o del NAS ha quella chiave.
 
+## `GET /api/mondrop/home` — la Home
+
+La prima schermata dell'app, **già decisa dal server** (ADR-0020, spec `2026-11-08-mondrop-home-spotify-design.md`, regola P): quali sezioni ci sono, in che ordine, con che titolo e con quali brani. L'app disegna ciò che riceve e non calcola niente (non monta «recenti» o «nuovi» da playlist e statistiche); una sezione di un tipo che non conosce la ignora. Sola lettura: non mette in coda niente e non registra niente. Tocca **solo** i dati dell'utente della key. Nessun parametro.
+
+```json
+{
+  "user": "mike",
+  "displayName": "Michele",
+  "sections": [
+    { "id": "playlists", "title": "Le tue playlist", "kind": "playlists",
+      "playlists": [ { "id": "…", "name": "Road trip", "songCount": 7, "kind": "static", "ruleSummary": null, "canEdit": true,
+                       "createdAt": "…", "updatedAt": "…", "coverKeys": ["artista::titolo", "…"] } ] },
+    { "id": "recent", "title": "Ascoltati di recente", "kind": "tracks", "tracks": [ { "songKey": "…", "title": "…", "state": "ready", "coverPath": "/api/mondrop/songs/…/cover", "mediaUrl": null, "…": "…" } ] },
+    { "id": "fresh",  "title": "Nuovi dai tuoi reel",  "kind": "tracks", "tracks": [ … ] }
+  ]
+}
+```
+
+- `displayName`: il nome con cui salutare (Michele, Archimede, Sara), o `null` per un utente che il server non conosce (l'app saluta senza nome). Il saluto («Buongiorno», «Buon pomeriggio», «Buonasera») lo sceglie l'app dall'ora del telefono.
+- `kind`: `playlists` (una carta per playlist) o `tracks` (una fila di brani); un `kind` nuovo è ignorato dalle app vecchie. Una sezione senza niente **non viene mandata**.
+- **Sezioni di oggi, in quest'ordine:** `playlists` (al massimo 12, la modificata per ultima per prima, anche dinamiche e condivise, **senza quelle vuote**; `coverKeys` = fino a 4 chiavi di brano per il mosaico della copertina, che l'app chiede come sempre con `GET …/songs/:key/cover`; `canEdit` come in `GET /playlists`) · `recent` (fino a 20 brani **diversi**, dal più recente, solo ascolti che contano — un salto non è ascoltare —; un brano che non esiste più né nel diario né come file è saltato, non lasciato come buco) · `fresh` (fino a 20 brani del diario, dal post più recente che li menziona, che questo utente **non ha mai ascoltato**).
+- `tracks` = **lo stesso oggetto `track`** del manifest e di Cerca (stato, `downloadPath`, `coverPath`, `plays`…); **`mediaUrl` è sempre `null`** e nessun campo nomina un negozio (regola P: la Home non dice dov'è un file).
+- Il guasto di **una** sezione costa solo quella sezione (il resto risponde; l'errore va nel log del server). Se non si riesce a costruire niente: `500 { "error": "home failed" }`; senza key valida `401`.
+- **«Riprendi» non c'è nella risposta:** è la coda dell'app, che il telefono salva e al lancio ricarica **ferma** (il play non parte mai da solo).
+- Un server più vecchio risponde `404`: l'app mostra «Non riesco a caricare la Home» con «Riprova», il campo di ricerca, «Riprendi» e il percorso per «Brani sul telefono».
+
 ## `GET /api/mondrop/search` — Cerca, come su Spotify
 
 Una sola ricerca su **tutto ciò che si può suonare**, con la risposta data dal **server** (ADR-0018, spec `2026-11-08-mondrop-search-spotify-style-design.md`, regola P): il **diario** dell'utente (ciò che viene dai post e dai link), i **file della libreria di geekom** e il **catalogo del NAS**. **Non serve una playlist e non serve che il brano sia nel diario**: «Bassi Maestro» si trova anche se nessuno ha mai salvato un suo post. Solo lettura: non accoda e non scarica nulla.

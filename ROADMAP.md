@@ -196,8 +196,8 @@ Spec `docs/superpowers/specs/2026-11-08-mondrop-search-spotify-style-design.md`,
 Spec `docs/superpowers/specs/2026-11-08-player-cover-art-design.md`, ADR-0019. Richiesta di Michele: «Nel player iOS voglio avere la copertina del disco o della canzone se non c'è trovale su Internet, come le parole.»
 - **Misurato:** un brano **solo-file** (NAS, geekom: quelli che «Cerca» fa suonare) non ha nessuna copertina vera; per gli altri l'app la scarica **direttamente dal sito del fornitore**, senza copia (offline sparisce) e senza passare da SoundReel.
 - **Proposto (SoundReel 2.14.0 + Mondrop 1.7.0, build 8, la stessa di «Cerca»):** il **server** trova la copertina (quella già nota, poi quella **dentro il file** MP3, poi **Internet**: iTunes e Deezer con riscontro forte), la ridimensiona e la **tiene**; rotta `GET /api/mondrop/songs/:key/cover` e campo `coverPath` nelle tracce; l'app la chiede solo a SoundReel, la **tiene sul telefono** (offline) e la usa nel player e sulla schermata di blocco.
-- **Risposte di Michele (8 novembre):** i **testi** («come le parole») **sì, cercali su Internet** quando mancano → release a parte (SoundReel 2.18.0, con la sua ADR); la copertina piccola nelle liste **no**, solo nel player.
-- Il piano di riproduzione del player web (scelto da Michele come prossimo lavoro) è la **2.15.0** (costruito); i testi vengono dopo, nella 2.18.0.
+- **Risposte di Michele (8 novembre):** i **testi** («come le parole») **sì, cercali su Internet** quando mancano → release a parte (SoundReel 2.19.0, con la sua ADR-0021); la copertina piccola nelle liste **no**, solo nel player.
+- Il piano di riproduzione del player web (scelto da Michele come prossimo lavoro) è la **2.15.0** (costruito); i testi vengono dopo, nella 2.19.0 (la 2.18.0 è la Home).
 
 ## Fatto (in attesa di TestFlight) — l'icona di Mondrop rifatta a vettore, e la gemella dell'app TV (richiesta 2026-11-08)
 
@@ -218,8 +218,15 @@ Spec `docs/superpowers/specs/2026-11-08-playlist-search-everything-design.md` (A
 
 Spec `docs/superpowers/specs/2026-11-08-mondrop-ipad-player-design.md` e `2026-11-08-mondrop-bulk-download-design.md`. Richieste di Michele: «Questa la home su ipad - colori sbagliati e spazi da rivedere»; «In mondrop voglio anche poter scaricare tutto dopo una ricerca. E il play non deve essere automatico».
 - **Player:** una tavolozza sola, scura come l'icona, accento **giallo**; cover quadrata, colonna centrata, pulsanti affiancati; contrasti e geometria provati. **Scarica tutti:** nei risultati, negli artisti, negli album (fino a 200, con la domanda prima). **Play:** «Aggiungi in coda» non suona più da solo.
-- Domande aperte: l'accento giallo anche nel resto dell'app? «il play non deve essere automatico» era proprio l'aggiunta in coda? «Scarica tutti» anche in «Sfoglia»?
-- **Il caricamento della build 9 è fermo** («No aspetta, non mi piace il "cerca musica" - fai una proposta alla spotify»): proposta di una **Home + mini player** in `docs/superpowers/specs/2026-11-08-mondrop-home-spotify-design.md` (con il disegno), in attesa della scelta di Michele. Confermato da lui: «il play non deve essere automatico» = aggiungere in coda non suona («Sì, è questo»).
+- Risposte di Michele: l'accento giallo anche nel resto dell'app? **sì** («A, si giallo», vedi la Home qui sotto); «il play non deve essere automatico» era proprio l'aggiunta in coda? **«Sì, è questo»**. Ancora aperta: «Scarica tutti» anche in «Sfoglia»?
+- **La build 9 non è ancora caricata** («No aspetta, non mi piace il "cerca musica" - fai una proposta alla spotify»): ora porta anche la **Home** (sezione sotto) e aspetta il suo OK. Confermato da Michele: «il play non deve essere automatico» = aggiungere in coda non suona («Sì, è questo»).
+
+## Fatto (in attesa di deploy e di TestFlight) — la Home di Mondrop e il mini player (richiesta 2026-11-08)
+
+Spec `docs/superpowers/specs/2026-11-08-mondrop-home-spotify-design.md`, ADR-0020 (**accettato**). Richiesta di Michele: «No aspetta, non mi piace il "cerca musica" - fai una proposta alla spotify»; davanti al disegno: **«A, si giallo»**.
+- **SoundReel 2.18.0 (da deployare con l'OK di Michele):** `GET /api/mondrop/home`, le sezioni già pronte decise dal server (playlist con mosaico, ascoltati di recente, nuovi dai reel). Backend 2595 test, rotture provate.
+- **Mondrop 1.7.0 build 9 (da caricare con l'OK di Michele):** la Home come prima scheda, il mini player su tutte le schede e pagine (il Player a schermo intero), «Riprendi» con la coda salvata sul telefono, il giallo come accento di tutta l'app e l'app scura. 966 test; verificata a occhio sul simulatore, anche con il telefono in modo chiaro.
+- **Da dire a Michele:** il giallo ovunque ha richiesto l'app **tutta scura** (il giallo su bianco non si legge): se non va, si torna indietro con una riga (`UIUserInterfaceStyle`) e un accento più scuro per il chiaro. La sidebar di iPadOS 26 e «Mostra tutti» per le due file di brani non sono costruiti (spec §6).
 
 ## In corso — Mondrop su TestFlight, il gruppo «Family» come tester (richiesta 2026-11-08)
 
