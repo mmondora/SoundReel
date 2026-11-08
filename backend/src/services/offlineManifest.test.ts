@@ -563,6 +563,20 @@ describe('a song that exists only as a file (ADR-0018)', () => {
     m.libraryOnlySong.mockImplementation(async (key: string) => (key === FILE_KEY ? fileSong() : undefined));
   });
 
+  it('a song that is only a file never makes the server read the whole journal again (that costs half a second a request)', async () => {
+    await getTrack(FILE_KEY, 'mike');
+    await resolveSongServing(FILE_KEY, 'mike');
+    expect(m.getUserSongs.mock.calls.length).toBeGreaterThan(0);
+    expect(m.getUserSongs.mock.calls.every((call) => call[2] === undefined)).toBe(true); // never the «fresh» read (max age 0)
+  });
+
+  it('a journal song created seconds ago is still found by the fresh read, once the file lookup has said no', async () => {
+    const brandNew = song({ songKey: 'new::one', title: 'One', artist: 'New' });
+    m.getUserSongs.mockImplementation(async (_user: string, _admin: boolean, maxAge?: number) => new Map(maxAge === 0 ? [['new::one', brandNew]] : []));
+    expect(await getTrack('new::one', 'mike')).toMatchObject({ songKey: 'new::one' });
+    expect(m.getUserSongs.mock.calls.some((call) => call[2] === 0)).toBe(true);
+  });
+
   it('is found by its key, and a key nobody carries is still unknown', async () => {
     expect(await getTrack(FILE_KEY, 'mike')).toMatchObject({ songKey: FILE_KEY, title: 'Foto di gruppo', artist: 'Bassi Maestro', entryId: null, canEnqueueSpooty: false, spotifyUrl: null });
     expect(await getTrack('ghost::song', 'mike')).toBeNull();

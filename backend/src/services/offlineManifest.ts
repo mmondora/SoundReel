@@ -291,10 +291,13 @@ const awaiting = (song: AggregatedSong, open: Set<string>): boolean => song.ment
 async function findSong(songKey: string, ownerUser: string, isAdmin: boolean): Promise<AggregatedSong | undefined> {
   const cached = (await getUserSongs(ownerUser, isAdmin)).get(songKey);
   if (cached) return cached;
-  const fresh = (await getUserSongs(ownerUser, isAdmin, 0)).get(songKey);
-  if (fresh) return fresh;
-  // Not in the journal: it may still be a FILE of geekom's library or of the box (ADR-0018). Accepted only if the file exists.
-  return libraryOnlySong(songKey);
+  // Not in the journal: it may be a FILE of geekom's library or of the box (ADR-0018), accepted only if the file exists. It is
+  // asked BEFORE the fresh read of the journal below: that read aggregates every entry again (about half a second), and every
+  // request for a song that is only a file — each Range read of its stream — would pay it.
+  const file = await libraryOnlySong(songKey);
+  if (file) return file;
+  // An entry created seconds ago is not in the short-lived cache yet.
+  return (await getUserSongs(ownerUser, isAdmin, 0)).get(songKey);
 }
 
 // ---------------------------------------------------------------------------
