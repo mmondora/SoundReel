@@ -33,17 +33,9 @@ RUN npx tsc
 # ---------- Runtime ----------
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
 
-ARG GIT_REVISION=unknown
-ARG BUILD_DATE=
-LABEL org.opencontainers.image.revision=$GIT_REVISION
-LABEL org.opencontainers.image.created=$BUILD_DATE
-LABEL org.opencontainers.image.title="soundreel"
-LABEL org.opencontainers.image.source="https://github.com/mmondora/soundreel"
-
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=8080 \
-    GIT_REVISION=$GIT_REVISION \
     CHROMIUM_PATH=/usr/bin/chromium \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
@@ -87,6 +79,17 @@ COPY backend/src/db/init.sql ./init.sql
 # no `kind`, `priority` or `reanalyze` column. MIGRATIONS_DIR is now an
 # override, not the thing that makes it work.
 COPY backend/src/db/migrations ./dist/db/migrations
+
+# Build metadata goes LAST. The date and the commit change on every build, so placed above the apt and npm layers
+# (as it was until 2.10.0) they invalidated those layers each time: every deploy downloaded chromium and the Claude Code
+# CLI again, about 4 minutes against the watcher's 300 s limit, and a warm cache from a manual build never helped.
+ARG GIT_REVISION=unknown
+ARG BUILD_DATE=
+ENV GIT_REVISION=$GIT_REVISION
+LABEL org.opencontainers.image.revision=$GIT_REVISION \
+      org.opencontainers.image.created=$BUILD_DATE \
+      org.opencontainers.image.title="soundreel" \
+      org.opencontainers.image.source="https://github.com/mmondora/soundreel"
 
 EXPOSE 8080
 
