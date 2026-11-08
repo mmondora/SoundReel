@@ -19,3 +19,4 @@
 | 0015 | The Mondrop inbox lives on the server; push is only the doorbell | Accepted (implemented in 2.10.0; push dormant until the APNs key exists) | 2026-11-08 |
 | 0016 | Mondrop reaches the family through TestFlight, uploaded and managed with an App Store Connect API key | Accepted (build pipeline ready; first upload waits for the API key) | 2026-11-08 |
 | 0017 | One identity per thing, and every card links back to the post it came from | Accepted (song versions D5 proposed) | 2026-11-08 |
+| 0018 | One search across the journal, the library and the NAS, and tracks that exist only as files can be played | Proposed (waiting for Michele's answers; 2.13.0 + Mondrop 1.7.0) | 2026-11-08 |

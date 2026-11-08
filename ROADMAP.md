@@ -179,6 +179,16 @@ Spec `docs/superpowers/specs/2026-11-08-no-duplicates-and-post-links-design.md`,
 - **Aspetta Michele:** la qualità del riempimento dei software (circa una voce su sei è rumore: tenerlo, restringere il filtro alla lettura o annullarlo, che è preciso perché ogni entry toccata è segnata); il gruppo esterno per Sara e Archi su TestFlight (serve una chiave API con ruolo Admin, oppure il sito).
 - Poi: rivedere le 10 canzoni con un handle Instagram che sono in realtà album registrati come canzoni («Moon Safari», «Dummy», «Endtroducing»…); rivedere la pagina Software dopo il riempimento.
 
+## Da costruire — Mondrop: cercare come su Spotify, senza playlist (richiesta 2026-11-08)
+
+Spec `docs/superpowers/specs/2026-11-08-mondrop-search-spotify-style-design.md`, ADR-0018. Richiesta di Michele: «Perché non c'è modo di trovare le musiche di bassi maestro? Ci sono sul nas?» e «La ricerca la trovo molto confusa. Io posso cercare anche senza avere/fare playlist, alla spotify».
+- **Misurato:** le musiche di Bassi Maestro ci sono (45 file sul NAS, 10 su geekom) ma nel diario sono 0, e la Libreria di Mondrop cerca **solo nel diario** (`/api/mondrop/library`); il servizio dei file parte dal diario (`findSong`), quindi un brano che esiste solo come file non si può nemmeno suonare. La schermata si apre sulle playlist e la ricerca filtra una «dimensione».
+- **Proposto (2.13.0 + Mondrop 1.7.0):** `GET /api/mondrop/search` su diario + geekom + NAS (un risultato per canzone); i brani solo-file si suonano (senza voce nel diario, mai un download da YouTube); scheda **Cerca** come Spotify (Brani / Artisti / Album, un tocco suona, pagine autore e album), la Libreria si assorbe.
+- **Regola P (Michele, stesso giorno):** «la logica di avere 3 liste o store [sia] server in sounreel e non in mondrop. Quello deve andare sempre e solo su soundreel» e «Idem il player web (locale o in internet)»: i client parlano **sempre e solo con SoundReel**. Oggi non è vero: Mondrop a casa scarica direttamente dal Fritz (`mediaUrl`, `/net`) e il player web sceglie la sorgente nel browser (interruttore «Sorgente») e da internet suona da YouTube. Da togliere (S10, S11).
+- **Risposte di Michele (8 novembre):** Cerca sostituisce la Libreria; il tocco suona e accoda i seguenti; per il player web «se siamo su internet parte da youtube, sempre. se siamo in casa parte da youtube nel frattempo» (decide il server con un piano di riproduzione).
+- **Costruita e provata, non ancora in produzione:** SoundReel 2.13.0 (`GET /api/mondrop/search`, brani solo-file serviti dal file esatto, `POST /api/mondrop/playlists/:id/songs`, niente `mediaUrl`, guardia del ritiro delle copie; 155 file e 2421 test). **Aspetta l'OK di deploy di Michele.**
+- **A seguire, ognuno con il suo OK:** Mondrop 1.7.0 (scheda Cerca, via il percorso diretto al NAS, build TestFlight dopo il deploy del server), poi SoundReel 2.14.0 (piano di riproduzione del player web).
+
 ## In corso — Mondrop su TestFlight, il gruppo «Family» come tester (richiesta 2026-11-08)
 
 Spec `docs/superpowers/specs/2026-11-08-mondrop-testflight-design.md`, ADR-0016. Richiesta di Michele: «Pubblica mondrop su testflight e metti il gruppo family come tester».

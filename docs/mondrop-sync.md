@@ -1,14 +1,15 @@
 # Mondrop — sync MP3 (contratto API v2)
 
-Spec di riferimento: `docs/superpowers/specs/2026-11-07-mp3-store-media-server-design.md` (§2.4–2.7, Fasi 1–2).
+Spec di riferimento: `docs/superpowers/specs/2026-11-07-mp3-store-media-server-design.md` (§2.4–2.7, Fasi 1–2). Dalla 2.13.0 anche la **ricerca unica** e la **regola P** (l'app parla solo con SoundReel): `docs/superpowers/specs/2026-11-08-mondrop-search-spotify-style-design.md`, ADR-0018.
 Auth invariata: `X-SoundReel-Key` (+ `X-SoundReel-User` per le key legacy; con una key legata a un utente vince l'utente della key).
 Tutte le rotte sono sotto `/api/mondrop/*` (Traefik senza Authelia, come `/api/share`).
 
-## Idea in tre righe
+## Idea in quattro righe
 
-- Il **server** prepara i file (riuso → copia dal Fritz → download yt-dlp) e li tiene su geekom; il **Fritz** ne tiene una replica che serve alla LAN (TV, auto, app in casa).
-- Il telefono fa **Sync = `prepare` + download in background**: scarica solo i brani `ready`, salta quelli già presenti con la stessa `version`, in LAN preferisce `mediaUrl`.
+- Il **server** prepara i file (riuso → copia dal Fritz → download yt-dlp) e li tiene su geekom; il **Fritz** ne tiene una replica che serve alla LAN (TV, auto).
+- Il telefono fa **Sync = `prepare` + download in background**: scarica solo i brani `ready`, salta quelli già presenti con la stessa `version`, sempre da `downloadPath`.
 - Il manifest è **solo MP3**: niente più `audio.wav` / `video.mp4` delle entry.
+- **Regola P (ADR-0018):** l'app parla **sempre e solo con SoundReel**. Quanti elenchi o «negozi» ci siano (diario, libreria di geekom, NAS), dove stia un file e da dove si legga sono **del server**: nessuna risposta dice in quale negozio sta un brano e l'app non ha un percorso diretto verso il media server.
 
 ## `GET /api/mondrop/playlists/:id/offline` — manifest
 
@@ -33,7 +34,7 @@ Tutte le rotte sono sotto `/api/mondrop/*` (Traefik senza Authelia, come `/api/s
       "state": "ready",
       "source": "ytdlp",
       "downloadPath": "/api/mondrop/songs/bishop%20briggs%3A%3Awhite%20flag/file",
-      "mediaUrl": "http://192.168.178.10:49200/AUDIO/DLNA-1-0/…/White%20Flag.mp3",
+      "mediaUrl": null,
       "version": "6291456-1794085004000",
       "bytes": 6291456,
       "durationS": 230,
@@ -57,12 +58,14 @@ Tutte le rotte sono sotto `/api/mondrop/*` (Traefik senza Authelia, come `/api/s
 | `status` | **Legacy** per le app già installate: `ready` solo se `state == ready`, altrimenti `missing`. Le app nuove usano `state` |
 | `source` | `library` (file Spooty) · `ytdlp` · `existing` (il file è del media server, **non copiato** — ADR-0010) · `none` |
 | `downloadPath` | Path relativo da anteporre alla base URL del backend; **sempre valido** quando `ready`, con auth. Supporta `Range` |
-| `mediaUrl` | URL **assoluto, HTTP, solo LAN**, sul media server (Fritz). Presente solo se il file è stato replicato e verificato. **Mai** mandare qui l'API key |
+| `mediaUrl` | **Sempre `null` dalla 2.13.0** (regola P, ADR-0018): l'app non parla col media server, solo con SoundReel. Il campo resta nel contratto per le app già installate (1.6.0 e precedenti), che con `null` scaricano da `downloadPath`: per un brano `ready` è sempre valido. **Mai** mandare qui l'API key |
 | `version` | Cambia quando cambia il file (`<bytes>-<mtimeMs>`). Il client non riscarica se ha già quella `version` per quel `songKey` |
 | `error` | Motivo breve per `failed` / `no_source` |
 
 `missingCount` = tutto ciò che non è `ready` (compat); `preparingCount` e `failedCount` sono nuovi.
 Solo i brani della playlist dell'utente; i `songKey` sconosciuti restano `missing` con `title = songKey`.
+
+**Brani che esistono solo come file** (la musica del NAS o della libreria di geekom, mai salvata da un post: ADR-0018): stesso oggetto `track`, con `entryId` e `spotifyUrl` `null` e `canEnqueueSpooty` `false`. Il server li serve **solo se il file c'è** (`state: ready`, altrimenti `missing` con `error: "file non più presente"`) e **non li scarica mai da YouTube**: nessun `song_files`, nessuna voce nel diario. Una playlist li tiene come qualunque brano (tiene `songKey`).
 
 ## `POST /api/mondrop/playlists/:id/prepare`
 
@@ -71,11 +74,49 @@ Risposta: lo stesso manifest di `GET …/offline` (così il client vede subito g
 
 ## `GET /api/mondrop/songs/:songKey`
 
-Un solo brano, **stesso oggetto** `track` del manifest (`state`, `downloadPath`, `mediaUrl`, `version`, `bytes`, `error`, …). Serve al primo play per ricontrollare lo stato. `404` se il brano non è dell'utente.
+Un solo brano, **stesso oggetto** `track` del manifest (`state`, `downloadPath`, `mediaUrl`, `version`, `bytes`, `error`, …). Serve al primo play per ricontrollare lo stato. `404` se il brano non è dell'utente e nessun file della libreria o del NAS ha quella chiave.
+
+## `GET /api/mondrop/search` — Cerca, come su Spotify
+
+Una sola ricerca su **tutto ciò che si può suonare**, con la risposta data dal **server** (ADR-0018, spec `2026-11-08-mondrop-search-spotify-style-design.md`, regola P): il **diario** dell'utente (ciò che viene dai post e dai link), i **file della libreria di geekom** e il **catalogo del NAS**. **Non serve una playlist e non serve che il brano sia nel diario**: «Bassi Maestro» si trova anche se nessuno ha mai salvato un suo post. Solo lettura: non accoda e non scarica nulla.
+
+| Parametro | Significato |
+|-----------|-------------|
+| `q` | Testo libero su autore, titolo, album (e, per i brani del diario, i tag); **l'ordine delle parole non conta**, niente maiuscole/accenti («Maestro Bassi» trova «Bassi Maestro») |
+| `artist`, `album` | Restringono ai brani di quell'autore (conta **ogni** nome accreditato: «Hell Raton, Ensi & Bassi Maestro» è anche di Bassi Maestro) o di quell'album: sono le pagine autore e album. Uguaglianza senza maiuscole/accenti/punteggiatura |
+| `limit`, `offset` | Pagina dei **brani**: `limit` 1–200 (default 30), `offset` ≥ 0 |
+| `sections` | `1` (default): manda anche `artists` e `albums`; `0`: solo i brani (per sfogliare le pagine successive) |
+
+Senza `q`, `artist` né `album`: `400 { "error": "invalid_query", "field": "q" }` (la ricerca vuota non elenca tutta la musica). Un numero o un valore malformato: `400` con `field` = `limit`, `offset` o `sections`.
+
+```json
+{
+  "q": "bassi maestro",
+  "tracks": [ { "songKey": "bassi maestro::foto di gruppo", "title": "Foto di gruppo", "artist": "Bassi Maestro", "album": "Foto di gruppo", "genres": [], "year": null, "state": "ready", "downloadPath": "/api/mondrop/songs/…/file", "mediaUrl": null, "version": "…", "plays": 0, "…": "…" } ],
+  "artists": [ { "name": "Bassi Maestro", "tracks": 45 } ],
+  "albums":  [ { "title": "Mia maestà", "artist": "Bassi Maestro", "tracks": 14 } ],
+  "total": 45,
+  "offset": 0,
+  "limit": 30,
+  "user": "mike"
+}
+```
+
+- `tracks` = **lo stesso oggetto `track`** del manifest, ma solo per la pagina; `total` conta **tutti** i brani trovati. Ordine: prima i brani con le parole nell'autore o nel titolo, poi quelli che le hanno solo nell'album (o nei tag); a parità, autore e titolo A–Z.
+- **Un brano = una riga**: lo stesso brano nel diario, su geekom e sul NAS è una riga sola (vince quello del diario, che sa di più). L'identità è la `songKey` (autore e titolo): una **versione** («(Instrumental)», «(2019 Remastered)») è un brano a sé, col suo file.
+- `artists`: i nomi accreditati che corrispondono a ciò che si è scritto, con quanti brani trovati (al massimo 6; assenti con `artist=`). `albums`: da dove vengono **tutti** i brani trovati, sotto il primo autore accreditato (al massimo 6; 60 nella pagina di un autore; assenti con `album=`).
+- **Nessun campo dice in quale «negozio» sta il file** (diario, geekom, NAS): è del server. L'app mostra solo «sul telefono» o «su SoundReel».
+- Un brano che esiste **solo come file** si suona e si scarica come gli altri (vedi sopra): il server **non lo scarica mai da YouTube** e non crea nessuna voce nel diario.
+- Il catalogo del NAS si riempie dopo l'avvio e si rinnova ogni ora: finché è vuoto (o la chiavetta è scollegata) la ricerca risponde con ciò che c'è, senza errore.
+
+## `POST /api/mondrop/playlists/:id/songs` — aggiungere un brano a una playlist
+
+Corpo `{ "songKey": "…" }`: mette il brano in coda alla playlist. **Solo le playlist statiche dell'utente della key** (`canEdit: true` in `GET /playlists`): una playlist condivisa con lui è in sola lettura (`404`, come ogni playlist non sua), una dinamica è una regola (`409 { "error": "playlist_is_dynamic" }`). Il brano può essere anche solo un file (ADR-0018): la playlist tiene `songKey`, non voci del diario. Idempotente: un brano già presente resta dov'è.
+Risposta: `{ "ok": true, "playlist": { "id": "…", "name": "…", "songs": 12 }, "user": "mike" }`. Errori: `400` se manca `songKey` (testo, al massimo 500 caratteri); `404 { "error": "song not found" }` se nessuno conosce quel brano (né il diario né un file); `404 { "error": "playlist not found" }`.
 
 ## `GET /api/mondrop/library` — scegliere cosa suonare
 
-Tutti i brani **che questo utente può vedere** (non solo quelli delle sue playlist), filtrabili, con le voci tra cui scegliere. Serve alla schermata «Libreria» dell'app: suonare **un album, un autore, un tipo, un decennio, un brano** senza passare da una playlist (ADR-0013, spec `2026-11-08-player-selection-and-filters-design.md` X1–X2). Non accoda nulla: solo lettura.
+Tutti i brani **che questo utente può vedere** (non solo quelli delle sue playlist), filtrabili, con le voci tra cui scegliere. Serve alla schermata «Libreria» dell'app: suonare **un album, un autore, un tipo, un decennio, un brano** senza passare da una playlist (ADR-0013, spec `2026-11-08-player-selection-and-filters-design.md` X1–X2). Non accoda nulla: solo lettura. **Dalla 2.13.0 l'app usa `GET /search`** (che cerca anche nei file di geekom e del NAS, e non solo nel diario); questa rotta resta per le app già installate.
 
 Parametri (tutti opzionali):
 
@@ -112,36 +153,36 @@ I filtri si sommano (AND). I brani sono ordinati per autore, poi titolo. Un para
 
 ## `POST /api/mondrop/songs/:songKey/download`
 
-Come `prepare` ma per un solo brano. Corpo opzionale `{ "priority": "play" | "sync" }` (default `sync`): `play` **passa davanti a tutta la coda** di Sync (è un brano che l'utente sta aspettando). Idempotente. Risposta `{ "ok": true, "state": "preparing" | "ready" | "failed" | "no_source", "track": { … } }`; `404` se il brano non è dell'utente.
+Come `prepare` ma per un solo brano. Corpo opzionale `{ "priority": "play" | "sync" }` (default `sync`): `play` **passa davanti a tutta la coda** di Sync (è un brano che l'utente sta aspettando). Idempotente. Risposta `{ "ok": true, "state": "preparing" | "ready" | "failed" | "no_source", "track": { … } }`; `404` se il brano non è dell'utente. Per un brano che esiste **solo come file** risponde `ready` (o `missing` se il file non c'è) e **non mette in coda nulla**.
 
 ## `PUT /api/mondrop/songs/:songKey/source`
 
-Corpo `{ "youtubeUrl": "https://www.youtube.com/watch?v=…" }`: forza la sorgente di un brano (versione sbagliata o `no_source`) e lo rimette in coda. Risposta `{ "ok": true }`; `400` se l'URL non è YouTube.
+Corpo `{ "youtubeUrl": "https://www.youtube.com/watch?v=…" }`: forza la sorgente di un brano (versione sbagliata o `no_source`) e lo rimette in coda. Risposta `{ "ok": true }`; `400 { "ok": false, "error": "bad_url" }` se l'URL non è YouTube; `400 { "ok": false, "error": "library_only" }` per un brano che esiste solo come file (non ha una sorgente YouTube da cambiare); `404` se il brano non esiste.
 
 ## `GET /api/mondrop/net`
 
-`{ "viaCloudflare": false, "home": true }` — `viaCloudflare` è vero se la richiesta è arrivata dal tunnel Cloudflare (header `CF-Ray` / `CF-Connecting-IP`). In casa il DNS split-horizon porta a Traefik direttamente: `home: true`. Serve all'app per scegliere `mediaUrl` (solo `home`) e alle Impostazioni («Rete: casa / internet»).
+`{ "viaCloudflare": false, "home": true }` — `viaCloudflare` è vero se la richiesta è arrivata dal tunnel Cloudflare (header `CF-Ray` / `CF-Connecting-IP`). In casa il DNS split-horizon porta a Traefik direttamente: `home: true`. **Solo informativa dalla 2.13.0**: serve alle Impostazioni («Rete: casa / internet»). L'app **non** sceglie più la sorgente in base alla rete (regola P): scarica e suona sempre da `downloadPath`.
 
 ## `GET /api/mondrop/songs/:songKey/file`
 
-MP3 con `Range` (`206`), `Accept-Ranges`, `Content-Length`, `ETag: "<version>"`. `404` JSON se il file non c'è (mai un redirect HTML).
+MP3 con `Range` (`206`), `Accept-Ranges`, `Content-Length`, `ETag: "<version>"`. `404` JSON se il file non c'è (mai un redirect HTML). **Da dove** il server legga il file (disco di geekom, media server) lo decide il server (`songStream.ts`): il client non lo sa e non lo sceglie.
 
 ## Primo play: riproduci subito e scarica in parallelo
 
 Regola unica per tutti i client. Se il brano è **già scaricato** (sul device, o sul server per il web) si riproduce **il file locale**. Se no: si riproduce subito in streaming e **in parallelo** lo si scarica, così le volte successive è locale.
 
-- Server pronto (`state == ready`): stream da `mediaUrl` (solo LAN) o da `downloadPath` (con `Range`) + download in background sul device.
+- Server pronto (`state == ready`): stream da `downloadPath` (con `Range`) + download in background sul device.
 - Server non pronto: `POST …/songs/:songKey/download` con `{"priority":"play"}`, poi `GET …/songs/:songKey` ogni ~2 s fino a `ready` (di solito 10–30 s: ricerca YouTube + conversione) e solo allora stream + download. Su iOS si mostra «Preparo il brano…» (non esiste un ripiego YouTube nell'app); il **web** ha il ripiego YouTube immediato e intanto manda lo stesso `POST`.
 - Web (auth `Remote-User` come le altre rotte `/api/songs`): `POST /api/songs/:songKey/download` (corpo `{ "priority": "play" }`) e `GET /api/songs/:songKey/state` → `{ "state": "ready" | "preparing" | "failed" | "no_source" | "missing", "source": …, "version": …, "bytes": …, "error": …, "inLibrary": bool }`. `GET /api/songs/:songKey/file` serve il file dallo store quando `state == ready`.
 
 ## Algoritmo del client (Fase 2)
 
-1. `GET /net` → `home`.
-2. `POST …/prepare` → manifest. Per ogni `ready` con `version` diversa da quella locale: scarica in background (Wi-Fi, max 2 in parallelo, ripresa). URL = `home && mediaUrl != nil ? mediaUrl : base + downloadPath`; con `downloadPath` si mandano i due header di auth, con `mediaUrl` **nessun** header. Se `mediaUrl` fallisce (rete locale negata, timeout, non 2xx) → un secondo tentativo con `downloadPath`.
+1. (Facoltativo, solo da mostrare) `GET /net` → `home`: non influisce su nessun percorso (regola P).
+2. `POST …/prepare` → manifest. Per ogni `ready` con `version` diversa da quella locale: scarica in background (Wi-Fi, max 2 in parallelo, ripresa). URL = `base + downloadPath`, con i due header di auth; **nessun altro indirizzo** (`mediaUrl` è `null` e un client non lo usa). Se fallisce → ritenta con attesa crescente.
 3. Se ci sono `preparing`: rilegge il manifest ogni ~5 s in foreground (max ~10 min) e scarica i nuovi `ready`; il pulsante Sync è ripetibile (idempotente).
 4. Stato per brano nell'interfaccia: `preparing` · `in coda` · `scarico NN %` · `scaricato` · `errore` (con il motivo) · `no_source`.
 5. File in `Application Support` (escluso da iCloud), indice in JSON; brani non più in nessuna playlist sincronizzata = orfani, rimossi solo su richiesta esplicita.
 
 ## Compatibilità
 
-Le app già installate decodificano il manifest con i soli campi vecchi: `status` resta `ready`/`missing`, `source` non vale più `entry_*`, tutti i campi nuovi (`album`, `genres`, `year` compresi) sono opzionali lato client. `POST /api/mondrop/songs/:songKey/spooty` resta com'è.
+Le app già installate decodificano il manifest con i soli campi vecchi: `status` resta `ready`/`missing`, `source` non vale più `entry_*`, tutti i campi nuovi (`album`, `genres`, `year` compresi) sono opzionali lato client. Dalla 2.13.0 `mediaUrl` è `null`: le app 1.6.0 e precedenti, che in casa preferivano `mediaUrl`, ripiegano da sole su `downloadPath` (nessuna modifica lato app). `POST /api/mondrop/songs/:songKey/spooty` resta com'è.
