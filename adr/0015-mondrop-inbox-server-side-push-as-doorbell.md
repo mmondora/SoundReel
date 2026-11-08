@@ -32,7 +32,8 @@ Michele wants three things from the Mondrop share sheet: a notification back "ju
 6. **Delivery goes through one sink interface** next to the existing Telegram one: the worker creates the inbox item first, then asks each channel (push, Telegram) to announce it. Telegram-originated jobs keep their Telegram reply unchanged.
 7. **Authorisation:** the inbox endpoints use the Mondrop key and only ever touch the key owner's items; `shareWith` accepts only `FAMILY_USERS`, never the sender, and only for entries the sender owns.
 
-## 3. Push options (to be settled with the answer about the Apple account)
+## 3. Push options
+**Update 2026-11-08:** Michele confirmed the Apple team is a **paid** Developer Program ("si account apple è a pagamento"), so option A is available. What is still missing is an APNs auth key (`.p8`) created by Michele in the Apple Developer portal (Keys); its Key ID goes in the configuration, the file stays in `~/.config/soundreel/apns/` (0600) and never in the repository, a log or the chat. Until it exists the push stays off and the inbox works without it.
 | Option | What it needs | Verdict |
 |---|---|---|
 | **A. APNs push from the backend** | Paid Apple Developer Program; an APNs auth key (`.p8`) kept outside the repository (0600, like the FRITZ credentials) with its Key ID and Team ID; the Push Notifications capability and `aps-environment`; a device token registered by the app; Node's built-in `http2` and `crypto` (no new dependency). Development builds use the sandbox environment | The real "like Telegram": works with the app closed or force-quit. **Recommended once the account is confirmed paid** |

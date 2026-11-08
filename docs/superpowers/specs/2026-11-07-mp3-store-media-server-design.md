@@ -127,3 +127,17 @@ Totale fasi 0–2: **circa 5–7 giorni** di lavoro. Ogni fase chiude con test; 
 3. OK (facoltativo) a ripulire i file `._*` dalla chiavetta: oggi sporcano l'indice del Fritz (≈ metà delle voci).
 4. Un link Spotify a traccia singola per lo smoke test live della Fase 0.
 5. OK fase per fase; nessun deploy senza il tuo via.
+
+## Idea (2026-11-08): FTP(S) al posto di SMB per la replica e per l'import dal Mac — da misurare
+
+Messaggio di Michele: «l'integrazione al nas si può fare anche via ftp quando la chiavetta è montata che forse è più efficiente di smb.»
+
+**Fatti verificati il 2026-11-08** (senza login, dal geekom):
+- Il Fritz ha già un **server FTP acceso sulla porta 21** («220 FTP server ready»). La porta 990 (FTPS implicito) e la 22 (SFTP) sono chiuse.
+- `FEAT` dichiara `UTF8`, `MDTM`, `SIZE`, `AUTH TLS`, `PBSZ`, `PROT`: **FTPS esplicito** disponibile (`AUTH TLS` accettato), data e dimensione di ogni file. **Non** dichiara `MLSD` né `REST`: gli elenchi vanno letti con `LIST` e un trasferimento interrotto non si riprende garantito.
+- Oggi la replica la scrive `scripts/fritz-sync.sh` con `mount.cifs` + `rsync`; sullo SMB la scansione di migliaia di file è lenta (il controllo dei `._*` ha richiesto molti minuti).
+
+**Dubbi da sciogliere con una misura**, non a intuito: l'FTP può battere lo SMB nei trasferimenti grossi, ma senza `MLSD` l'elenco di 6.000 file e il confronto per data e dimensione (`MDTM`, `SIZE`) potrebbero costare di più. Il Mac import (ADR-0012) oggi usa lo SMB e ne gioverebbe allo stesso modo.
+
+**Piano (quando la chiavetta è montata e pulita):** su una copia di prova sotto `Music/SoundReel/_bench/`, con `lftp` in FTPS contro `rsync` su SMB: (1) elenco dell'albero intero; (2) invio di circa 200 MB in file da 5 MB; (3) una passata senza cambiamenti (il caso della notte). Se l'FTP vince in modo netto si scrive un addendum ad ADR-0006 e si adatta `fritz-sync.sh` (la password dell'utente resta solo nel file credenziali 0600; **FTPS, mai FTP in chiaro**) e il prompt del Mac. Il backend continua a **non** scrivere sul Fritz (ADR-0006): cambia solo il trasporto dello script.
+

@@ -31,7 +31,36 @@ Li ha annotati chi ha costruito «Scegli cosa suonare» sulle pagine che ha dovu
 - **Intestazione:** i 7 link di navigazione sono più bassi di 44 px e il nome dell'utente è a 10,4 px.
 - **Mini player:** nessun margine in basso per la safe-area, quindi sta sotto la barra home.
 
-## 4. Decisioni prese con valori di default (da correggere se non vanno)
+### Statistiche d'accesso (dal log di Traefik, ultimi 30 giorni, raccolte il 2026-11-08)
+
+Risposta di Michele: «Sito dal telefono: raccogli le statistiche di accesso e vediamo insieme, credo sia creare e/o modificare playlist o cercare entry, oltre che salvarle.»
+
+Fonte: `geekom-hub/traefik/logs/access.log` (19 aprile – 8 novembre, 1,1 milioni di righe; per SoundReel 3.922 richieste negli ultimi 30 giorni, file statici e `/media` esclusi). **Limite: il log non registra lo user-agent**, quindi non si può dividere telefono e computer; si può dividere solo l'ingresso: **933 richieste dal tunnel Cloudflare (da fuori casa) e 1.276 dalla rete di casa**. Sono conteggi di chiamate, non di persone, e il Playlist manager, il player e la ricerca nella libreria esistono solo dal 7 novembre, quindi la loro storia è di un giorno.
+
+| Azione | 30 giorni | 7 giorni | Giorni su 30 |
+|--------|-----------|----------|--------------|
+| **Aprire una voce** (`GET /api/entries/:id`) | 279 | 169 | **21** |
+| **Salvare via Telegram** (webhook) | 382 | 116 | **30** |
+| Salvare dalla Share di iOS | 18 | 18 | 2 |
+| Salvare dal sito (`POST /api/analyze` o `/api/entries`) | 1 | 0 | 1 |
+| Cercare nel journal | 5 | 0 | 4 |
+| Cercare nella libreria (nuova) | 0 | 0 | 0 |
+| Suonare un brano dal sito | 102 | 102 | 3 |
+| Votare, preferire, segnare ascoltato | 17 | 17 | 3 |
+| Pagina Statistiche | 104 | 104 | 4 |
+| Dati del Playlist manager | 78 | 78 | 5 |
+| Creare una playlist | 3 | 3 | 3 |
+| Aggiungere, togliere, riordinare brani | 19 | 19 | 2 |
+| Rinominare, condividere, cancellare una playlist | 0 | 0 | 0 |
+
+**Letture dei numeri (da discutere con Michele):**
+- Quello che si fa **ogni giorno** dal sito è **leggere** il journal e aprire le voci (21 giorni su 30). Salvare un link avviene quasi sempre da **Telegram** (tutti i 30 giorni); il campo per incollare un link nel sito è praticamente inutilizzato e la Share di iOS è appena stata usata.
+- Le funzioni su cui Michele punta (**playlist da creare e modificare, ricerca, salvataggio**) hanno poca storia perché sono nuove o scomode: i numeri non le smentiscono né le confermano. Il tunnel porta il 42 % del traffico: gran parte dell'uso è fuori casa.
+- Picchi orari: 18:00, mezzanotte, 12:00 e le 22–23.
+
+**Come avere il dato vero (decisione M8):** contatori d'uso **aggregati nel backend** (per giorno: utente, tipo di dispositivo ricavato dallo user-agent, rete interna o esterna, gruppo di rotta, numero di chiamate; **mai** indirizzi IP né user-agent in chiaro), da includere nella 2.10.0 e da rivedere dopo circa due settimane. Alternativa che non tocco senza l'OK di Michele: far registrare lo user-agent a Traefik (una riga in `traefik.yml` e un riavvio, valida per tutti i siti di casa).
+
+
 
 | # | Decisione | Default scelto |
 |---|-----------|----------------|
@@ -55,6 +84,6 @@ Un'app nativa per tutto (Mondrop copre l'ascolto offline); una nuova grafica del
 
 ## 7. Domande aperte per Michele
 
-1. Quali sono le 3 cose che fai più spesso dal telefono sul sito?
+1. Quali sono le 3 cose che fai più spesso dal telefono sul sito? *(Risposta provvisoria di Michele: creare e/o modificare playlist, cercare voci, salvarle. Si conferma con i contatori d'uso, M8.)*
 2. Quali pagine non ti servono sul telefono (restano «solo desktop» con un avviso)?
 3. Barra in basso o menu in alto?

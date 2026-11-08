@@ -3,6 +3,7 @@
 - **Data:** 2026-11-08
 - **Stato:** **Richiesta registrata, in roadmap.** Niente è ancora implementato né deciso: questa spec raccoglie la richiesta, i fatti noti e le decisioni da prendere, con il default che propongo
 - **Scadenza di fatto:** Flickr va dismesso nel 2027 («il prossimo anno»)
+- **Aggiornamento 2026-11-08:** Michele: «Flickr lo vedremo a Natale, ora resta». **Rimandato a dicembre 2026**: fino ad allora Flickr resta com'è e non si fa nulla di questa spec (restano valide le misure e le domande aperte)
 - **Owner:** Michele
 - **Correlati:** `adr/0014-photo-sync-home-storage-ingested-by-memoryloom.md` (proposto), `adr/0006-mp3-origin-on-geekom-replica-on-fritz.md`, `adr/0009-activity-trail-in-logs-and-durable-device-audit.md`, `docs/mondrop-sync.md`, il progetto MemoryLoom (`~/works/memoryloom`)
 

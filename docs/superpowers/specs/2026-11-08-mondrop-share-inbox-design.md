@@ -64,7 +64,7 @@
 
 ## 6. Domande aperte per Michele
 
-1. **L'account sviluppatore Apple (Team `5NZADC9YQ2`, «mikesoft») è a pagamento?** Il push dal server richiede il Developer Program a pagamento; con un account gratuito restano la posta nell'app e la notifica locale.
+1. ~~L'account sviluppatore Apple (Team `5NZADC9YQ2`, «mikesoft») è a pagamento?~~ **Risposta di Michele (2026-11-08): «si account apple è a pagamento».** Quindi il **push APNs è possibile** (opzione A di ADR-0015). Resta un passo che solo Michele può fare, perché la chiave non si può creare da qui: nel portale Apple Developer → Certificates, Identifiers & Profiles → **Keys** → «+» → abilitare **Apple Push Notifications service (APNs)** → scaricare il file `AuthKey_<KeyID>.p8` (si scarica **una sola volta**) e annotare il **Key ID**; il Team ID è `5NZADC9YQ2`. Il file va messo in `~/.config/soundreel/apns/` (0600, come le credenziali del Fritz) e a me serve **solo il Key ID**: il contenuto della chiave non deve mai passare dalla chat né dal repository. Finché la chiave non c'è, il push resta spento e tutto il resto funziona
 2. Che altro del foglio non ti piace oltre al bottone (ordine, colori, troppa roba)?
 3. La playlist serve solo per la musica, o ti serve qualcosa anche per i link di film (che oggi non hanno playlist)?
 4. Chi riceve una condivisione deve poter **rispondere** o aggiungere note, o basta che la veda?

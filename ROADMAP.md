@@ -145,7 +145,7 @@ Spec `docs/superpowers/specs/2026-11-08-player-selection-and-filters-design.md`,
 
 ## Da fare — sync delle foto di Mondrop, al posto di Flickr (richiesta 2026-11-08)
 
-Spec `docs/superpowers/specs/2026-11-08-mondrop-photo-sync-design.md`, ADR-0014 (**proposto**, niente deciso). Richiesta di Michele: «un sync di Mondrop anche delle foto, come fa Flickr che devo dismettere il prossimo anno». **Scadenza di fatto: Flickr va spento nel 2027.**
+Spec `docs/superpowers/specs/2026-11-08-mondrop-photo-sync-design.md`, ADR-0014 (**proposto**, niente deciso). Richiesta di Michele: «un sync di Mondrop anche delle foto, come fa Flickr che devo dismettere il prossimo anno». **Scadenza di fatto: Flickr va spento nel 2027.** **Aggiornamento 8 novembre: «Flickr lo vedremo a Natale, ora resta»: rimandato a dicembre 2026, per ora non si fa nulla.**
 - **Prima di tutto lo spazio:** geekom ha 199 GB liberi su 937; l'archivio Flickr indicizzato da MemoryLoom (83.895 foto, 1.065 album a settembre) ha gli originali **ancora su Flickr** e pesa verosimilmente centinaia di GB. Misurare e scegliere il disco (P1).
 - **Poi mettere in salvo Flickr** (in MemoryLoom, non qui): scaricare gli originali e gli album con verifica dell'hash, senza cancellare nulla su Flickr. Ha i tempi lunghi e la scadenza, quindi parte per primo.
 - **Poi il sync dal telefono:** upload a pezzi riprendibile e idempotente per SHA-256 (`POST /api/mondrop/photos/uploads`…), solo dal Wi-Fi di casa di default, destinazione = cartella che MemoryLoom legge come sorgente locale (il suo rilevamento dei duplicati toglie i doppioni con Flickr); Mondrop iOS legge il rullino, mostra lo stato per foto e libera spazio sul telefono solo dopo conferma e con doppia conferma. SoundReel **non** costruisce una galleria.
@@ -157,14 +157,19 @@ Spec `docs/superpowers/specs/2026-11-08-web-mobile-ux-design.md` (solo interfacc
 - **Prima un audit sul telefono vero** (Safari su iPhone di Michele + 390×844 e 360×800 simulati): un difetto per riga, con la gravità, per ognuna delle 15 pagine.
 - **Base misurata sul codice:** `manager.css` 999 righe con 1 solo `@media` (il Playlist manager è a due pannelli con F-tasti, pensato per il desktop); oltre 100 regole con testo tra 9,6 e 11,2 px; `min-width` di 300–520 px che a 390 px forzano lo scroll orizzontale (`stats.css`, `index.css`).
 - **Poi, in ordine d'uso:** Player + «Scegli cosa suonare», Home, Canzoni e Playlist manager (un pannello alla volta, azioni in un foglio al posto dei F-tasti), Impostazioni, il resto; barra di navigazione in basso; bersagli ≥ 44 pt, campi a 16 px, mai scroll orizzontale, solo tema scuro. La tastiera completa resta su desktop.
-- Domande aperte per Michele: le 3 cose che fai più spesso dal telefono, quali pagine possono restare «solo desktop», barra in basso o menu in alto.
+- **Statistiche d'accesso raccolte l'8 novembre** (nella spec): dal sito si legge il journal ogni giorno (21 giorni su 30), si salva quasi solo da Telegram; playlist, ricerca e player hanno un giorno di storia. Il log di Traefik non ha lo user-agent: **contatori d'uso aggregati nel backend** (utente, tipo di dispositivo, rete, rotta) in 2.10.0, da rivedere dopo ~2 settimane.
+- Domande aperte per Michele: quali pagine possono restare «solo desktop», barra in basso o menu in alto; l'ordine d'uso proposto va bene?
 
 ## Da fare — Mondrop Share, esito di ritorno, playlist, condividere con la famiglia, posta nell'app (richieste 2026-11-08)
 
 Spec `docs/superpowers/specs/2026-11-08-mondrop-share-inbox-design.md`, ADR-0015 (**proposto**). Proposta: SoundReel 2.10.0 + Mondrop 1.6.0, dopo la 2.9.0.
 - **Foglio di condivisione:** oggi «Invia» è un bottone di solo testo in alto a destra e dopo l'invio non torna niente. Bottone grande e pieno in fondo al foglio, gerarchia più chiara, esito visibile con «Riprova» in caso di errore.
-- **Esito di ritorno «come Telegram»:** riassunto, conteggi e link a fine analisi. La posta sta **sul server** (fonte di verità), l'app la legge quando si apre; il **push è solo il campanello** e richiede l'account sviluppatore Apple a pagamento (da confermare: Team `5NZADC9YQ2`).
+- **Esito di ritorno «come Telegram»:** riassunto, conteggi e link a fine analisi. La posta sta **sul server** (fonte di verità), l'app la legge quando si apre; il **push è solo il campanello** e richiede l'account sviluppatore Apple a pagamento: **confermato da Michele l'8 novembre**. Serve ancora che Michele crei la chiave APNs nel portale Apple (passi nella spec, §6) e mi dia il Key ID.
 - **Playlist** (default nessuna) per i link di musica/media: `playlistId` in `POST /api/share`; i brani noti subito vanno dentro subito, gli altri a fine analisi.
 - **Condividere con `archi` / `sara` / entrambi** dal foglio: `shareWith` in `POST /api/share`, sul server (`entry_shares`, già esistente).
 - **Scheda «Posta»** in Mondrop: condivisioni ricevute (non scadono) e notifiche (**spariscono dopo 3 giorni, tranne gli errori**, che restano finché non li tolgo io o il link non riesce).
-- Domande aperte per Michele: l'account Apple è a pagamento? Che altro del foglio non piace? Le notifiche a 3 giorni vanno bene?
+- Domande aperte per Michele: che altro del foglio non piace? Le notifiche a 3 giorni vanno bene? (L'account Apple è a pagamento: chiusa.)
+
+## Da misurare — FTPS al posto di SMB per la replica sul Fritz e per l'import dal Mac (idea di Michele, 2026-11-08)
+
+Spec `docs/superpowers/specs/2026-11-07-mp3-store-media-server-design.md` (sezione in fondo). Il Fritz ha già l'FTP acceso (porta 21) con **FTPS esplicito**, `MDTM` e `SIZE`, senza `MLSD` né `REST`. Quando la chiavetta è tornata e pulita: banco di prova su `Music/SoundReel/_bench/` (elenco dell'albero, invio di ~200 MB, passata senza cambiamenti) di `lftp` in FTPS contro `rsync` su SMB; se vince in modo netto, addendum ad ADR-0006 e `fritz-sync.sh` + prompt del Mac adattati. Mai FTP in chiaro.
