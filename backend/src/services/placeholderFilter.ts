@@ -27,6 +27,26 @@ export function isPlaceholderValue(value: string | null | undefined): boolean {
   return false;
 }
 
+/** The bare category words the prompt uses, which a model sometimes writes in place of a name. */
+const SOFTWARE_PLACEHOLDER_WORDS = new Set([
+  'repo', 'repository', 'tool', 'tools', 'software', 'product', 'article', 'other', 'name', 'title', 'url', 'link',
+  'nome', 'prodotto', 'titolo',
+]);
+
+/**
+ * A software "title" that is not a name: what the local model writes when it has nothing to say but the schema wants
+ * a string. Measured on 8 November on a Cloudflare reel and a "5 plugins for Claude Code" reel: `"/repo"`, `"/"`,
+ * `"/name"`. Narrow like the rest of this file, never by length (real tools are short: Go, uv, jq, Zed, Bun):
+ * a path fragment (it starts with a slash), nothing but punctuation, or a bare category word.
+ */
+export function isJunkSoftwareTitle(value: string | null | undefined): boolean {
+  if (isPlaceholderValue(value)) return true;
+  const t = (value as string).trim();
+  if (/^[/\\]/.test(t)) return true;
+  if (!/[\p{L}\p{N}]/u.test(t)) return true;
+  return SOFTWARE_PLACEHOLDER_WORDS.has(t.toLowerCase());
+}
+
 /** True when a value is usable — the inverse, for readable filter predicates. */
 export function isRealValue(value: string | null | undefined): value is string {
   return !isPlaceholderValue(value);

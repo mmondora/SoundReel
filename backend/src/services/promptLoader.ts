@@ -79,27 +79,7 @@ Compiti:
 LINGUA DI OUTPUT (OBBLIGATORIA): {{outputLanguageName}}
 Tutti i campi testuali che GENERI (summary, note.text, software.description, links.label descrittive) devono essere in {{outputLanguageName}}, indipendentemente dalla lingua di caption/OCR/transcript. Se il contenuto sorgente è in un'altra lingua, TRADUCI. Non copiare la lingua del testo sorgente nei campi generati. I campi di ricopiatura (transcription, visualContext, overlayText) restano nella lingua originale.
 
-- TRANSCRIPTION: Ricopia qui il transcript ricevuto, oppure null se assente.
-
-- VISUAL_CONTEXT: Ricopia la descrizione visiva ricevuta, oppure null.
-
-- OVERLAY_TEXT: Ricopia il testo OCR ricevuto, oppure null.
-
-Rispondi ESCLUSIVAMENTE con JSON valido, senza markdown, senza commenti:
-{
-  "songs": [ { "title": "...", "artist": "...", "album": "... o null" } ],
-  "films": [ { "title": "...", "director": "... o null", "year": "... o null" } ],
-  "notes": [ { "text": "...", "category": "place|event|brand|book|product|quote|person|other" } ],
-  "software": [ { "title": "...", "url": "https://... o null", "tag": "repo|product|article|other", "description": "... o null" } ],
-  "links": [ { "url": "https://...", "label": "... o null" } ],
-  "tags": ["#tag", "@utente"],
-  "summary": "...",
-  "transcription": "... o null",
-  "visualContext": "... o null",
-  "overlayText": "... o null"
-}
-
-Se non trovi nulla, rispondi: { "songs": [], "films": [], "notes": [], "software": [], "links": [], "tags": [], "summary": null, "transcription": null, "visualContext": null, "overlayText": null }`,
+Rispondi con un oggetto JSON conforme allo schema richiesto. Il riassunto (1-2 frasi) è sempre obbligatorio; per gli altri campi, se non trovi nulla, usa un array vuoto.`,
     variables: [
       'caption', 'hasCaption',
       'musicInfo', 'hasMusicInfo',

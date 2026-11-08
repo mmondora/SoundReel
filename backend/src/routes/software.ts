@@ -7,6 +7,8 @@ import {
   isSoftwareItem,
   inferSoftwareTagFromUrl,
   titleFromSoftwareUrl,
+  urlFromEnrichments,
+  softwareFromEnrichments,
 } from '../services/softwareMeta';
 import {
   listSoftwareMeta,
@@ -47,14 +49,21 @@ export function collectSoftwareFromEntry(entry: Entry): SoftwareItem[] {
   for (const raw of entry.results?.software ?? []) {
     if (!isSoftwareItem(raw)) continue;
     const title = raw.title.trim();
-    const url = typeof raw.url === 'string' && isHttpUrl(raw.url) ? raw.url.trim() : null;
+    const tag = normalizeSoftwareTag(raw.tag);
+    // the post often does not carry the link ("commenta per il link"): the entry's enrichment researched it
+    const url =
+      (typeof raw.url === 'string' && isHttpUrl(raw.url) ? raw.url.trim() : null) ??
+      urlFromEnrichments(title, tag, entry.results?.enrichments);
     push({
       title,
       url,
-      tag: normalizeSoftwareTag(raw.tag),
+      tag,
       description: typeof raw.description === 'string' ? raw.description : null,
     });
   }
+
+  // what the entry's own research is about (a "tech" enrichment): steadier than the local model's software[]
+  for (const item of softwareFromEnrichments(entry.results?.enrichments)) push(item);
 
   const linkCandidates: Array<{ url: string; label: string | null }> = [];
   const links: ExtractedLink[] = Array.isArray(entry.results?.links) ? entry.results.links : [];

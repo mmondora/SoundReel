@@ -5,7 +5,7 @@ import {
   type ClaudeFallbackResult,
   type ClaudePromptOptions,
 } from './claudeFallback';
-import { isRealValue } from './placeholderFilter';
+import { isJunkSoftwareTitle, isRealValue } from './placeholderFilter';
 import { logInfo, logWarning, logError } from '../utils/logger';
 import { getPrompt, renderTemplate } from './promptLoader';
 import { getFeaturesConfig, outputLanguageDisplayName } from '../utils/db';
@@ -31,6 +31,9 @@ export type AiFailure = {
     // nel journal: dice che il problema sta dopo l'accodamento, non prima.
     | 'queue_failed'
     | 'queue_expired'
+    // Il modello ha risposto, ma con qualcosa che non e' un'analisi: troncata sul tetto di token o senza JSON
+    // leggibile, anche al secondo tentativo. Non e' "non c'era niente da trovare": ritentabile.
+    | 'unusable_output'
     | 'error';
   /** Ritentare ha senso? Falso solo quando serve un intervento umano. */
   retryable: boolean;
@@ -107,6 +110,89 @@ const EMPTY_RESULT: AiAnalysisResult = {
   tags: [],
   summary: null,
 };
+
+/**
+ * La forma della risposta, imposta a Ollama (`format: <schema>`).
+ *
+ * Con il solo `format: "json"` il modello poteva scrivere qualunque chiave. Il 2 novembre, dopo il passaggio a
+ * glm-4.7-flash, 33 entry su 91 con del testo sono risultate "completate" senza un tag, una nota o un riassunto: il
+ * modello copiava come chiave una riga di istruzioni del prompt e poi si scusava in chiaro, oppure andava in loop fino
+ * al tetto di token. Misurato l'8 novembre su 12 entry reali (8 di quelle rotte): con lo schema e un prompt che non
+ * chiede di ricopiare trascrizione, OCR e contesto visivo il reel di Cloudflare ha dato la skill come software, 5 tag, una
+ * nota e il riassunto, in 5 secondi invece di 11 e di un risultato vuoto.
+ *
+ * Trascrizione, OCR e contesto visivo non ci sono di proposito: il modello non li ricopia piu' (il codice li prende gia'
+ * dall'input) e ogni token in meno e' un loop in meno.
+ */
+export const ANALYSIS_SCHEMA = {
+  type: 'object',
+  properties: {
+    songs: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { title: { type: 'string' }, artist: { type: 'string' }, album: { type: ['string', 'null'] } },
+        required: ['title', 'artist'],
+      },
+    },
+    films: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { title: { type: 'string' }, director: { type: ['string', 'null'] }, year: { type: ['string', 'null'] } },
+        required: ['title'],
+      },
+    },
+    notes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          text: { type: 'string' },
+          category: { type: 'string', enum: ['place', 'event', 'brand', 'book', 'product', 'quote', 'person', 'other'] },
+        },
+        required: ['text', 'category'],
+      },
+    },
+    software: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          url: { type: ['string', 'null'] },
+          tag: { type: 'string', enum: ['repo', 'product', 'article', 'other'] },
+          description: { type: ['string', 'null'] },
+        },
+        required: ['title', 'tag'],
+      },
+    },
+    links: {
+      type: 'array',
+      items: { type: 'object', properties: { url: { type: 'string' }, label: { type: ['string', 'null'] } }, required: ['url'] },
+    },
+    tags: { type: 'array', items: { type: 'string' } },
+    summary: { type: ['string', 'null'] },
+  },
+  required: ['songs', 'films', 'notes', 'software', 'links', 'tags', 'summary'],
+} as const;
+
+/**
+ * Lo stesso schema, con il riassunto OBBLIGATORIO: per un post che ha del testo il riassunto c'e' sempre, e se manca
+ * l'analisi non c'e' stata (e' il segnale che `isEmptyAnalysis` usa). Misurato l'8 novembre su 12 entry reali, due
+ * ripetizioni: con il riassunto che puo' essere `null` il modello lo ometteva 7 volte su 18; obbligatorio, 0 su 18, risposte
+ * tutte valide, 6 secondi a chiamata. Il riconoscimento dei software, invece, e' instabile con qualunque variante (lo
+ * stesso reel dava 0 o 3 voci a seconda del campionamento): per quello conta anche l'arricchimento (`results.enrichments`).
+ */
+export const ANALYSIS_SCHEMA_WITH_SUMMARY = {
+  ...ANALYSIS_SCHEMA,
+  properties: { ...ANALYSIS_SCHEMA.properties, summary: { type: 'string', minLength: 10 } },
+} as const;
+
+/** Con del testo da riassumere il riassunto e' obbligatorio; senza (solo una miniatura) puo' restare `null`. */
+export function analysisSchemaFor(input: AiAnalysisInput): typeof ANALYSIS_SCHEMA | typeof ANALYSIS_SCHEMA_WITH_SUMMARY {
+  return sourceTextLength(input) >= MIN_SOURCE_TEXT_FOR_FALLBACK ? ANALYSIS_SCHEMA_WITH_SUMMARY : ANALYSIS_SCHEMA;
+}
 
 /**
  * Ripulisce il testo che finisce dentro il prompt e che il modello ricopiera'
@@ -288,7 +374,7 @@ export function parseAnalysisResponse(
     tag?: string;
     description?: string | null;
   }> | undefined || [])
-    .filter((s) => isRealValue(s?.title))
+    .filter((s) => !isJunkSoftwareTitle(s?.title))
     .map((s) => ({
       title: (s.title ?? '').trim(),
       url: isRealValue(s.url) ? String(s.url).trim() : null,
@@ -352,6 +438,28 @@ function sourceTextLength(input: AiAnalysisInput): number {
     .length;
 }
 
+/** The usable analysis in a model response, or null when it was cut at the token ceiling or holds no readable JSON. */
+function readAnalysis(
+  response: { text: string; truncated?: boolean },
+  input: AiAnalysisInput,
+): MediaAiAnalysisResult | null {
+  logInfo('Risposta AI ricevuta', { chars: response.text.length, truncated: response.truncated === true });
+  if (response.truncated) return null; // a JSON cut in the middle never parses, and a repaired one would be invented
+  return parseAnalysisResponse(response.text, input);
+}
+
+function addUsage(a: AiUsageMetadata | null, b: AiUsageMetadata | null): AiUsageMetadata | null {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    ...b,
+    promptTokenCount: a.promptTokenCount + b.promptTokenCount,
+    candidatesTokenCount: a.candidatesTokenCount + b.candidatesTokenCount,
+    totalTokenCount: a.totalTokenCount + b.totalTokenCount,
+    estimatedCostUSD: (a.estimatedCostUSD ?? 0) + (b.estimatedCostUSD ?? 0),
+  };
+}
+
 export async function analyzeWithAi(
   input: AiAnalysisInput,
   opts: ClaudePromptOptions = {}
@@ -382,6 +490,7 @@ export async function analyzeWithAi(
   });
 
   const prompt = await buildAnalysisPrompt(input);
+  const schema = analysisSchemaFor(input);
   // Text-only analysis: OCR already captured slide text, visualContext already
   // describes video frames. No need to pass images to the final LLM — the text
   // model handles structured JSON better than the vision model (moondream),
@@ -389,33 +498,51 @@ export async function analyzeWithAi(
   const images: OllamaImage[] = [];
 
   try {
-    const response = await generateText(prompt, images, { json: true });
-    const text = response.text;
-    logInfo('Risposta AI ricevuta', { chars: text.length });
+    // Una risposta troncata o illeggibile NON e' "non c'era niente da trovare": e' un'analisi che non c'e' stata. Prima
+    // veniva trattata come risposta vuota valida e l'entry risultava completata a zero, senza che nessuno la riprendesse.
+    // Un solo nuovo tentativo qui (un altro campionamento basta quasi sempre); se va male di nuovo e' un fallimento
+    // dichiarato e ritentabile, che il job riaccoda da solo (AI_RETRY_MS, AI_RETRY_MAX_ATTEMPTS).
+    let response = await generateText(prompt, images, { json: true, schema });
+    let ollamaResult = readAnalysis(response, input);
+    let usage = response.usageMetadata;
+    if (!ollamaResult) {
+      logWarning('Risposta Ollama inutilizzabile, riprovo una volta', { truncated: response.truncated === true });
+      response = await generateText(prompt, images, { json: true, schema });
+      ollamaResult = readAnalysis(response, input);
+      usage = addUsage(usage, response.usageMetadata);
+    }
 
-    const ollamaResult = parseAnalysisResponse(text, input);
-    if (!ollamaResult) logWarning('Nessun JSON utilizzabile nella risposta Ollama');
+    if (!ollamaResult) {
+      const reason = response.truncated
+        ? 'risposta del modello tagliata dal tetto di token, due volte'
+        : 'nessun JSON utilizzabile nella risposta del modello, due volte';
+      logWarning('Analisi AI inutilizzabile anche al secondo tentativo', { reason });
+      return {
+        result: {
+          ...EMPTY_RESULT,
+          transcription: null,
+          visualContext: input.visualContext ?? null,
+          overlayText: input.ocrText ?? null,
+        },
+        usageMetadata: usage,
+        fallback: null,
+        failure: { category: 'unusable_output', retryable: true, reason },
+      };
+    }
 
-    // Empty local output is a valid answer (post with nothing to extract).
-    // Claude used to fire on emptiness and cost ~18s of opus on every quiet
-    // reel — the user wants cloud only when the local stack is actually down.
-    const baseResult = ollamaResult ?? {
-      ...EMPTY_RESULT,
-      transcription: null,
-      visualContext: input.visualContext ?? null,
-      overlayText: input.ocrText ?? null,
-    };
-
+    // A valid but empty answer is still a valid answer (a post with nothing to extract): Claude used to fire on
+    // emptiness and cost ~18s of opus on every quiet reel — the user wants cloud only when the local stack is down.
     logInfo('Analisi AI completata', {
-      songs: baseResult.songs.length,
-      films: baseResult.films.length,
-      notes: baseResult.notes.length,
-      links: baseResult.links.length,
-      tags: baseResult.tags.length,
-      hasSummary: !!baseResult.summary,
+      songs: ollamaResult.songs.length,
+      films: ollamaResult.films.length,
+      notes: ollamaResult.notes.length,
+      software: (ollamaResult.software ?? []).length,
+      links: ollamaResult.links.length,
+      tags: ollamaResult.tags.length,
+      hasSummary: !!ollamaResult.summary,
     });
 
-    return { result: baseResult, usageMetadata: response.usageMetadata, fallback: null };
+    return { result: ollamaResult, usageMetadata: usage, fallback: null };
   } catch (error) {
     const failure = classifyAiFailure(error);
     logError('Errore analisi AI', error);

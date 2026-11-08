@@ -18,6 +18,12 @@ export interface OllamaUsage {
 export interface OllamaResponse {
   text: string;
   usageMetadata: OllamaUsage | null;
+  /**
+   * La generazione si e' fermata sul tetto di token (`num_predict`), non perche' il modello avesse finito: il testo e'
+   * tagliato a meta' e un JSON cosi' non si parsa. Prima il client lo scriveva solo nel log e chi chiamava non poteva
+   * saperlo: l'analisi risultava "completata, vuota" (il 2 novembre 33 entry su 91).
+   */
+  truncated?: boolean;
 }
 
 /**
@@ -234,7 +240,7 @@ function finalizeOllamaText(
       ...extraLog,
     });
   }
-  return { text, usageMetadata: usage };
+  return { text, usageMetadata: usage, truncated };
 }
 
 interface QueueSubmitResponse {
@@ -349,6 +355,15 @@ export interface GenerateOptions {
    * a leggere la risposta libera.
    */
   json?: boolean;
+  /**
+   * Uno JSON Schema che Ollama impone alla generazione (`format: <schema>`, le "structured outputs"), al posto del
+   * semplice `format: "json"`. Con `json` e basta il modello puo' scrivere QUALSIASI chiave: il 8 novembre, sullo
+   * stesso reel, ha copiato come chiave una riga di istruzioni del prompt
+   * (`movies_serie_tv_film_menzionati_citati_...`) e poi ha scritto "sorry, I misunderstood the prompt" in chiaro,
+   * oppure e' andato in loop fino al tetto di token. Con lo schema le chiavi e i tipi sono quelli attesi e la prosa fuori
+   * dall'oggetto non puo' esistere. Conta solo con `json: true` e senza immagini.
+   */
+  schema?: Record<string, unknown>;
 }
 
 export async function generateText(
@@ -384,7 +399,7 @@ export async function generateText(
 
   // Mai insieme alle immagini: li' risponde moondream, a cui si chiede una
   // descrizione in prosa, e vincolarlo al JSON avrebbe l'effetto opposto.
-  if (opts.json && images.length === 0) body.format = 'json';
+  if (opts.json && images.length === 0) body.format = opts.schema ?? 'json';
 
   // I modelli "thinking" (glm-4.7-flash, ecc.) spendono i token di
   // num_predict nel reasoning interno. Con format:json la risposta utile
