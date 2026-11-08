@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PostLinks } from './PostLinks';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
 import type { Translations } from '../i18n';
@@ -331,6 +332,7 @@ export function FilmCard({
             ↻
           </button>
         </div>
+        <PostLinks mentions={film.mentions} />
       </div>
 
       <Link to={`/?entry=${film.mentions[0].entryId}`} className="list-item-action">

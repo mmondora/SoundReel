@@ -423,6 +423,8 @@ export interface Translations {
   songsFileMissing: string;
   songsPreview: string;
   songsMentions: string;
+  fromPost: string;
+  softwareOtherLinks: string;
   playerNav: string;
   playerTitle: string;
   playerOpen: string;
@@ -1206,6 +1208,8 @@ export const translations: Record<Language, Translations> = {
     songsFileMissing: 'File non trovato nella libreria musicale',
     songsPreview: 'Anteprima',
     songsMentions: 'menzioni',
+    fromPost: 'Dal post',
+    softwareOtherLinks: 'Altri link',
     playerNav: 'Player',
     playerTitle: 'Player',
     playerOpen: '▶ Player',
@@ -2011,6 +2015,8 @@ export const translations: Record<Language, Translations> = {
     songsFileMissing: 'File not found in the music library',
     songsPreview: 'Preview',
     songsMentions: 'mentions',
+    fromPost: 'From the post',
+    softwareOtherLinks: 'Other links',
     playerNav: 'Player',
     playerTitle: 'Player',
     playerOpen: '▶ Player',

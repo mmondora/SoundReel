@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { PostLinks } from './PostLinks';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
 import { ratingFromScore } from '../utils/filmRating';
@@ -475,6 +476,7 @@ export function SongCard({ song, onPatch, onAddToPlaylist, onRemoveFromPlaylist 
             </button>
           )}
         </div>
+        <PostLinks mentions={song.mentions} />
       </div>
 
       <Link to={`/?entry=${song.mentions[0].entryId}`} className="list-item-action">

@@ -4220,6 +4220,31 @@ body {
   text-decoration: underline;
 }
 
+/* The post(s) a found song / film / note / software was extracted from: one small link each (spec no-duplicates-and-post-links D3) */
+.post-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+  margin-top: 0.2rem;
+  font-size: 0.7rem;
+  color: var(--text-muted, #8a8a8a);
+}
+
+.post-links a {
+  color: var(--accent);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.post-links a:hover {
+  text-decoration: underline;
+}
+
+.post-links-more {
+  opacity: 0.8;
+}
+
 /* Badges */
 .source-badge {
   font-size: 0.65rem;

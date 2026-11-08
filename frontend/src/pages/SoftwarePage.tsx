@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { PostLinks } from '../components/PostLinks';
+import { postLabel } from '../utils/postLinks';
 import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { FilterPanel } from '../components/FilterPanel';
@@ -83,6 +85,17 @@ function SoftwareRow({ item }: { item: AggregatedSoftware }) {
             </span>
           )}
         </div>
+        {item.otherUrls && item.otherUrls.length > 0 && (
+          <div className="post-links" data-testid="software-other-links">
+            <span>{t.softwareOtherLinks}</span>
+            {item.otherUrls.map((url) => (
+              <a key={url} href={url} target="_blank" rel="noopener noreferrer" title={url}>
+                {postLabel(url)}
+              </a>
+            ))}
+          </div>
+        )}
+        <PostLinks mentions={item.mentions} />
       </div>
     </div>
   );

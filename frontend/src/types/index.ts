@@ -69,6 +69,9 @@ export interface FilmMetaRecord extends FilmUserMeta {
 export interface FilmMention {
   entryId: string;
   createdAt: string;
+  /** The original post this was extracted from (an older backend leaves it out). */
+  sourceUrl?: string | null;
+  sourcePlatform?: string | null;
 }
 
 export interface AggregatedFilm {
@@ -114,6 +117,9 @@ export interface SongMetaRecord extends SongUserMeta {
 export interface SongMention {
   entryId: string;
   createdAt: string;
+  /** The original post this was extracted from (an older backend leaves it out). */
+  sourceUrl?: string | null;
+  sourcePlatform?: string | null;
 }
 
 /** Server-side file state of a song (docs/mondrop-sync.md). */
@@ -263,6 +269,9 @@ export interface NoteMetaRecord {
 export interface NoteMention {
   entryId: string;
   createdAt: string;
+  /** The original post this was extracted from (an older backend leaves it out). */
+  sourceUrl?: string | null;
+  sourcePlatform?: string | null;
 }
 
 export interface AggregatedNote {
@@ -299,6 +308,9 @@ export interface SoftwareItem {
 export interface SoftwareMention {
   entryId: string;
   createdAt: string;
+  /** The original post this was extracted from (an older backend leaves it out). */
+  sourceUrl?: string | null;
+  sourcePlatform?: string | null;
 }
 
 export interface AggregatedSoftware {
@@ -310,6 +322,8 @@ export interface AggregatedSoftware {
   /** Repo creation date when known from forge enrichment. */
   publishedAt?: string | null;
   mentions: SoftwareMention[];
+  /** Other links of the same software: `url` is the main one (a verified repository, else the official site). */
+  otherUrls?: string[];
 }
 
 export type ExtractedLinkCategory =

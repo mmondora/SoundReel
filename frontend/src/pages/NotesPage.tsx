@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { PostLinks } from '../components/PostLinks';
 import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { FilterPanel } from '../components/FilterPanel';
@@ -113,6 +114,7 @@ function NoteRow({ note }: NoteRowProps) {
             </a>
           )}
         </div>
+        <PostLinks mentions={note.mentions} />
       </div>
       <Link to={`/?entry=${note.mentions[0].entryId}`} className="list-item-action">
         ×{note.mentions.length} {t.notesMentions}
