@@ -43,3 +43,102 @@ Idee future non ancora in sviluppo. Non ordinate per priorità.
 - Evitare duplicati: verificare se link Spotify già inviato prima di ri-accodare
 
 ---
+
+## X (Twitter) — analizzare link post come IG / TikTok
+
+**Cosa**: aprire e analizzare URL `x.com/…` / `twitter.com/…` (status, video, immagini) con la stessa qualità di Instagram/TikTok — caption, media, canzoni/film/note nel journal — da web, Telegram e Share Extension.
+
+**Oggi**: la piattaforma è già riconosciuta (`twitter` / badge «X»); l’ingest passa soprattutto da page/OG meta. Manca un percorso media robusto (video/audio per Shazam/Whisper/vision) paragonabile a cobalt/instaloader/yt-dlp sugli altri social.
+
+**Esito desiderato**: share di un post X → stub+coda → testo + media utili all’analisi AI/musica, senza passaggi manuali extra.
+
+---
+
+## Client iOS / Mondrop — sync playlist locale + play offline
+
+**Cosa**: sull’app client (iOS / Mondrop, e in prospettiva macOS) scaricare o sincronizzare una playlist SoundReel sul device e riprodurla **in locale** — play / skip / browse — **senza passare da Apple Music**.
+
+**Bottone**: «Download» o «Sync locale della playlist» (per playlist scelta o attiva).
+
+**File**: MP3 e/o MP4 già disponibili dalla pipeline SoundReel / Spooty / libreria, alla **massima qualità disponibile** sul server (niente transcodifica al ribasso lato client se il file è già hi‑fi).
+
+**Esito desiderato**:
+1. Utente apre una playlist in app → tap sync/download
+2. I brani finiscono nello storage locale del device (cache/libreria offline)
+3. Player locale: coda della playlist, play/pause, next/prev, browse tracce offline
+4. Funziona offline / in auto senza stream YouTube né Apple Music obbligatorio
+
+**Gap oggi**:
+- Mondrop è Share Extension (+ eventuale shell); non c’è ancora player o sync file
+- Web `/player` suona via YouTube IFrame; Spooty/MP3 locali e Fritz/Tesla USB sono fuori dal player web
+- Playlist Postgres esistono (`/api/playlists`) ma non c’è endpoint «bundle offline» né client che scarica i file
+
+**Decisioni (2026-11-07)**:
+- Sync **playlist** → MP3 offline + play in Mondrop
+- Fonte: libreria SoundReel **prima**; se manca → **accoda Spooty** e riprova
+- Auth: **OIDC Authelia** (attesa Geeko) — niente sync file su cellulare con sola API key
+- Spec: `docs/superpowers/specs/2026-11-07-mondrop-offline-spooty-sync-design.md`
+- **Aggiornamento 2026-11-07 (sera)** — archivio MP3 server-side: store sul **Fritz** (ripiego geekom), link Spotify da Mondrop = parità con Telegram (un solo punto d'ingresso), download solo per playlist/Sync, iOS in background solo Wi-Fi che salta i brani già presenti. Auth interim: key per dispositivo via `/mondrop/connect` (OIDC resta l'upgrade). Spec e fasi 0–3: `docs/superpowers/specs/2026-11-07-mp3-store-media-server-design.md`
+
+**Dipendenze**:
+- OIDC IdP + client `mondrop` (Geeko)
+- API: `GET /api/playlists/:id/offline`, `POST /api/songs/:songKey/spooty`, stream `GET /api/songs/:songKey/file` con Bearer
+- Qualità: master già su disco, no transcodifica al ribasso
+
+**Fuori scope (v1)**: Apple Music SDK; iCloud Music; film/MP4; background download raffinato.
+
+---
+
+## Link Shazam e Apple Music come riferimenti a canzoni
+
+**Cosa**: un link Shazam (`shazam.com/track/<chiave>`, `/song/<id>/<slug>`) condiviso da Telegram, Mondrop o web diventa una canzone in libreria (artista, titolo, album, copertina) e, entrando in una playlist, si scarica in MP3 al Sync.
+
+**Fatto** (v2.6.22, in attesa di deploy): ingest unico via `linkIngest` → `shazamLink.ts` (entry `shazam`, canzone `shazam_link`, test di parità Telegram = share = web, identità della pagina verificata). `shz.am` non esiste (DNS) e `/song/<id>` senza slug dà 204: non supportati.
+
+**Da fare**: il download MP3 (downloader yt-dlp «artista + titolo», Fase 1 della spec) e lo stesso percorso per Apple Music (`music.apple.com/…?i=<id>`, lookup iTunes). Dettagli: spec `2026-11-07-mp3-store-media-server-design.md` § 2.8.
+
+---
+
+## Archivio MP3 server-side e sync Mondrop (v2.7.0, 2026-11-07)
+
+**Fatto** (Fasi 1–2 della spec `2026-11-07-mp3-store-media-server-design.md`, ADR-0006): `song_files` + worker di download con riuso prima di YouTube, `/yt/audio` nell'instaloader, catalogo e URL diretti del Fritz (`mediaUrl`), API di sync (`docs/mondrop-sync.md`), primo play che scarica in parallelo, sync iOS in background (Wi-Fi, ripresa, salta i già presenti, `mediaUrl` in casa), sync notturno del Fritz riparato.
+
+**Da fare / migliorie**
+- Cadenza della replica sul Fritz: oggi notturna (una canzone nuova ha `mediaUrl` il giorno dopo; prima i client usano il proxy). Un timer utente ogni 10–15 min che lancia solo la parte musica è un cambio di configurazione, non di design.
+- Durata attesa dal link Shazam (`PT3M50S` nel JSON-LD) → `expectedDurationS`, per scegliere la versione giusta del brano.
+- Cookie YouTube opzionali (`YTDLP_COOKIES`) per i brani con restrizione d'età / «not a bot» (oggi `no_source` + link a mano).
+- Telegram: avviso a fine download dei brani preparati dal sync.
+
+---
+
+## Media server e altri device (roadmap, 2026-11-07)
+
+**Player su TV LG (webOS) in LAN** — tra i device dove Michele vuole l'app di play c'è la TV LG in rete.
+- Opzioni da valutare: (a) la TV legge già via DLNA dal Fritz (nessuna app: da provare per primo); (b) web app del player nel browser webOS; (c) app webOS dedicata (HTML/JS, Enact/React) sulle stesse API Mondrop (`/api/mondrop`), con UX da telecomando (D-pad / Magic Remote).
+- Dipendenze: split-horizon DNS già attivo (HTTPS valido in LAN), `mediaUrl` diretto del file sul media server, auth per dispositivo (key `/mondrop/connect` o OIDC), account/dev mode LG per installare l'app.
+
+**Navidrome** su geekom (API Subsonic, solo musica) sulla cartella Musica — oltre al Fritz.
+
+**Chiavetta del Fritz su geekom** come media server al posto del Fritz: l'origine è già locale (`~/Music/SoundReel`, ADR-0006), cambiano solo la radice della replica e `MEDIA_SERVER_*`; l'indice DLNA viene sostituito da filesystem + Navidrome.
+
+**Altro**: Spooty che scrive direttamente nello store; pulizia dei file `._*` dalla chiavetta (sporcano l'indice DLNA del Fritz).
+
+---
+
+## Versione 2.8.0 — statistiche, dinamiche, media server senza copie, ricerca (2026-11-07/08)
+
+Fatto (in attesa di deploy): vedi `CHANGELOG.md` 2.8.0 e ADR-0007…0012.
+
+Da decidere / prossimi passi:
+- **Importa nella libreria** dai risultati della ricerca (file locali / media server → canzoni normali con play, playlist, sync): oggi la ricerca dice solo *dove sono* (spec ricerca L6).
+- Pulizia dei file ombra macOS `._*` sulla chiavetta (5 562 trovati, tutti da 4 096 byte): **autorizzata da Michele** («i file fantasma vanno cancellati, salvo servano al media server»); da rifare quando la chiavetta è di nuovo collegata (strumento: verifica della firma AppleDouble + rimozione per file).
+- Import della musica del Mac: eseguirlo dal Mac con `docs/mac-music-import-prompt.md`; poi ricontrollare il catalogo (`media_index`) e la ricerca «Media server».
+- Opzionali: durata Shazam → `expectedDurationS`, cookie YouTube per i brani con restrizione d'età, cadenza del mirror più corta, endpoint batch per aggiungere brani alle playlist.
+
+## Versione 2.9.0 — scegliere cosa suonare, filtri, stati del download (richieste 2026-11-08)
+
+Spec `docs/superpowers/specs/2026-11-08-player-selection-and-filters-design.md`, ADR-0013:
+- iOS: scegliere playlist / album / brano (e artista, tipo, anni) invece della coda generica; spinner sul singolo brano in download, riga di stato, notifica locale a sync finito.
+- Web: pannello «Scegli cosa suonare» con filtri per tipo, album, autore, anni (decenni), fonte, tag…; precarico della IFrame API e dell'id del brano successivo.
+- Backend: `song_meta.release_year` (Deezer/iTunes) con riempimento una tantum, `GET /api/mondrop/library`, `album`/`genres`/`year` nei brani Mondrop.
+

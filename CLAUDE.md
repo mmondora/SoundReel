@@ -18,6 +18,7 @@ SoundReel è una web app personale (single user) che analizza contenuti social (
 - **Video extraction**: cobalt.tools API + Instaloader (container dedicato) con fallback su OG meta scraping
 - **OCR**: servizio OCR dedicato (container `soundreel-ocr`)
 - **Deploy**: Docker Compose su GEEKOM A8 Max, `soundreel.casamon.dev`
+- **Architettura di riferimento**: `adr/0005-reference-architecture.md` (stack, dati, identità, mobile + decisioni aperte D1–D3). Nuove spec/ADR partono da lì
 
 ## Struttura progetto
 
@@ -59,8 +60,14 @@ soundreel/
 │       └── styles/
 ├── instaloader/             # servizio Python per Instagram
 │   └── Dockerfile
-└── ocr/                     # servizio OCR
-    └── Dockerfile
+├── ocr/                     # servizio OCR
+│   └── Dockerfile
+└── ios/                     # App nativa **Mondrop** (Share → SoundReel journal)
+    ├── project.yml          # XcodeGen — iOS + macOS + Share Extension
+    ├── README.md
+    ├── Mondrop/             # app contenitore (display name Mondrop)
+    ├── MondropShare/        # share extension
+    └── MondropKit/          # Settings + BackendClient + URLExtractor
 ```
 
 ## Convenzioni di sviluppo
@@ -81,6 +88,11 @@ soundreel/
 - Entry point: `backend/src/server.ts`
 - Secrets letti da env vars, MAI hardcodati
 - L'endpoint `analyzeUrl` è chiamato sia dal frontend che dal bot Telegram — unica implementazione
+- **Punto d'ingresso unico per i link**: `services/linkIngest.ts` (`classifyLink` + `ingestLink`), usato da Telegram, `/api/share` e `/api/analyze` (solo per i link Spotify). Mai reimplementare stub/merge/enqueue negli adattatori; parità coperta da `routes/linkParity.test.ts`. I link Spotify → entry + Spooty, seguiti da `services/spootyWatcher.ts` (tabella `spooty_requests`). I link Shazam (`shazam.com/track|song`) → entry di libreria letta dalla pagina (`services/shazamLink.ts`, nessun job): attenzione, `/track/<chiave>` risponde col redirect giusto solo a uno User-Agent da bot — ai browser-like (e a `node`) dà HTTP 200 con una pagina generica di UN ALTRO brano; `/song/<id>` senza slug dà 204; `shz.am` non esiste (DNS). Per questo `fetchShazamTrack` verifica che la pagina sia quella dell'URL raggiunto e altrimenti salva l'entry in errore, mai un brano sbagliato
+- **Archivio MP3** (ADR-0006, contratto client `docs/mondrop-sync.md`): una riga per canzone in `song_files` è insieme record del file e coda di download (`services/songFiles.ts`); il worker `songDownloader.ts` (2 in parallelo, priorità `play` prima di `sync`) per ogni job prima **riusa** (libreria `/music`; poi il catalogo del media server `media_index`: il brano **è** il file del Fritz, `source: mediaserver`, `rel_path` null, **mai copiato** su geekom — ADR-0010) e solo dopo scarica da YouTube con l'instaloader `POST /yt/audio` (MP3 192k taggato) in `/data/media/_staging`, poi `musicStore.placeIntoStore` sposta in `<libreria>/SoundReel/` (`.part` + rename, nomi exFAT-safe `Artista - Titolo.mp3`). Tutto sta sotto `MUSIC_LIBRARY_PATH`: scan libreria, player web e flag `downloaded` li vedono come i file di Spooty. Il Fritz è una **replica** scritta solo da `scripts/fritz-sync.sh` (rsync notturno, `*.part` e `._*` esclusi, `/_MacMusic/` protetta: la scrive il Mac, ADR-0012; dopo un download il backend tocca `SoundReel/.publish-request` e lo unit `fritz-sync-request.path` fa partire il sync subito, ADR-0010); il backend lo legge solo via HTTP (`mediaServer.ts`: DLNA Search → `media_index`, HEAD sull'URL diretto → `song_files.media_url`). **Mai** montare lo share SMB nel container (ADR-0006). Endpoint: `/api/mondrop/playlists/:id/{offline,prepare}`, `/api/mondrop/songs/:key{,/download,/source,/file}`, `/api/mondrop/net`; web `POST /api/songs/:key/download`, `GET /api/songs/:key/state` (con `location`), `GET /api/songs/:key/file` (media server **prima**, via proxy HTTPS con `Range`; poi il disco; `?from=media|fs`), `GET /api/net` (rete interna/esterna dagli header Cloudflare); admin `GET /api/admin/store`. Il file lo serve `services/songStream.ts` (`serveSong`/`openSongStream`: origini in ordine, la prima che risponde); `offlineManifest.resolveSongServing` sceglie l'ordine (web: media→disco, Mondrop: disco→media). Dove sta un brano: `services/songLocation.ts` (`fs`, `mediaServer`, `fsPath`, `mediaUrl`); il pallino verde `inLibrary` è **esattamente** `fs || mediaServer`. Le copie fatte dalla 2.7.0 le ritira `services/retireCopies.ts` (solo se l'originale risponde con gli stessi byte) Un handler Fastify async che fa stream deve **restituire la reply** (`return reply.send(stream)`), altrimenti il corpo esce vuoto (bug che azzerava ogni download di Mondrop)
+- **Ricerca nella libreria** (ADR-0011, spec `2026-11-07-library-search-music-folders-design.md`): `GET /api/library/search?q&scope=all|songs|media|local` cerca nel journal, nel catalogo del media server e nelle cartelle musica (Spooty `/music` + cartelle extra della configurazione web `GET/POST /api/config/music-folders`, solo admin, solo dentro `MUSIC_EXTRA_ROOTS`); ordine delle parole ininfluente, restituisce l'indice (dove sta il file), mai file. Indici in memoria (`musicSnapshot.ts`, `musicFolders.ts`)
+- **Import musica del Mac**: lo fa il Claude Code sul Mac con `docs/mac-music-import-prompt.md`, scrive **solo** in `TESLA_MEDIA/Music/SoundReel/_MacMusic/` (ADR-0012; la chiavetta è anche il drive della Tesla). La password dell'utente SMB `geekom` sta solo in `~/.config/soundreel/fritz-credentials` (0600) e non va mai in chat, file o prompt
+- Share Extension: `POST /api/share` (auth `X-SoundReel-Key`, stub+queue, tag da comment) — doc `docs/share.md`, client in `ios/`
 - Timeout pipeline: 120s
 
 ### Frontend React
@@ -93,13 +105,16 @@ soundreel/
 
 ### API esterne
 - **Whisper**: HTTP verso `gpu-router:9000/whisper` (env `WHISPER_URL`) — il router sceglie: archi-pc (`192.168.178.23:9000`, nativo CPU) quando risponde, altrimenti accende da sé il container locale `soundreel-whisper` scegliendo `tiny` o `small` secondo la RAM disponibile, e lo spegne dopo 15 minuti di inattività. Spec: `geekom-hub/gpu-router/specs/2026-08-30-whisper-routing-and-on-demand-design.md`
-- **Instaloader**: HTTP verso `soundreel-instaloader:5000` (include endpoint `/shazam/recognize`, `/shazam/scan-full`, `/yt/url`, `/download-media` per YouTube/TikTok via yt-dlp)
+- **Instaloader**: HTTP verso `soundreel-instaloader:5000` (include endpoint `/shazam/recognize`, `/shazam/scan-full`, `/yt/url`, `/download-media` per YouTube/TikTok via yt-dlp, `/yt/audio` per scaricare una canzone come MP3 taggato: `instaloader/yt_audio.py`, scelta del video per punteggio con soglia — meglio nessuna sorgente che il brano sbagliato)
 - **OCR**: HTTP verso `soundreel-ocr:5001`
 - **Ollama**: HTTP verso `gpu-router:9000` (env `OLLAMA_URL`) — gpu-router preferisce vulcano (tier 0), poi archi-PC, poi GEEKOM. Modelli: `OLLAMA_TEXT_MODEL` (default `glm-4.7-flash:q4_K_M`; il client manda `think: false` sui call di testo), `OLLAMA_VISION_MODEL` (default `moondream:latest`)
-- **Spooty**: HTTP verso `spooty:3000/api/playlist` per aggiungere link Spotify (env `SPOOTY_URL`, default `http://spooty:3000`; env `SPOOTY_FRONTEND_URL`, default `https://spooty.casamon.dev`)
+- **Spooty**: HTTP verso `spooty:3000/api/playlist` per aggiungere link Spotify (env `SPOOTY_URL`, default `http://spooty:3000`; env `SPOOTY_FRONTEND_URL`, default `https://spooty.casamon.dev`). Unico client: `services/spootyClient.ts` (stato traccia: 0 New, 1 Searching, 2 Queued, 3 Downloading, 4 Completed, 5 Error; dopo un retry riuscito Spooty NON azzera `error`: conta solo `status`). L'immagine upstream `raiper34/spooty` non esiste più (repo e Docker Hub 404): la copia locale è l'unica (tag `raiper34/spooty:pre-update-20261107`, non cancellarla). Il suo `yt-dlp` è montato da `~/works/Spooty/yt-dlp/` (generato da `sync-ytdlp.sh` dal yt-dlp di instaloader); l'originale (2026.03.17) dava HTTP 403
 - **Spotify**: OAuth PKCE, token refresh automatico prima di ogni operazione
 - **TMDb**: GET a `https://api.themoviedb.org/3/search/movie`
-- **Telegram**: webhook, risposta inline nel messaggio
+- **Telegram**: webhook, risposta inline nel messaggio. Il testo libero nello stesso messaggio del URL diventa tag di filtro sull'entry (oltre ai tag AI/post); su URL già noto i tag si uniscono via `mergeEntryResults`
+- **Share (iOS/macOS)**: app nativa **Mondrop** (`ios/`, bundle `it.mikesoft.mondrop`, Team `5NZADC9YQ2`) → `POST /api/share` (Traefik `soundreel-share`, auth `X-SoundReel-Key`). App Group `group.it.mikesoft.mondrop`. Doc `docs/share.md` + `ios/README.md`. Key personale self-service: `GET/POST /mondrop/connect` (Authelia `Remote-User` → key legata a utente+dispositivo; app: Impostazioni → Ottieni/Rinnova API key). **Vincolo**: quella rotta DEVE restare dietro `auth-family` — mai sotto `/api/mondrop` né su `/api/share` (router Traefik senza Authelia: `Remote-User` lo scriverebbe il client). XcodeGen: `Assets.xcassets` va nei `sources` (la chiave `resources:` del target viene ignorata e l'icona non arriva nell'app)
+- **TTS**: `TTS_URL=http://gpu-router:9000/tts` — `POST /api/tts/render` (cache in `MEDIA_ROOT/tts/`), `localOnly` → header `X-TTS-Local-Only: 1`
+- **MCP**: stdio in `backend/src/mcp/server.ts` (`npm run mcp`), usato dal SecondBrain (`~/works/personal/.mcp.json`); doc `docs/mcp.md`
 - **cobalt.tools**: POST a `https://api.cobalt.tools/` per estrazione video — implementare SEMPRE fallback su OG scraping se cobalt fallisce
 - **FRITZ!Box**: `192.168.178.10` (share SMB3 `FRITZ.NAS`) — sync notturna della libreria via `scripts/fritz-sync.sh`, scrive SOLO in `TESLA_MEDIA/Music/SoundReel` e `TESLA_MEDIA/Movies/SoundReel` (la chiavetta è il drive media Tesla dell'auto, non toccare il resto). Gira senza root: mount delegato a una riga `/etc/fstab` con opzione `user` (`scripts/fritz-sync.fstab.example`, unico passo con sudo, una tantum), config in `~/.config/soundreel/`, password solo nel file credenziali 0600 letto da mount.cifs
 
@@ -118,6 +133,16 @@ NON usare YouTube Data API. Generare link di ricerca:
 
 ### Idempotenza
 Prima di processare un URL, cercare `sourceUrl` in Postgres. Se esiste, restituire i risultati esistenti senza riprocessare.
+
+## Regole di lavoro (date da Michele)
+
+- **Regola nuova = spec + ADR.** Quando Michele dà una regola, un requisito o un vincolo nuovo (in chat, anche a metà lavoro), non resta solo nel codice:
+  1. si salva **testualmente** in una spec in `docs/superpowers/specs/` (si aggiorna quella del tema o se ne crea una: richieste testuali, decisioni con i default scelti, dati, test);
+  2. se tocca l'architettura (dati, API, sicurezza, infrastruttura, chi è responsabile di cosa) si scrive anche un **ADR** in `adr/` (numero successivo, stesso formato di ADR-0006…0009) e si aggiorna `adr/README.md`. Le regole d'interfaccia (come si presenta una schermata) vanno nella spec, non in un ADR;
+  3. si aggiornano `CHANGELOG.md`, `ROADMAP.md` e questo file se serve;
+  4. nella risposta si dice a Michele quali file sono stati scritti.
+- **Nessun deploy senza OK esplicito di Michele**, uno per ogni deploy.
+- Specifiche in vigore sul player web: `docs/superpowers/specs/2026-11-07-web-player-ux-design.md`; su statistiche, spazio su iPhone, playlist dinamiche e log: `2026-11-07-listening-stats-dynamic-playlists-design.md`; sull'archivio MP3: `2026-11-07-mp3-store-media-server-design.md`; sulla ricerca nella libreria e le cartelle musica: `2026-11-07-library-search-music-folders-design.md`; sull'import della musica del Mac: `2026-11-07-mac-music-import-design.md` (+ `docs/mac-music-import-prompt.md`); su scegliere cosa suonare (iOS e web), filtri per tipo/album/autore/anni, stati del download e velocità del play: `2026-11-08-player-selection-and-filters-design.md` (ADR-0013, per la 2.9.0).
 
 ## Deploy
 
@@ -167,6 +192,7 @@ systemctl --user list-timers fritz-sync.timer
 - NON usare Firebase, Firestore, o Firebase Cloud Functions
 - NON usare Next.js o altri framework backend — solo Fastify
 - NON usare YouTube Data API
+- NON montare lo share SMB del Fritz nel container né farlo scrivere al backend (ADR-0006): la replica la scrive solo `scripts/fritz-sync.sh`
 - NON hardcodare API keys o secrets nel codice
 - NON creare un sistema di autenticazione multi-utente — è un'app personale
 - NON aggiungere dipendenze frontend pesanti (Material UI, Chakra, etc.)

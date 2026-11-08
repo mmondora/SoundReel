@@ -19,3 +19,11 @@ Sostituire `gpt-4o-mini` + `web_search_preview` (OpenAI Responses API) con Perpl
 - Update Settings UI per gestire chiave Perplexity
 
 **Stima:** ~40 righe `openaiEnrich.ts` + Settings UI
+
+### X (Twitter) — analizzare link post come IG / TikTok
+
+Aprire/analizzare URL `x.com` / `twitter.com` (caption + media) con qualità paragonabile a Instagram/TikTok, da web/Telegram/Share. Oggi: platform già `twitter` + OG/page extract; da rafforzare il percorso media (video/audio) per Shazam/Whisper/vision. Dettaglio in `ROADMAP.md` (root).
+
+### Client iOS / Mondrop — playlist sync locale + play offline (Spooty)
+
+Sync playlist → MP3 offline + player in Mondrop. Libreria prima, se manca accoda Spooty. **Bloccato su OIDC Authelia (Geeko)**. Spec: `docs/superpowers/specs/2026-11-07-mondrop-offline-spooty-sync-design.md`.
