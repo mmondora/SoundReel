@@ -221,3 +221,25 @@ describe('what the files view says when there is nothing to show yet', () => {
     expect(within(screen.getByRole('combobox', { name: 'Cerca in' })).getByRole('option', { name: 'File locali' })).toBeInTheDocument();
   });
 });
+
+describe('the link of "Versione di" (/songs?q=…)', () => {
+  it('opens the page already searching for that title', async () => {
+    render(
+      <LanguageProvider>
+        <MemoryRouter initialEntries={['/songs?q=sexy%20boy']}>
+          <SongsPage />
+        </MemoryRouter>
+      </LanguageProvider>,
+    );
+    await waitFor(() => expect(document.querySelectorAll('.list-item-row').length).toBe(1));
+    expect((box() as HTMLInputElement).value).toBe('sexy boy');
+    expect(document.body.textContent).toContain('sexy boy');
+    expect(document.body.textContent).not.toContain('one more time');
+  });
+
+  it('without a q the page lists everything, as ever', async () => {
+    renderPage();
+    await waitFor(() => expect(document.querySelectorAll('.list-item-row').length).toBe(2));
+    expect((box() as HTMLInputElement).value).toBe('');
+  });
+});

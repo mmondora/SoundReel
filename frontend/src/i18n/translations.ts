@@ -424,6 +424,7 @@ export interface Translations {
   songsPreview: string;
   songsMentions: string;
   fromPost: string;
+  versionOf: string;
   softwareOtherLinks: string;
   playerNav: string;
   playerTitle: string;
@@ -1209,6 +1210,7 @@ export const translations: Record<Language, Translations> = {
     songsPreview: 'Anteprima',
     songsMentions: 'menzioni',
     fromPost: 'Dal post',
+    versionOf: 'Versione di',
     softwareOtherLinks: 'Altri link',
     playerNav: 'Player',
     playerTitle: 'Player',
@@ -2016,6 +2018,7 @@ export const translations: Record<Language, Translations> = {
     songsPreview: 'Preview',
     songsMentions: 'mentions',
     fromPost: 'From the post',
+    versionOf: 'Version of',
     softwareOtherLinks: 'Other links',
     playerNav: 'Player',
     playerTitle: 'Player',

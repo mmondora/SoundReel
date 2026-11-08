@@ -125,6 +125,14 @@ export interface SongMention {
 /** Server-side file state of a song (docs/mondrop-sync.md). */
 export type SongFileStateName = 'ready' | 'preparing' | 'failed' | 'no_source' | 'missing';
 
+/** The original a version points at: its title, artist and card (null when the journal has no single original), and the markers as written. */
+export interface SongVersionOf {
+  title: string;
+  artist: string | null;
+  songKey: string | null;
+  labels: string[];
+}
+
 export interface AggregatedSong {
   songKey: string;
   title: string;
@@ -146,6 +154,8 @@ export interface AggregatedSong {
   platforms?: string[];
   /** Tags of the entries that mention the song. */
   tags?: string[];
+  /** Set when the title says the song is a version of another one ("Versione di …", spec no-duplicates-and-post-links §7). */
+  versionOf?: SongVersionOf;
   /** Server-side file state, when the backend reports it. */
   fileState?: SongFileStateName;
   /** Where the file is (docs/mondrop-stats.md §6). Absent on an old backend: `inLibrary` then means FS. */

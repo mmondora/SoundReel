@@ -4245,6 +4245,27 @@ body {
   opacity: 0.8;
 }
 
+/* "Versione di «Titolo» · Slowed + Reverb": a song that is a version of another (spec no-duplicates-and-post-links §7, D5) */
+.song-version-of {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: var(--text-muted, #8a8a8a);
+  overflow-wrap: anywhere;
+}
+
+.song-version-of a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.song-version-of a:hover {
+  text-decoration: underline;
+}
+
+.song-version-labels {
+  opacity: 0.9;
+}
+
 /* Badges */
 .source-badge {
   font-size: 0.65rem;

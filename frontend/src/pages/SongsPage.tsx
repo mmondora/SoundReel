@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { SongCard } from '../components/SongCard';
 import { DateGroupedList } from '../components/DateGroupedList';
@@ -64,7 +64,13 @@ export function SongsPage() {
 
   const [songs, setSongs] = useState<AggregatedSong[]>([]);
   const [loading, setLoading] = useState(true);
-  const [textFilter, setTextFilter] = useState('');
+  // "Versione di «Titolo»" links to /songs?q=Titolo: the page opens on that search, or moves to it when it is already open
+  const [searchParams] = useSearchParams();
+  const [textFilter, setTextFilter] = useState(searchParams.get('q') ?? '');
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q !== null) setTextFilter(q);
+  }, [searchParams]);
   const [genreFilter, setGenreFilter] = useState<string[]>([]);
   const [listenedFilter, setListenedFilter] = useState<ListenedFilter>('all');
   const [favoriteOnly, setFavoriteOnly] = useState(false);

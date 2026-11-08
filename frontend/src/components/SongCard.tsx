@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { PostLinks } from './PostLinks';
+import { SongVersionOf } from './SongVersionOf';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
 import { ratingFromScore } from '../utils/filmRating';
@@ -299,6 +300,7 @@ export function SongCard({ song, onPatch, onAddToPlaylist, onRemoveFromPlaylist 
           {song.artist || t.unknownArtist}
           {(meta?.album || song.album) && <span className="list-item-muted"> — {meta?.album || song.album}</span>}
         </div>
+        <SongVersionOf versionOf={song.versionOf} />
 
         {meta && meta.genres.length > 0 && (
           <div className="list-item-badges">
