@@ -192,3 +192,14 @@ test('invitations: an unknown group is an error, and nothing is sent', async () 
   await assert.rejects(inviteGroupTesters(client, 'A1', 'Nope'), /no group "Nope"/);
   assert.ok(calls.every((c) => c.method === 'GET'));
 });
+
+test('invitations --all: an invited tester who never answered gets it again; an installed one never does', async () => {
+  const { client, calls } = fakeRw([
+    ['GET', /^\/v1\/apps\/A1\/betaGroups/, { data: [{ id: 'G1', attributes: { name: 'Family' } }] }],
+    ['GET', /^\/v1\/betaGroups\/G1\/betaTesters/, { data: [{ id: 'T1', attributes: { state: 'INVITED' } }, { id: 'T2', attributes: { state: 'INSTALLED' } }, { id: 'T3', attributes: { state: 'NOT_INVITED' } }] }],
+    ['POST', /^\/v1\/betaTesterInvitations$/, { data: { id: 'I1' } }, 201],
+  ]);
+  const out = await inviteGroupTesters(client, 'A1', 'Family', { all: true });
+  assert.deepEqual(out.map((o) => o.action), ['re-invited', 'left-alone', 'invited']);
+  assert.equal(calls.filter((c) => c.method === 'POST').length, 2);
+});

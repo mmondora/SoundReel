@@ -11,7 +11,7 @@
 //   node ios/scripts/asc.mjs groups [name]                read-only: TestFlight groups of the whole team with that name (default Family)
 //   node ios/scripts/asc.mjs get /v1/apps?limit=5         read-only: any GET, the answer trimmed (to look at what the API says)
 //   node ios/scripts/asc.mjs setup-group Family a@x b@y   CHANGES App Store Connect: the external group and its testers (idempotent)
-//   node ios/scripts/asc.mjs invite-group Family          CHANGES App Store Connect: invites the testers of the group that were never invited (idempotent)
+//   node ios/scripts/asc.mjs invite-group Family [--all]  CHANGES App Store Connect: invites the testers never invited (--all: sends it again to those who never answered)
 import { createPrivateKey, sign } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -226,9 +226,10 @@ export async function addTesters(client, groupId, emails) {
 /**
  * Sends the TestFlight invitation to the testers of a group that were never invited (`NOT_INVITED`): an internal group
  * with automatic distribution already holds every build, and an invitation is what makes the app show up in the
- * TestFlight app of the tester. Testers in any other state are left alone, so it can be run twice.
+ * TestFlight app of the tester. Testers in any other state are left alone, so it can be run twice; with `all` a tester who
+ * was invited and never answered gets the invitation again.
  */
-export async function inviteGroupTesters(client, appId, groupName) {
+export async function inviteGroupTesters(client, appId, groupName, { all = false } = {}) {
   const groups = await client.list(`/v1/apps/${appId}/betaGroups?limit=50&fields[betaGroups]=name`);
   const group = groups.data.find((g) => g.attributes?.name === groupName);
   if (!group) throw new Error(`no group "${groupName}" on the app`);
@@ -236,7 +237,9 @@ export async function inviteGroupTesters(client, appId, groupName) {
   const out = [];
   for (const tester of testers.data) {
     const state = tester.attributes?.state;
-    if (state !== 'NOT_INVITED') {
+    // `all` sends the invitation again to a tester who was invited but never answered (the email got lost); an
+    // INSTALLED tester has nothing to accept and is always left alone
+    if (state === 'INSTALLED' || (!all && state !== 'NOT_INVITED')) {
       out.push({ testerId: tester.id, state, action: 'left-alone' });
       continue;
     }
@@ -246,7 +249,7 @@ export async function inviteGroupTesters(client, appId, groupName) {
         relationships: { app: { data: { type: 'apps', id: appId } }, betaTester: { data: { type: 'betaTesters', id: tester.id } } },
       },
     });
-    out.push({ testerId: tester.id, state, action: 'invited' });
+    out.push({ testerId: tester.id, state, action: state === 'NOT_INVITED' ? 'invited' : 're-invited' });
   }
   return out;
 }
@@ -259,10 +262,11 @@ async function main(argv) {
   const [command = 'status', ...rest] = argv;
   const client = createClient(loadConfig());
   if (command === 'invite-group') {
-    if (!rest[0]) throw new Error('usage: asc.mjs invite-group <group name>');
+    if (!rest[0]) throw new Error('usage: asc.mjs invite-group <group name> [--all]');
     const app = await findApp(client);
     if (!app) throw new Error(`no app record for ${BUNDLE_ID}`);
-    console.log(JSON.stringify({ app: app.attributes?.name, group: rest[0], testers: await inviteGroupTesters(client, app.id, rest[0]) }, null, 2));
+    const testers = await inviteGroupTesters(client, app.id, rest[0], { all: rest.includes('--all') });
+    console.log(JSON.stringify({ app: app.attributes?.name, group: rest[0], testers }, null, 2));
   } else if (command === 'setup-group') {
     const [name, ...emails] = rest;
     if (!name || emails.length === 0) throw new Error('usage: asc.mjs setup-group <group name> <email> [email ...]');
