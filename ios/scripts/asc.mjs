@@ -2,14 +2,15 @@
 // App Store Connect API helper for the TestFlight steps (ADR-0016, spec 2026-11-08-mondrop-testflight-design.md).
 // Zero dependencies (Node 20+: global fetch and node:crypto).
 //
-// Credentials live OUTSIDE the repository: ~/.config/soundreel/appstoreconnect/config.env (ASC_KEY_ID, ASC_ISSUER_ID,
-// ASC_KEY_PATH) and the AuthKey_<KeyID>.p8 it points to (0600). Environment variables override the file. The key is read
-// only to sign a short-lived token and is never printed; neither is the token.
+// Credentials live OUTSIDE the repository: ~/.config/soundreel/appstoreconnect/config.env (ASC_KEY_ID, ASC_KEY_PATH and,
+// for a team key, ASC_ISSUER_ID: an individual key has none) and the AuthKey_<KeyID>.p8 it points to (0600). Environment
+// variables override the file. The key is read only to sign a short-lived token and is never printed; neither is the token.
 //
 // Usage:
 //   node ios/scripts/asc.mjs status                       read-only: the app, its builds, its TestFlight groups and testers
 //   node ios/scripts/asc.mjs groups [name]                read-only: TestFlight groups of the whole team with that name (default Family)
 //   node ios/scripts/asc.mjs get /v1/apps?limit=5         read-only: any GET, the answer trimmed (to look at what the API says)
+//   node ios/scripts/asc.mjs setup-group Family a@x b@y   CHANGES App Store Connect: the external group and its testers (idempotent)
 import { createPrivateKey, sign } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -32,22 +33,30 @@ export function parseEnvFile(text) {
   return out;
 }
 
-/** The three settings, from the file then the environment. Throws a message that names what is missing, never a value. */
+/**
+ * The settings, from the file then the environment. Throws a message that names what is missing, never a value.
+ * `ASC_ISSUER_ID` is optional: a TEAM key has one (shown above the keys table), an INDIVIDUAL key has none and signs its
+ * token with `sub: "user"` instead (see createToken).
+ */
 export function loadConfig(env = process.env, file = DEFAULT_CONFIG, read = (p) => readFileSync(p, 'utf8'), exists = existsSync) {
   const fromFile = exists(file) ? parseEnvFile(read(file)) : {};
   const get = (k) => (env[k] ?? fromFile[k] ?? '').trim();
   const cfg = { keyId: get('ASC_KEY_ID'), issuerId: get('ASC_ISSUER_ID'), keyPath: get('ASC_KEY_PATH') };
-  const missing = [['ASC_KEY_ID', cfg.keyId], ['ASC_ISSUER_ID', cfg.issuerId], ['ASC_KEY_PATH', cfg.keyPath]].filter(([, v]) => !v).map(([k]) => k);
+  const missing = [['ASC_KEY_ID', cfg.keyId], ['ASC_KEY_PATH', cfg.keyPath]].filter(([, v]) => !v).map(([k]) => k);
   if (missing.length) throw new Error(`missing ${missing.join(', ')} (set them in ${file} or the environment)`);
   return cfg;
 }
 
 const b64url = (input) => Buffer.from(input).toString('base64url');
 
-/** The ES256 token the API wants: `iss` = issuer id, `aud` = appstoreconnect-v1, valid at most 20 minutes. */
+/**
+ * The ES256 token the API wants: `iss` = issuer id for a team key, or `sub: "user"` for an individual key (no issuer);
+ * `aud` = appstoreconnect-v1; valid at most 20 minutes.
+ */
 export function createToken(cfg, privateKey, nowSec = Math.floor(Date.now() / 1000)) {
+  const who = cfg.issuerId ? { iss: cfg.issuerId } : { sub: 'user' };
   const signingInput = `${b64url(JSON.stringify({ alg: 'ES256', kid: cfg.keyId, typ: 'JWT' }))}.${b64url(
-    JSON.stringify({ iss: cfg.issuerId, iat: nowSec, exp: nowSec + 15 * 60, aud: 'appstoreconnect-v1' }),
+    JSON.stringify({ ...who, iat: nowSec, exp: nowSec + 15 * 60, aud: 'appstoreconnect-v1' }),
   )}`;
   const signature = sign('sha256', Buffer.from(signingInput), { key: privateKey, dsaEncoding: 'ieee-p1363' });
   return `${signingInput}.${b64url(signature)}`;
@@ -157,13 +166,78 @@ export async function groupsNamed(client, name = 'Family') {
 }
 
 // ---------------------------------------------------------------------------
+// Changes (each one is explicit, idempotent, and run only on Michele's request: spec 2026-11-08-mondrop-testflight-design)
+// ---------------------------------------------------------------------------
+
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/**
+ * The EXTERNAL group with this name on the app, or a new one (no public link, feedback on). An internal group with the
+ * same name is not reused: internal testers must be App Store Connect users, family members are not.
+ */
+export async function ensureExternalGroup(client, appId, name) {
+  const groups = await client.list(`/v1/apps/${appId}/betaGroups?limit=50&fields[betaGroups]=name,isInternalGroup`);
+  const existing = groups.data.find((g) => g.attributes?.name === name && !g.attributes?.isInternalGroup);
+  if (existing) return { id: existing.id, name, created: false };
+  const json = await client.post('/v1/betaGroups', {
+    data: {
+      type: 'betaGroups',
+      attributes: { name, isInternalGroup: false, publicLinkEnabled: false, feedbackEnabled: true },
+      relationships: { app: { data: { type: 'apps', id: appId } } },
+    },
+  });
+  return { id: json.data.id, name, created: true };
+}
+
+/**
+ * Puts these emails in the group. One already in the group is left alone; one the team already knows (a tester of another
+ * app) is added to the group; a new one is created in it. Adding a tester to a group that has no build yet sends no
+ * invitation: Apple invites when a build is assigned to the group and passes beta review.
+ */
+export async function addTesters(client, groupId, emails) {
+  const bad = emails.filter((e) => !EMAIL.test(e.trim()));
+  if (bad.length) throw new Error(`not an email address: ${bad.join(', ')}`);
+  const current = await client.list(`/v1/betaGroups/${groupId}/betaTesters?limit=200&fields[betaTesters]=email`);
+  const inGroup = new Set(current.data.map((t) => (t.attributes?.email ?? '').toLowerCase()));
+  const out = [];
+  for (const raw of emails) {
+    const email = raw.trim().toLowerCase();
+    if (inGroup.has(email)) {
+      out.push({ email, action: 'already-in-group' });
+      continue;
+    }
+    const found = await client.list(`/v1/betaTesters?filter[email]=${encodeURIComponent(email)}&limit=5&fields[betaTesters]=email`);
+    const known = found.data.find((t) => (t.attributes?.email ?? '').toLowerCase() === email);
+    if (known) {
+      await client.post(`/v1/betaGroups/${groupId}/relationships/betaTesters`, { data: [{ type: 'betaTesters', id: known.id }] });
+      out.push({ email, action: 'added-existing-tester' });
+    } else {
+      await client.post('/v1/betaTesters', {
+        data: { type: 'betaTesters', attributes: { email }, relationships: { betaGroups: { data: [{ type: 'betaGroups', id: groupId }] } } },
+      });
+      out.push({ email, action: 'created' });
+    }
+    inGroup.add(email);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
 async function main(argv) {
   const [command = 'status', ...rest] = argv;
   const client = createClient(loadConfig());
-  if (command === 'status') {
+  if (command === 'setup-group') {
+    const [name, ...emails] = rest;
+    if (!name || emails.length === 0) throw new Error('usage: asc.mjs setup-group <group name> <email> [email ...]');
+    const app = await findApp(client);
+    if (!app) throw new Error(`no app record for ${BUNDLE_ID}`);
+    const group = await ensureExternalGroup(client, app.id, name);
+    const testers = await addTesters(client, group.id, emails);
+    console.log(JSON.stringify({ app: app.attributes?.name, group, testers }, null, 2));
+  } else if (command === 'status') {
     console.log(JSON.stringify(await statusReport(client), null, 2));
   } else if (command === 'groups') {
     console.log(JSON.stringify(await groupsNamed(client, rest[0] ?? 'Family'), null, 2));
@@ -171,7 +245,7 @@ async function main(argv) {
     if (!rest[0]?.startsWith('/v1/')) throw new Error('usage: asc.mjs get /v1/...');
     console.log(JSON.stringify(await client.get(rest[0]), null, 2).slice(0, 6000));
   } else {
-    throw new Error(`unknown command "${command}" (status | groups | get)`);
+    throw new Error(`unknown command "${command}" (status | groups | get | setup-group)`);
   }
 }
 
