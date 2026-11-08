@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, verify } from 'node:crypto';
 import { test } from 'node:test';
-import { addTesters, createClient, createToken, describeErrors, ensureExternalGroup, findApp, groupsNamed, loadConfig, parseEnvFile, statusReport } from './asc.mjs';
+import { addTesters, createClient, createToken, describeErrors, ensureExternalGroup, findApp, groupsNamed, inviteGroupTesters, loadConfig, parseEnvFile, statusReport } from './asc.mjs';
 
 const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 const PEM = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
@@ -168,4 +168,27 @@ test('testers: running it twice changes nothing the second time, and a bad addre
   const fresh = fakeRw([]);
   await assert.rejects(addTesters(fresh.client, 'G1', ['ok@example.com', 'not-an-email']), /not an email address: not-an-email/);
   assert.equal(fresh.calls.length, 0);
+});
+
+test('invitations: only the testers never invited get one, the others are left alone, and a second run does nothing', async () => {
+  const { client, calls } = fakeRw([
+    ['GET', /^\/v1\/apps\/A1\/betaGroups/, { data: [{ id: 'G1', attributes: { name: 'Family' } }, { id: 'G2', attributes: { name: 'Other' } }] }],
+    ['GET', /^\/v1\/betaGroups\/G1\/betaTesters/, { data: [{ id: 'T1', attributes: { state: 'NOT_INVITED' } }, { id: 'T2', attributes: { state: 'INSTALLED' } }, { id: 'T3', attributes: { state: 'INVITED' } }] }],
+    ['POST', /^\/v1\/betaTesterInvitations$/, { data: { id: 'I1' } }, 201],
+  ]);
+  const out = await inviteGroupTesters(client, 'A1', 'Family');
+  assert.deepEqual(out, [
+    { testerId: 'T1', state: 'NOT_INVITED', action: 'invited' },
+    { testerId: 'T2', state: 'INSTALLED', action: 'left-alone' },
+    { testerId: 'T3', state: 'INVITED', action: 'left-alone' },
+  ]);
+  const posts = calls.filter((c) => c.method === 'POST');
+  assert.equal(posts.length, 1);
+  assert.deepEqual(posts[0].body.data.relationships, { app: { data: { type: 'apps', id: 'A1' } }, betaTester: { data: { type: 'betaTesters', id: 'T1' } } });
+});
+
+test('invitations: an unknown group is an error, and nothing is sent', async () => {
+  const { client, calls } = fakeRw([['GET', /^\/v1\/apps\/A1\/betaGroups/, { data: [{ id: 'G1', attributes: { name: 'Family' } }] }]]);
+  await assert.rejects(inviteGroupTesters(client, 'A1', 'Nope'), /no group "Nope"/);
+  assert.ok(calls.every((c) => c.method === 'GET'));
 });
