@@ -24,6 +24,7 @@ import { mediaUrlForVolumePath, volumePathFromUrl } from './mediaServer';
 import { libraryFilesOf, libraryOnlySong } from './libraryOnlySongs';
 import { readEmbeddedCoverFromFile, readEmbeddedCoverFromUrl, type EmbeddedPicture } from './id3Cover';
 import { resolveCover, songCoverPath, type CoverBytes } from './songCovers';
+import { lyricsFor, type LyricsAnswer } from './songLyrics';
 import { absFromRel, fileFacts, fileVersion, type FileFacts } from './musicStore';
 import type { FileOrigin } from './songStream';
 import {
@@ -607,6 +608,19 @@ export async function getSongCover(songKey: string, ownerUser: string, isAdmin =
     thumbnailUrl: row?.coverUrl ?? null,
     embedded: () => embeddedPictureOf(song.songKey, ownerUser, isAdmin),
   });
+}
+
+/**
+ * The lyrics of a song this user can play (ADR-0021): the transcript of its post when there is one, else the words found on the
+ * Internet and kept (see services/songLyrics). `undefined` = there is no such song for this user; `null` = the song has no lyrics.
+ */
+export async function getSongLyrics(songKey: string, ownerUser: string, isAdmin = false): Promise<LyricsAnswer | null | undefined> {
+  const song = await findSong(songKey, ownerUser, isAdmin);
+  if (!song) return undefined;
+  return lyricsFor(
+    { songKey: song.songKey, artist: song.artist, title: song.title, album: song.meta?.album ?? song.album, versionOf: song.versionOf ?? null },
+    await lyricsForSong(song),
+  );
 }
 
 // ---------------------------------------------------------------------------

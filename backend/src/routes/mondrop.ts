@@ -19,6 +19,7 @@ import {
   buildTracks,
   enqueueSongToSpooty,
   getSongCover,
+  getSongLyrics,
   getTrack,
   preparePlaylist,
   requestSongDownload,
@@ -299,6 +300,23 @@ export function registerMondropRoutes(app: FastifyInstance): void {
     } catch (err) {
       logError('GET /api/mondrop/songs/:songKey failed', { err: String(err) });
       return reply.code(500).send({ error: 'song state failed' });
+    }
+  });
+
+  // The lyrics of a song (ADR-0021, spec 2026-11-08-lyrics-from-the-internet-design.md): the transcript of its post if there is one, else
+  // what the SERVER found on the Internet and kept; the app asks only here (rule P). An instrumental answers 200 with no text.
+  app.get<{ Params: { songKey: string } }>('/api/mondrop/songs/:songKey/lyrics', async (req, reply) => {
+    const auth = await requireMondrop(req, reply);
+    if (!auth) return;
+    try {
+      const found = await getSongLyrics(req.params.songKey, auth.userId, false);
+      if (found === undefined) return reply.code(404).send({ error: 'song not found' });
+      if (found === null) return reply.code(404).send({ error: 'no lyrics' });
+      reply.header('Cache-Control', 'private, max-age=86400');
+      return { songKey: req.params.songKey, lyrics: found.text, source: found.source, instrumental: found.instrumental };
+    } catch (err) {
+      logError('GET /api/mondrop/songs/:songKey/lyrics failed', { err: String(err) });
+      return reply.code(500).send({ error: 'lyrics failed' });
     }
   });
 

@@ -551,3 +551,14 @@ CREATE TABLE IF NOT EXISTS usage_counters (
   calls INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (day, user_id, device_class, network, route_group)
 );
+
+-- The lyrics of a song found on the Internet (ADR-0021; migration 020_song_lyrics.sql is the same table): a text found stays,
+-- «not found» is remembered for 7 days (lyrics NULL), an instrumental has no text, an outage writes nothing.
+CREATE TABLE IF NOT EXISTS song_lyrics (
+  song_key TEXT PRIMARY KEY,
+  lyrics TEXT,
+  instrumental BOOLEAN NOT NULL DEFAULT false,
+  source TEXT NOT NULL DEFAULT 'lrclib',
+  source_id TEXT,
+  checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
