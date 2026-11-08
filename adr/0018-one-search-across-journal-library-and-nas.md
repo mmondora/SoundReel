@@ -1,7 +1,7 @@
 # ADR-0018: Clients talk only to SoundReel; one search across the journal, the library and the NAS, and tracks that exist only as files can be played
 
 ## Status
-**Accepted** (8 November 2026): Michele answered the open questions (spec section 6). Built in steps: SoundReel 2.13.0 (search, library-only songs, no `mediaUrl`), Mondrop 1.7.0 (Cerca), then SoundReel 2.14.0 (the web play plan).
+**Accepted** (8 November 2026): Michele answered the open questions (spec section 6). Built in steps: SoundReel 2.13.0 (search, library-only songs, no `mediaUrl`) and 2.13.1 (one row per song), both in production on 8 November; Mondrop 1.7.0 (Cerca, and the app without a direct path to the box) built and tested, TestFlight pending; then SoundReel 2.14.0 (the web play plan).
 
 ## Date
 2026-11-08

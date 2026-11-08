@@ -43,6 +43,7 @@ Tutte le rotte sono sotto `/api/mondrop/*` (Traefik senza Authelia, come `/api/s
       "entryId": "…",
       "canEnqueueSpooty": false,
       "coverUrl": "https://…/800x800cc.jpg",
+      "coverPath": "/api/mondrop/songs/bishop%20briggs%3A%3Awhite%20flag/cover",
       "lyrics": null
     }
   ]
@@ -59,6 +60,7 @@ Tutte le rotte sono sotto `/api/mondrop/*` (Traefik senza Authelia, come `/api/s
 | `source` | `library` (file Spooty) · `ytdlp` · `existing` (il file è del media server, **non copiato** — ADR-0010) · `none` |
 | `downloadPath` | Path relativo da anteporre alla base URL del backend; **sempre valido** quando `ready`, con auth. Supporta `Range` |
 | `mediaUrl` | **Sempre `null` dalla 2.13.0** (regola P, ADR-0018): l'app non parla col media server, solo con SoundReel. Il campo resta nel contratto per le app già installate (1.6.0 e precedenti), che con `null` scaricano da `downloadPath`: per un brano `ready` è sempre valido. **Mai** mandare qui l'API key |
+| `coverPath` | **Dalla 2.14.0** (ADR-0019): percorso relativo, come `downloadPath`, per chiedere la copertina del brano (`GET`, con la key): vedi sotto. È presente su ogni traccia e **non dice se una copertina esiste** (la risposta può essere `404`). `coverUrl`, l'indirizzo del fornitore quando il diario lo conosce, resta per le app già installate; una app nuova usa `coverPath` e non parla con iTunes o Deezer |
 | `version` | Cambia quando cambia il file (`<bytes>-<mtimeMs>`). Il client non riscarica se ha già quella `version` per quel `songKey` |
 | `error` | Motivo breve per `failed` / `no_source` |
 
@@ -167,6 +169,15 @@ Corpo `{ "youtubeUrl": "https://www.youtube.com/watch?v=…" }`: forza la sorgen
 ## `GET /api/mondrop/songs/:songKey/file`
 
 MP3 con `Range` (`206`), `Accept-Ranges`, `Content-Length`, `ETag: "<version>"`. `404` JSON se il file non c'è (mai un redirect HTML). **Da dove** il server legga il file (disco di geekom, media server) lo decide il server (`songStream.ts`): il client non lo sa e non lo sceglie.
+
+## `GET /api/mondrop/songs/:songKey/cover` — la copertina
+
+L'immagine della copertina (JPEG quadrata, al massimo 800×800) di un brano che l'utente può suonare. La **trova il server** (ADR-0019, spec `2026-11-08-player-cover-art-design.md`) e l'app chiede solo qui (regola P): non va mai da iTunes o Deezer. In ordine: la copertina che il diario già conosce, quella **dentro il file** MP3 (se è quasi quadrata **e di almeno 300 px**: i programmi di download scrivono in ogni file una foto dell'artista da 160 px, che non è una copertina), **Internet** (iTunes, poi Deezer, solo con un riscontro forte di artista e titolo: meglio nessuna copertina di una sbagliata), quella del file comunque (piccola, o ritagliata), la miniatura del video da cui il brano è stato scaricato. Il server la **tiene** su disco e ricorda «non c'è» per 3 giorni: la prima richiesta di un brano nuovo può metterci qualche secondo (la ricerca su Internet), le successive no.
+
+- `200`, `Content-Type: image/jpeg`, `ETag` e `Cache-Control: private, max-age=86400`; con `If-None-Match` uguale all'`ETag` → `304` senza corpo.
+- `404 { "error": "no cover" }` se nessuna fonte ne ha una (l'app disegna la sua copertina); `404 { "error": "song not found" }` se il brano non esiste per l'utente, né nel diario né come file.
+- Funziona anche per un brano che esiste **solo come file** (NAS, geekom): la copertina dentro il file si legge dal disco di geekom, o dal media server con due letture `Range` all'inizio del file (mai tutto il brano).
+- L'app **tiene sul telefono** le copertine viste: un brano scaricato mostra la sua anche offline.
 
 ## Primo play: riproduci subito e scarica in parallelo
 

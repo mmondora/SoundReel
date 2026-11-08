@@ -188,7 +188,16 @@ Spec `docs/superpowers/specs/2026-11-08-mondrop-search-spotify-style-design.md`,
 - **Risposte di Michele (8 novembre):** Cerca sostituisce la Libreria; il tocco suona e accoda i seguenti; per il player web «se siamo su internet parte da youtube, sempre. se siamo in casa parte da youtube nel frattempo» (decide il server con un piano di riproduzione).
 - **In produzione dall'8 novembre:** SoundReel 2.13.0 (`GET /api/mondrop/search`, brani solo-file serviti dal file esatto, `POST /api/mondrop/playlists/:id/songs`, niente `mediaUrl`, guardia del ritiro delle copie). **Prova reale:** la ricerca funzionava ma dava 21 righe per ~11 canzoni (la stessa registrazione con grafie diverse).
 - **Costruita e provata, aspetta l'OK di deploy di Michele:** SoundReel **2.13.1** (una riga per canzone: raggruppamento per titolo e artista accreditato in comune, album dal tag, `&` non separa i nomi, niente più radici comuni nel testo cercato; sui dati veri 21 → 11 righe).
-- **A seguire, ognuno con il suo OK:** Mondrop 1.7.0 (scheda Cerca, via il percorso diretto al NAS, build TestFlight dopo il deploy del server), poi SoundReel 2.14.0 (piano di riproduzione del player web).
+- **Mondrop 1.7.0 (build 8): costruita e provata** (scheda Cerca al posto della Libreria, tocco = questo e i seguenti, pressione prolungata, pagine artista e album, ricerche recenti, «Sfoglia»; l'app non ha più il percorso diretto al NAS né la scelta `home`, con `RulePTests`; 843 test, compila anche per macOS). **Aspetta l'OK di Michele per la build TestFlight.**
+- **A seguire, con il suo OK:** SoundReel 2.14.0 (piano di riproduzione del player web).
+
+## Da costruire — la copertina nel player di Mondrop, cercata su Internet (richiesta 2026-11-08)
+
+Spec `docs/superpowers/specs/2026-11-08-player-cover-art-design.md`, ADR-0019. Richiesta di Michele: «Nel player iOS voglio avere la copertina del disco o della canzone se non c'è trovale su Internet, come le parole.»
+- **Misurato:** un brano **solo-file** (NAS, geekom: quelli che «Cerca» fa suonare) non ha nessuna copertina vera; per gli altri l'app la scarica **direttamente dal sito del fornitore**, senza copia (offline sparisce) e senza passare da SoundReel.
+- **Proposto (SoundReel 2.14.0 + Mondrop 1.7.0, build 8, la stessa di «Cerca»):** il **server** trova la copertina (quella già nota, poi quella **dentro il file** MP3, poi **Internet**: iTunes e Deezer con riscontro forte), la ridimensiona e la **tiene**; rotta `GET /api/mondrop/songs/:key/cover` e campo `coverPath` nelle tracce; l'app la chiede solo a SoundReel, la **tiene sul telefono** (offline) e la usa nel player e sulla schermata di blocco.
+- **Risposte di Michele (8 novembre):** i **testi** («come le parole») **sì, cercali su Internet** quando mancano → release a parte (SoundReel 2.15.0, con la sua ADR); la copertina piccola nelle liste **no**, solo nel player.
+- Il piano di riproduzione del player web slitta alla **2.16.0**.
 
 ## In corso — Mondrop su TestFlight, il gruppo «Family» come tester (richiesta 2026-11-08)
 

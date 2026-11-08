@@ -97,7 +97,7 @@ Le rotte che già servono i brani del diario (`GET /api/mondrop/songs/:key`, `�
 ## 7. Ordine di costruzione
 
 1. **SoundReel 2.13.0 (server):** `GET /api/mondrop/search`; i brani solo-file si servono e si scaricano (ADR-0018); `POST /api/mondrop/playlists/:id/songs`; il server smette di mandare `mediaUrl` ai client; test della regola P. Nella stessa uscita, trovata mentre si misurava: il ritiro delle copie (ADR-0010) **non** deve prendere come «originale» sul Fritz la replica della copia stessa (`findBoxOriginal`), altrimenti cancellerebbe l'unico file di un brano.
-2. **Mondrop 1.7.0 (app):** scheda **Cerca** (sezioni Brani / Artisti / Album, pagine autore e album, tocco che suona e accoda); via il percorso diretto verso il NAS e la scelta `home`; Libreria assorbita. Build TestFlight dopo il deploy del server.
+2. **Mondrop 1.7.0 (app):** scheda **Cerca** (sezioni Brani / Artisti / Album / Playlist, pagine autore e album, tocco che suona e accoda, pressione prolungata con *Aggiungi in coda*, *Aggiungi a playlist…* e *Scarica sul telefono*, ricerche recenti, «Sfoglia»); via il percorso diretto verso il NAS e la scelta `home`; Libreria assorbita. **Costruita e provata l'8 novembre** (843 test, il target macOS compila, schermata controllata nel simulatore); la build TestFlight aspetta l'OK di Michele.
 3. **Release a parte (SoundReel 2.14.0): il piano di riproduzione del player web** (`GET /api/songs/:key/play`, S11), via `GET /api/net` dal browser.
 
 ## 8. La prova reale dopo la 2.13.0 (8 novembre): una riga per canzone, non per file (2.13.1)
