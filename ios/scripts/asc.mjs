@@ -10,8 +10,10 @@
 //   node ios/scripts/asc.mjs status                       read-only: the app, its builds, its TestFlight groups and testers
 //   node ios/scripts/asc.mjs groups [name]                read-only: TestFlight groups of the whole team with that name (default Family)
 //   node ios/scripts/asc.mjs get /v1/apps?limit=5         read-only: any GET, the answer trimmed (to look at what the API says)
-//   node ios/scripts/asc.mjs setup-group Family a@x b@y   CHANGES App Store Connect: the external group and its testers (idempotent)
+//   node ios/scripts/asc.mjs setup-group Family a@x b@y   CHANGES App Store Connect: the external group and its testers (idempotent; give the group a build first: assign-build)
 //   node ios/scripts/asc.mjs invite-group Family [--all]  CHANGES App Store Connect: invites the testers never invited (--all: sends it again to those who never answered)
+//   node ios/scripts/asc.mjs assign-build Family [9]      CHANGES App Store Connect: puts the build (default: the newest processed one) in the EXTERNAL group (an internal group holds every build by itself)
+//   node ios/scripts/asc.mjs submit-review [9] [--whats-new "text"]   CHANGES App Store Connect: sends the build to Beta App Review (needed once per version for external testers; Apple then invites them)
 import { createPrivateKey, sign } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -192,8 +194,9 @@ export async function ensureExternalGroup(client, appId, name) {
 
 /**
  * Puts these emails in the group. One already in the group is left alone; one the team already knows (a tester of another
- * app) is added to the group; a new one is created in it. Adding a tester to a group that has no build yet sends no
- * invitation: Apple invites when a build is assigned to the group and passes beta review.
+ * app) is added to the group; a new one is created in it. An EXTERNAL group with no build refuses new testers (409 STATE_ERROR
+ * «Tester(s) cannot be assigned», seen on 8 November): run `assign-build` first. No invitation goes out until a build of the
+ * group passes beta review (or `invite-group` sends it).
  */
 export async function addTesters(client, groupId, emails) {
   const bad = emails.filter((e) => !EMAIL.test(e.trim()));
@@ -254,6 +257,66 @@ export async function inviteGroupTesters(client, appId, groupName, { all = false
   return out;
 }
 
+/**
+ * The build with this number, or — without a number — the newest one Apple has finished processing. A build that is still
+ * processing (or expired) is an error that says so: nothing can be assigned or submitted before it is `VALID`.
+ */
+export async function findBuild(client, appId, number) {
+  const builds = await client.list(`/v1/builds?filter[app]=${appId}&sort=-uploadedDate&limit=30&fields[builds]=version,uploadedDate,processingState,expired`);
+  const rows = builds.data.map((b) => ({ id: b.id, number: b.attributes?.version, state: b.attributes?.processingState, expired: Boolean(b.attributes?.expired) }));
+  const pick = number === undefined ? rows.find((b) => b.state === 'VALID' && !b.expired) : rows.find((b) => b.number === String(number));
+  if (!pick) throw new Error(number === undefined ? 'no processed build on the app yet' : `no build ${number} on the app`);
+  if (pick.expired) throw new Error(`build ${pick.number} has expired`);
+  if (pick.state !== 'VALID') throw new Error(`build ${pick.number} is ${pick.state}: wait until Apple has processed it`);
+  return pick;
+}
+
+/**
+ * Puts a build in an EXTERNAL group (an internal group with automatic distribution already holds every build). One already in the
+ * group is left alone, so it can be run twice. It does not submit the build for review: that is `submitForReview`.
+ */
+export async function assignBuild(client, appId, groupName, number) {
+  const groups = await client.list(`/v1/apps/${appId}/betaGroups?limit=50&fields[betaGroups]=name,isInternalGroup`);
+  const group = groups.data.find((g) => g.attributes?.name === groupName && !g.attributes?.isInternalGroup);
+  if (!group) throw new Error(`no external group "${groupName}" on the app (an internal group holds every build by itself)`);
+  const build = await findBuild(client, appId, number);
+  const inGroup = await client.list(`/v1/betaGroups/${group.id}/builds?limit=200&fields[builds]=version`);
+  if (inGroup.data.some((b) => b.id === build.id)) return { group: groupName, build: build.number, action: 'already-in-group' };
+  await client.post(`/v1/betaGroups/${group.id}/relationships/builds`, { data: [{ type: 'builds', id: build.id }] });
+  return { group: groupName, build: build.number, action: 'added' };
+}
+
+/**
+ * Sends a build to Beta App Review, the step external testers wait for (once per version; Apple invites the testers of the group by
+ * itself when it is approved). «What to test» (Italian) is written first when given. A build already submitted is left alone and
+ * its state is reported: running it twice never submits twice.
+ */
+export async function submitForReview(client, appId, number, whatsNew) {
+  const build = await findBuild(client, appId, number);
+  if (whatsNew) {
+    const found = await client.list(`/v1/builds/${build.id}/betaBuildLocalizations?limit=20&fields[betaBuildLocalizations]=locale,whatsNew`);
+    const italian = found.data.find((l) => l.attributes?.locale === 'it');
+    if (!italian) {
+      await client.post('/v1/betaBuildLocalizations', {
+        data: { type: 'betaBuildLocalizations', attributes: { locale: 'it', whatsNew }, relationships: { build: { data: { type: 'builds', id: build.id } } } },
+      });
+    } else if (italian.attributes?.whatsNew !== whatsNew) {
+      await client.patch(`/v1/betaBuildLocalizations/${italian.id}`, { data: { type: 'betaBuildLocalizations', id: italian.id, attributes: { whatsNew } } });
+    }
+  }
+  let existing = null;
+  try {
+    existing = (await client.get(`/v1/builds/${build.id}/betaAppReviewSubmission`))?.data ?? null;
+  } catch (err) {
+    if (!/HTTP 404/.test(err.message)) throw err;      // «no submission» may come as an empty answer or as a 404: both mean none
+  }
+  if (existing) return { build: build.number, action: 'already-submitted', state: existing.attributes?.betaReviewState ?? null };
+  const json = await client.post('/v1/betaAppReviewSubmissions', {
+    data: { type: 'betaAppReviewSubmissions', relationships: { build: { data: { type: 'builds', id: build.id } } } },
+  });
+  return { build: build.number, action: 'submitted', state: json?.data?.attributes?.betaReviewState ?? null };
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
@@ -275,6 +338,20 @@ async function main(argv) {
     const group = await ensureExternalGroup(client, app.id, name);
     const testers = await addTesters(client, group.id, emails);
     console.log(JSON.stringify({ app: app.attributes?.name, group, testers }, null, 2));
+  } else if (command === 'assign-build') {
+    const [name, number] = rest.filter((a) => !a.startsWith('--'));
+    if (!name) throw new Error('usage: asc.mjs assign-build <external group name> [build number]');
+    const app = await findApp(client);
+    if (!app) throw new Error(`no app record for ${BUNDLE_ID}`);
+    console.log(JSON.stringify(await assignBuild(client, app.id, name, number), null, 2));
+  } else if (command === 'submit-review') {
+    const at = rest.indexOf('--whats-new');
+    const whatsNew = at >= 0 ? rest[at + 1] : undefined;
+    if (at >= 0 && !whatsNew) throw new Error('usage: asc.mjs submit-review [build number] [--whats-new "text"]');
+    const number = rest.find((a, i) => !a.startsWith('--') && i !== at + 1);
+    const app = await findApp(client);
+    if (!app) throw new Error(`no app record for ${BUNDLE_ID}`);
+    console.log(JSON.stringify(await submitForReview(client, app.id, number, whatsNew), null, 2));
   } else if (command === 'status') {
     console.log(JSON.stringify(await statusReport(client), null, 2));
   } else if (command === 'groups') {
@@ -283,7 +360,7 @@ async function main(argv) {
     if (!rest[0]?.startsWith('/v1/')) throw new Error('usage: asc.mjs get /v1/...');
     console.log(JSON.stringify(await client.get(rest[0]), null, 2).slice(0, 6000));
   } else {
-    throw new Error(`unknown command "${command}" (status | groups | get | setup-group | invite-group)`);
+    throw new Error(`unknown command "${command}" (status | groups | get | setup-group | invite-group | assign-build | submit-review)`);
   }
 }
 

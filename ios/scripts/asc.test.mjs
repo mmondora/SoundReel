@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, verify } from 'node:crypto';
 import { test } from 'node:test';
-import { addTesters, createClient, createToken, describeErrors, ensureExternalGroup, findApp, groupsNamed, inviteGroupTesters, loadConfig, parseEnvFile, statusReport } from './asc.mjs';
+import { addTesters, assignBuild, createClient, createToken, describeErrors, ensureExternalGroup, findApp, findBuild, groupsNamed, inviteGroupTesters, loadConfig, parseEnvFile, statusReport, submitForReview } from './asc.mjs';
 
 const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 const PEM = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
@@ -202,4 +202,124 @@ test('invitations --all: an invited tester who never answered gets it again; an 
   const out = await inviteGroupTesters(client, 'A1', 'Family', { all: true });
   assert.deepEqual(out.map((o) => o.action), ['re-invited', 'left-alone', 'invited']);
   assert.equal(calls.filter((c) => c.method === 'POST').length, 2);
+});
+
+// ---- builds: assigning one to an external group, and Beta App Review
+
+const BUILDS = { data: [
+  { id: 'B10', attributes: { version: '10', processingState: 'PROCESSING', expired: false } },
+  { id: 'B9', attributes: { version: '9', processingState: 'VALID', expired: false } },
+  { id: 'B8', attributes: { version: '8', processingState: 'VALID', expired: false } },
+  { id: 'B2', attributes: { version: '2', processingState: 'VALID', expired: true } },
+] };
+
+test('findBuild: without a number it is the newest build Apple has processed; with one, that build; a build still processing is named', async () => {
+  const { client } = fakeRw([['GET', /^\/v1\/builds\?filter\[app\]=A1/, BUILDS]]);
+  assert.equal((await findBuild(client, 'A1')).number, '9');                 // 10 is still PROCESSING: not offered
+  assert.equal((await findBuild(client, 'A1', 8)).id, 'B8');
+  await assert.rejects(findBuild(client, 'A1', 10), /build 10 is PROCESSING: wait until Apple has processed it/);
+  await assert.rejects(findBuild(client, 'A1', 2), /build 2 has expired/);
+  await assert.rejects(findBuild(client, 'A1', 77), /no build 77 on the app/);
+});
+
+test('findBuild: an app with nothing processed yet says so', async () => {
+  const { client } = fakeRw([['GET', /^\/v1\/builds/, { data: [{ id: 'B1', attributes: { version: '1', processingState: 'PROCESSING', expired: false } }] }]]);
+  await assert.rejects(findBuild(client, 'A1'), /no processed build on the app yet/);
+});
+
+test('assign-build: the newest processed build goes into the EXTERNAL group; a second run changes nothing', async () => {
+  const routes = [
+    ['GET', /^\/v1\/apps\/A1\/betaGroups/, { data: [{ id: 'GI', attributes: { name: 'Family', isInternalGroup: true } }, { id: 'GX', attributes: { name: 'FamilyPlus', isInternalGroup: false } }] }],
+    ['GET', /^\/v1\/builds\?filter/, BUILDS],
+    ['GET', /^\/v1\/betaGroups\/GX\/builds/, { data: [] }],
+    ['POST', /^\/v1\/betaGroups\/GX\/relationships\/builds$/, undefined, 204],
+  ];
+  const first = fakeRw(routes);
+  assert.deepEqual(await assignBuild(first.client, 'A1', 'FamilyPlus'), { group: 'FamilyPlus', build: '9', action: 'added' });
+  assert.deepEqual(first.calls.find((c) => c.method === 'POST').body, { data: [{ type: 'builds', id: 'B9' }] });
+
+  const again = fakeRw(routes.map((r) => (r[1].source.includes('GX\\/builds') && r[0] === 'GET' ? ['GET', r[1], { data: [{ id: 'B9' }] }] : r)));
+  assert.deepEqual(await assignBuild(again.client, 'A1', 'FamilyPlus'), { group: 'FamilyPlus', build: '9', action: 'already-in-group' });
+  assert.ok(again.calls.every((c) => c.method === 'GET'));
+});
+
+test('assign-build: an INTERNAL group, or one that does not exist, is an error and nothing is changed', async () => {
+  const { client, calls } = fakeRw([['GET', /^\/v1\/apps\/A1\/betaGroups/, { data: [{ id: 'GI', attributes: { name: 'Family', isInternalGroup: true } }] }]]);
+  await assert.rejects(assignBuild(client, 'A1', 'Family'), /no external group "Family" on the app/);
+  await assert.rejects(assignBuild(client, 'A1', 'Nope'), /no external group "Nope"/);
+  assert.ok(calls.every((c) => c.method === 'GET'));
+});
+
+test('submit-review: «what to test» is written, then the build is submitted once', async () => {
+  const { client, calls } = fakeRw([
+    ['GET', /^\/v1\/builds\?filter/, BUILDS],
+    ['GET', /^\/v1\/builds\/B9\/betaBuildLocalizations/, { data: [] }],
+    ['POST', /^\/v1\/betaBuildLocalizations$/, { data: { id: 'L1' } }, 201],
+    ['GET', /^\/v1\/builds\/B9\/betaAppReviewSubmission$/, { data: null }],
+    ['POST', /^\/v1\/betaAppReviewSubmissions$/, { data: { id: 'S1', attributes: { betaReviewState: 'WAITING_FOR_REVIEW' } } }, 201],
+  ]);
+  assert.deepEqual(await submitForReview(client, 'A1', undefined, 'La Home'), { build: '9', action: 'submitted', state: 'WAITING_FOR_REVIEW' });
+  const posts = calls.filter((c) => c.method === 'POST');
+  assert.deepEqual(posts[0].body.data, { type: 'betaBuildLocalizations', attributes: { locale: 'it', whatsNew: 'La Home' }, relationships: { build: { data: { type: 'builds', id: 'B9' } } } });
+  assert.deepEqual(posts[1].body.data, { type: 'betaAppReviewSubmissions', relationships: { build: { data: { type: 'builds', id: 'B9' } } } });
+});
+
+test('submit-review: a build already submitted is left alone and its state is reported (a 404 for «none» counts as none)', async () => {
+  const done = fakeRw([
+    ['GET', /^\/v1\/builds\?filter/, BUILDS],
+    ['GET', /^\/v1\/builds\/B9\/betaAppReviewSubmission$/, { data: { id: 'S1', attributes: { betaReviewState: 'IN_REVIEW' } } }],
+  ]);
+  assert.deepEqual(await submitForReview(done.client, 'A1', 9), { build: '9', action: 'already-submitted', state: 'IN_REVIEW' });
+  assert.ok(done.calls.every((c) => c.method === 'GET'));
+
+  const none = fakeRw([
+    ['GET', /^\/v1\/builds\?filter/, BUILDS],
+    ['POST', /^\/v1\/betaAppReviewSubmissions$/, { data: { id: 'S2', attributes: { betaReviewState: 'WAITING_FOR_REVIEW' } } }, 201],
+  ]);                                                                          // the lookup answers 404 (no route): none yet
+  assert.equal((await submitForReview(none.client, 'A1', 9)).action, 'submitted');
+});
+
+test('submit-review: «what to test» already there is updated only when it differs; without text no localization is touched', async () => {
+  const same = fakeRw([
+    ['GET', /^\/v1\/builds\?filter/, BUILDS],
+    ['GET', /^\/v1\/builds\/B9\/betaBuildLocalizations/, { data: [{ id: 'L1', attributes: { locale: 'it', whatsNew: 'La Home' } }] }],
+    ['GET', /^\/v1\/builds\/B9\/betaAppReviewSubmission$/, { data: { id: 'S1', attributes: { betaReviewState: 'APPROVED' } } }],
+  ]);
+  await submitForReview(same.client, 'A1', 9, 'La Home');
+  assert.ok(same.calls.every((c) => c.method === 'GET'));
+
+  const changed = fakeRw([
+    ['GET', /^\/v1\/builds\?filter/, BUILDS],
+    ['GET', /^\/v1\/builds\/B9\/betaBuildLocalizations/, { data: [{ id: 'L1', attributes: { locale: 'it', whatsNew: 'vecchio' } }] }],
+    ['PATCH', /^\/v1\/betaBuildLocalizations\/L1$/, { data: { id: 'L1' } }],
+    ['GET', /^\/v1\/builds\/B9\/betaAppReviewSubmission$/, { data: { id: 'S1', attributes: { betaReviewState: 'APPROVED' } } }],
+  ]);
+  await submitForReview(changed.client, 'A1', 9, 'La Home');
+  assert.deepEqual(changed.calls.find((c) => c.method === 'PATCH').body.data.attributes, { whatsNew: 'La Home' });
+
+  const bare = fakeRw([
+    ['GET', /^\/v1\/builds\?filter/, BUILDS],
+    ['GET', /^\/v1\/builds\/B9\/betaAppReviewSubmission$/, { data: { id: 'S1', attributes: { betaReviewState: 'APPROVED' } } }],
+  ]);
+  await submitForReview(bare.client, 'A1', 9);
+  assert.ok(bare.calls.every((c) => !/betaBuildLocalizations/.test(c.path)));
+});
+
+test('submit-review: a build still processing is not submitted', async () => {
+  const { client, calls } = fakeRw([['GET', /^\/v1\/builds\?filter/, BUILDS]]);
+  await assert.rejects(submitForReview(client, 'A1', 10, 'x'), /build 10 is PROCESSING/);
+  assert.ok(calls.every((c) => c.method === 'GET'));
+});
+
+test('submit-review: a failure other than «not found» on the lookup stops everything (it would otherwise submit twice)', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    const path = String(url).replace('https://api.appstoreconnect.apple.com', '');
+    calls.push({ method: init.method, path });
+    if (/^\/v1\/builds\?filter/.test(path)) return { ok: true, status: 200, text: async () => JSON.stringify(BUILDS) };
+    return { ok: false, status: 500, text: async () => JSON.stringify({ errors: [{ title: 'Server error', detail: 'try later' }] }) };
+  };
+  const client = createClient(cfg, { fetchImpl, readKey: () => PEM, now: () => 1_794_000_000 });
+  await assert.rejects(submitForReview(client, 'A1', 9), /HTTP 500/);
+  assert.ok(calls.every((c) => c.method === 'GET'), 'nothing was changed');
 });

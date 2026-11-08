@@ -1,7 +1,7 @@
 # ADR-0016: Mondrop reaches the family through TestFlight, uploaded and managed with an App Store Connect API key
 
 ## Status
-**Accepted** (2026-11-08). The build pipeline is in the repository; the first upload waits for the API key only Michele can create.
+**Accepted** (2026-11-08). The build pipeline is in the repository. **Lesson of 8 November:** the Apple ID login of Xcode on the build Mac expired within hours ("Failed to Use Accounts") and a Developer-level API key cannot sign in the cloud or manage groups; the route that works and does not expire is a **team API key with the Admin role** (`KXRWH399D2`), which uploaded build 9 with no Xcode account involved (spec §7).
 
 ## Date
 2026-11-08
