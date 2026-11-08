@@ -297,3 +297,23 @@ private final class FakeSilentPicker: PlaylistPickerTransport, @unchecked Sendab
         PlaylistAddAck(playlistId: id, name: "", songs: 0)
     }
 }
+
+/// «Il play non deve essere automatico» (Michele, 8 November): «Aggiungi in coda» with nothing queued loads the queue and waits.
+final class AddToQueueDoesNotPlayTests: XCTestCase {
+    func testAddingToAnEmptyQueueSaysItWaitsForPlay() {
+        XCTAssertEqual(QueueAppend.Outcome.addedToEmptyQueue(1).message, "Aggiunto in coda. Premi Riproduci nel Player")
+        XCTAssertEqual(QueueAppend.Outcome.addedToEmptyQueue(3).message, "Aggiunti in coda: 3 brani. Premi Riproduci nel Player")
+        XCTAssertEqual(QueueAppend.Result(queue: [], outcome: .addedToEmptyQueue(2)).added, 2)
+    }
+
+    func testTheEmptyQueueLoadsWithoutPlayingAndTheOthersJustAppend() throws {
+        let player = try String(
+            contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("MondropKit/LocalAudioPlayer.swift"), encoding: .utf8)
+        let append = try XCTUnwrap(player.range(of: "public func append("))
+        let body = String(player[append.lowerBound...].prefix(900))
+        XCTAssertTrue(body.contains("autoplay: false"), "adding to an empty queue only loads it")
+        XCTAssertFalse(body.contains("play(at"), "and never calls play")
+        XCTAssertTrue(player.contains("private func show(at i: Int)"), "the first song is shown (title, artist, cover, words)")
+    }
+}

@@ -152,12 +152,14 @@ public final class LocalAudioPlayer: ObservableObject {
 
     /// `playlistId`: the playlist the user started this queue from (recorded with every listen), nil otherwise.
     /// `label`: what the user chose («Album · Thriller»), shown as «In coda».
-    public func setQueue(_ items: [QueueItem], startAt: Int = 0, playlistId: String? = nil, label: String? = nil) {
+    /// `autoplay: false` loads the queue and SHOWS the song at `startAt` (title, artist, cover, words) without starting it.
+    public func setQueue(_ items: [QueueItem], startAt: Int = 0, playlistId: String? = nil, label: String? = nil, autoplay: Bool = true) {
         queue = items
         queuePlaylistId = playlistId
         queueLabel = label
         guard !items.isEmpty else { return }
-        play(at: min(max(0, startAt), items.count - 1))
+        let at = min(max(0, startAt), items.count - 1)
+        if autoplay { play(at: at) } else { show(at: at) }
     }
 
     /// Local-only convenience: everything downloaded on the phone, as one explicit choice («Sul telefono»).
@@ -166,17 +168,40 @@ public final class LocalAudioPlayer: ObservableObject {
     }
 
     /// «Aggiungi in coda» (long press on a song of «Cerca»): after the songs already queued (see `QueueAppend`: a song already
-    /// in the queue stays where it is, one that cannot play is not queued). With nothing queued it simply starts.
+    /// in the queue stays where it is, one that cannot play is not queued). With nothing queued it LOADS the queue and shows its
+    /// first song, waiting for «Riproduci»: the play is never automatic (Michele, 8 November: «il play non deve essere automatico»).
     @discardableResult
     public func append(_ tracks: [OfflineTrack], isLocal: (String) -> Bool) -> QueueAppend.Outcome {
         let merged = QueueAppend.merge(existing: queue, adding: tracks, isLocal: isLocal)
         guard merged.added > 0 else { return merged.outcome }
         if queue.isEmpty {
-            setQueue(merged.queue, startAt: 0, playlistId: nil, label: "Aggiunti dalla ricerca")
-        } else {
-            queue = merged.queue
+            setQueue(merged.queue, startAt: 0, playlistId: nil, label: "Aggiunti dalla ricerca", autoplay: false)
+            return .addedToEmptyQueue(merged.added)
         }
+        queue = merged.queue
         return merged.outcome
+    }
+
+    /// Shows the song at `i` and leaves it there, not playing: the queue is loaded, «Riproduci» starts it (`playOnly` plays the
+    /// current index when there is no item yet).
+    private func show(at i: Int) {
+        guard queue.indices.contains(i) else { return }
+        resolveTask?.cancel()
+        resolveTask = nil
+        recorder.tracker.finish(completed: false)       // leaving the previous song: its session ends here
+        teardownCurrentItem()
+        playing = false
+        index = i
+        let entry = queue[i]
+        title = entry.title
+        artist = entry.artist
+        coverData = CoverLoader.shared.cached(songKey: entry.songKey)
+        lyrics = store.lyrics(for: entry.songKey) ?? entry.lyrics ?? ""
+        artworkImage = nil
+        currentTime = 0
+        duration = 0
+        playbackStatus = .idle
+        loadArtwork(for: entry)
     }
 
     public func play(at i: Int) {

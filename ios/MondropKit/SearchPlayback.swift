@@ -36,6 +36,8 @@ public enum SearchPlayback {
 public enum QueueAppend {
     public enum Outcome: Equatable, Sendable {
         case added(Int)
+        /// The queue was empty: it is loaded and waits for «Riproduci» (the play is never automatic).
+        case addedToEmptyQueue(Int)
         case alreadyQueued
         case notPlayable
 
@@ -43,6 +45,8 @@ public enum QueueAppend {
         public var message: String {
             switch self {
             case .added(let n): return n == 1 ? "Aggiunto in coda" : "Aggiunti in coda: \(n) brani"
+            case .addedToEmptyQueue(let n):
+                return n == 1 ? "Aggiunto in coda. Premi Riproduci nel Player" : "Aggiunti in coda: \(n) brani. Premi Riproduci nel Player"
             case .alreadyQueued: return "È già in coda"
             case .notPlayable: return "Non si può ascoltare: nessuna sorgente trovata"
             }
@@ -54,8 +58,10 @@ public enum QueueAppend {
         public let outcome: Outcome
 
         public var added: Int {
-            if case .added(let n) = outcome { return n }
-            return 0
+            switch outcome {
+            case .added(let n), .addedToEmptyQueue(let n): return n
+            case .alreadyQueued, .notPlayable: return 0
+            }
         }
     }
 

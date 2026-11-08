@@ -183,6 +183,16 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
 
     // MARK: - Public API
 
+    /// What `enqueue` WOULD do with these tracks, without doing it: the question «Scarica tutti» asks before it starts.
+    public func plan(_ tracks: [OfflineTrack]) -> SyncPlan {
+        SyncPlanner.plan(
+            tracks: tracks,
+            local: { store.snapshot(songKey: $0) },
+            inFlight: Set(active.keys).union(queue.map { $0.track.songKey }),
+            skipped: store.skippedKeys
+        )
+    }
+
     /// Plans (skip-present / adopt / download) and queues the downloads. Idempotent.
     @discardableResult
     public func enqueue(_ tracks: [OfflineTrack], front: Bool = false, origin: DownloadOrigin = .sync) -> SyncPlan {

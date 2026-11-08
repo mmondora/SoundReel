@@ -9,6 +9,7 @@ import SwiftUI
 struct SearchView: View {
     @StateObject private var model: SearchModel
     @StateObject private var actions = TrackActions()
+    @StateObject private var downloader = BulkDownloader()
     @ObservedObject private var player = LocalAudioPlayer.shared
     @ObservedObject private var engine = SyncEngine.shared
     @State private var text = ""
@@ -81,6 +82,7 @@ struct SearchView: View {
         .onChange(of: engine.revision) { _, _ in localKeys = engine.store.localSongKeys() }
         .sheet(isPresented: $showQueue) { QueueView() }
         .trackActions(actions)
+        .bulkDownload(downloader, model: model, actions: actions)
     }
 
     // MARK: before typing
@@ -133,7 +135,7 @@ struct SearchView: View {
             Section { Text("Nessun risultato per «\(text.trimmingCharacters(in: .whitespacesAndNewlines))».").foregroundStyle(.secondary) }
         }
         if !model.tracks.isEmpty {
-            Section("Brani") {
+            Section {
                 ForEach(model.tracks.prefix(Self.previewCount)) { track in
                     row(track)
                 }
@@ -143,6 +145,17 @@ struct SearchView: View {
                     } label: {
                         Text("Mostra tutti i brani (\(model.total))").foregroundStyle(Color.accentColor)
                     }
+                }
+            } header: {
+                HStack {
+                    Text("Brani")
+                    Spacer()
+                    Button { downloader.ask(model, actions: actions) } label: {
+                        Label("Scarica tutti", systemImage: "arrow.down.circle").font(.caption)
+                    }
+                    .textCase(nil)
+                    .disabled(downloader.busy)
+                    .accessibilityLabel("Scarica tutti i brani della ricerca")
                 }
             }
         }

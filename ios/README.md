@@ -158,6 +158,11 @@ Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/search», «POST /api/mond
   Libreria: Playlist, Album, Autori, Anni, Tipi e **Sul telefono**. «Solo sul telefono» sta nel menu di Cerca. **«Spazio» non c'è più nelle schermate della musica**: la cancellazione dei brani scaricati è un'opzione speciale e sta **solo nelle Impostazioni**, in una sezione «Cancellazione».
 - *Offline*, o con «Solo sul telefono»: la ricerca vale **solo per i brani scaricati** (le stesse regole, sul telefono) e lo dice una riga in cima. Se il
   server non risponde (rete, backend senza la rotta) la lista passa ai brani sul telefono con l'avviso: mai una schermata vuota.
+- **Scarica tutti** (build 9, spec `2026-11-08-mondrop-bulk-download-design.md`): nell'intestazione di «Brani» dei risultati e accanto a «Riproduci» negli artisti, negli album e in «Mostra tutti i brani».
+  Carica i risultati (fino a 200), **dice che cosa succederebbe** («Scaricare N brani? X pronti, circa Y MB; Z da preparare sul server; …») e solo dopo il sì parte: i pronti vanno ai download, gli altri si chiedono
+  al server e si scaricano appena sono pronti, finché la schermata è aperta. Non riporta i brani tolti dal telefono, non tocca il Player.
+- **Il play non è mai automatico**: «Aggiungi in coda» con la coda vuota carica la coda e mostra il primo brano, e aspetta «Riproduci».
+- **Il Player** (build 9, spec `2026-11-08-mondrop-ipad-player-design.md`): scuro per costruzione, colori dalla tavolozza `PlayerPalette` (`MondropKit/PlayerStyle.swift`, contrasti provati), accento giallo, una colonna centrata (560 pt su iPad), cover quadrata.
 - **Schede**: Player, **Cerca**, Playlist, Posta, Share, Impostazioni. La Libreria non è più una scheda (si apre da «Sfoglia»); il Player senza coda
   propone «Cerca musica».
 - **Test** nuovi (`SearchModelsTests`, `SearchModelTests`, `SearchPlaybackTests`): la richiesta sul filo (parole, `+`, `&`, accenti, limiti), la

@@ -178,9 +178,31 @@ public final class SearchModel: ObservableObject {
         }
     }
 
-    /// While the server prepares songs of this list (a first play asked for one), read the first page again every
+    /// Reads the list again (the first `limit` songs, never more than the server gives in one answer) and keeps what changed: a
+    /// spinner turns into a mark. Quiet: a failure leaves the list as it is. `false` when it could not (or a new search took over).
+    @discardableResult
+    public func refresh() async -> Bool {
+        guard source == .server else { return false }
+        let mine = generation
+        var again = query
+        again.limit = min(max(tracks.count, pageSize), SearchQuery.maxLimit)
+        again.withSections = false
+        do {
+            let page = try await api.search(again)
+            guard mine == generation else { return false }     // a new search took over
+            let fresh = Dictionary(page.tracks.map { ($0.songKey, $0) }, uniquingKeysWith: { _, last in last })
+            tracks = tracks.map { fresh[$0.songKey] ?? $0 }
+            note(page.tracks)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// While the server prepares songs of this list (a first play asked for one, or «Scarica tutti»), read it again every
     /// `interval` so the spinners turn into marks. Gives up after `timeout`; stops when the task is cancelled.
-    public func pollWhilePreparing(interval: TimeInterval = 5, timeout: TimeInterval = 600) async {
+    /// `onRefresh`: what to do with the list each time it is read again («Scarica tutti» downloads what has become ready).
+    public func pollWhilePreparing(interval: TimeInterval = 5, timeout: TimeInterval = 600, onRefresh: (([OfflineTrack]) -> Void)? = nil) async {
         let started = clock.now()
         while source == .server, tracks.contains(where: { $0.resolvedState == .preparing }) {
             if clock.now().timeIntervalSince(started) >= timeout { return }
@@ -190,19 +212,8 @@ public final class SearchModel: ObservableObject {
                 return
             }
             if Task.isCancelled { return }
-            let mine = generation
-            var again = query
-            again.limit = min(max(tracks.count, pageSize), SearchQuery.maxLimit)
-            again.withSections = false
-            do {
-                let page = try await api.search(again)
-                guard mine == generation else { return }     // a new search took over
-                let fresh = Dictionary(page.tracks.map { ($0.songKey, $0) }, uniquingKeysWith: { _, last in last })
-                tracks = tracks.map { fresh[$0.songKey] ?? $0 }
-                note(page.tracks)
-            } catch {
-                return                                       // quiet: the list stays as it is
-            }
+            guard await refresh() else { return }              // quiet: the list stays as it is
+            onRefresh?(tracks)
         }
     }
 

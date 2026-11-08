@@ -214,6 +214,13 @@ Spec `docs/superpowers/specs/2026-11-08-playlist-search-everything-design.md` (A
 - **SoundReel 2.16.0 + 2.16.1:** (la 2.16.1 corregge il piano di riproduzione per i brani solo-file, trovato dai controlli dopo il deploy) `GET /api/songs?scope=everything` (diario + solo-file, una riga per canzone come in Cerca); il pannello del gestore si chiama «Tutti i brani», badge «Solo file», prime 300 righe e «Mostra altri». Prove sui dati veri in sola lettura.
 - **Risposte di Michele:** «Scegli cosa suonare» del player web vuole tutto anche lui: **«Sì, anche il player»** → SoundReel **2.17.0** (pannello e playlist su tutto, 300 righe, la coda salvata ritrova i solo-file; costruita, in attesa del suo OK di deploy). Il nome «Tutti i brani» va bene.
 
+## Fatto (build 9, in attesa di TestFlight) — il Player su iPad, «Scarica tutti», il play che non parte da solo (richieste 2026-11-08)
+
+Spec `docs/superpowers/specs/2026-11-08-mondrop-ipad-player-design.md` e `2026-11-08-mondrop-bulk-download-design.md`. Richieste di Michele: «Questa la home su ipad - colori sbagliati e spazi da rivedere»; «In mondrop voglio anche poter scaricare tutto dopo una ricerca. E il play non deve essere automatico».
+- **Player:** una tavolozza sola, scura come l'icona, accento **giallo**; cover quadrata, colonna centrata, pulsanti affiancati; contrasti e geometria provati. **Scarica tutti:** nei risultati, negli artisti, negli album (fino a 200, con la domanda prima). **Play:** «Aggiungi in coda» non suona più da solo.
+- Domande aperte: l'accento giallo anche nel resto dell'app? «il play non deve essere automatico» era proprio l'aggiunta in coda? «Scarica tutti» anche in «Sfoglia»?
+- **Per arrivare sui telefoni** serve un nuovo caricamento su TestFlight (build 9): con il tuo OK.
+
 ## In corso — Mondrop su TestFlight, il gruppo «Family» come tester (richiesta 2026-11-08)
 
 Spec `docs/superpowers/specs/2026-11-08-mondrop-testflight-design.md`, ADR-0016. Richiesta di Michele: «Pubblica mondrop su testflight e metti il gruppo family come tester».

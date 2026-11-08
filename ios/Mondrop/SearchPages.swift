@@ -23,6 +23,7 @@ struct SearchResultsPage: View {
 
     @StateObject private var model: SearchModel
     @StateObject private var actions = TrackActions()
+    @StateObject private var downloader = BulkDownloader()
     @ObservedObject private var player = LocalAudioPlayer.shared
     @ObservedObject private var engine = SyncEngine.shared
     @State private var localKeys: Set<String> = []
@@ -47,6 +48,9 @@ struct SearchResultsPage: View {
                 HStack(spacing: 12) {
                     Button { play(from: nil, shuffled: false) } label: { Label("Riproduci", systemImage: "play.fill") }
                     Button { play(from: nil, shuffled: true) } label: { Label("Casuale", systemImage: "shuffle") }
+                    Button { downloader.ask(model, actions: actions) } label: { Label("Scarica", systemImage: "arrow.down.circle") }
+                        .disabled(downloader.busy)
+                        .accessibilityLabel("Scarica tutti i brani")
                     Spacer()
                     Text("\(model.total) brani").font(.footnote).foregroundStyle(.secondary)
                 }
@@ -112,6 +116,7 @@ struct SearchResultsPage: View {
         .onChange(of: engine.revision) { _, _ in localKeys = engine.store.localSongKeys() }
         .sheet(isPresented: $showQueue) { QueueView() }
         .trackActions(actions)
+        .bulkDownload(downloader, model: model, actions: actions)
     }
 
     private func row(_ track: OfflineTrack) -> some View {
