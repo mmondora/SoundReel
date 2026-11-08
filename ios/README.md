@@ -197,19 +197,22 @@ Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/home») · ADR-0020 · spe
   uguale alla tavolozza, app scura, nessun pulsante giallo con le parole bianche), `HomeStructureTests` (le schede, un solo mini player, niente «Cerca musica», il campo della
   Home, nessuna lettura della rete). Provati anche rompendo il codice di proposito.
 
-## I testi delle canzoni (1.7.0 build 10 · SoundReel 2.19.0)
+## I testi delle canzoni (1.7.0 build 10 e 11 · SoundReel 2.19.0 e 2.19.1)
 
 Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/songs/:songKey/lyrics») · ADR-0021 · spec `docs/superpowers/specs/2026-11-08-lyrics-from-the-internet-design.md`
 (Michele, 8 novembre: «…come le parole»; «Sì, cercale su Internet»).
 
 - Quando parte un brano **senza testo** il Player lo chiede **a SoundReel** (`LyricsLoader`): il server dà la **trascrizione del post** se c'è, altrimenti i testi **trovati su Internet** (e tenuti).
   L'app non parla mai con un archivio di testi (regola P: `LyricsRuleTests` fallisce se un sorgente ne nomina uno).
-- **Ordine sul telefono:** quello che l'utente ha **scritto** («Modifica» → «Salva») vince sempre; poi le parole che il sync ha portato (la trascrizione); poi quello che il telefono ha **tenuto**
-  di un'altra volta (`Caches/Mondrop/lyrics`, anche offline); poi si chiede. «Nessun testo» si ricorda **un giorno** (un server che non risponde non è una risposta: si richiede al prossimo ascolto).
+- **Ordine sul telefono (build 11, spec L12, Michele: «Proposta accettata»):** quello che l'utente ha **scritto** («Modifica» → «Salva») vince sempre e **non si chiede né si sostituisce mai**; poi quello che il
+  telefono ha **tenuto** di un testo **trovato su Internet** o di uno strumentale (`Caches/Mondrop/lyrics`, anche offline); altrimenti **si chiede a SoundReel**, anche se il sync ha già dato una trascrizione:
+  quella si mostra subito (offline resta) e viene **sostituita** dalla risposta (un testo trovato su Internet al posto di un frammento). «Niente» dal server, o un server che non risponde, non cancellano
+  il testo che il telefono ha. Le risposte «trascrizione» **non si tengono** (possono essere un frammento: si richiedono); la soglia dei 100 caratteri sta solo nel server (regola P: l'app non conta caratteri).
+  «Nessun testo» si ricorda **un giorno** (un server che non risponde non è una risposta: si richiede al prossimo ascolto).
 - Il foglio **«Parole»** dice da dove viene: «Testo trovato su Internet: può avere errori o righe mancanti.», «Trascrizione del post.», «Scritto da te.»; «Cerco il testo…» mentre aspetta;
   **«Brano strumentale»** per gli strumentali; «Nessun testo» con l'invito a incollarlo. Un brano cambiato nel frattempo non prende mai le parole dell'altro, e quello che l'utente scrive mentre si aspetta resta.
 - Per guardarlo senza server (solo build DEBUG): `-MondropDemo -MondropDemoPlayer -MondropDemoLyrics internet|transcript|instrumental|none -MondropDemoLyricsSheet` (testo di prova scritto apposta, non una canzone vera).
-- **Test** nuovi (+31: 997): `LyricsLoaderTests` (il testo tenuto sul telefono, mai richiesto due volte, «nessun testo» per un giorno e poi di nuovo, un orologio rimesso indietro, un server che non risponde, una richiesta sola per due schermate,
+- **Test** nuovi (build 10: +31, 997; build 11: vedi CHANGELOG): `LyricsLoaderTests` (il testo tenuto sul telefono, mai richiesto due volte, «nessun testo» per un giorno e poi di nuovo, un orologio rimesso indietro, un server che non risponde, una richiesta sola per due schermate,
   la chiamata e i due 404, il testo vuoto, una fonte sconosciuta), `LyricsPlayerTests` (cosa vince, cosa si chiede, un brano cambiato nel frattempo, il testo scritto mentre si aspetta, l'origine) e `LyricsRuleTests`. Provati anche rompendo il codice di proposito (21 rotture, 20 scoperte; l'ultima ha una seconda difesa).
 
 ## Libreria, stati e notifiche (2.9.0)

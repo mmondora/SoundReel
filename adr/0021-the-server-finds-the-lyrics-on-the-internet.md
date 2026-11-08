@@ -27,6 +27,9 @@ Michele (8 November): «Nel player iOS voglio avere la copertina del disco o del
 5. **The phone keeps what it has seen** (so the words are there offline) and the sheet says where they come from.
 6. **Rights:** lyrics are copyrighted. They are kept for the private use of the family, shown only in the family's app, never published, and nothing outside the server and the phones holds a copy.
 
+### Amendment 2026-11-08 (later the same day): a fragment is not a text (spec L12)
+Seen in production after the deploy: «Clocks» has a post transcript of 33 characters and 67 journal entries have one of 21–100 characters (what Whisper caught in a short clip), so for them the Internet was never asked (point 2). Michele accepted the proposal («Proposta accettata»): **a transcript under 100 characters is a fragment and counts as «text missing»**. The server asks the Internet and, if it finds nothing (or the search is off or unreachable), serves the fragment; an instrumental found beats the fragment. The sync (playlist tracks, `GET /api/mondrop/songs/:key`) carries only real transcripts, so a fragment is `null` there. The app asks the route even when the sync gave it a transcript (it shows that meanwhile, the Internet text replaces it) and does not keep «transcript» answers, only texts found on the Internet and instrumentals. **The threshold lives only in the server** (rule P). SoundReel 2.19.1 + Mondrop build 11.
+
 ## 3. Alternatives considered
 | Option | Why not |
 |---|---|
