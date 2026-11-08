@@ -30,5 +30,5 @@ Codice: `ios/MondropKit/BulkDownload.swift`, `ios/Mondrop/SearchActions.swift` (
 
 ## 5. Domande per Michele
 
-1. **«Il play non deve essere automatico»**: è questo (aggiungere in coda non suona), o intendevi un'altra cosa (per esempio che un tocco su un risultato non debba far partire la musica)?
+1. ~~«Il play non deve essere automatico»: è questo (aggiungere in coda non suona), o un'altra cosa?~~ Risposta di Michele (8 novembre): **«Sì, è questo»**. Confermato: il tocco su un brano suona ancora, aggiungere in coda no.
 2. «Scarica tutti» serve anche nelle pagine **Sfoglia** (Playlist, Album, Autori, Anni, Tipi)? Oggi è nella ricerca, negli artisti e negli album trovati.

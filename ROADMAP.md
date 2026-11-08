@@ -219,7 +219,7 @@ Spec `docs/superpowers/specs/2026-11-08-playlist-search-everything-design.md` (A
 Spec `docs/superpowers/specs/2026-11-08-mondrop-ipad-player-design.md` e `2026-11-08-mondrop-bulk-download-design.md`. Richieste di Michele: «Questa la home su ipad - colori sbagliati e spazi da rivedere»; «In mondrop voglio anche poter scaricare tutto dopo una ricerca. E il play non deve essere automatico».
 - **Player:** una tavolozza sola, scura come l'icona, accento **giallo**; cover quadrata, colonna centrata, pulsanti affiancati; contrasti e geometria provati. **Scarica tutti:** nei risultati, negli artisti, negli album (fino a 200, con la domanda prima). **Play:** «Aggiungi in coda» non suona più da solo.
 - Domande aperte: l'accento giallo anche nel resto dell'app? «il play non deve essere automatico» era proprio l'aggiunta in coda? «Scarica tutti» anche in «Sfoglia»?
-- **Per arrivare sui telefoni** serve un nuovo caricamento su TestFlight (build 9): con il tuo OK.
+- **Il caricamento della build 9 è fermo** («No aspetta, non mi piace il "cerca musica" - fai una proposta alla spotify»): proposta di una **Home + mini player** in `docs/superpowers/specs/2026-11-08-mondrop-home-spotify-design.md` (con il disegno), in attesa della scelta di Michele. Confermato da lui: «il play non deve essere automatico» = aggiungere in coda non suona («Sì, è questo»).
 
 ## In corso — Mondrop su TestFlight, il gruppo «Family» come tester (richiesta 2026-11-08)
 
