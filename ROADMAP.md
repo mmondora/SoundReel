@@ -221,12 +221,12 @@ Spec `docs/superpowers/specs/2026-11-08-mondrop-ipad-player-design.md` e `2026-1
 - Risposte di Michele: l'accento giallo anche nel resto dell'app? **sì** («A, si giallo», vedi la Home qui sotto); «il play non deve essere automatico» era proprio l'aggiunta in coda? **«Sì, è questo»**. Ancora aperta: «Scarica tutti» anche in «Sfoglia»?
 - **La build 9 non è ancora caricata** («No aspetta, non mi piace il "cerca musica" - fai una proposta alla spotify»): ora porta anche la **Home** (sezione sotto) e aspetta il suo OK. Confermato da Michele: «il play non deve essere automatico» = aggiungere in coda non suona («Sì, è questo»).
 
-## Fatto (in attesa di deploy e di TestFlight) — la Home di Mondrop e il mini player (richiesta 2026-11-08)
+## Fatto (2.18.0 in produzione; la build 9 aspetta il login di Xcode su vulcano) — la Home di Mondrop e il mini player (richiesta 2026-11-08)
 
 Spec `docs/superpowers/specs/2026-11-08-mondrop-home-spotify-design.md`, ADR-0020 (**accettato**). Richiesta di Michele: «No aspetta, non mi piace il "cerca musica" - fai una proposta alla spotify»; davanti al disegno: **«A, si giallo»**.
-- **SoundReel 2.18.0 (da deployare con l'OK di Michele):** `GET /api/mondrop/home`, le sezioni già pronte decise dal server (playlist con mosaico, ascoltati di recente, nuovi dai reel). Backend 2595 test, rotture provate.
-- **Mondrop 1.7.0 build 9 (da caricare con l'OK di Michele):** la Home come prima scheda, il mini player su tutte le schede e pagine (il Player a schermo intero), «Riprendi» con la coda salvata sul telefono, il giallo come accento di tutta l'app e l'app scura. 966 test; verificata a occhio sul simulatore, anche con il telefono in modo chiaro.
-- **Da dire a Michele:** il giallo ovunque ha richiesto l'app **tutta scura** (il giallo su bianco non si legge): se non va, si torna indietro con una riga (`UIUserInterfaceStyle`) e un accento più scuro per il chiaro. La sidebar di iPadOS 26 e «Mostra tutti» per le due file di brani non sono costruiti (spec §6).
+- **SoundReel 2.18.0 (in produzione dall'8 novembre, 18:34, con l'OK di Michele):** `GET /api/mondrop/home`, le sezioni già pronte decise dal server (playlist con mosaico, ascoltati di recente, nuovi dai reel). Backend 2595 test, rotture provate, 154 controlli post-deploy passati.
+- **Mondrop 1.7.0 build 9 (OK di Michele arrivato: «Sì, carica la build 9»; archivio fatto, il caricamento si è fermato a «Failed to Use Accounts»: il login Apple ID di Xcode su vulcano è scaduto, serve il suo login e poi rilancio export e caricamento):** la Home come prima scheda, il mini player su tutte le schede e pagine (il Player a schermo intero), «Riprendi» con la coda salvata sul telefono, il giallo come accento di tutta l'app e l'app scura. 966 test; verificata a occhio sul simulatore, anche con il telefono in modo chiaro.
+- **Risposta di Michele:** l'app tutta scura va bene («Sì, tutta scura»). Se un giorno non va, si torna indietro con una riga (`UIUserInterfaceStyle`) e un accento più scuro per il chiaro. La sidebar di iPadOS 26 e «Mostra tutti» per le due file di brani non sono costruiti (spec §6).
 
 ## In corso — Mondrop su TestFlight, il gruppo «Family» come tester (richiesta 2026-11-08)
 

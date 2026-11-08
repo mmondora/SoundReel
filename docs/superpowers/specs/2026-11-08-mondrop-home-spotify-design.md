@@ -1,6 +1,6 @@
 # Mondrop: una Home «alla Spotify» e il mini player al posto del Player vuoto (richiesta 2026-11-08)
 
-Stato: **costruita e provata, non ancora deployata né caricata** (Michele, 8 novembre: «A, si giallo»): SoundReel **2.18.0** (la rotta) e Mondrop **1.7.0 build 9** (l'app, mai caricata su TestFlight) aspettano il suo OK, uno per il deploy e uno per TestFlight. Una rotta nuova del server è un'API, quindi c'è l'**ADR-0020**.
+Stato: **costruita, provata e deployata** (Michele, 8 novembre: «A, si giallo»): SoundReel **2.18.0** (la rotta) è **in produzione dall'8 novembre, 18:34**; Mondrop **1.7.0 build 9** (l'app) è costruita e archiviata, il caricamento su TestFlight aspetta il login Apple ID di Xcode su vulcano (scaduto: «Failed to Use Accounts»). Una rotta nuova del server è un'API, quindi c'è l'**ADR-0020**.
 Disegno: `assets/2026-11-08-mondrop-home-spotify-proposal.png` (iPad e iPhone, disegno di prova).
 Codice: backend `services/mondropHome.ts` e `routes/mondrop.ts` (`GET /api/mondrop/home`); app `ios/MondropKit/{HomeModels,HomeModel,QueueSnapshot,MondropPalette}.swift`, `ios/Mondrop/{HomeView,MiniPlayer,MondropButtons,CoverArt,RootTabView,WinampPlayerView}.swift`.
 
@@ -91,4 +91,5 @@ La prima scheda era il Player e, **senza niente in coda, una pagina vuota** («N
 1. **Home + mini player (A) o solo svuotare il Player vuoto (B)?** Risposta: **«A, si giallo»**.
 2. **Il giallo anche nella barra delle schede e nei link?** Risposta: **sì** (H9: e quindi tutta l'app scura, perché il giallo su bianco non si legge; da correggere se non va).
 3. **La build 9 la carico subito com'è o aspetti la Home?** Non chiesta in chat dopo la scelta di A: la build 9 porta la Home e **resta ferma** finché Michele non dice di caricarla («No aspetta»).
-4. **Da correggere se non va (default scelti):** tutta l'app scura (H9: se la vuoi chiara di giorno servono un giallo più scuro per il chiaro e di rivedere i pulsanti); il saluto «Buonasera» da 18 a 5; «Riprendi» solo su questo telefono; le playlist vuote nascoste dalla Home.
+4. **Da correggere se non va (default scelti):** tutta l'app scura (H9: se la vuoi chiara di giorno servono un giallo più scuro per il chiaro e di rivedere i pulsanti) — **risposta: «Sì, tutta scura (Recommended)»**; il saluto «Buonasera» da 18 a 5; «Riprendi» solo su questo telefono; le playlist vuote nascoste dalla Home.
+5. **Deploy della 2.18.0?** Risposta: **«Sì, deploy ora»** (fatto, 18:34). **Carico la build 9 su TestFlight?** Risposta: **«Sì, carica la build 9»** (archivio fatto; il caricamento si è fermato a «Failed to Use Accounts»: serve il login di Xcode su vulcano).

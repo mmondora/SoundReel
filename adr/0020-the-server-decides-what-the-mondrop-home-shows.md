@@ -1,7 +1,7 @@
 # ADR-0020: The server decides what the Mondrop Home shows, in one route; the app draws it
 
 ## Status
-**Accepted** (8 November 2026), built in SoundReel 2.18.0 and Mondrop 1.7.0 (build 9, not uploaded yet). Michele chose it: «A, si giallo» (spec `2026-11-08-mondrop-home-spotify-design.md`).
+**Accepted** (8 November 2026), built in SoundReel 2.18.0 (**in production since 8 November, 18:34**) and Mondrop 1.7.0 (build 9: archived, the upload waits for the Apple ID login of Xcode on the build Mac). Michele chose it: «A, si giallo» (spec `2026-11-08-mondrop-home-spotify-design.md`).
 
 ## Date
 2026-11-08
