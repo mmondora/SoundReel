@@ -1,6 +1,6 @@
 import { Pool, PoolClient, QueryResultRow } from 'pg';
 import { randomUUID } from 'node:crypto';
-import type { Entry, ActionLogItem } from '../types';
+import type { Entry, ActionLogItem, EntrySummaryRow, JournalStats } from '../types';
 import { extractInstagramShortcode } from '../services/urlNormalize';
 
 const pool = new Pool({
@@ -44,6 +44,7 @@ interface EntryRow {
   source_platform: string;
   input_channel: string;
   input_user: string | null;
+  owner_user: string | null;
   caption: string | null;
   thumbnail_url: string | null;
   media_url: string | null;
@@ -60,6 +61,7 @@ function rowToEntry(row: EntryRow): Entry {
     sourcePlatform: row.source_platform as Entry['sourcePlatform'],
     inputChannel: row.input_channel as Entry['inputChannel'],
     inputUser: row.input_user,
+    ownerUser: row.owner_user || 'mike',
     caption: row.caption,
     thumbnailUrl: row.thumbnail_url,
     mediaUrl: row.media_url,
@@ -72,10 +74,15 @@ function rowToEntry(row: EntryRow): Entry {
 
 // --- Entries CRUD ---
 
-export async function findEntryByUrl(sourceUrl: string): Promise<Entry | null> {
+/**
+ * Idempotency lookup scoped to an owner (Authelia user).
+ * Same URL may exist once per owner_user.
+ */
+export async function findEntryByUrl(sourceUrl: string, ownerUser: string): Promise<Entry | null> {
+  const owner = ownerUser.trim().toLowerCase() || 'mike';
   const rows = await query<EntryRow>(
-    'SELECT * FROM entries WHERE source_url = $1 ORDER BY created_at DESC LIMIT 1',
-    [sourceUrl]
+    'SELECT * FROM entries WHERE source_url = $1 AND owner_user = $2 ORDER BY created_at DESC LIMIT 1',
+    [sourceUrl, owner]
   );
   if (rows[0]) return rowToEntry(rows[0]);
 
@@ -87,6 +94,7 @@ export async function findEntryByUrl(sourceUrl: string): Promise<Entry | null> {
   const byCode = await query<EntryRow>(
     `SELECT * FROM entries
      WHERE source_platform = 'instagram'
+       AND owner_user = $5
        AND (
          source_url LIKE $1 OR source_url LIKE $2 OR source_url LIKE $3 OR source_url LIKE $4
        )
@@ -97,6 +105,7 @@ export async function findEntryByUrl(sourceUrl: string): Promise<Entry | null> {
       `%/reel/${shortcode}%`,
       `%/reels/${shortcode}%`,
       `%/tv/${shortcode}%`,
+      owner,
     ],
   );
   return byCode[0] ? rowToEntry(byCode[0]) : null;
@@ -107,7 +116,50 @@ export async function getEntry(entryId: string): Promise<Entry | null> {
   return rows[0] ? rowToEntry(rows[0]) : null;
 }
 
-export async function listEntries(limit = 100): Promise<Entry[]> {
+export interface VisibilityOpts {
+  userId: string;
+  /** Authelia admins also see owner_user = anonymous. */
+  isAdmin?: boolean;
+}
+
+/** SQL predicate: owned, shared-with, or (admin + anonymous). Params: $userIdx = userId. */
+function visibilitySql(userParam: string, isAdmin: boolean, anonLiteral = "'anonymous'"): string {
+  const adminClause = isAdmin ? ` OR e.owner_user = ${anonLiteral}` : '';
+  return `(
+    e.owner_user = ${userParam}
+    OR EXISTS (
+      SELECT 1 FROM entry_shares s
+      WHERE s.entry_id = e.id AND s.shared_with = ${userParam}
+    )
+    ${adminClause}
+  )`;
+}
+
+/** Entry visible if owned by user, shared with user, or (admin browsing anonymous). */
+export async function getEntryForUser(
+  entryId: string,
+  userId: string,
+  isAdmin = false,
+): Promise<Entry | null> {
+  const rows = await query<EntryRow>(
+    `SELECT e.* FROM entries e
+     WHERE e.id = $1 AND ${visibilitySql('$2', isAdmin)}
+     LIMIT 1`,
+    [entryId, userId],
+  );
+  return rows[0] ? rowToEntry(rows[0]) : null;
+}
+
+export async function listEntries(limit = 100, visibility?: VisibilityOpts): Promise<Entry[]> {
+  if (visibility?.userId) {
+    const rows = await query<EntryRow>(
+      `SELECT e.* FROM entries e
+       WHERE ${visibilitySql('$2', !!visibility.isAdmin)}
+       ORDER BY e.created_at DESC LIMIT $1`,
+      [limit, visibility.userId],
+    );
+    return rows.map(rowToEntry);
+  }
   const rows = await query<EntryRow>(
     'SELECT * FROM entries ORDER BY created_at DESC LIMIT $1',
     [limit]
@@ -115,17 +167,225 @@ export async function listEntries(limit = 100): Promise<Entry[]> {
   return rows.map(rowToEntry);
 }
 
+interface EntrySummaryDbRow {
+  id: string;
+  source_url: string;
+  source_platform: string;
+  caption: string | null;
+  thumbnail_url: string | null;
+  status: string;
+  created_at: Date;
+  summary: string | null;
+  song_count: number;
+  film_count: number;
+  note_count: number;
+  tags: unknown;
+  total: string;
+}
+
+export async function listEntrySummaries(
+  limit: number,
+  offset: number,
+  visibility?: VisibilityOpts,
+): Promise<{ items: EntrySummaryRow[]; total: number }> {
+  const scoped = visibility?.userId
+    ? `FROM entries e WHERE ${visibilitySql('$3', !!visibility.isAdmin)}`
+    : 'FROM entries e';
+  const params: unknown[] = visibility?.userId
+    ? [limit, offset, visibility.userId]
+    : [limit, offset];
+  const rows = await query<EntrySummaryDbRow>(
+    `SELECT
+       e.id,
+       e.source_url,
+       e.source_platform,
+       e.caption,
+       e.thumbnail_url,
+       e.status,
+       e.created_at,
+       e.results->>'summary' AS summary,
+       COALESCE(jsonb_array_length(e.results->'songs'), 0) AS song_count,
+       COALESCE(jsonb_array_length(e.results->'films'), 0) AS film_count,
+       COALESCE(jsonb_array_length(e.results->'notes'), 0) AS note_count,
+       COALESCE(e.results->'tags', '[]'::jsonb) AS tags,
+       COUNT(*) OVER()::text AS total
+     ${scoped}
+     ORDER BY e.created_at DESC
+     LIMIT $1 OFFSET $2`,
+    params,
+  );
+  const total = Number(rows[0]?.total ?? 0);
+  const items: EntrySummaryRow[] = rows.map((r) => ({
+    id: r.id,
+    sourceUrl: r.source_url,
+    sourcePlatform: r.source_platform,
+    caption: r.caption,
+    thumbnailUrl: r.thumbnail_url,
+    status: r.status,
+    createdAt: r.created_at.toISOString(),
+    summary: r.summary,
+    songCount: Number(r.song_count),
+    filmCount: Number(r.film_count),
+    noteCount: Number(r.note_count),
+    tags: Array.isArray(r.tags)
+      ? r.tags.filter((t): t is string => typeof t === 'string')
+      : [],
+  }));
+  return { items, total };
+}
+
+export async function getJournalStats(visibility?: VisibilityOpts): Promise<JournalStats> {
+  if (visibility?.userId) {
+    const rows = await query<{
+      total_entries: string;
+      total_songs: string;
+      total_films: string;
+      total_notes: string;
+      total_software: string;
+    }>(
+      `SELECT
+         COUNT(*)::text AS total_entries,
+         COALESCE(SUM(jsonb_array_length(e.results->'songs')), 0)::text AS total_songs,
+         COALESCE(SUM(jsonb_array_length(e.results->'films')), 0)::text AS total_films,
+         COALESCE(SUM(jsonb_array_length(e.results->'notes')), 0)::text AS total_notes,
+         COALESCE(SUM(jsonb_array_length(COALESCE(e.results->'software', '[]'::jsonb))), 0)::text AS total_software
+       FROM entries e
+       WHERE ${visibilitySql('$1', !!visibility.isAdmin)}`,
+      [visibility.userId],
+    );
+    const r = rows[0];
+    return {
+      totalEntries: Number(r?.total_entries ?? 0),
+      totalSongs: Number(r?.total_songs ?? 0),
+      totalFilms: Number(r?.total_films ?? 0),
+      totalNotes: Number(r?.total_notes ?? 0),
+      totalSoftware: Number(r?.total_software ?? 0),
+    };
+  }
+  const rows = await query<{
+    total_entries: string;
+    total_songs: string;
+    total_films: string;
+    total_notes: string;
+    total_software: string;
+  }>(
+    `SELECT
+       (SELECT COUNT(*)::text FROM entries) AS total_entries,
+       (SELECT COUNT(*)::text FROM song_meta) AS total_songs,
+       (SELECT COUNT(*)::text FROM film_meta) AS total_films,
+       (SELECT COUNT(*)::text FROM note_meta) AS total_notes,
+       (SELECT COUNT(*)::text FROM software_meta) AS total_software`
+  );
+  const r = rows[0];
+  return {
+    totalEntries: Number(r?.total_entries ?? 0),
+    totalSongs: Number(r?.total_songs ?? 0),
+    totalFilms: Number(r?.total_films ?? 0),
+    totalNotes: Number(r?.total_notes ?? 0),
+    totalSoftware: Number(r?.total_software ?? 0),
+  };
+}
+
+// --- Entry shares ---
+
+export async function listEntryShares(entryId: string): Promise<string[]> {
+  const rows = await query<{ shared_with: string }>(
+    'SELECT shared_with FROM entry_shares WHERE entry_id = $1 ORDER BY shared_with',
+    [entryId],
+  );
+  return rows.map((r) => r.shared_with);
+}
+
+export async function shareEntry(
+  entryId: string,
+  sharedWith: string[],
+  sharedBy: string,
+): Promise<string[]> {
+  const targets = [...new Set(sharedWith.map((u) => u.trim().toLowerCase()).filter(Boolean))];
+  for (const withUser of targets) {
+    await query(
+      `INSERT INTO entry_shares (entry_id, shared_with, shared_by)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (entry_id, shared_with) DO NOTHING`,
+      [entryId, withUser, sharedBy],
+    );
+  }
+  return listEntryShares(entryId);
+}
+
+export async function unshareEntry(entryId: string, sharedWith: string): Promise<string[]> {
+  await query(
+    'DELETE FROM entry_shares WHERE entry_id = $1 AND shared_with = $2',
+    [entryId, sharedWith.trim().toLowerCase()],
+  );
+  return listEntryShares(entryId);
+}
+
+// --- Telegram identities ---
+
+export async function getTelegramIdentity(telegramKey: string): Promise<{
+  ownerUser: string;
+  claimedName: string;
+} | null> {
+  const key = telegramKey.trim().toLowerCase();
+  if (!key) return null;
+  const rows = await query<{ owner_user: string; claimed_name: string }>(
+    'SELECT owner_user, claimed_name FROM telegram_identities WHERE telegram_key = $1',
+    [key],
+  );
+  if (!rows[0]) return null;
+  return { ownerUser: rows[0].owner_user, claimedName: rows[0].claimed_name };
+}
+
+export async function upsertTelegramIdentity(
+  telegramKey: string,
+  ownerUser: string,
+  claimedName: string,
+): Promise<void> {
+  await query(
+    `INSERT INTO telegram_identities (telegram_key, owner_user, claimed_name)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (telegram_key) DO UPDATE
+       SET owner_user = EXCLUDED.owner_user,
+           claimed_name = EXCLUDED.claimed_name`,
+    [telegramKey.trim().toLowerCase(), ownerUser.trim().toLowerCase(), claimedName.trim()],
+  );
+}
+
+// --- User config ---
+
+export async function getUserConfigValue<T>(userId: string, key: string, fallback: T): Promise<T> {
+  const rows = await query<{ value: unknown }>(
+    'SELECT value FROM user_config WHERE user_id = $1 AND key = $2',
+    [userId, key],
+  );
+  if (!rows[0]) return fallback;
+  return rows[0].value as T;
+}
+
+export async function setUserConfigValue(userId: string, key: string, value: unknown): Promise<void> {
+  await query(
+    `INSERT INTO user_config (user_id, key, value, updated_at)
+     VALUES ($1, $2, $3::jsonb, NOW())
+     ON CONFLICT (user_id, key) DO UPDATE
+       SET value = EXCLUDED.value, updated_at = NOW()`,
+    [userId, key, JSON.stringify(value)],
+  );
+}
+
 export async function createEntry(entry: Omit<Entry, 'id' | 'createdAt'> & { createdAt?: string }): Promise<string> {
   const id = randomUUID();
+  const owner = (entry.ownerUser || entry.inputUser || 'mike').trim().toLowerCase() || 'mike';
   await query(
-    `INSERT INTO entries (id, source_url, source_platform, input_channel, input_user, caption, thumbnail_url, media_url, status, results, action_log)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    `INSERT INTO entries (id, source_url, source_platform, input_channel, input_user, owner_user, caption, thumbnail_url, media_url, status, results, action_log)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
     [
       id,
       entry.sourceUrl,
       entry.sourcePlatform,
       entry.inputChannel,
       entry.inputUser ?? null,
+      owner,
       entry.caption,
       entry.thumbnailUrl,
       entry.mediaUrl,
@@ -142,6 +402,7 @@ const ENTRY_COLUMN_MAP: Record<string, string> = {
   sourcePlatform: 'source_platform',
   inputChannel: 'input_channel',
   inputUser: 'input_user',
+  ownerUser: 'owner_user',
   caption: 'caption',
   thumbnailUrl: 'thumbnail_url',
   mediaUrl: 'media_url',
@@ -196,12 +457,19 @@ export async function appendActionLog(entryId: string, logItem: ActionLogItem): 
   );
 }
 
+// `job_queue.entry_id` references entries WITHOUT `ON DELETE CASCADE`, so deleting any entry that went
+// through the queue (every Telegram / Mondrop share entry) used to fail with a foreign-key violation
+// (HTTP 500 on DELETE /api/entries/:id). The queue rows go in the same statement: the NO ACTION check
+// runs at the end of the statement, when none are left.
 export async function deleteEntry(entryId: string): Promise<void> {
-  await query('DELETE FROM entries WHERE id = $1', [entryId]);
+  await query(
+    'WITH dropped AS (DELETE FROM job_queue WHERE entry_id = $1) DELETE FROM entries WHERE id = $1',
+    [entryId],
+  );
 }
 
 export async function deleteAllEntries(): Promise<number> {
-  const result = await pool.query('DELETE FROM entries');
+  const result = await pool.query('WITH dropped AS (DELETE FROM job_queue) DELETE FROM entries');
   return result.rowCount ?? 0;
 }
 
@@ -237,6 +505,25 @@ async function mergeConfig<T>(key: string, updates: Partial<T>, fallback: T): Pr
   const current = await getConfig<T>(key, fallback);
   const merged = { ...current, ...updates } as T;
   await setConfig(key, merged);
+}
+
+// Music folders searched next to the library (ADR-0011)
+
+export interface MusicFolderConfig {
+  id: string;
+  /** Container path, inside one of the allowed roots. */
+  path: string;
+  label: string;
+  enabled: boolean;
+}
+
+export async function getMusicFoldersConfig(): Promise<MusicFolderConfig[]> {
+  const value = await getConfig<{ folders?: MusicFolderConfig[] }>('music_folders', {});
+  return Array.isArray(value.folders) ? value.folders : [];
+}
+
+export async function setMusicFoldersConfig(folders: MusicFolderConfig[]): Promise<void> {
+  await setConfig('music_folders', { folders });
 }
 
 // Spotify
@@ -357,8 +644,21 @@ export async function updateOpenAIConfig(updates: Partial<OpenAIConfig>): Promis
 
 // API keys (SoundReel read API)
 
+export interface ApiKeyMeta {
+  /** Authelia id the key is bound to (`mike` | `archi` | `sara`). */
+  user: string;
+  /** Device label the key was issued for (e.g. "iPhone di Michele"). */
+  device: string;
+  createdAt: string;
+}
+
 export interface ApiKeysConfig {
   keys: string[];
+  /**
+   * Owner bookkeeping for keys issued via /mondrop/connect, keyed by
+   * `apiKeyId(key)` (sha256 prefix, never the key itself). Legacy keys have no entry.
+   */
+  meta?: Record<string, ApiKeyMeta>;
 }
 
 const DEFAULT_API_KEYS: ApiKeysConfig = { keys: [] };

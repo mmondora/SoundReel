@@ -109,7 +109,25 @@ export function mergeEntryResults(existing: EntryResults, incoming: EntryResults
     notes,
     software,
     links,
-    tags: [...new Set([...list(existing.tags), ...list(incoming.tags)])],
+    tags: (() => {
+      // Prefer #/@ form when the same bare token appears twice (Telegram + AI).
+      const out: string[] = [];
+      const idx = new Map<string, number>();
+      for (const raw of [...list(existing.tags), ...list(incoming.tags)]) {
+        const t = String(raw).trim();
+        if (!t) continue;
+        const bare = t.replace(/^[#@]/, '').toLowerCase();
+        if (!bare) continue;
+        const prev = idx.get(bare);
+        if (prev === undefined) {
+          idx.set(bare, out.length);
+          out.push(t);
+        } else if ((t.startsWith('#') || t.startsWith('@')) && !out[prev].startsWith('#') && !out[prev].startsWith('@')) {
+          out[prev] = t;
+        }
+      }
+      return out;
+    })(),
     summary: isBlank(existing.summary) ? incoming.summary : existing.summary,
     transcript: incoming.transcript ?? existing.transcript ?? null,
     transcriptLanguage: incoming.transcriptLanguage ?? existing.transcriptLanguage ?? null,

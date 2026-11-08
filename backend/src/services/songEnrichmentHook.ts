@@ -12,6 +12,8 @@ const SONG_ENRICHMENT_TTL_DAYS = Number(process.env.SONG_ENRICHMENT_TTL_DAYS || 
  * /api/music-list/process route so all three persist songs the same way.
  */
 export function enqueueSongEnrichment(songs: Array<{ artist: string | null; title: string }>): void {
+  // SONG_ENRICHMENT_ENABLED=0 switches it off (the test setup does, so no suite reaches Deezer/iTunes)
+  if (['0', 'false', 'off'].includes((process.env.SONG_ENRICHMENT_ENABLED ?? '').toLowerCase())) return;
   for (const song of songs) {
     if (!song.title.trim()) continue;
     const artist = song.artist ?? '';

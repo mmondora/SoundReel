@@ -6,7 +6,11 @@ vi.mock('../utils/db', () => ({
   listEntries: vi.fn().mockResolvedValue([]),
   findEntryByUrl: vi.fn().mockResolvedValue(null),
   createEntry: vi.fn().mockResolvedValue('new-entry-id'),
-  createActionLog: vi.fn().mockReturnValue({ action: 'test', details: {}, timestamp: '2026-01-01T00:00:00.000Z' }),
+  updateEntry: vi.fn().mockResolvedValue(undefined),
+  appendActionLog: vi.fn().mockResolvedValue(undefined),
+  createActionLog: vi.fn().mockImplementation((action: string, details: Record<string, unknown> = {}) => ({
+    action, details, timestamp: '2026-01-01T00:00:00.000Z',
+  })),
 }));
 
 vi.mock('../utils/jobQueue', () => ({
@@ -35,6 +39,17 @@ vi.mock('../services/debugLogger', () => ({
       endTimer: vi.fn(),
     };
   }),
+}));
+
+// The webhook resolves the sender through telegram_identities (a DB table). These tests are about
+// link handling, not identity: pretend the sender is already mapped to Michele.
+vi.mock('../services/telegramIdentity', () => ({
+  resolveTelegramOwner: vi.fn().mockResolvedValue({ mapped: true, ownerUser: 'mike' }),
+  isPendingName: vi.fn().mockReturnValue(false),
+  markPendingName: vi.fn(),
+  clearPendingName: vi.fn(),
+  claimTelegramName: vi.fn(),
+  ASK_NAME_MESSAGE: 'ask-name',
 }));
 
 import {
@@ -129,6 +144,27 @@ describe('extractUrl', () => {
       entities: [{ type: 'bold', offset: 0, length: 9 }],
     };
     expect(extractUrl(message)).toBe('https://example.com');
+  });
+
+  it('caption + caption_entities url → extracts from caption', () => {
+    const url = 'https://www.instagram.com/reel/abc/';
+    const message: TelegramMessage = {
+      message_id: 6,
+      chat: { id: 123 },
+      caption: `${url} #tesla vacanze`,
+      caption_entities: [{ type: 'url', offset: 0, length: url.length }],
+    };
+    expect(extractUrl(message)).toBe(url);
+  });
+
+  it('text_link entity → uses entity.url', () => {
+    const message: TelegramMessage = {
+      message_id: 7,
+      chat: { id: 123 },
+      text: 'tesla vacanze',
+      entities: [{ type: 'text_link', offset: 0, length: 5, url: 'https://instagram.com/reel/xyz' }],
+    };
+    expect(extractUrl(message)).toBe('https://instagram.com/reel/xyz');
   });
 });
 
@@ -270,7 +306,7 @@ describe('pickTitle', () => {
 
 import Fastify from 'fastify';
 import { registerTelegramRoute } from './telegram';
-import { findEntryByUrl, createEntry } from '../utils/db';
+import { findEntryByUrl, createEntry, updateEntry, appendActionLog } from '../utils/db';
 import { enqueueJob } from '../utils/jobQueue';
 
 function buildApp() {
@@ -279,14 +315,15 @@ function buildApp() {
   return app;
 }
 
-function urlMessage(url: string, chatId = 555) {
+function urlMessage(url: string, chatId = 555, comment = '') {
+  const text = comment ? `${url} ${comment}` : url;
   return {
     update_id: 1,
     message: {
       message_id: 1,
       chat: { id: chatId },
       from: { username: 'mike' },
-      text: url,
+      text,
     },
   };
 }
@@ -309,7 +346,11 @@ describe('POST /telegram/webhook — URL message enqueues a job', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(createEntry).toHaveBeenCalledWith(
-      expect.objectContaining({ sourcePlatform: 'instagram', inputChannel: 'telegram' })
+      expect.objectContaining({
+        sourcePlatform: 'instagram',
+        inputChannel: 'telegram',
+        results: expect.objectContaining({ tags: [] }),
+      })
     );
     expect(enqueueJob).toHaveBeenCalledWith({
       entryId: 'new-entry-id',
@@ -318,6 +359,71 @@ describe('POST /telegram/webhook — URL message enqueues a job', () => {
       chatId: 555,
       inputUser: '@mike',
     });
+  });
+
+  it('URL + comment → stub tags from Telegram comment', async () => {
+    const app = buildApp();
+    await app.inject({
+      method: 'POST',
+      url: '/telegram/webhook',
+      payload: urlMessage('https://www.instagram.com/reel/tags1/', 555, '#vacanze tesla'),
+    });
+    expect(createEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        results: expect.objectContaining({
+          tags: expect.arrayContaining(['#vacanze', 'tesla']),
+        }),
+      })
+    );
+  });
+
+  it('caption share + comment → stub tags (no message.text)', async () => {
+    const url = 'https://www.instagram.com/reel/caption1/';
+    const app = buildApp();
+    await app.inject({
+      method: 'POST',
+      url: '/telegram/webhook',
+      payload: {
+        update_id: 2,
+        message: {
+          message_id: 9,
+          chat: { id: 555 },
+          from: { username: 'mike' },
+          caption: `${url} #tesla da-provare`,
+          caption_entities: [{ type: 'url', offset: 0, length: url.length }],
+        },
+      },
+    });
+    expect(createEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        results: expect.objectContaining({
+          tags: expect.arrayContaining(['#tesla', 'da-provare']),
+        }),
+      })
+    );
+  });
+
+  it('existing entry + comment → merges tags via updateEntry', async () => {
+    vi.mocked(findEntryByUrl).mockResolvedValueOnce({
+      id: 'existing-id',
+      results: { songs: [], films: [], notes: [], links: [], tags: ['#old'], summary: null },
+    } as never);
+    const app = buildApp();
+    await app.inject({
+      method: 'POST',
+      url: '/telegram/webhook',
+      payload: urlMessage('https://www.instagram.com/reel/dup/', 555, '#nuovo'),
+    });
+    expect(createEntry).not.toHaveBeenCalled();
+    expect(updateEntry).toHaveBeenCalledWith(
+      'existing-id',
+      expect.objectContaining({
+        results: expect.objectContaining({
+          tags: expect.arrayContaining(['#old', '#nuovo']),
+        }),
+      })
+    );
+    expect(appendActionLog).toHaveBeenCalled();
   });
 
   it('TikTok URL → job enqueued with platform=other', async () => {

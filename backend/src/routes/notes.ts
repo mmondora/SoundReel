@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { listEntries } from '../utils/db';
+import { resolveUser } from '../utils/requestUser';
 import { noteKey, normalizeNoteCategory, listNoteMeta } from '../services/noteMeta';
 import type { AggregatedNote, Entry, Note, NoteMetaRecord } from '../types';
 import { logError } from '../utils/logger';
@@ -67,9 +68,11 @@ export function aggregateNotes(entries: Entry[], metaMap: Map<string, NoteMetaRe
 }
 
 export function registerNotesRoutes(app: FastifyInstance): void {
-  app.get('/api/notes', async (_req, reply) => {
+  app.get('/api/notes', async (req, reply) => {
     try {
-      const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listNoteMeta()]);
+      const user = resolveUser(req);
+      const visibility = { userId: user.id, isAdmin: user.isAdmin };
+      const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT, visibility), listNoteMeta()]);
       const byKey = aggregateNotes(entries, metaMap);
       return reply.send({ notes: [...byKey.values()] });
     } catch (err) {

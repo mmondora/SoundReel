@@ -122,6 +122,12 @@ describe('mergeEntryResults', () => {
     expect(mergeEntryResults(existing, incoming).tags.sort()).toEqual(['#musica', '#roma', '@baustelle']);
   });
 
+  it('merges bare token with #/@ form preferring the marked one', () => {
+    const existing = { ...empty(), tags: ['tesla', 'vacanze'] };
+    const incoming = { ...empty(), tags: ['#tesla', '@vacanze', 'nuovo'] };
+    expect(mergeEntryResults(existing, incoming).tags).toEqual(['#tesla', '@vacanze', 'nuovo']);
+  });
+
   it('keeps the incoming transcript', () => {
     const existing = { ...empty(), transcript: null };
     const incoming = { ...empty(), transcript: 'testo trascritto' };

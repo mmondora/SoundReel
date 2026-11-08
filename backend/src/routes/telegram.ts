@@ -1,18 +1,29 @@
 import type { FastifyInstance } from 'fastify';
 import Handlebars from 'handlebars';
-import type { SocialPlatform } from '../types';
 import { getPrompt, renderTemplate } from '../services/promptLoader';
 import { Logger } from '../services/debugLogger';
-import { countEntries, listEntries, createEntry, findEntryByUrl, createActionLog } from '../utils/db';
-import { normalizeUrl } from '../services/urlNormalize';
-import { enqueueJob, type JobPlatform } from '../utils/jobQueue';
+import { countEntries, listEntries, createActionLog } from '../utils/db';
+import { extractTelegramCommentTags } from '../services/telegramCommentTags';
+import { ingestLink, type IngestResult } from '../services/linkIngest';
+import { spootyFrontendUrl } from '../services/spootyClient';
+
+export interface TelegramMessageEntity {
+  type: string;
+  offset: number;
+  length: number;
+  /** Present on `text_link` / `url` entities when Telegram stores the href separately. */
+  url?: string;
+}
 
 export interface TelegramMessage {
   message_id: number;
-  from?: { username?: string; first_name?: string };
+  from?: { id?: number; username?: string; first_name?: string };
   chat: { id: number };
   text?: string;
-  entities?: Array<{ type: string; offset: number; length: number }>;
+  entities?: TelegramMessageEntity[];
+  /** Share-with-preview / media messages put the URL+comment here instead of `text`. */
+  caption?: string;
+  caption_entities?: TelegramMessageEntity[];
 }
 
 interface TelegramUpdate {
@@ -20,34 +31,65 @@ interface TelegramUpdate {
   message?: TelegramMessage;
 }
 
+/** @deprecated The webhook classifies through `classifyLink` (services/linkIngest). Kept for callers/tests. */
 export function isSpotifyUrl(url: string): boolean {
-  return /https?:\/\/open\.spotify\.com\/(track|playlist|album)\//.test(url);
+  return /https?:\/\/open\.spotify\.com\/(?:intl-[a-z-]+\/)?(track|playlist|album)\//.test(url);
 }
 
-async function sendToSpooty(spotifyUrl: string): Promise<void> {
-  const spootyBase = process.env.SPOOTY_URL || 'http://spooty:3000';
-  const res = await fetch(`${spootyBase}/api/playlist`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ spotifyUrl }),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Spooty HTTP ${res.status}: ${body.slice(0, 200)}`);
+/** Immediate reply for a Spotify link: what was understood and what happens next. */
+export function formatSpotifyAck(result: IngestResult): string {
+  const info = result.spotify;
+  const home = process.env.FRONTEND_URL || 'https://soundreel.casamon.dev';
+  const links = `🌐 <a href="${home}/?entry=${result.entryId}">Apri in SoundReel</a> · <a href="${spootyFrontendUrl()}">Spooty</a>`;
+  const name = escapeHtml(info?.caption ?? info?.ref.url ?? 'link Spotify');
+  if (result.existing) return `ℹ️ Già in SoundReel: <b>${name}</b>\n${links}`;
+  if (!info?.spootyAccepted) {
+    return `✅ Salvato in SoundReel: <b>${name}</b>\n⚠️ Spooty non risponde: riprovo da solo.\n${links}`;
   }
+  const count = info.ref.kind === 'track' || info.trackCount === 0 ? '' : ` (${info.trackCount} brani)`;
+  return `✅ Aggiunto a SoundReel: <b>${name}</b>${count}\n⬇️ In coda su Spooty — ti avviso quando è pronto.\n${links}`;
+}
+
+/** Immediate reply for a Shazam link: the song that was read, or why it could not be. */
+export function formatShazamAck(result: IngestResult): string {
+  const info = result.shazam;
+  const home = process.env.FRONTEND_URL || 'https://soundreel.casamon.dev';
+  const link = `🌐 <a href="${home}/?entry=${result.entryId}">Apri in SoundReel</a>`;
+  if (info?.error) {
+    return `⚠️ Link Shazam salvato, ma non riesco a leggere il brano: ${escapeHtml(info.error)}\n🔁 Rimandalo per riprovare.\n${link}`;
+  }
+  const name = escapeHtml(info?.caption ?? info?.ref.url ?? 'link Shazam');
+  if (result.existing) return `ℹ️ Già in SoundReel: <b>${name}</b>\n${link}`;
+  return `✅ Aggiunto a SoundReel: <b>${name}</b>\n🎧 Brano Shazam in libreria.\n${link}`;
+}
+
+/** Body of the Telegram message that may carry the URL + user comment. */
+export function telegramMessageText(message: TelegramMessage): string {
+  return (message.text ?? message.caption ?? '').trim();
+}
+
+function entitiesFor(message: TelegramMessage): TelegramMessageEntity[] {
+  if (message.text && message.entities?.length) return message.entities;
+  if (message.caption && message.caption_entities?.length) return message.caption_entities;
+  return message.entities ?? message.caption_entities ?? [];
 }
 
 export function extractUrl(message: TelegramMessage): string | null {
-  if (!message.text) return null;
-  if (message.entities) {
-    for (const entity of message.entities) {
-      if (entity.type === 'url') {
-        return message.text.substring(entity.offset, entity.offset + entity.length);
-      }
+  const text = telegramMessageText(message);
+  if (!text) return null;
+
+  for (const entity of entitiesFor(message)) {
+    if (entity.type === 'url') {
+      const sliced = text.substring(entity.offset, entity.offset + entity.length);
+      if (sliced) return sliced;
+    }
+    if (entity.type === 'text_link' && entity.url) {
+      return entity.url;
     }
   }
-  const urlMatch = message.text.match(/https?:\/\/[^\s]+/i);
-  return urlMatch ? urlMatch[0] : null;
+
+  const urlMatch = text.match(/https?:\/\/[^\s<>"']+/i);
+  return urlMatch ? urlMatch[0].replace(/[),.;]+$/g, '') : null;
 }
 
 export async function sendTelegramMessage(chatId: number, text: string, token: string): Promise<void> {
@@ -145,6 +187,7 @@ export function formatAnalysisError(result: AnalyzeResult, opts: AnalysisErrorOp
 export async function formatTelegramResponse(result: AnalyzeResult, entryId: string): Promise<string> {
   const results = result.entry?.results || { songs: [], films: [], notes: [], links: [], tags: [], summary: null };
   const { songs, films, links } = results;
+  const tags = (results.tags ?? []).filter((t) => typeof t === 'string' && t.trim()).slice(0, 8);
   const summaryRaw = (results as { summary?: string | null }).summary;
   const summary = summaryRaw ? truncateForTelegram(summaryRaw, 280) : null;
   const title = pickTitle(result, summary);
@@ -153,6 +196,7 @@ export async function formatTelegramResponse(result: AnalyzeResult, entryId: str
   const songsCount = songs.length;
   const filmsCount = films.length;
   const hasCounts = linksCount > 0 || songsCount > 0 || filmsCount > 0;
+  const tagsLine = tags.length ? tags.join(' ') : '';
 
   const entryHref = frontendUrl(entryId);
   try {
@@ -166,6 +210,9 @@ export async function formatTelegramResponse(result: AnalyzeResult, entryId: str
       summary: summary || '',
       hasSummary: !!summary,
       linksCount, songsCount, filmsCount, hasCounts,
+      tags,
+      tagsLine,
+      hasTags: tags.length > 0,
       frontendUrl: new Handlebars.SafeString(entryHref),
     });
     return response.replace(/\n{3,}/g, '\n\n').trim();
@@ -175,6 +222,7 @@ export async function formatTelegramResponse(result: AnalyzeResult, entryId: str
     if (summary) lines.push(escapeHtml(summary));
     lines.push('');
     if (hasCounts) lines.push(`🔗 ${linksCount} · 🎵 ${songsCount} · 🎬 ${filmsCount}`);
+    if (tagsLine) lines.push(`🏷️ ${escapeHtml(tagsLine)}`);
     lines.push(`🌐 <a href="${entryHref}">Apri su SoundReel</a>`);
     return lines.join('\n');
   }
@@ -210,19 +258,6 @@ function telegramUser(msg: TelegramMessage): string | null {
   return null;
 }
 
-function platformFromUrl(url: string): SocialPlatform {
-  try {
-    const h = new URL(url).hostname.replace(/^www\./, '');
-    if (h.includes('instagram.com')) return 'instagram';
-    if (h.includes('tiktok.com')) return 'tiktok';
-    if (h.includes('youtube.com') || h.includes('youtu.be')) return 'youtube';
-    if (h.includes('twitter.com') || h.includes('x.com')) return 'twitter';
-    if (h.includes('spotify.com')) return 'spotify';
-    if (h.includes('vimeo.com')) return 'vimeo';
-    if (h.includes('soundcloud.com')) return 'soundcloud';
-  } catch { /* invalid URL → 'other' */ }
-  return 'other';
-}
 
 export function registerTelegramRoute(app: FastifyInstance): void {
   // Count route
@@ -257,13 +292,13 @@ export function registerTelegramRoute(app: FastifyInstance): void {
     }
 
     const chatId = message.chat.id;
-    const text = message.text?.trim() || '';
+    const text = telegramMessageText(message);
 
     try {
       if (text === '/start') {
         await sendTelegramMessage(
           chatId,
-          'Ciao! Sono SoundReel Bot.\n\nInviami un link da Instagram, TikTok o qualsiasi post social e lo analizzo per estrarre canzoni e film!',
+          'Ciao! Sono SoundReel Bot.\n\nInviami un link da Instagram, TikTok o qualsiasi post social e lo analizzo per estrarre canzoni e film!\n\nSe è la prima volta, ti chiederò il tuo nome proprio così i link restano nel tuo journal.',
           token
         );
         reply.code(200).send('OK');
@@ -288,8 +323,37 @@ export function registerTelegramRoute(app: FastifyInstance): void {
         return;
       }
 
+      const {
+        resolveTelegramOwner,
+        isPendingName,
+        markPendingName,
+        clearPendingName,
+        claimTelegramName,
+        ASK_NAME_MESSAGE,
+      } = await import('../services/telegramIdentity');
+
       const url = extractUrl(message);
       if (!url) {
+        // Plain text while waiting for identity claim.
+        if (isPendingName(chatId) && text.trim()) {
+          const claim = await claimTelegramName(message.from, text);
+          if (claim.ok) {
+            clearPendingName(chatId);
+            await sendTelegramMessage(
+              chatId,
+              `Ok, ${claim.claimedName}. Da ora i link che invii vanno nel tuo journal SoundReel.`,
+              token,
+            );
+          } else {
+            await sendTelegramMessage(
+              chatId,
+              'Non ho riconosciuto il nome. Scrivi il tuo nome proprio, oppure invia un link e lo terrò come Anonymous finché non ti associ.',
+              token,
+            );
+          }
+          reply.code(200).send('OK');
+          return;
+        }
         await sendTelegramMessage(
           chatId,
           'Inviami un link da Instagram, TikTok o qualsiasi post social e lo analizzo per te!',
@@ -299,82 +363,77 @@ export function registerTelegramRoute(app: FastifyInstance): void {
         return;
       }
 
-      if (isSpotifyUrl(url)) {
-        reply.code(200).send('OK');
-        (async () => {
-          try {
-            await sendToSpooty(url);
-            const spootyFrontend = process.env.SPOOTY_FRONTEND_URL || 'https://spooty.casamon.dev';
-            await sendTelegramMessage(
-              chatId,
-              `✅ Ho aggiunto il tuo link a Spooty!\n🎵 <a href="${url}">${url}</a>\n\n🌐 <a href="${spootyFrontend}">Apri Spooty</a>`,
-              token
-            );
-          } catch (err) {
-            log.error('Spooty add failed', err instanceof Error ? err : new Error(String(err)));
-            await sendTelegramMessage(chatId, `❌ Errore Spooty: ${err instanceof Error ? err.message : String(err)}`, token);
-          }
-        })().catch(() => {});
-        return;
-      }
-
-      // Persist stub entry immediately so URL always appears in journal,
-      // even if the worker crashes or the server restarts.
+      // One entry point for every link (same for Telegram, Mondrop share and web):
+      // Spotify → journal entry + Spooty download, anything else → stub entry + analysis job.
       const tgUser = telegramUser(message);
-      const platform = platformFromUrl(url);
-      const jobPlatform: JobPlatform = platform === 'instagram' ? 'instagram' : 'other';
+      // Free text in the same message as the URL → filter tags (plus AI tags later).
+      const commentTags = extractTelegramCommentTags(text, url);
+      log.info('Telegram comment tags', {
+        hasComment: commentTags.length > 0,
+        tags: commentTags,
+        textLen: text.length,
+        fromCaption: !message.text && !!message.caption,
+      });
 
-      let stubEntryId: string | null = null;
+      let ingest: IngestResult | null = null;
       try {
-        const normalizedStubUrl = normalizeUrl(url);
-        const existing = await findEntryByUrl(normalizedStubUrl);
-        if (existing) {
-          stubEntryId = existing.id;
-        } else {
-          stubEntryId = await createEntry({
-            sourceUrl: normalizedStubUrl,
-            sourcePlatform: platform,
-            inputChannel: 'telegram',
-            inputUser: tgUser,
-            caption: null,
-            thumbnailUrl: null,
-            mediaUrl: null,
-            status: 'processing',
-            results: { songs: [], films: [], notes: [], links: [], tags: [], summary: null },
-            actionLog: [createActionLog('url_received', { channel: 'telegram', user: tgUser })],
-          });
+        // Prefer telegram_identities mapping; else Authelia-like username; else anonymous.
+        // Unmapped users are asked for their proper name (no name suggestions).
+        const { normalizeFamilyUser, ANONYMOUS_USER } = await import('../utils/requestUser');
+        const mapped = await resolveTelegramOwner(message.from);
+        const ownerUser =
+          mapped.mapped
+            ? mapped.ownerUser
+            : (normalizeFamilyUser(tgUser?.replace(/^@/, '') ?? null) ?? ANONYMOUS_USER);
+        if (!mapped.mapped && ownerUser === ANONYMOUS_USER) {
+          markPendingName(chatId);
+          await sendTelegramMessage(chatId, ASK_NAME_MESSAGE, token);
+          // Still accept the URL under anonymous so it is not lost; admins can browse it.
         }
-      } catch (stubErr) {
-        log.error('Stub entry creation failed', stubErr instanceof Error ? stubErr : new Error(String(stubErr)));
-      }
-
-      let enqueued = false;
-      if (stubEntryId) {
-        try {
-          await enqueueJob({
-            entryId: stubEntryId,
-            sourceUrl: url,
-            platform: jobPlatform,
-            chatId,
-            inputUser: tgUser,
-          });
-          enqueued = true;
-        } catch (queueErr) {
-          log.error('Job enqueue failed', queueErr instanceof Error ? queueErr : new Error(String(queueErr)));
-        }
+        const tgMsgLog = createActionLog('telegram_message', {
+          channel: 'telegram',
+          user: tgUser,
+          ownerUser,
+          textPreview: text.slice(0, 240),
+          commentTags,
+        });
+        ingest = await ingestLink({
+          url,
+          channel: 'telegram',
+          inputUser: tgUser,
+          ownerUser,
+          tags: commentTags,
+          chatId,
+          logs: {
+            onNew: [createActionLog('url_received', { channel: 'telegram', user: tgUser, ownerUser }), tgMsgLog],
+            onExisting: [tgMsgLog],
+            tagsAction: 'telegram_comment_tags',
+          },
+        });
+      } catch (ingestErr) {
+        log.error('Link ingest failed', ingestErr instanceof Error ? ingestErr : new Error(String(ingestErr)));
       }
 
       // If the stub entry write or the enqueue itself failed (e.g. a DB
-      // hiccup), the job never entered the queue — tell the user instead
+      // hiccup), the link never entered the system — tell the user instead
       // of silently replying 200 with no entry, no job, and no feedback.
-      // No "analizzo…" ack: the user only wants the final result (or a clear
-      // failure). Reliability is the stub entry + job queue, not chatter.
-      if (!enqueued) {
+      // Analysis jobs send no "analizzo…" ack: the user only wants the final
+      // result (or a clear failure). Spotify and Shazam links get an immediate ack
+      // because the metadata is known right away (a Spotify download outcome arrives later).
+      if (!ingest) {
         await sendTelegramMessage(
           chatId,
           `❌ Analisi fallita.\n🌐 <a href="${process.env.FRONTEND_URL || 'https://soundreel.casamon.dev'}">Apri SoundReel</a>`,
           token
         ).catch(() => {});
+      } else if (ingest.kind === 'spotify') {
+        await sendTelegramMessage(chatId, formatSpotifyAck(ingest), token).catch((err) => {
+          log.error('Spotify ack failed', err instanceof Error ? err : new Error(String(err)));
+        });
+      } else if (ingest.kind === 'shazam') {
+        await sendTelegramMessage(chatId, formatShazamAck(ingest), token).catch((err) => {
+          log.error('Shazam ack failed', err instanceof Error ? err : new Error(String(err)));
+        });
       }
 
       reply.code(200).send('OK');

@@ -4,6 +4,7 @@ import { listEntries } from '../utils/db';
 import { listSongMeta, patchSongUserMeta } from './songMeta';
 import { aggregateSongs, LIST_ENTRIES_LIMIT } from '../routes/songs';
 import { logWarning } from '../utils/logger';
+import { sanitizeName } from './musicStore';
 
 export interface LibraryTrack {
   artist: string;
@@ -71,18 +72,20 @@ export async function scanLibrary(root?: string): Promise<LibraryTrack[]> {
  * first match, or null.
  */
 export function findLibraryTrack(tracks: LibraryTrack[], artist: string, title: string): LibraryTrack | null {
-  const wantTitle = normalizeForMatch(title);
-  const wantArtist = normalizeForMatch(artist);
+  // Our own downloads are named with the exFAT-safe spelling ("AC/DC" -> "AC DC"), so a song is also
+  // looked up under that spelling.
+  const wantTitles = new Set([normalizeForMatch(title), normalizeForMatch(sanitizeName(title))]);
+  const wantArtists = [...new Set([normalizeForMatch(artist), normalizeForMatch(sanitizeName(artist))])];
 
   return (
     tracks.find((track) => {
-      if (normalizeForMatch(track.title) !== wantTitle) return false;
+      if (!wantTitles.has(normalizeForMatch(track.title))) return false;
 
       const trackArtist = normalizeForMatch(track.artist);
-      if (trackArtist === '') return wantArtist === '';
-      if (wantArtist === '') return true;
+      if (trackArtist === '') return wantArtists.includes('');
+      if (wantArtists.includes('')) return true;
 
-      return trackArtist.includes(wantArtist) || wantArtist.includes(trackArtist);
+      return wantArtists.some((want) => trackArtist.includes(want) || want.includes(trackArtist));
     }) ?? null
   );
 }

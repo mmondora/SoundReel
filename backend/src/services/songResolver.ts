@@ -1,7 +1,8 @@
 import { searchTrack, generateYoutubeSearchUrl } from './spotify';
-import { logInfo, logWarning, logError } from '../utils/logger';
+import { logInfo, logError } from '../utils/logger';
 import type { ExtractedSong } from './musicListExtractor';
 import { songKey, patchSongUserMeta } from './songMeta';
+import { postToSpooty } from './spootyClient';
 
 export interface ResolvedSong {
   title: string;
@@ -10,26 +11,6 @@ export interface ResolvedSong {
   spotifyUri: string | null;
   youtubeUrl: string;
   sentToSpooty: boolean;
-}
-
-async function postToSpooty(spotifyUrl: string): Promise<boolean> {
-  const base = process.env.SPOOTY_URL || 'http://spooty:3000';
-  try {
-    const res = await fetch(`${base}/api/playlist`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spotifyUrl }),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      logWarning('Spooty POST failed', { status: res.status, body: body.slice(0, 200) });
-      return false;
-    }
-    return true;
-  } catch (err) {
-    logWarning('Spooty POST error', { err: String(err) });
-    return false;
-  }
 }
 
 export async function resolveSong(song: ExtractedSong): Promise<ResolvedSong> {

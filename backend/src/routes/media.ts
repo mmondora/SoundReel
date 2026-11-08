@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { createReadStream, promises as fs } from 'fs';
 import path from 'path';
 import { listEntries } from '../utils/db';
+import { resolveUser } from '../utils/requestUser';
 import { listEntryMediaUrls } from '../services/localMedia';
 import { logError } from '../utils/logger';
 
@@ -68,7 +69,9 @@ export function registerMediaRoute(app: FastifyInstance): void {
   app.get<{ Querystring: { limit?: string } }>('/api/library', async (req, reply) => {
     try {
       const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 60)));
-      const entries = await listEntries(Math.min(500, limit * 4));
+      const user = resolveUser(req);
+      const visibility = { userId: user.id, isAdmin: user.isAdmin };
+      const entries = await listEntries(Math.min(500, limit * 4), visibility);
       const items: Array<{
         entryId: string;
         sourceUrl: string;

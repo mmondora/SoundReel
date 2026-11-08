@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { ingestLink, resolveLink, IngestError } from '../services/linkIngest';
 import { extractContent, detectPlatform, setLogger as setContentExtractorLogger } from '../services/contentExtractor';
 import { recognizeAudio } from '../services/_legacy/audioRecognition';
 import { analyzeWithAi, extractFromSlides, AiAnalysisResponse } from '../services/aiAnalysis';
@@ -175,6 +176,12 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
     const url = req.body?.url;
     const channel = req.body?.channel ?? 'web';
     const user = req.body?.user ?? null;
+    // Owner for isolation: Authelia Remote-User (web) → body.user → anonymous.
+    const { remoteUserFromRequest, normalizeFamilyUser, ANONYMOUS_USER } = await import('../utils/requestUser');
+    const ownerUser =
+      remoteUserFromRequest(req) ??
+      normalizeFamilyUser(typeof user === 'string' ? user : null) ??
+      ANONYMOUS_USER;
     const reanalyze = req.body?.reanalyze === true;
     // Download only: leave every ollama call to a later batched pass.
     //
@@ -207,6 +214,33 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
     if (requestedEntryId !== undefined && !UUID_RE.test(requestedEntryId)) {
       reply.code(400).send({ success: false, error: 'entryId non valido' });
       return;
+    }
+
+    // Spotify and Shazam song links never go through page analysis: they share one entry point with
+    // Telegram and Mondrop share (Spotify → journal entry + Spooty, Shazam → journal entry read from
+    // the Shazam page). Re-analysis passes are untouched.
+    if (!reanalyze && requestedEntryId === undefined) {
+      const { cls } = await resolveLink(url);
+      if (cls.kind !== 'generic') {
+        try {
+          const result = await ingestLink({
+            url,
+            channel: channel === 'telegram' || channel === 'ios' ? channel : 'web',
+            inputUser: typeof user === 'string' ? user : null,
+            ownerUser,
+          });
+          const stored = await getEntry(result.entryId);
+          reply.send({ success: true, entryId: result.entryId, existing: result.existing, entry: stored ?? undefined });
+        } catch (err) {
+          log.error(`${cls.kind} link ingest failed`, err instanceof Error ? err : new Error(String(err)));
+          reply.code(500).send({
+            success: false,
+            entryId: err instanceof IngestError ? err.entryId ?? '' : '',
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        return;
+      }
     }
 
     const normalizedUrl = normalizeUrl(url);
@@ -246,7 +280,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         // `entryId` field's doc for why the URL route is not reliable.
         priorEntry = requestedEntryId !== undefined
           ? await getEntry(requestedEntryId)
-          : await findEntryByUrl(normalizedUrl);
+          : await findEntryByUrl(normalizedUrl, ownerUser);
         if (!priorEntry) {
           // Both keys are logged: which one was used is the first thing worth
           // knowing when a second pass 404s.
@@ -275,7 +309,7 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         const existingEntry = requestedEntryId !== undefined
           ? await getEntry(requestedEntryId)
           : !featuresConfig.allowDuplicateUrls
-            ? await findEntryByUrl(normalizedUrl)
+            ? await findEntryByUrl(normalizedUrl, ownerUser)
             : null;
         if (existingEntry) {
           // Una passata viva su questa riga vince su chi arriva dopo.
@@ -327,12 +361,13 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
         sourcePlatform: platform,
         inputChannel: channel,
         inputUser: user,
+        ownerUser,
         caption: null,
         thumbnailUrl: null,
         mediaUrl: null,
         status: 'processing',
         results: { songs: [], films: [], notes: [], software: [], links: [], tags: [], summary: null },
-        actionLog: [createActionLog('url_received', { channel, user, platform })],
+        actionLog: [createActionLog('url_received', { channel, user, ownerUser, platform })],
       };
 
       if (!entryId) {

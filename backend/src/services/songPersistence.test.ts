@@ -14,6 +14,7 @@ function makeEntry(songs: unknown, overrides: Partial<Entry> = {}): Entry {
     sourcePlatform: 'other',
     inputChannel: 'web',
     inputUser: null,
+    ownerUser: 'mike',
     caption: null,
     thumbnailUrl: null,
     mediaUrl: null,

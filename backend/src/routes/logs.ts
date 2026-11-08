@@ -12,10 +12,23 @@ interface LogRow {
 }
 
 export function registerLogsRoutes(app: FastifyInstance): void {
-  app.get<{ Querystring: { limit?: string; level?: string; entryId?: string } }>('/api/logs', async (req) => {
+  // `category=a,b` and `since` filter on the SERVER (ADR-0009): filtering after fetching the latest 200 rows of everything
+  // lets pipeline noise push the activity lines (playlist, sync, download, device) out of the window.
+  app.get<{ Querystring: { limit?: string; level?: string; entryId?: string; category?: string; since?: string } }>('/api/logs', async (req, reply) => {
     const limit = Math.min(1000, Math.max(1, Number(req.query.limit ?? 200)));
     const conditions: string[] = [];
     const params: unknown[] = [];
+    const categories = (req.query.category ?? '').split(',').map((c) => c.trim()).filter(Boolean).slice(0, 20);
+    if (categories.length > 0) {
+      params.push(categories);
+      conditions.push(`category = ANY($${params.length}::text[])`);
+    }
+    if (req.query.since) {
+      const since = Date.parse(req.query.since);
+      if (!Number.isFinite(since)) return reply.code(400).send({ error: 'invalid_since' });
+      params.push(new Date(since));
+      conditions.push(`ts >= $${params.length}`);
+    }
     if (req.query.level) {
       params.push(req.query.level);
       conditions.push(`level = $${params.length}`);

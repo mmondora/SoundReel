@@ -18,10 +18,24 @@ import { registerSearchRoute } from './routes/search';
 import { registerMusicListRoute } from './routes/musicList';
 import { registerFilmsRoutes } from './routes/films';
 import { registerSongsRoutes } from './routes/songs';
+import { registerPlaylistsRoutes } from './routes/playlists';
+import { registerStatsRoutes } from './routes/stats';
+import { registerNetRoutes } from './routes/net';
+import { registerLibraryRoutes } from './routes/library';
+import { startMusicFoldersSync } from './services/musicFolders';
 import { registerNotesRoutes } from './routes/notes';
 import { registerSoftwareRoutes } from './routes/software';
+import { registerTtsRoutes } from './routes/tts';
+import { registerShareRoute } from './routes/share';
+import { registerMondropRoutes } from './routes/mondrop';
+import { registerMeRoute } from './routes/me';
+import { registerMondropConnectRoutes } from './routes/mondropConnect';
 import { requeueStuckJobs } from './utils/jobQueue';
 import { startJobQueueWorker } from './services/jobQueueWorker';
+import { startSpootyWatcher } from './services/spootyWatcher';
+import { startSongDownloader } from './services/songDownloader';
+import { startMediaServerSync } from './services/mediaServer';
+import { sendTelegramMessage } from './routes/telegram';
 import { runMigrations } from './db/runMigrations';
 
 const HOST = process.env.HOST || '0.0.0.0';
@@ -51,8 +65,17 @@ async function bootstrap(): Promise<void> {
   registerMusicListRoute(app);
   registerFilmsRoutes(app);
   registerSongsRoutes(app);
+  registerPlaylistsRoutes(app);
+  registerStatsRoutes(app);
+  registerNetRoutes(app);
+  registerLibraryRoutes(app);
   registerNotesRoutes(app);
   registerSoftwareRoutes(app);
+  registerTtsRoutes(app);
+  registerShareRoute(app);
+  registerMondropRoutes(app);
+  registerMeRoute(app);
+  registerMondropConnectRoutes(app); // behind Authelia: keep OFF /api/share and /api/mondrop (bypass routers)
 
   // Serve static frontend (after routes so /api/* wins)
   const publicDir = path.resolve(__dirname, 'public');
@@ -107,6 +130,26 @@ async function bootstrap(): Promise<void> {
   startJobQueueWorker();
   app.log.info('Job queue worker started');
 
+  // Follows Spotify links handed to Spooty (metadata + download outcome) and tells the
+  // Telegram chat that sent them. State lives in `spooty_requests`, so restarts lose nothing.
+  const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+  const stopSpootyWatcher = startSpootyWatcher({
+    notify: telegramToken ? (chatId, html) => sendTelegramMessage(chatId, html, telegramToken) : undefined,
+  });
+  app.log.info('Spooty watcher started');
+
+  // Songs that are not on disk yet: reuse a file we have, else fetch it from YouTube into <library>/SoundReel.
+  // The queue lives in `song_files`, so a restart loses nothing (interrupted jobs are requeued).
+  const stopSongDownloader = startSongDownloader();
+  app.log.info('Song downloader started');
+
+  // The home media server (FRITZ!Box): its catalogue feeds "reuse first", and a replica of the library on it
+  // is verified before clients are pointed at it. Plain HTTP; a sleeping box only costs a timeout.
+  const stopMediaServerSync = startMediaServerSync();
+
+  // The music folders the library search looks into (Spooty's folder + the ones set in the web configuration).
+  const stopMusicFoldersSync = startMusicFoldersSync();
+
   // Startup cleanup + daily schedule (orphan + retention purge)
   const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
   const kickCleanup = async (): Promise<void> => {
@@ -124,6 +167,10 @@ async function bootstrap(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info(`Received ${signal}, shutting down`);
     try {
+      stopSpootyWatcher();
+      stopSongDownloader();
+      stopMediaServerSync();
+      stopMusicFoldersSync();
       await app.close();
       await pool.end();
       process.exit(0);

@@ -1,12 +1,20 @@
 import type { FastifyInstance } from 'fastify';
-import { createReadStream } from 'fs';
-import { stat } from 'fs/promises';
 import { join } from 'path';
 import { listEntries } from '../utils/db';
+import { resolveUser } from '../utils/requestUser';
 import { songKey, listSongMeta, patchSongUserMeta, getSongMeta } from '../services/songMeta';
 import type { SongUserMetaPatch } from '../services/songMeta';
 import { resolveDeezerPreviewUrl } from '../services/songEnrichment';
-import { syncDownloadedFlags, scanLibrary, findLibraryTrack } from '../services/musicLibrary';
+import { syncDownloadedFlags, findLibraryTrack } from '../services/musicLibrary';
+import { getLibraryTracks, invalidateLibraryTracks } from '../services/libraryCache';
+import { listReadySongKeys } from '../services/songFiles';
+import { locateSongs, type SongLocation } from '../services/songLocation';
+import { getUserSongs } from '../services/userSongs';
+import { getTrack, ORDER_WEB, requestSongDownload, resolveSongServing } from '../services/offlineManifest';
+import { serveSong } from '../services/songStream';
+import { describeActor, logActivity, shouldLogOnce, songLabel, type Actor } from '../services/activityLog';
+import type { LibraryTrack } from '../services/musicLibrary';
+import { resolveYoutubePlaySource } from '../services/youtubeResolve';
 import type { AggregatedSong, Entry, Song, SongMetaRecord } from '../types';
 import { logError } from '../utils/logger';
 
@@ -25,8 +33,38 @@ export const LIST_ENTRIES_LIMIT = 10000;
 const SYNC_THROTTLE_MS = 10 * 60 * 1000;
 let lastSyncTriggeredAt = 0;
 
+// The library scan is cached (services/libraryCache) so every GET /api/songs does not re-walk
+// hundreds of MP3s: same window as the background sync throttle, and a finished download
+// invalidates it so the new file is visible at once.
 export function _resetSyncThrottleForTest(): void {
   lastSyncTriggeredAt = 0;
+  invalidateLibraryTracks();
+}
+
+/**
+ * Marks each aggregated song with `inLibrary` by matching against a scanned
+ * library track list. Pure — easy to unit-test without Fastify.
+ */
+export function attachLibraryFlags(
+  songs: Iterable<AggregatedSong>,
+  tracks: LibraryTrack[],
+  /** Songs whose MP3 is recorded in `song_files` (counts even when its file name cannot be matched). */
+  readyKeys: ReadonlySet<string> = new Set(),
+  /** Where each song is (services/songLocation): when a song has an entry, the flags come from it. */
+  locations?: ReadonlyMap<string, SongLocation>,
+): AggregatedSong[] {
+  return [...songs].map((song) => {
+    const loc = locations?.get(song.songKey);
+    if (loc) {
+      // the green dot is EXACTLY "on the file system or on the media server" (spec W8, S8)
+      return { ...song, inLibrary: loc.fs || loc.mediaServer, fs: loc.fs, mediaServer: loc.mediaServer, fsPath: loc.fsPath, mediaUrl: loc.mediaUrl };
+    }
+    return { ...song, inLibrary: readyKeys.has(song.songKey) || findLibraryTrack(tracks, song.artist, song.title) != null };
+  });
+}
+
+async function getCachedLibraryTracks(): Promise<LibraryTrack[]> {
+  return getLibraryTracks(SYNC_THROTTLE_MS);
 }
 
 function maybeTriggerLibrarySync(): void {
@@ -64,6 +102,19 @@ export function aggregateSongs(entries: Entry[], metaMap: Map<string, SongMetaRe
   // aggregate's display fields, so we can pick the most recent one regardless
   // of the order listEntries returns rows in.
   const latestSeenCreatedAt = new Map<string, string>();
+  // What the playlist manager filters on: how the song was found, where it came from, how it was tagged.
+  const facets = new Map<string, { sources: Set<string>; platforms: Set<string>; tags: Set<string> }>();
+  const noteFacets = (key: string, entry: Entry, raw: Song): void => {
+    let f = facets.get(key);
+    if (!f) {
+      f = { sources: new Set(), platforms: new Set(), tags: new Set() };
+      facets.set(key, f);
+    }
+    if (typeof raw.source === 'string' && raw.source) f.sources.add(raw.source);
+    if (typeof entry.sourcePlatform === 'string' && entry.sourcePlatform) f.platforms.add(entry.sourcePlatform);
+    const tags = entry.results?.tags;
+    if (Array.isArray(tags)) for (const t of tags) if (typeof t === 'string' && t) f.tags.add(t);
+  };
 
   for (const entry of entries) {
     const songs = entry.results?.songs;
@@ -74,6 +125,7 @@ export function aggregateSongs(entries: Entry[], metaMap: Map<string, SongMetaRe
       const key = songKey(artist, raw.title);
       const createdAt = String(entry.createdAt ?? '');
       const existing = byKey.get(key);
+      noteFacets(key, entry, raw);
       if (!existing) {
         byKey.set(key, {
           songKey: key,
@@ -84,6 +136,7 @@ export function aggregateSongs(entries: Entry[], metaMap: Map<string, SongMetaRe
           spotifyUrl: raw.spotifyUrl ?? null,
           mentions: [{ entryId: entry.id, createdAt }],
           meta: metaMap.get(key) ?? null,
+          inLibrary: false,
         });
         latestSeenCreatedAt.set(key, createdAt);
       } else {
@@ -101,16 +154,47 @@ export function aggregateSongs(entries: Entry[], metaMap: Map<string, SongMetaRe
     }
   }
 
+  for (const [key, f] of facets) {
+    const song = byKey.get(key);
+    if (!song) continue;
+    song.sources = [...f.sources].sort();
+    song.platforms = [...f.platforms].sort();
+    song.tags = [...f.tags].sort();
+  }
+
   return byKey;
 }
 
+/**
+ * One song for a user, from the short-lived per-user cache (services/userSongs) instead of re-aggregating the whole
+ * journal for every request: that rebuild cost ~0.45 s on each play and made "play" feel slow next to the
+ * instant Deezer/iTunes preview. Looked up fresh once when it is not cached (an entry created seconds ago).
+ */
+async function findVisibleSong(userId: string, isAdmin: boolean, key: string): Promise<AggregatedSong | undefined> {
+  const cached = (await getUserSongs(userId, isAdmin)).get(key);
+  return cached ?? (await getUserSongs(userId, isAdmin, 0)).get(key);
+}
+
 export function registerSongsRoutes(app: FastifyInstance): void {
-  app.get('/api/songs', async (_req, reply) => {
+  app.get('/api/songs', async (req, reply) => {
     maybeTriggerLibrarySync();
     try {
-      const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listSongMeta()]);
+      const user = resolveUser(req);
+      const visibility = { userId: user.id, isAdmin: user.isAdmin };
+      const [entries, metaMap, tracks, readyKeys] = await Promise.all([
+        listEntries(LIST_ENTRIES_LIMIT, visibility),
+        listSongMeta(),
+        getCachedLibraryTracks(),
+        // a failure here only costs the extra flags, never the list
+        listReadySongKeys().catch(() => new Set<string>()),
+      ]);
       const byKey = aggregateSongs(entries, metaMap);
-      return reply.send({ songs: [...byKey.values()] });
+      // where each song is (disk / media server, with the path and URL); a failure only costs the extra fields
+      const locations = await locateSongs(byKey.values(), tracks).catch((err) => {
+        logError('song locations failed', { err: String(err) });
+        return undefined;
+      });
+      return reply.send({ songs: attachLibraryFlags(byKey.values(), tracks, readyKeys, locations) });
     } catch (err) {
       logError('GET /api/songs failed', { err: String(err) });
       return reply.code(500).send({ error: 'songs aggregation failed' });
@@ -123,13 +207,13 @@ export function registerSongsRoutes(app: FastifyInstance): void {
   app.get<{ Params: { songKey: string } }>('/api/songs/:songKey/file-info', async (req, reply) => {
     const spootyUrl = process.env.SPOOTY_FRONTEND_URL || 'https://spooty.casamon.dev';
     try {
-      const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listSongMeta()]);
-      const song = aggregateSongs(entries, metaMap).get(req.params.songKey);
+      const user = resolveUser(req);
+      const song = await findVisibleSong(user.id, user.isAdmin, req.params.songKey);
       if (!song) {
         return reply.code(404).send({ error: 'song not found' });
       }
       const root = process.env.MUSIC_LIBRARY_PATH;
-      const track = root ? findLibraryTrack(await scanLibrary(), song.artist, song.title) : null;
+      const track = root ? findLibraryTrack(await getCachedLibraryTracks(), song.artist, song.title) : null;
       return reply.send({
         inLibrary: !!track,
         relPath: track?.relPath ?? null,
@@ -143,66 +227,83 @@ export function registerSongsRoutes(app: FastifyInstance): void {
     }
   });
 
-  // The downloaded arrow in the UI: plays the matched MP3 from the music
-  // share in the browser (inline disposition + Range support so the inline
-  // player can seek; `?download=1` switches to attachment for an explicit
-  // download), else falls back to a redirect to the Spooty frontend (the
-  // song was queued on Spooty but the file isn't in the share, or the
-  // share isn't mounted). The path served always comes from our own library
-  // scan — never from user input — so no traversal surface.
-  app.get<{ Params: { songKey: string }; Querystring: { download?: string } }>('/api/songs/:songKey/file', async (req, reply) => {
+  // The song's bytes for the web player and the downloaded arrow (ADR-0010). The media server's file comes first and
+  // is PROXIED over HTTPS with Range support (so it plays from the internet too and nothing is copied onto the disk);
+  // geekom's disk is the fallback. `?from=media|fs` forces one origin, `?download=1` switches to attachment. The
+  // paths and URLs come from our own records and indexes — never from user input — so no traversal surface. With no
+  // file anywhere the answer is a redirect to the Spooty frontend (the song may be queued there).
+  app.get<{ Params: { songKey: string }; Querystring: { download?: string; from?: string } }>('/api/songs/:songKey/file', async (req, reply) => {
     const spootyFrontend = process.env.SPOOTY_FRONTEND_URL || 'https://spooty.casamon.dev';
     try {
-      const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listSongMeta()]);
-      const song = aggregateSongs(entries, metaMap).get(req.params.songKey);
-      if (!song) {
-        return reply.code(404).send({ error: 'song not found' });
-      }
-
-      const tracks = await scanLibrary();
-      const track = findLibraryTrack(tracks, song.artist, song.title);
-      const root = process.env.MUSIC_LIBRARY_PATH;
-      if (!track || !root) {
+      const user = resolveUser(req);
+      const order = req.query.from === 'media' ? (['media'] as const) : req.query.from === 'fs' ? (['local'] as const) : ORDER_WEB;
+      const serving = await resolveSongServing(req.params.songKey, user.id, user.isAdmin, order);
+      if (!serving.ok) {
+        if (serving.reason === 'song_not_found') return reply.code(404).send({ error: 'song not found' });
         return reply.redirect(spootyFrontend, 302);
       }
-
-      const filePath = join(root, track.relPath);
-      const { size } = await stat(filePath);
-      const filename = track.relPath.split('/').pop() ?? 'song.mp3';
-
-      const disposition = req.query.download === '1' ? 'attachment' : 'inline';
-      reply
-        .header('Accept-Ranges', 'bytes')
-        .header('Content-Type', 'audio/mpeg')
-        .header('Content-Disposition', `${disposition}; filename="${filename.replace(/"/g, '')}"`);
-
-      // Single-range requests only (what <audio> seeking actually sends);
-      // anything unparsable falls through to a full 200 response.
-      const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
-      let start = 0;
-      let end = size - 1;
-      if (range && (range[1] !== '' || range[2] !== '')) {
-        if (range[1] === '') {
-          // suffix form "bytes=-N": last N bytes
-          start = Math.max(0, size - Number(range[2]));
-        } else {
-          start = Number(range[1]);
-          if (range[2] !== '') end = Math.min(end, Number(range[2]));
-        }
-        if (start > end || start >= size) {
-          return reply.code(416).header('Content-Range', `bytes */${size}`).send();
-        }
-        reply.code(206).header('Content-Range', `bytes ${start}-${end}/${size}`);
-      }
-
-      const stream = createReadStream(filePath, { start, end });
-      stream.on('error', (err) => {
-        logError('GET /api/songs/:songKey/file stream failed', { songKey: req.params.songKey, err: String(err) });
+      const sent = await serveSong(req, reply, serving.served.origins, {
+        filename: serving.served.filename,
+        disposition: req.query.download === '1' ? 'attachment' : 'inline',
+        version: serving.served.version,
       });
-      return reply.header('Content-Length', end - start + 1).send(stream);
+      if (!sent) return reply.redirect(spootyFrontend, 302); // every origin failed (box asleep and no local file)
+      return sent.reply;
     } catch (err) {
       logError('GET /api/songs/:songKey/file failed', { songKey: req.params.songKey, err: String(err) });
       return reply.redirect(spootyFrontend, 302);
+    }
+  });
+
+  // First play: ask for the song's MP3 while it plays from the fallback, so the next play is local.
+  // `priority: "play"` jumps the playlist-sync queue (docs/mondrop-sync.md, "Primo play").
+  app.post<{ Params: { songKey: string }; Body: { priority?: string } | undefined }>(
+    '/api/songs/:songKey/download',
+    async (req, reply) => {
+      try {
+        const user = resolveUser(req);
+        const priority = req.body?.priority === 'play' ? 'play' : 'sync';
+        const track = await requestSongDownload(req.params.songKey, user.id, {
+          priority,
+          retry: priority !== 'play',
+          isAdmin: user.isAdmin,
+        });
+        if (!track) return reply.code(404).send({ ok: false, error: 'song not found' });
+        // the web's first play asks for the file too: it shows in the activity trail like a phone's request
+        const actor: Actor = { user: user.id, device: 'web', channel: 'web' };
+        if (shouldLogOnce(`web-download:${user.id}:${req.params.songKey}`, 60_000)) {
+          logActivity('download', 'request', `${describeActor(actor)} chiede «${songLabel(track, req.params.songKey)}» (priorità ${priority}) → ${track.state}`, actor, {
+            songKey: req.params.songKey, priority, state: track.state, source: track.source,
+          });
+        }
+        return reply.send({ ok: true, state: track.state, track });
+      } catch (err) {
+        logError('POST /api/songs/:songKey/download failed', { songKey: req.params.songKey, err: String(err) });
+        return reply.code(500).send({ ok: false, error: 'download request failed' });
+      }
+    },
+  );
+
+  app.get<{ Params: { songKey: string } }>('/api/songs/:songKey/state', async (req, reply) => {
+    try {
+      const user = resolveUser(req);
+      const track = await getTrack(req.params.songKey, user.id, user.isAdmin);
+      if (!track) return reply.code(404).send({ error: 'song not found' });
+      // where the song is (spec W2/W8): disk, media server, their path/URL and the video link
+      const loc = (await locateSongs([{ songKey: track.songKey, artist: track.artist, title: track.title }], await getCachedLibraryTracks())
+        .catch(() => new Map<string, SongLocation>())).get(track.songKey) ?? null;
+      return reply.send({
+        state: track.state,
+        source: track.source,
+        version: track.version,
+        bytes: track.bytes,
+        error: track.error,
+        inLibrary: loc ? loc.fs || loc.mediaServer : track.state === 'ready',
+        location: loc && { fs: loc.fs, mediaServer: loc.mediaServer, fsPath: loc.fsPath, mediaUrl: loc.mediaUrl, streamUrl: loc.streamUrl },
+      });
+    } catch (err) {
+      logError('GET /api/songs/:songKey/state failed', { songKey: req.params.songKey, err: String(err) });
+      return reply.code(500).send({ error: 'song state failed' });
     }
   });
 
@@ -214,6 +315,32 @@ export function registerSongsRoutes(app: FastifyInstance): void {
     } catch (err) {
       logError('POST /api/songs/sync-library failed', { err: String(err) });
       return reply.code(500).send({ error: 'music library sync failed' });
+    }
+  });
+
+  // Online play source for the web player: a YouTube video id. Prefers an id
+  // already present on the song's youtubeUrl; otherwise resolves via the
+  // instaloader /yt/url (yt-dlp ytsearch1). No Spooty / local MP3 involved.
+  app.get<{ Params: { songKey: string } }>('/api/songs/:songKey/youtube', async (req, reply) => {
+    try {
+      const user = resolveUser(req);
+      const song = await findVisibleSong(user.id, user.isAdmin, req.params.songKey);
+      if (!song) {
+        return reply.code(404).send({ error: 'song not found' });
+      }
+      const source = await resolveYoutubePlaySource({
+        songKey: song.songKey,
+        artist: song.artist,
+        title: song.title,
+        youtubeUrl: song.youtubeUrl,
+      });
+      if (!source) {
+        return reply.code(404).send({ error: 'youtube video not found' });
+      }
+      return reply.send(source);
+    } catch (err) {
+      logError('GET /api/songs/:songKey/youtube failed', { songKey: req.params.songKey, err: String(err) });
+      return reply.code(500).send({ error: 'youtube resolution failed' });
     }
   });
 

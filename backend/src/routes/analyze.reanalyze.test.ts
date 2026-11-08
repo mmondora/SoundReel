@@ -407,7 +407,7 @@ describe('analyze route second pass', () => {
 
     it('resolves an ordinary pass by id too, keeping the URL lookup as fallback', () => {
       onlyMatch(
-        /const existingEntry = requestedEntryId !== undefined\n\s*\? await getEntry\(requestedEntryId\)\n\s*: !featuresConfig\.allowDuplicateUrls\n\s*\? await findEntryByUrl\(normalizedUrl\)\n\s*: null;/
+        /const existingEntry = requestedEntryId !== undefined\n\s*\? await getEntry\(requestedEntryId\)\n\s*: !featuresConfig\.allowDuplicateUrls\n\s*\? await findEntryByUrl\(normalizedUrl, ownerUser\)\n\s*: null;/
       );
     });
 
@@ -416,7 +416,7 @@ describe('analyze route second pass', () => {
       // carry no entryId, so the URL lookup has to stay — but only as the
       // second arm of this ternary, never as the primary path.
       onlyMatch(
-        /priorEntry = requestedEntryId !== undefined\n\s*\? await getEntry\(requestedEntryId\)\n\s*: await findEntryByUrl\(normalizedUrl\);/
+        /priorEntry = requestedEntryId !== undefined\n\s*\? await getEntry\(requestedEntryId\)\n\s*: await findEntryByUrl\(normalizedUrl, ownerUser\);/
       );
     });
 

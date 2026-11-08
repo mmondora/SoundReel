@@ -2,7 +2,7 @@ export interface Song {
   title: string;
   artist: string;
   album: string | null;
-  source: 'audio_fingerprint' | 'ai_analysis' | 'both' | 'music_list';
+  source: 'audio_fingerprint' | 'ai_analysis' | 'both' | 'music_list' | 'spotify_link' | 'shazam_link';
   spotifyUri: string | null;
   spotifyUrl: string | null;
   youtubeUrl: string | null;
@@ -176,6 +176,7 @@ export type SocialPlatform =
   | 'vimeo'
   | 'twitch'
   | 'spotify'
+  | 'shazam'
   | 'soundcloud'
   | 'other';
 
@@ -185,6 +186,8 @@ export interface Entry {
   sourcePlatform: SocialPlatform;
   inputChannel: 'telegram' | 'web' | 'ios';
   inputUser: string | null;
+  /** Authelia username that owns this entry (`mike` / `archi` / `sara`). */
+  ownerUser: string;
   caption: string | null;
   thumbnailUrl: string | null;
   mediaUrl: string | null;
@@ -192,6 +195,30 @@ export interface Entry {
   results: EntryResults;
   actionLog: ActionLogItem[];
   createdAt: string;
+}
+
+/** Lean list row for Entries page — no full results/actionLog payload. */
+export interface EntrySummaryRow {
+  id: string;
+  sourceUrl: string;
+  sourcePlatform: string;
+  caption: string | null;
+  thumbnailUrl: string | null;
+  status: string;
+  createdAt: string;
+  summary: string | null;
+  songCount: number;
+  filmCount: number;
+  noteCount: number;
+  tags: string[];
+}
+
+export interface JournalStats {
+  totalEntries: number;
+  totalSongs: number;
+  totalFilms: number;
+  totalNotes: number;
+  totalSoftware: number;
 }
 
 export interface MusicMetadata {
@@ -374,6 +401,40 @@ export interface AggregatedSong {
   spotifyUrl: string | null;
   mentions: SongMention[];
   meta: SongMetaRecord | null;
+  /** The green dot: exactly `fs || mediaServer` (an MP3 on geekom's disk or on the media server). */
+  inLibrary: boolean;
+  /** An MP3 on geekom's disk (Spooty's library or our store). */
+  fs?: boolean;
+  /** An MP3 on the media server (the box's own file, a verified replica, or a catalogue entry). */
+  mediaServer?: boolean;
+  /** Where the disk file is (display path, `~/Music/…`), or null. */
+  fsPath?: string | null;
+  /** Direct URL of the file on the media server, or null. */
+  mediaUrl?: string | null;
+  /** How the song was found, across its mentions (`Song.source` values), sorted. */
+  sources?: string[];
+  /** Platforms of the entries that mention it (instagram, shazam, spotify…), sorted. */
+  platforms?: string[];
+  /** Tags of the entries that mention it, sorted. */
+  tags?: string[];
+}
+
+export interface PlaylistSummary {
+  id: string;
+  name: string;
+  songCount: number;
+  createdAt: string;
+  updatedAt: string;
+  /** `dynamic` = a rule evaluated at read time (ADR-0008); absent / `static` = a list of songs. */
+  kind?: 'static' | 'dynamic';
+  rule?: import('../services/dynamicRules').DynamicRule;
+  ruleSummary?: string;
+  /** When a dynamic playlist's songs were last computed. */
+  generatedAt?: string;
+}
+
+export interface PlaylistDetail extends PlaylistSummary {
+  songKeys: string[];
 }
 
 export interface NoteMetaRecord {

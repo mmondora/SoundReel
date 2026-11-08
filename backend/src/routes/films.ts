@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { listEntries } from '../utils/db';
+import { resolveUser } from '../utils/requestUser';
 import {
   filmKey,
   listFilmMeta,
@@ -95,9 +96,11 @@ export function aggregateFilms(entries: Entry[], metaMap: Map<string, FilmMetaRe
 }
 
 export function registerFilmsRoutes(app: FastifyInstance): void {
-  app.get('/api/films', async (_req, reply) => {
+  app.get('/api/films', async (req, reply) => {
     try {
-      const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listFilmMeta()]);
+      const user = resolveUser(req);
+      const visibility = { userId: user.id, isAdmin: user.isAdmin };
+      const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT, visibility), listFilmMeta()]);
       const byKey = aggregateFilms(entries, metaMap);
       return reply.send({ films: [...byKey.values()] });
     } catch (err) {
@@ -152,7 +155,9 @@ export function registerFilmsRoutes(app: FastifyInstance): void {
     async (req, reply) => {
       const key = req.params.filmKey;
       try {
-        const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listFilmMeta()]);
+        const user = resolveUser(req);
+        const visibility = { userId: user.id, isAdmin: user.isAdmin };
+        const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT, visibility), listFilmMeta()]);
         const film = aggregateFilms(entries, metaMap).get(key);
         if (!film) {
           return reply.code(404).send({ error: 'film not found' });
@@ -192,7 +197,9 @@ export function registerFilmsRoutes(app: FastifyInstance): void {
     async (req, reply) => {
       const key = req.params.filmKey;
       try {
-        const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listFilmMeta()]);
+        const user = resolveUser(req);
+        const visibility = { userId: user.id, isAdmin: user.isAdmin };
+        const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT, visibility), listFilmMeta()]);
         const film = aggregateFilms(entries, metaMap).get(key);
         if (!film) return reply.code(404).send({ error: 'film not found' });
 
@@ -222,7 +229,9 @@ export function registerFilmsRoutes(app: FastifyInstance): void {
     async (req, reply) => {
       const key = req.params.filmKey;
       try {
-        const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT), listFilmMeta()]);
+        const user = resolveUser(req);
+        const visibility = { userId: user.id, isAdmin: user.isAdmin };
+        const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT, visibility), listFilmMeta()]);
         const film = aggregateFilms(entries, metaMap).get(key);
         if (!film) return reply.code(404).send({ error: 'film not found' });
 

@@ -153,3 +153,23 @@ export async function getSongMeta(key: string): Promise<SongMetaRecord | null> {
   const rows = await query<SongMetaRow>(`SELECT ${SELECT_COLS} FROM song_meta WHERE song_key = $1`, [key]);
   return rows[0] ? rowToRecord(rows[0]) : null;
 }
+
+/**
+ * Persist a cover/album for a song only if we don't have one yet (never clobber
+ * Deezer/iTunes enrichment). Used when a song first arrives via a Spotify link.
+ */
+export async function setSongCoverIfMissing(
+  key: string,
+  coverUrl: string | null,
+  album: string | null,
+): Promise<void> {
+  if (!coverUrl && !album) return;
+  await query(
+    `INSERT INTO song_meta (song_key, cover_url, album) VALUES ($1, $2, $3)
+     ON CONFLICT (song_key) DO UPDATE SET
+       cover_url = COALESCE(song_meta.cover_url, EXCLUDED.cover_url),
+       album = COALESCE(song_meta.album, EXCLUDED.album),
+       updated_at = now()`,
+    [key, coverUrl, album],
+  );
+}

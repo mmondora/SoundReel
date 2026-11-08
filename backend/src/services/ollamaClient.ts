@@ -319,9 +319,8 @@ async function generateQueued(body: unknown, model: string): Promise<OllamaRespo
     if (!stato) continue;
 
     if (stato.status === 'done' && stato.result) {
-      const text = stato.result.response || '';
-      logInfo('Job ritirato dalla coda', { jobId, chars: text.length });
-      return { text, usageMetadata: usageFrom(stato.result) };
+      logInfo('Job ritirato dalla coda', { jobId, chars: (stato.result.response || '').length });
+      return finalizeOllamaText(stato.result, model, { jobId });
     }
     if (stato.status === 'failed') {
       throw new OllamaTransientError('queue_failed', `job ${jobId} fallito: ${stato.error ?? 'senza motivo'}`);
@@ -422,28 +421,7 @@ export async function generateText(
     }
 
     const data = (await response.json()) as OllamaNativeResponse;
-    const text = data.response || '';
-    const usage = usageFrom(data);
-    const hitTokenCeiling =
-      data.done_reason === 'length' ||
-      (typeof data.eval_count === 'number' && data.eval_count >= MAX_RESPONSE_TOKENS);
-
-    logInfo('Ollama response', {
-      chars: text.length,
-      tokens: usage.totalTokenCount,
-      doneReason: data.done_reason ?? null,
-      evalCount: data.eval_count ?? null,
-      truncated: hitTokenCeiling,
-    });
-    if (hitTokenCeiling) {
-      logWarning('Ollama risposta tagliata dal tetto num_predict — JSON spesso illeggibile', {
-        model,
-        evalCount: data.eval_count,
-        maxPredict: MAX_RESPONSE_TOKENS,
-        doneReason: data.done_reason ?? null,
-      });
-    }
-    return { text, usageMetadata: usage };
+    return finalizeOllamaText(data, model);
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       logWarning('Ollama request aborted', { category: 'aborted', afterMs: REQUEST_TIMEOUT_MS, model });

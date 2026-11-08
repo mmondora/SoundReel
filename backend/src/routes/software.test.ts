@@ -13,6 +13,7 @@ function entry(
     sourcePlatform: 'other',
     inputChannel: 'web',
     inputUser: null,
+    ownerUser: 'mike',
     caption: null,
     thumbnailUrl: null,
     mediaUrl: null,

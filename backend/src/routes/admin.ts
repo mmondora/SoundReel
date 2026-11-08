@@ -14,6 +14,11 @@ import {
   RetentionConfig,
 } from '../utils/db';
 
+import { countPublished, countSongFilesByStatus } from '../services/songFiles';
+import { countMediaIndex } from '../services/mediaIndex';
+import { getMediaServerStatus, MEDIA_STORE, reconcilePublished, refreshMediaIndex } from '../services/mediaServer';
+import { logError } from '../utils/logger';
+
 const MEDIA_ROOT = process.env.MEDIA_ROOT || '/data/media';
 
 interface EntryDirStat {
@@ -181,6 +186,33 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     const user = String(req.headers['remote-user'] || '').trim();
     if (!user) {
       reply.code(401).send({ error: 'authentication required' });
+    }
+  });
+
+  // MP3 archive: how many songs are in which state, and what the media server (FRITZ!Box) knows.
+  app.get('/api/admin/store', async (_req, reply) => {
+    try {
+      const [songFiles, published, indexed] = await Promise.all([
+        countSongFilesByStatus(),
+        countPublished(),
+        countMediaIndex(MEDIA_STORE),
+      ]);
+      return reply.send({ songFiles, published, mediaIndex: indexed, mediaServer: getMediaServerStatus() });
+    } catch (err) {
+      logError('GET /api/admin/store failed', { err: String(err) });
+      return reply.code(500).send({ error: 'store status failed' });
+    }
+  });
+
+  // Do now what the hourly / 5-minute timers do: re-read the media server's catalogue and verify the replicas.
+  app.post('/api/admin/store/refresh', async (_req, reply) => {
+    try {
+      const indexed = await refreshMediaIndex();
+      const reconciled = await reconcilePublished();
+      return reply.send({ indexed, reconciled, mediaServer: getMediaServerStatus() });
+    } catch (err) {
+      logError('POST /api/admin/store/refresh failed', { err: String(err) });
+      return reply.code(502).send({ error: `media server: ${err instanceof Error ? err.message : String(err)}` });
     }
   });
 

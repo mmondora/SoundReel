@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { listEntries } from '../utils/db';
+import { resolveUser } from '../utils/requestUser';
 import {
   softwareKey,
   normalizeSoftwareTag,
@@ -182,10 +183,12 @@ export function scheduleSoftwareEnrichment(
 }
 
 export function registerSoftwareRoutes(app: FastifyInstance): void {
-  app.get('/api/software', async (_req, reply) => {
+  app.get('/api/software', async (req, reply) => {
     try {
+      const user = resolveUser(req);
+      const visibility = { userId: user.id, isAdmin: user.isAdmin };
       const [entries, metaMap] = await Promise.all([
-        listEntries(LIST_ENTRIES_LIMIT),
+        listEntries(LIST_ENTRIES_LIMIT, visibility),
         listSoftwareMeta(),
       ]);
       const byKey = aggregateSoftware(entries, metaMap);

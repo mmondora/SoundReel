@@ -18,6 +18,10 @@ import { enrichSong } from './songEnrichment';
 import { isStale } from './streamingRefresher';
 import { logError } from '../utils/logger';
 
+beforeEach(() => {
+  process.env.SONG_ENRICHMENT_ENABLED = '1'; // the suite is configured with it off
+});
+
 // Flush the fire-and-forget microtask/promise chain kicked off inside enqueueSongEnrichment.
 async function flush(): Promise<void> {
   await Promise.resolve();
