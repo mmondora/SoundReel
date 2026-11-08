@@ -1,7 +1,7 @@
 # Scegliere cosa suonare (iOS e web), filtri per tipo/album/autore/anni, stati del download, velocità del play — design
 
 - **Data:** 2026-11-08
-- **Stato:** Richieste registrate; implementazione prevista per la **2.9.0** (la 2.8.0 non si tocca: è già completa e verificata). Nessun deploy senza OK di Michele
+- **Stato:** Implementata nella **2.9.0** (backend e web deployati l'8 novembre con l'OK di Michele; iOS = Mondrop 1.5.0, da installare da vulcano). Backend provato su Postgres vero; web e iOS provati con test, **non** ancora sul telefono vero: notifica, riproduzione e media server restano da vedere con un dispositivo
 - **Owner:** Michele
 - **Correlati:** `2026-11-07-web-player-ux-design.md`, `2026-11-07-listening-stats-dynamic-playlists-design.md`, `2026-11-07-mondrop-offline-spooty-sync-design.md`, `adr/0013-song-year-and-mondrop-library.md`
 
@@ -32,14 +32,14 @@
 | X2 | iOS: da dove vengono album, tipi, anni | Dal server: i brani del manifest portano `album`, `genres`, `year`; per sfogliare oltre le playlist c'è `GET /api/mondrop/library` (tutti i brani dell'utente con stato e faccette), ADR-0013 |
 | X3 | iOS: stati del download | Sulla riga del **singolo brano**: spinner mentre il server lo prepara o il telefono lo scarica (con avanzamento in % del trasferimento), poi segno di «pronto»; per gli altri stati: «in coda», «da cercare» (`no_source`), «errore» col motivo; una riga di stato in cima (es. «Preparo 3 brani sul server · 1 in download dal telefono») e, a sync finito in background, una **notifica locale** (interruttore nelle Impostazioni, di default acceso) |
 | X4 | Web: scelta e filtri | Un pannello «Scegli cosa suonare» nel player: filtri per **tipo** (genere), **album**, **autore**, **anni** (decennio: «Anni 80» = 1980–1989), più fonte/piattaforma, tag, playlist, scaricata, FS/MS e ricerca libera; il risultato filtrato (o una playlist, un album, un autore, un brano) diventa la coda, con «mescola». Stesso motore di faccette del Playlist manager |
-| X5 | Anno e decennio | Nuovo dato `song_meta.release_year` (da Deezer, data dell'album, o da iTunes `releaseDate`); riempimento per i brani già in libreria con un lavoro di fondo a bassa frequenza (circa 785 brani, una richiesta ogni ~0,6 s, una sola volta); i brani senza anno restano fuori dal filtro «anni» ma compaiono con «Senza anno» |
+| X5 | Anno e decennio | Nuovo dato `song_meta.release_year`, **solo da iTunes** (`releaseDate` del risultato in cui artista e titolo coincidono): le date degli album di Deezer sono quelle delle ristampe e sbagliano il decennio per metà dei classici (misurato su 8 brani: Deezer 4 giusti, iTunes 8, ADR-0013 §5). Riempimento per i brani già in libreria con un lavoro di fondo a bassa frequenza (circa 785 brani, ~3,6 s ciascuno per il limite di iTunes, **circa 50 minuti, una sola volta**, si ferma da solo se il provider non risponde e riprova dopo un'ora); i brani senza anno restano fuori dal filtro «anni» ma compaiono con «Senza anno» (meglio ignoto che sbagliato) |
 | X6 | Velocità del play | Vedi §2 |
 
 ## 4. API (2.9.0)
 
 - `GET /api/songs`: `meta.releaseYear` (numero o null).
 - Brani del manifest Mondrop e `GET /api/mondrop/songs/:key`: `album`, `genres` (canonici), `year`.
-- `GET /api/mondrop/library?q=&genre=&album=&artist=&decade=&limit=&offset=` → `{ songs: [{ track… }], facets: { genres, albums, artists, decades } , total }` (solo i brani visibili all'utente).
+- `GET /api/mondrop/library?q=&genre=&album=&artist=&decade=&limit=&offset=&facets=` → `{ songs: [track…], total, offset, limit, facets: { genres, albums, artists, decades }, user }` (solo i brani visibili all'utente; ogni voce delle faccette è `{ value, label, count }` e conta senza il proprio filtro). Contratto completo: `docs/mondrop-sync.md`.
 
 ## 5. Test
 

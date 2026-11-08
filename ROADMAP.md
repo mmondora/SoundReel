@@ -137,8 +137,34 @@ Da decidere / prossimi passi:
 
 ## Versione 2.9.0 — scegliere cosa suonare, filtri, stati del download (richieste 2026-11-08)
 
-Spec `docs/superpowers/specs/2026-11-08-player-selection-and-filters-design.md`, ADR-0013:
+Spec `docs/superpowers/specs/2026-11-08-player-selection-and-filters-design.md`, ADR-0013. Backend e web **deployati con l'OK di Michele (8 novembre)**; l'app Mondrop 1.5.0 la installa lui da vulcano con `install-iphone.sh`.
 - iOS: scegliere playlist / album / brano (e artista, tipo, anni) invece della coda generica; spinner sul singolo brano in download, riga di stato, notifica locale a sync finito.
 - Web: pannello «Scegli cosa suonare» con filtri per tipo, album, autore, anni (decenni), fonte, tag…; precarico della IFrame API e dell'id del brano successivo.
-- Backend: `song_meta.release_year` (Deezer/iTunes) con riempimento una tantum, `GET /api/mondrop/library`, `album`/`genres`/`year` nei brani Mondrop.
+- Backend (fatto, provato su Postgres vero): `song_meta.release_year` **solo da iTunes** (le date degli album di Deezer sono quelle delle ristampe: decennio sbagliato per metà dei classici, ADR-0013 §5), riempimento una tantum che scrive **solo l'anno** (circa 50 minuti, si ferma da solo se iTunes non risponde), `GET /api/mondrop/library` con faccette, `album`/`genres`/`year` nei brani Mondrop.
+- Da fare dopo (scoperto l'8 novembre): la ricerca Deezer con `artist:"…" track:"…"` non restituisce più nulla dal ~8 settembre, quindi ogni arricchimento è passato da iTunes in silenzio (copertine da 100 px invece di 250). Rimedio possibile: ricerca semplice `artista titolo` su Deezer (la verifica di artista e titolo c'è già), tenendo l'anno da iTunes. Non toccato nella 2.9.0.
 
+## Da fare — sync delle foto di Mondrop, al posto di Flickr (richiesta 2026-11-08)
+
+Spec `docs/superpowers/specs/2026-11-08-mondrop-photo-sync-design.md`, ADR-0014 (**proposto**, niente deciso). Richiesta di Michele: «un sync di Mondrop anche delle foto, come fa Flickr che devo dismettere il prossimo anno». **Scadenza di fatto: Flickr va spento nel 2027.**
+- **Prima di tutto lo spazio:** geekom ha 199 GB liberi su 937; l'archivio Flickr indicizzato da MemoryLoom (83.895 foto, 1.065 album a settembre) ha gli originali **ancora su Flickr** e pesa verosimilmente centinaia di GB. Misurare e scegliere il disco (P1).
+- **Poi mettere in salvo Flickr** (in MemoryLoom, non qui): scaricare gli originali e gli album con verifica dell'hash, senza cancellare nulla su Flickr. Ha i tempi lunghi e la scadenza, quindi parte per primo.
+- **Poi il sync dal telefono:** upload a pezzi riprendibile e idempotente per SHA-256 (`POST /api/mondrop/photos/uploads`…), solo dal Wi-Fi di casa di default, destinazione = cartella che MemoryLoom legge come sorgente locale (il suo rilevamento dei duplicati toglie i doppioni con Flickr); Mondrop iOS legge il rullino, mostra lo stato per foto e libera spazio sul telefono solo dopo conferma e con doppia conferma. SoundReel **non** costruisce una galleria.
+- Domande aperte per Michele: mese esatto di chiusura di Flickr, video sì/no, dove mettere lo spazio, chi altro in famiglia carica foto. Alternativa da rivalutare in F1: Immich.
+
+## Da fare — il sito web usabile da telefono (richiesta 2026-11-08)
+
+Spec `docs/superpowers/specs/2026-11-08-web-mobile-ux-design.md` (solo interfaccia, nessun ADR). Richiesta di Michele: «la gui/ux del sito web. Su mobile e telefono è inusabile.»
+- **Prima un audit sul telefono vero** (Safari su iPhone di Michele + 390×844 e 360×800 simulati): un difetto per riga, con la gravità, per ognuna delle 15 pagine.
+- **Base misurata sul codice:** `manager.css` 999 righe con 1 solo `@media` (il Playlist manager è a due pannelli con F-tasti, pensato per il desktop); oltre 100 regole con testo tra 9,6 e 11,2 px; `min-width` di 300–520 px che a 390 px forzano lo scroll orizzontale (`stats.css`, `index.css`).
+- **Poi, in ordine d'uso:** Player + «Scegli cosa suonare», Home, Canzoni e Playlist manager (un pannello alla volta, azioni in un foglio al posto dei F-tasti), Impostazioni, il resto; barra di navigazione in basso; bersagli ≥ 44 pt, campi a 16 px, mai scroll orizzontale, solo tema scuro. La tastiera completa resta su desktop.
+- Domande aperte per Michele: le 3 cose che fai più spesso dal telefono, quali pagine possono restare «solo desktop», barra in basso o menu in alto.
+
+## Da fare — Mondrop Share, esito di ritorno, playlist, condividere con la famiglia, posta nell'app (richieste 2026-11-08)
+
+Spec `docs/superpowers/specs/2026-11-08-mondrop-share-inbox-design.md`, ADR-0015 (**proposto**). Proposta: SoundReel 2.10.0 + Mondrop 1.6.0, dopo la 2.9.0.
+- **Foglio di condivisione:** oggi «Invia» è un bottone di solo testo in alto a destra e dopo l'invio non torna niente. Bottone grande e pieno in fondo al foglio, gerarchia più chiara, esito visibile con «Riprova» in caso di errore.
+- **Esito di ritorno «come Telegram»:** riassunto, conteggi e link a fine analisi. La posta sta **sul server** (fonte di verità), l'app la legge quando si apre; il **push è solo il campanello** e richiede l'account sviluppatore Apple a pagamento (da confermare: Team `5NZADC9YQ2`).
+- **Playlist** (default nessuna) per i link di musica/media: `playlistId` in `POST /api/share`; i brani noti subito vanno dentro subito, gli altri a fine analisi.
+- **Condividere con `archi` / `sara` / entrambi** dal foglio: `shareWith` in `POST /api/share`, sul server (`entry_shares`, già esistente).
+- **Scheda «Posta»** in Mondrop: condivisioni ricevute (non scadono) e notifiche (**spariscono dopo 3 giorni, tranne gli errori**, che restano finché non li tolgo io o il link non riesce).
+- Domande aperte per Michele: l'account Apple è a pagamento? Che altro del foglio non piace? Le notifiche a 3 giorni vanno bene?

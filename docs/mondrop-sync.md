@@ -26,6 +26,9 @@ Tutte le rotte sono sotto `/api/mondrop/*` (Traefik senza Authelia, come `/api/s
       "songKey": "bishop briggs::white flag",
       "title": "White Flag",
       "artist": "Bishop Briggs",
+      "album": "Church of Scars",
+      "genres": ["Alternative"],
+      "year": 2018,
       "status": "ready",
       "state": "ready",
       "source": "ytdlp",
@@ -47,6 +50,9 @@ Tutte le rotte sono sotto `/api/mondrop/*` (Traefik senza Authelia, come `/api/s
 
 | Campo | Significato |
 |-------|-------------|
+| `album` | Album (il nome del provider se noto, altrimenti quello della menzione), o `null`. È il testo su cui si raggruppa e si filtra (ADR-0013) |
+| `genres` | Generi **canonici** (il «tipo»: «Alternativa» e «Alternative» sono lo stesso), ordinati; `[]` se ignoti |
+| `year` | Anno di uscita (Deezer, data dell'album; altrimenti iTunes), o `null` se ignoto. Il decennio è `year / 10 * 10` (1987 → 1980, «Anni 80») |
 | `state` | `ready` (file scaricabile ora) · `preparing` (in coda o in download sul server) · `failed` (errore, ritentabile) · `no_source` (nessuna sorgente trovata, serve un link YouTube) · `missing` (mai richiesto: serve `prepare`) |
 | `status` | **Legacy** per le app già installate: `ready` solo se `state == ready`, altrimenti `missing`. Le app nuove usano `state` |
 | `source` | `library` (file Spooty) · `ytdlp` · `existing` (il file è del media server, **non copiato** — ADR-0010) · `none` |
@@ -66,6 +72,43 @@ Risposta: lo stesso manifest di `GET …/offline` (così il client vede subito g
 ## `GET /api/mondrop/songs/:songKey`
 
 Un solo brano, **stesso oggetto** `track` del manifest (`state`, `downloadPath`, `mediaUrl`, `version`, `bytes`, `error`, …). Serve al primo play per ricontrollare lo stato. `404` se il brano non è dell'utente.
+
+## `GET /api/mondrop/library` — scegliere cosa suonare
+
+Tutti i brani **che questo utente può vedere** (non solo quelli delle sue playlist), filtrabili, con le voci tra cui scegliere. Serve alla schermata «Libreria» dell'app: suonare **un album, un autore, un tipo, un decennio, un brano** senza passare da una playlist (ADR-0013, spec `2026-11-08-player-selection-and-filters-design.md` X1–X2). Non accoda nulla: solo lettura.
+
+Parametri (tutti opzionali):
+
+| Parametro | Significato |
+|-----------|-------------|
+| `q` | Testo libero su autore, titolo, album; **l'ordine delle parole non conta**, niente maiuscole/accenti («Maestro Bassi» trova «Bassi Maestro») |
+| `genre` | Un tipo; i sinonimi valgono («Alternativa» = «Alternative») |
+| `album`, `artist` | Uguaglianza senza maiuscole/accenti/punteggiatura |
+| `decade` | `1980` per gli anni 80 (multiplo di 10, 1900–2090), oppure `none` per i brani **senza anno** |
+| `limit`, `offset` | Pagina: `limit` 1–500 (default 100), `offset` ≥ 0 |
+| `facets` | `0` = non mandare le voci (utile solo per sfogliare le pagine successive) |
+
+I filtri si sommano (AND). I brani sono ordinati per autore, poi titolo. Un parametro malformato dà `400 { "error": "invalid_query", "field": "decade" }`.
+
+```json
+{
+  "songs": [ { "songKey": "…", "title": "…", "artist": "…", "album": "…", "genres": ["Pop"], "year": 1982, "state": "ready", "version": "…", "plays": 4, "…": "…" } ],
+  "total": 214,
+  "offset": 0,
+  "limit": 100,
+  "facets": {
+    "genres":  [ { "value": "Pop", "label": "Pop", "count": 61 } ],
+    "albums":  [ { "value": "Thriller", "label": "Thriller", "count": 9 } ],
+    "artists": [ { "value": "Michael Jackson", "label": "Michael Jackson", "count": 14 } ],
+    "decades": [ { "value": 1980, "label": "Anni 80", "count": 52 }, { "value": "none", "label": "Senza anno", "count": 7 } ]
+  },
+  "user": "mike"
+}
+```
+
+- `songs` = **lo stesso oggetto `track`** del manifest (stato, `version`, `plays`…), ma **solo per la pagina**: `total` conta tutto ciò che corrisponde.
+- Ogni voce delle `facets` conta i brani che corrispondono a **tutti i filtri tranne il proprio**: scegliere un tipo restringe gli album proposti, ma gli altri tipi restano lì per cambiare idea. `value` è ciò che si rimanda come filtro, `label` ciò che si mostra. `genres`/`albums`/`artists`: più brani prima, poi A–Z; `decades`: cronologico, con «Senza anno» (`none`) in fondo, solo se ce ne sono.
+- Il risultato, o un singolo elemento scelto, diventa la **coda** del player.
 
 ## `POST /api/mondrop/songs/:songKey/download`
 
@@ -101,4 +144,4 @@ Regola unica per tutti i client. Se il brano è **già scaricato** (sul device, 
 
 ## Compatibilità
 
-Le app già installate decodificano il manifest con i soli campi vecchi: `status` resta `ready`/`missing`, `source` non vale più `entry_*`, tutti i campi nuovi sono opzionali lato client. `POST /api/mondrop/songs/:songKey/spooty` resta com'è.
+Le app già installate decodificano il manifest con i soli campi vecchi: `status` resta `ready`/`missing`, `source` non vale più `entry_*`, tutti i campi nuovi (`album`, `genres`, `year` compresi) sono opzionali lato client. `POST /api/mondrop/songs/:songKey/spooty` resta com'è.

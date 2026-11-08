@@ -14,4 +14,6 @@
 | 0010 | A song can BE a file of the media server; the web plays it from there and never copies it | Accepted | 2026-11-07 |
 | 0011 | Library search over the journal, the media server and configurable music folders | Accepted | 2026-11-07 |
 | 0012 | The Mac imports its music straight onto the box, into `Music/SoundReel/_MacMusic/` only | Accepted | 2026-11-07 |
-| 0013 | Release year per song, and a library endpoint for Mondrop | Accepted (for 2.9.0) | 2026-11-08 |
+| 0013 | Release year per song, and a library endpoint for Mondrop | Accepted (implemented in 2.9.0) | 2026-11-08 |
+| 0014 | Phone photos go to home storage and are ingested by MemoryLoom; SoundReel only receives them | Proposed | 2026-11-08 |
+| 0015 | The Mondrop inbox lives on the server; push is only the doorbell | Proposed | 2026-11-08 |
