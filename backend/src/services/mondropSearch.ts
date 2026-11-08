@@ -195,14 +195,19 @@ function memberOfEntry(e: LibraryEntry): Member {
   };
 }
 
-/** Everything searchable, one member per song KEY: the journal's songs, then the files that are not already one of them. */
-async function allMembers(userId: string): Promise<Member[]> {
+/** One member per song KEY: the given journal songs, then the files that are not already one of them. */
+async function membersOf(journal: Iterable<AggregatedSong>): Promise<Member[]> {
   const byKey = new Map<string, Member>();
-  for (const s of (await getUserSongs(userId, false)).values()) byKey.set(s.songKey, memberOfSong(s));
+  for (const s of journal) byKey.set(s.songKey, memberOfSong(s));
   for (const e of (await libraryEntries()).all) {
     if (!byKey.has(e.songKey)) byKey.set(e.songKey, memberOfEntry(e)); // same key as a journal song: one entry
   }
   return [...byKey.values()];
+}
+
+/** Everything searchable: the user's journal and the files. */
+async function allMembers(userId: string): Promise<Member[]> {
+  return membersOf((await getUserSongs(userId, false)).values());
 }
 
 interface Group {
@@ -291,6 +296,24 @@ function albumShown(g: Group, onAlbum: Member | null): string | null {
 }
 
 const mostCommon = (counts: Map<string, number>): string => [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+
+/**
+ * The songs that exist ONLY as files (geekom's library, the box), one per song as «Cerca» groups them: what the web's playlist
+ * manager adds to the journal's list so that its search takes from EVERYTHING (spec 2026-11-08-playlist-search-everything-design.md).
+ * `journal` is the list the web shows: a file of a song that is already in it is never a second row, neither by key nor
+ * because it is the same recording under another spelling (the group is shown as the journal's song). Sorted by artist, title.
+ */
+export async function songsOnlyAsFiles(journal: Iterable<AggregatedSong>): Promise<AggregatedSong[]> {
+  const out: Array<{ sortKey: string; song: AggregatedSong }> = [];
+  for (const g of groupMembers(await membersOf(journal))) {
+    if (g.rep.journal) continue; // the journal's song is already in the list
+    const song = g.rep.make();
+    const album = albumShown(g, null);
+    // empty facets, not absent ones: a client that finds none on a song goes and derives them from the whole journal
+    out.push({ sortKey: g.rep.sortKey, song: { ...song, album, sources: [], platforms: [], tags: [] } });
+  }
+  return out.sort((a, b) => a.sortKey.localeCompare(b.sortKey)).map((x) => x.song);
+}
 
 interface Match {
   group: Group;

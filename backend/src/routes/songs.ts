@@ -15,6 +15,8 @@ import { getUserSongs } from '../services/userSongs';
 import { getTrack, ORDER_WEB, requestSongDownload, resolveSongServing } from '../services/offlineManifest';
 import { serveSong } from '../services/songStream';
 import { choiceFor, parsePrefer, playPlan } from '../services/playPlan';
+import { songsOnlyAsFiles } from '../services/mondropSearch';
+import { libraryFilesOf } from '../services/libraryOnlySongs';
 import { classifyNetwork } from '../utils/network';
 import { describeActor, logActivity, shouldLogOnce, songLabel, type Actor } from '../services/activityLog';
 import type { LibraryTrack } from '../services/musicLibrary';
@@ -67,8 +69,22 @@ export function attachLibraryFlags(
   });
 }
 
-/** Where a song's file is: geekom's disk, the media server, or nowhere. null when the locator cannot say. */
-async function locationOf(track: { songKey: string; artist: string; title: string }): Promise<SongLocation | null> {
+/**
+ * Where a song's file is: geekom's disk, the media server, or nowhere. null when the locator cannot say.
+ * A song that is ONLY a file (not in this user's journal: ADR-0018) is where ITS file is, the library entry that names its key:
+ * a loose match by name finds nothing for «Track 01» without an artist, or another version's file for «(2019 Remastered)», and the
+ * web player would then say «no file anywhere» and play YouTube for a song that is on the box.
+ */
+async function locationOf(
+  track: { songKey: string; artist: string; title: string },
+  user: { id: string; isAdmin: boolean },
+): Promise<SongLocation | null> {
+  if (!(await getUserSongs(user.id, user.isAdmin)).has(track.songKey)) {
+    const files = await libraryFilesOf(track.songKey).catch(() => undefined);
+    if (files) {
+      return { fs: files.local !== null, mediaServer: files.media !== null, fsPath: null, mediaUrl: null, mediaPath: null, streamUrl: null };
+    }
+  }
   const found = await locateSongs([{ songKey: track.songKey, artist: track.artist, title: track.title }], await getCachedLibraryTracks())
     .catch(() => new Map<string, SongLocation>());
   return found.get(track.songKey) ?? null;
@@ -191,7 +207,10 @@ async function findVisibleSong(userId: string, isAdmin: boolean, key: string): P
 }
 
 export function registerSongsRoutes(app: FastifyInstance): void {
-  app.get('/api/songs', async (req, reply) => {
+  // The journal's songs. `?scope=everything` (the playlist manager, spec 2026-11-08-playlist-search-everything-design.md) adds the songs
+  // that exist only as files (geekom's library, the box), one per song as «Cerca» groups them, flagged `libraryOnly`: so the search of
+  // the manager takes from EVERYTHING and not only from the journal. Without it nothing changes (the Songs page stays the journal).
+  app.get<{ Querystring: { scope?: string } }>('/api/songs', async (req, reply) => {
     maybeTriggerLibrarySync();
     try {
       const user = resolveUser(req);
@@ -209,7 +228,16 @@ export function registerSongsRoutes(app: FastifyInstance): void {
         logError('song locations failed', { err: String(err) });
         return undefined;
       });
-      return reply.send({ songs: attachLibraryFlags(byKey.values(), tracks, readyKeys, locations) });
+      const songs = attachLibraryFlags(byKey.values(), tracks, readyKeys, locations);
+      if (req.query.scope === 'everything') {
+        // a failure here only costs the extra songs, never the list
+        const files = await songsOnlyAsFiles(songs).catch((err) => {
+          logError('songs only as files failed', { err: String(err) });
+          return [] as AggregatedSong[];
+        });
+        return reply.send({ songs: [...songs, ...files] });
+      }
+      return reply.send({ songs });
     } catch (err) {
       logError('GET /api/songs failed', { err: String(err) });
       return reply.code(500).send({ error: 'songs aggregation failed' });
@@ -305,7 +333,7 @@ export function registerSongsRoutes(app: FastifyInstance): void {
       const track = await getTrack(req.params.songKey, user.id, user.isAdmin);
       if (!track) return reply.code(404).send({ error: 'song not found' });
       // where the song is (spec W2/W8): disk, media server, their path/URL and the video link
-      const loc = await locationOf(track);
+      const loc = await locationOf(track, user);
       return reply.send({
         state: track.state,
         source: track.source,
@@ -331,7 +359,7 @@ export function registerSongsRoutes(app: FastifyInstance): void {
       const user = resolveUser(req);
       const track = await getTrack(req.params.songKey, user.id, user.isAdmin);
       if (!track) return reply.code(404).send({ error: 'song not found' });
-      const loc = await locationOf(track);
+      const loc = await locationOf(track, user);
       const prefer = parsePrefer(req.query.prefer);
       const network = classifyNetwork(req.headers).network;
       // The locator could not say where the file is (an outage): no file is assumed and NO download is asked — the video plays.

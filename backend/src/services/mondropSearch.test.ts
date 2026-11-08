@@ -6,7 +6,7 @@ vi.mock('./libraryOnlySongs', async (orig) => ({ ...(await orig<typeof import('.
 vi.mock('./offlineManifest', () => ({ buildTracks: m.buildTracks }));
 vi.mock('../utils/db', () => ({ query: vi.fn() }));
 
-import { creditsOf, parseSearchQuery, searchEverything, titleKeyOf } from './mondropSearch';
+import { creditsOf, parseSearchQuery, searchEverything, songsOnlyAsFiles, titleKeyOf } from './mondropSearch';
 import type { LibraryEntry } from './libraryOnlySongs';
 import type { AggregatedSong } from '../types';
 
@@ -361,5 +361,65 @@ describe('searchEverything: the journal and the files are ONE list', () => {
     const j = journalSong('Kavinsky', 'Nightcall', 'OutRun');
     m.getUserSongs.mockResolvedValue(new Map([[j.songKey, j]]));
     expect((await ask({ q: 'nightcall' })).tracks[0]).toMatchObject({ album: 'OutRun' });
+  });
+});
+
+describe('songsOnlyAsFiles: what the web adds to the journal so that its search takes from EVERYTHING', () => {
+  const titles = (songs: AggregatedSong[]) => songs.map((x) => x.title);
+
+  it('lists every song that is only a file, ONE per song as «Cerca» groups them (not one per file)', async () => {
+    const songs = await songsOnlyAsFiles([]);
+    // 17 files are 10 songs: the same recording found two or three times is ONE (El Raton's «King's Supreme» shares no credited
+    // artist with the posse cut of the same name, so those two stay apart)
+    expect(songs).toHaveLength(10);
+    expect(titles(songs).filter((t) => t === 'Giorni matti')).toHaveLength(1);
+    expect(titles(songs).filter((t) => /^S\.I\.C\.?$/.test(t))).toHaveLength(1);
+    // a version has another title and stays its own song
+    expect(titles(songs)).toEqual(expect.arrayContaining(['S.A.I.C.', 'S.A.I.C. - 2019 Remastered']));
+  });
+
+  it('flags them as files without a post: libraryOnly, no mentions, no metadata, and where the file is', async () => {
+    const [capirai] = (await songsOnlyAsFiles([])).filter((x) => x.title === 'Capirai');
+    expect(capirai).toMatchObject({ libraryOnly: true, mentions: [], meta: null, inLibrary: true, fs: true, mediaServer: true, artist: 'Bassi Maestro' });
+  });
+
+  it('carries EMPTY facets (sources, platforms, tags), not absent ones: a client that finds none would derive them from the whole journal', async () => {
+    for (const song of await songsOnlyAsFiles([])) expect(song).toMatchObject({ sources: [], platforms: [], tags: [] });
+  });
+
+  it('is sorted by artist and title, so the list reads the same at every request', async () => {
+    const songs = await songsOnlyAsFiles([]);
+    const order = songs.map((x) => `${x.artist} ${x.title}`.toLowerCase());
+    expect(order).toEqual([...order].sort((a, b) => a.localeCompare(b)));
+    expect(songs[0].artist).toBe('Bassi Maestro');
+  });
+
+  it('shows the album of the box\'s TAG, not the folder of the copy that happens to be shown (the folder is a Spooty playlist name)', async () => {
+    const giorni = (await songsOnlyAsFiles([])).find((x) => x.title === 'Giorni matti');
+    expect(giorni?.album).toBe('Classe 73');
+  });
+
+  it('never repeats a song the list already has: by key, and as the same recording under another spelling', async () => {
+    const journal = [
+      journalSong('Bassi Maestro', 'Capirai'), // the same KEY as a file
+      journalSong('Bassi Maestro', 'S.I.C.'), // one of the two spellings of a group of files
+      journalSong('Bassi Maestro', 'Giorni matti'), // the journal's song stands for the whole group of three files
+    ];
+    const songs = await songsOnlyAsFiles(journal);
+    expect(songs).toHaveLength(7);
+    expect(titles(songs)).not.toContain('Capirai');
+    expect(titles(songs)).not.toContain('Giorni matti');
+    expect(titles(songs).filter((t) => /^S\.I\.C\.?$/.test(t))).toHaveLength(0);
+    expect(titles(songs)).toContain('Foto di gruppo');
+  });
+
+  it('is empty when there are no files (the box is detached and geekom has nothing)', async () => {
+    setLibrary([]);
+    expect(await songsOnlyAsFiles([journalSong('Queen', 'Bohemian Rhapsody')])).toEqual([]);
+  });
+
+  it('asks nothing of the journal itself: it works on the list it is given (the one the web returns)', async () => {
+    await songsOnlyAsFiles([journalSong('Bassi Maestro', 'Capirai')]);
+    expect(m.getUserSongs).not.toHaveBeenCalled();
   });
 });

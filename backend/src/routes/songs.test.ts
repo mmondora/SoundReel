@@ -32,6 +32,8 @@ vi.mock('../services/offlineManifest', () => ({
   getTrack: vi.fn(),
   requestSongDownload: vi.fn(),
 }));
+vi.mock('../services/mondropSearch', () => ({ songsOnlyAsFiles: vi.fn().mockResolvedValue([]) }));
+vi.mock('../services/libraryOnlySongs', () => ({ libraryFilesOf: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logError: vi.fn() }));
 
 import { registerSongsRoutes, _resetSyncThrottleForTest, aggregateSongs } from './songs';
@@ -45,6 +47,8 @@ import { locateSongs } from '../services/songLocation';
 import { logActivity, _resetActivityThrottleForTest } from '../services/activityLog';
 import { invalidateUserSongs } from '../services/userSongs';
 import { getTrack, requestSongDownload, resolveSongServing } from '../services/offlineManifest';
+import { songsOnlyAsFiles } from '../services/mondropSearch';
+import { libraryFilesOf } from '../services/libraryOnlySongs';
 import { logError } from '../utils/logger';
 import type { AggregatedSong, SongMetaRecord } from '../types';
 
@@ -225,6 +229,54 @@ describe('GET /api/songs', () => {
     // let the fire-and-forget rejection's .catch handler run before asserting.
     await new Promise((resolve) => setImmediate(resolve));
     expect(logError).toHaveBeenCalledWith('background music library sync failed', expect.objectContaining({ err: expect.any(String) }));
+  });
+});
+
+describe('GET /api/songs?scope=everything (the playlist manager: its search takes from EVERYTHING)', () => {
+  const FILE_ONLY: AggregatedSong = {
+    songKey: 'bassi maestro::capirai', title: 'Capirai', artist: 'Bassi Maestro', album: "L'ultimo testimone", youtubeUrl: null,
+    spotifyUrl: null, mentions: [], meta: null, inLibrary: true, fs: true, mediaServer: true, libraryOnly: true,
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(syncDownloadedFlags).mockResolvedValue({ scanned: 0, matched: 0, updated: 0 });
+    vi.mocked(listEntries).mockResolvedValue([entry('e1', '2026-07-02T00:00:00Z', [BOHEMIAN])]);
+    vi.mocked(listSongMeta).mockResolvedValue(new Map());
+    vi.mocked(songsOnlyAsFiles).mockResolvedValue([FILE_ONLY]);
+    _resetSyncThrottleForTest();
+  });
+
+  it('without the scope nothing changes: the journal only, and the files are never even asked for', async () => {
+    const res = await buildApp().inject({ method: 'GET', url: '/api/songs' });
+    expect(res.json().songs.map((s: { songKey: string }) => s.songKey)).toEqual(['queen::bohemian rhapsody']);
+    expect(songsOnlyAsFiles).not.toHaveBeenCalled();
+    const other = await buildApp().inject({ method: 'GET', url: '/api/songs?scope=journal' });
+    expect(other.json().songs).toHaveLength(1);
+    expect(songsOnlyAsFiles).not.toHaveBeenCalled();
+  });
+
+  it('adds the songs that exist only as files after the journal\'s, flagged libraryOnly', async () => {
+    const res = await buildApp().inject({ method: 'GET', url: '/api/songs?scope=everything' });
+    expect(res.statusCode).toBe(200);
+    const { songs } = res.json();
+    expect(songs.map((s: { songKey: string }) => s.songKey)).toEqual(['queen::bohemian rhapsody', 'bassi maestro::capirai']);
+    expect(songs[0].libraryOnly).toBeUndefined();
+    expect(songs[1]).toMatchObject({ libraryOnly: true, mentions: [], inLibrary: true, fs: true, mediaServer: true });
+  });
+
+  it('asks for the files with the list it returns, so a journal song is never repeated as a file', async () => {
+    await buildApp().inject({ method: 'GET', url: '/api/songs?scope=everything' });
+    expect(songsOnlyAsFiles).toHaveBeenCalledTimes(1);
+    const given = [...vi.mocked(songsOnlyAsFiles).mock.calls[0][0]] as AggregatedSong[];
+    expect(given.map((s) => s.songKey)).toEqual(['queen::bohemian rhapsody']);
+  });
+
+  it('a failure of the files only costs the extra songs: the journal still comes, and the failure is logged', async () => {
+    vi.mocked(songsOnlyAsFiles).mockRejectedValue(new Error('the box went away'));
+    const res = await buildApp().inject({ method: 'GET', url: '/api/songs?scope=everything' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().songs.map((s: { songKey: string }) => s.songKey)).toEqual(['queen::bohemian rhapsody']);
+    expect(logError).toHaveBeenCalledWith('songs only as files failed', expect.anything());
   });
 });
 
@@ -915,6 +967,53 @@ describe('GET /api/songs/:songKey/play: what the web player plays is decided by 
     place(PLACES.media);
     await buildApp().inject({ method: 'GET', url: '/api/songs/queen%3A%3Abohemian%20rhapsody/play', headers: { 'remote-user': 'sara' } });
     expect(vi.mocked(getTrack).mock.calls[0].slice(0, 2)).toEqual(['queen::bohemian rhapsody', 'sara']);
+  });
+
+  describe('a song that is ONLY a file (not in the journal): it is where ITS file is, found by key and never by name', () => {
+    const KEY = 'bassi maestro::track 01';
+    const FILE_URL = '/api/songs/bassi%20maestro%3A%3Atrack%2001/file';
+    const fileOnly = (files: { local: unknown; media: unknown } | undefined) => {
+      vi.mocked(getTrack).mockResolvedValue({ songKey: KEY, artist: 'Bassi Maestro', title: 'Track 01', state: 'ready' } as never);
+      vi.mocked(libraryFilesOf).mockResolvedValue(files as never);
+      vi.mocked(locateSongs).mockResolvedValue(new Map()); // a match by name finds nothing for it
+      vi.mocked(listEntries).mockResolvedValue([]); // the journal does not know it
+      vi.mocked(listSongMeta).mockResolvedValue(new Map());
+      invalidateUserSongs();
+    };
+    const playIt = (headers: Record<string, string> = home) =>
+      buildApp().inject({ method: 'GET', url: `/api/songs/${encodeURIComponent(KEY)}/play`, headers });
+
+    it('on the box: at home it plays THE FILE, not YouTube with a download that nobody can make', async () => {
+      fileOnly({ local: null, media: { relPath: 'Music/Bassi Maestro/Track 01.mp3' } });
+      expect((await playIt()).json()).toMatchObject({ choice: 'media', from: 'media-server', download: false, fileUrl: FILE_URL });
+    });
+
+    it('only on geekom\'s disk: the disk', async () => {
+      fileOnly({ local: { relPath: 'x/Track 01.mp3' }, media: null });
+      expect((await playIt()).json()).toMatchObject({ from: 'disk', download: false, fileUrl: FILE_URL });
+    });
+
+    it('from the internet: YouTube, always, and still no download (the file is there)', async () => {
+      fileOnly({ local: null, media: { relPath: 'Music/Bassi Maestro/Track 01.mp3' } });
+      expect((await playIt(internet)).json()).toMatchObject({ choice: 'internet', from: 'youtube', download: false, fileUrl: null });
+    });
+
+    it('a song of the JOURNAL keeps being located by name, even if a file carries its key', async () => {
+      vi.mocked(getTrack).mockResolvedValue({ songKey: 'queen::bohemian rhapsody', artist: 'Queen', title: 'Bohemian Rhapsody', state: 'ready' } as never);
+      vi.mocked(listEntries).mockResolvedValue([entry('e1', '2026-07-02T00:00:00Z', [BOHEMIAN])]);
+      vi.mocked(listSongMeta).mockResolvedValue(new Map());
+      invalidateUserSongs();
+      vi.mocked(libraryFilesOf).mockResolvedValue({ local: { relPath: 'x.mp3' }, media: { relPath: 'y.mp3' } } as never);
+      vi.mocked(locateSongs).mockResolvedValue(new Map([['queen::bohemian rhapsody', { fs: false, mediaServer: false, fsPath: null, mediaUrl: null, streamUrl: null }]]) as never);
+      expect((await play()).json()).toMatchObject({ from: 'youtube', download: true }); // the locator's answer, not the library entry's
+    });
+
+    it('the state of a file-only song says where its file is', async () => {
+      fileOnly({ local: null, media: { relPath: 'Music/Bassi Maestro/Track 01.mp3' } });
+      const res = await buildApp().inject({ method: 'GET', url: `/api/songs/${encodeURIComponent(KEY)}/state` });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().location).toMatchObject({ fs: false, mediaServer: true });
+    });
   });
 });
 
