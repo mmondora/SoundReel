@@ -1,0 +1,12 @@
+// Mondrop — shared build settings (reference; XcodeGen project.yml is source of truth)
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
+MACOSX_DEPLOYMENT_TARGET = 14.0
+SWIFT_VERSION = 5.9
+CURRENT_PROJECT_VERSION = 5
+MARKETING_VERSION = 1.4.0
+APP_BUNDLE_ID = it.mikesoft.mondrop
+SHARE_BUNDLE_ID = it.mikesoft.mondrop.share
+MAC_BUNDLE_ID = it.mikesoft.mondrop.mac
+MAC_SHARE_BUNDLE_ID = it.mikesoft.mondrop.mac.share
+APP_GROUP_ID = group.it.mikesoft.mondrop
+DEVELOPMENT_TEAM = 5NZADC9YQ2

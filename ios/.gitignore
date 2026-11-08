@@ -1,6 +1,11 @@
 # Xcode
 build/
 DerivedData/
+MondropTests/Fixtures/share.key
+
+*.xcodeproj/
+*.xcworkspace/
+!default.xcworkspace/
 *.xcuserstate
 *.xccheckout
 *.moved-aside
@@ -21,3 +26,4 @@ xcuserdata/
 Packages/
 Package.resolved
 .build/
+MondropTests/ShareKey.generated.swift

@@ -1,0 +1,219 @@
+name: Mondrop
+options:
+  bundleIdPrefix: it.mikesoft
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: 5NZADC9YQ2
+    MARKETING_VERSION: "1.4.0"
+    CURRENT_PROJECT_VERSION: "5"
+    SWIFT_VERSION: "5.9"
+    CODE_SIGN_STYLE: Automatic
+
+configs:
+  Debug: debug
+  Release: release
+
+targets:
+  Mondrop:
+    type: application
+    platform: iOS
+    sources:
+      # Assets.xcassets stays in sources: XcodeGen puts it in the Resources phase.
+      # (There is no target-level `resources:` key — it was silently ignored, so the
+      # catalog, and with it the app icon, never reached the built app.)
+      - path: Mondrop
+        excludes:
+          - "**/*.entitlements"
+      - path: MondropKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: it.mikesoft.mondrop
+        PRODUCT_NAME: Mondrop
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_ENTITLEMENTS: Mondrop/Mondrop.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Mondrop/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: Mondrop
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        # ATS lives in Mondrop/Info.plist (NSAllowsLocalNetworking for the home media server, arbitrary loads off):
+        # a nested INFOPLIST_KEY_NSAppTransportSecurity_* build setting is silently ignored by Xcode.
+    entitlements:
+      path: Mondrop/Mondrop.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.it.mikesoft.mondrop
+    dependencies:
+      - target: MondropShare
+        embed: true
+
+  MondropShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: MondropShare
+        excludes:
+          - "**/*.entitlements"
+          - "Info.plist"
+          - "Info-macOS.plist"
+      - path: MondropKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: it.mikesoft.mondrop.share
+        PRODUCT_NAME: MondropShare
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon # share-sheet icon (own arrow icon, not the app's)
+        MARKETING_VERSION: "1.4.0"
+        CURRENT_PROJECT_VERSION: "5"
+        CODE_SIGN_ENTITLEMENTS: MondropShare/MondropShare.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: MondropShare/Info.plist
+        SKIP_INSTALL: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
+          - "@executable_path/../../Frameworks"
+    entitlements:
+      path: MondropShare/MondropShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.it.mikesoft.mondrop
+    info:
+      path: MondropShare/Info.plist
+      properties:
+        CFBundleDisplayName: Mondrop
+        # XcodeGen would otherwise write the literals 1.0 / 1 here and the extension would never follow the bump.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebPageWithMaxCount: 1
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ShareViewController"
+
+  MondropMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: Mondrop
+        excludes:
+          - "**/*.entitlements"
+      - path: MondropKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: it.mikesoft.mondrop.mac
+        PRODUCT_NAME: Mondrop
+        CODE_SIGN_ENTITLEMENTS: Mondrop/MondropMac.entitlements
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Mondrop
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        ENABLE_HARDENED_RUNTIME: YES
+    entitlements:
+      path: Mondrop/MondropMac.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.application-groups:
+          - group.it.mikesoft.mondrop
+    dependencies:
+      - target: MondropShareMac
+        embed: true
+
+  MondropShareMac:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: MondropShare
+        excludes:
+          - "**/*.entitlements"
+          - "Info.plist"
+          - "Info-macOS.plist"
+      - path: MondropKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: it.mikesoft.mondrop.mac.share
+        PRODUCT_NAME: MondropShare
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ENTITLEMENTS: MondropShare/MondropShareMac.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: MondropShare/Info-macOS.plist
+        SKIP_INSTALL: YES
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        ENABLE_HARDENED_RUNTIME: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+          - "@executable_path/../../../../Frameworks"
+    entitlements:
+      path: MondropShare/MondropShareMac.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.application-groups:
+          - group.it.mikesoft.mondrop
+    info:
+      path: MondropShare/Info-macOS.plist
+      properties:
+        CFBundleDisplayName: Mondrop
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebPageWithMaxCount: 1
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ShareViewController"
+
+  MondropTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: MondropTests
+        excludes:
+          - "Fixtures/**"
+    resources:
+      - path: MondropTests/Fixtures
+    dependencies:
+      - target: Mondrop
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: it.mikesoft.mondrop.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Mondrop.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Mondrop"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+schemes:
+  Mondrop:
+    build:
+      targets:
+        Mondrop: all
+        MondropShare: all
+        MondropTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - MondropTests
+  MondropMac:
+    build:
+      targets:
+        MondropMac: all
+        MondropShareMac: all
+    run:
+      config: Debug
