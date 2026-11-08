@@ -1,0 +1,23 @@
+# Run the FRITZ!Box sync NOW when the SoundReel backend asks for it (a song was downloaded by the web player and
+# should reach the media server within minutes instead of at 04:00) — ADR-0010, spec W6.
+#
+# How it works: after a download the backend touches ~/Music/SoundReel/.publish-request (the folder is mounted
+# read-write in the container); systemd sees the file change and starts fritz-sync.service, the same unit the
+# nightly timer starts. A request that arrives while the sync is running is queued once, never run in parallel.
+# The sentinel itself is excluded from the mirror (scripts/fritz-sync.sh), so it never reaches the box.
+#
+# Install once (user level, no root):
+#   cp scripts/fritz-sync-request.path ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fritz-sync-request.path
+# Check:  systemctl --user status fritz-sync-request.path
+# Without it nothing breaks: the nightly run still publishes everything.
+[Unit]
+Description=Run the FRITZ!Box sync when SoundReel asks for it
+
+[Path]
+PathChanged=/home/mike/Music/SoundReel/.publish-request
+Unit=fritz-sync.service
+
+[Install]
+WantedBy=default.target

@@ -109,7 +109,18 @@ log "syncing music"
 # --no-links: nor can it represent symlinks — rsync aborts the entire run
 # with "Operation not supported (95)" on the first one it meets. Skipping
 # them is right for a media replica: a DLNA server plays files, not links.
-rsync -a --delete --partial --no-perms --no-owner --no-group --no-links \
+# --exclude '*.part': the backend writes a song as `name.mp3.part` and renames it when complete, so a
+#   download in progress is never mirrored half-written.
+# --exclude '._*': macOS shadow files are junk that doubled the box's media index.
+# --timeout: a share that stops answering must fail the run, not hang the timer forever.
+# --exclude '/_MacMusic/': the music imported from Michele's Mac is written straight onto the box by the Mac
+#   (docs/mac-music-import-prompt.md, ADR-0012), it is NOT in the origin tree: without this exclusion --delete
+#   would erase it every night. Excluded paths are also protected from deletion on the receiving side.
+# --exclude '/SoundReel/.publish-request': the sentinel the backend touches to ask for an immediate run
+#   (scripts/fritz-sync-request.path); it is a signal, not a song.
+rsync -a --delete --partial --timeout=180 --no-perms --no-owner --no-group --no-links \
+  --exclude '*.part' --exclude '._*' \
+  --exclude '/_MacMusic/' --exclude '/SoundReel/.publish-request' \
   "$MUSIC_SRC/" "$MUSIC_DEST/"
 
 if [ -d "$FILMS_SRC" ] && has_content "$FILMS_SRC"; then
@@ -125,15 +136,21 @@ WATCHLIST_TMP="$(mktemp -t watchlist.XXXXXX.html)"
 # Surfaced in the final OK line below: a permanently failing export must not
 # be able to hide behind a run that otherwise reports success every night.
 WATCHLIST_STATUS="ok"
+# Overwriting watchlist.html in place on the share fails with "Stale file handle" once the box has
+# indexed it. Write a sibling and rename it over the old one instead, and never let this step fail the run.
 if docker exec soundreel npm run --silent export:watchlist -- /tmp/watchlist.html \
-   && docker cp soundreel:/tmp/watchlist.html "$WATCHLIST_TMP"; then
-  cp "$WATCHLIST_TMP" "$VOLUME_DIR/watchlist.html"
+   && docker cp soundreel:/tmp/watchlist.html "$WATCHLIST_TMP" \
+   && cp "$WATCHLIST_TMP" "$VOLUME_DIR/watchlist.html.new" \
+   && mv -f "$VOLUME_DIR/watchlist.html.new" "$VOLUME_DIR/watchlist.html"; then
+  :
 else
   WATCHLIST_STATUS="stale"
-  log "WARN watchlist export failed, keeping the previous copy"
+  rm -f "$VOLUME_DIR/watchlist.html.new" 2>/dev/null || true
+  log "WARN watchlist export or copy failed, keeping the previous copy"
 fi
 rm -f "$WATCHLIST_TMP"
 
-MUSIC_COUNT=$(find "$MUSIC_DEST" -type f | wc -l)
-FILMS_COUNT=$(find "$FILMS_DEST" -type f | wc -l)
-log "OK music=$MUSIC_COUNT films=$FILMS_COUNT watchlist=$WATCHLIST_STATUS"
+# Informational only: walking a share over SMB is slow and can hit I/O errors, neither may fail the run.
+MUSIC_COUNT=$(timeout 120 find "$MUSIC_DEST" -type f 2>/dev/null | wc -l || true)
+FILMS_COUNT=$(timeout 60 find "$FILMS_DEST" -type f 2>/dev/null | wc -l || true)
+log "OK music=${MUSIC_COUNT:-?} films=${FILMS_COUNT:-?} watchlist=$WATCHLIST_STATUS"

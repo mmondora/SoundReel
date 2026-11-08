@@ -26,14 +26,29 @@ services:
       # significava dipendere da una macchina spenta quasi sempre.
       WHISPER_URL: ${WHISPER_URL:-http://gpu-router:9000/whisper}
       OCR_URL: http://soundreel-ocr:5001
+      # TTS via gpu-router pool (scelta B). Private docs: X-TTS-Local-Only from /api/tts/render.
+      TTS_URL: ${TTS_URL:-http://gpu-router:9000/tts}
       MEDIA_ROOT: /data/media
       FRONTEND_URL: https://soundreel.casamon.dev
       SPOTIFY_REDIRECT_URI: https://oauth.casamon.dev/spotify/callback
       MUSIC_LIBRARY_PATH: /music
+      MUSIC_STORE_DIR: SoundReel
+      # Library search (ADR-0011): the roots the "Cartelle musica" configuration may pick folders from. /music (Spooty's
+      # folder) is always searched; more host folders are mounted read-only under /music-extra (see volumes below).
+      MUSIC_EXTRA_ROOTS: ${MUSIC_EXTRA_ROOTS:-/music-extra}
+      # How the library's root is shown in a result's location (the container sees /music, the host calls it ~/Music).
+      MUSIC_LIBRARY_LABEL: ${MUSIC_LIBRARY_LABEL:-~/Music}
       FILMS_LIBRARY_PATH: /films
     volumes:
       - soundreel_media:/data/media
       - /home/mike/Music:/music:ro
+      # The one writable corner of the library: songs fetched from YouTube land here (MUSIC_STORE_DIR),
+      # so the library scan, the web player and the "downloaded" flags see them like Spooty's files.
+      # The directory must exist on the host before `up` (else Docker creates it as root).
+      - /home/mike/Music/SoundReel:/music/SoundReel
+      # Other music folders to search (library search, ADR-0011): mount each READ-ONLY under /music-extra, then add it
+      # in the web configuration ("Cartelle musica"). Example (uncomment and adapt; needs a redeploy):
+      # - /home/mike/Downloads:/music-extra/Downloads:ro
       - /home/mike/Films:/films
     depends_on:
       soundreel-db:
