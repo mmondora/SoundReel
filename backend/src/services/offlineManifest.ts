@@ -21,6 +21,7 @@ import { getSongPlayStats } from './listeningStats';
 import { getUserSongs } from './userSongs';
 import { findLibraryMatch, findMediaServerMatch } from './fileResolver';
 import { mediaUrlForVolumePath, volumePathFromUrl } from './mediaServer';
+import { libraryFilesOf, libraryOnlySong } from './libraryOnlySongs';
 import { absFromRel, fileFacts, fileVersion, type FileFacts } from './musicStore';
 import type { FileOrigin } from './songStream';
 import {
@@ -60,7 +61,7 @@ export interface OfflineTrack {
   source: TrackSource;
   /** Relative API path to download (prefix with the backend base URL); always valid when `ready`. */
   downloadPath: string | null;
-  /** Direct URL on the home media server, LAN only, present only once the replica was verified there. */
+  /** Always null since 2.13.0 (rule P, ADR-0018: a client never talks to the box). Kept so installed apps still decode the field. */
   mediaUrl: string | null;
   /** Changes when the file changes: a client that already has this version skips the download. */
   version: string | null;
@@ -159,7 +160,29 @@ interface Resolved {
   vanished: boolean;
 }
 
+/**
+ * A song that exists only as a file (ADR-0018) is served from THE file its library entry names: geekom's disk first, and the
+ * box's file as the other origin. Never from a loose name match (it strips «(2019 Remastered)» and would play one version's
+ * file for another's row). It has no `song_files` row and is never downloaded; the song IS that file (ADR-0010), so there is
+ * nothing to copy or prepare.
+ */
+async function resolveLibraryOnly(song: AggregatedSong, row: SongFile | null): Promise<Resolved> {
+  const files = await libraryFilesOf(song.songKey);
+  const box = files?.media ?? null;
+  const media = box ? { url: mediaUrlForVolumePath(box.relPath), volumeRel: box.relPath } : null;
+  if (files?.local) {
+    const abs = absFromRel(files.local.relPath);
+    const facts = abs ? await fileFacts(abs) : null;
+    if (facts) return { state: 'ready', source: 'library', facts, relPath: files.local.relPath, media, row, error: null, vanished: false };
+  }
+  if (box && media && box.bytes) {
+    return { state: 'ready', source: 'mediaserver', facts: { bytes: box.bytes, mtimeMs: 0 }, relPath: null, media, row, error: null, vanished: false };
+  }
+  return { state: 'missing', source: 'none', facts: null, relPath: null, media: null, row, error: 'file non più presente', vanished: false };
+}
+
 async function resolveSong(song: AggregatedSong, row: SongFile | null, awaitingSpooty: boolean): Promise<Resolved> {
+  if (song.libraryOnly) return resolveLibraryOnly(song, row);
   let vanished = false;
 
   if (row?.status === 'ready' && row.relPath) {
@@ -197,8 +220,6 @@ async function resolveSong(song: AggregatedSong, row: SongFile | null, awaitingS
 
 function toTrack(song: AggregatedSong, r: Resolved, lyrics: string | null): OfflineTrack {
   const ready = r.state === 'ready' && r.facts !== null;
-  // The replica only counts while it is the same file we have.
-  const replicaOk = ready && r.row?.mediaUrl && r.row.publishedAt && r.row.bytes === r.facts?.bytes;
   return {
     songKey: song.songKey,
     title: song.title,
@@ -210,7 +231,9 @@ function toTrack(song: AggregatedSong, r: Resolved, lyrics: string | null): Offl
     state: r.state,
     source: trackSource(r.source),
     downloadPath: ready ? songFilePath(song.songKey) : null,
-    mediaUrl: replicaOk ? r.row!.mediaUrl : null,
+    // Rule P (ADR-0018): a client talks only to SoundReel and never to the box, so no store address is sent (older apps
+    // then fall back to `downloadPath`, which is always valid for a ready track).
+    mediaUrl: null,
     version: ready ? fileVersion(r.facts!) : null,
     bytes: ready ? r.facts!.bytes : null,
     durationS: r.row?.durationS ?? null,
@@ -259,7 +282,10 @@ const awaiting = (song: AggregatedSong, open: Set<string>): boolean => song.ment
 async function findSong(songKey: string, ownerUser: string, isAdmin: boolean): Promise<AggregatedSong | undefined> {
   const cached = (await getUserSongs(ownerUser, isAdmin)).get(songKey);
   if (cached) return cached;
-  return (await getUserSongs(ownerUser, isAdmin, 0)).get(songKey);
+  const fresh = (await getUserSongs(ownerUser, isAdmin, 0)).get(songKey);
+  if (fresh) return fresh;
+  // Not in the journal: it may still be a FILE of geekom's library or of the box (ADR-0018). Accepted only if the file exists.
+  return libraryOnlySong(songKey);
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +304,9 @@ interface PrepareOptions {
 }
 
 async function ensurePrepared(song: AggregatedSong, row: SongFile | null, opts: PrepareOptions): Promise<void> {
+  // A song that exists only as a file is served as it is: nothing to prepare, and never a YouTube download for a key the
+  // journal does not know (ADR-0018). Its state is worked out at every read.
+  if (song.libraryOnly) return;
   const r = await resolveSong(song, row, opts.awaitingSpooty);
 
   if (r.state === 'ready') {
@@ -330,12 +359,13 @@ export async function buildPlaylistOfflineManifest(
   const playlist = await resolveDetail(stored, { userId: ownerUser, isAdmin });
 
   const songs = await getUserSongs(ownerUser, isAdmin);
-  const known = playlist.songKeys.map((k) => songs.get(k)).filter((s): s is AggregatedSong => !!s);
+  const found = await Promise.all(playlist.songKeys.map(async (k) => songs.get(k) ?? (await libraryOnlySong(k))));
+  const known = found.filter((s): s is AggregatedSong => !!s);
   const [rows, open] = await Promise.all([getSongFiles(playlist.songKeys), openSpootyEntries(known)]);
 
   const built: OfflineTrack[] = [];
-  for (const key of playlist.songKeys) {
-    const song = songs.get(key);
+  for (const [i, key] of playlist.songKeys.entries()) {
+    const song = found[i];
     if (!song) {
       built.push(placeholderTrack(key));
       continue;
@@ -384,7 +414,8 @@ export async function preparePlaylist(
   const playlist = await resolveDetail(stored, { userId: ownerUser, isAdmin }); // dynamic: the songs of the rule, now
 
   const songs = await getUserSongs(ownerUser, isAdmin);
-  const known = playlist.songKeys.map((k) => songs.get(k)).filter((s): s is AggregatedSong => !!s);
+  const found = await Promise.all(playlist.songKeys.map(async (k) => songs.get(k) ?? (await libraryOnlySong(k))));
+  const known = found.filter((s): s is AggregatedSong => !!s);
   const [rows, open] = await Promise.all([getSongFiles(playlist.songKeys), openSpootyEntries(known)]);
 
   for (const song of known) {
@@ -447,10 +478,11 @@ export async function setSongSource(
   ownerUser: string,
   youtubeUrl: string,
   isAdmin = false,
-): Promise<{ ok: true } | { ok: false; reason: 'song_not_found' | 'bad_url' }> {
+): Promise<{ ok: true } | { ok: false; reason: 'song_not_found' | 'bad_url' | 'library_only' }> {
   if (!isYoutubeVideoUrl(youtubeUrl)) return { ok: false, reason: 'bad_url' };
   const song = await findSong(songKey, ownerUser, isAdmin);
   if (!song) return { ok: false, reason: 'song_not_found' };
+  if (song.libraryOnly) return { ok: false, reason: 'library_only' }; // it is a file, not a YouTube job
   await enqueueSongDownload({
     songKey,
     artist: song.artist,
@@ -508,7 +540,8 @@ export async function resolveSongServing(
   let mediaRel = resolved.media?.volumeRel ?? null;
   if (resolved.media) have.media = { kind: 'media', url: resolved.media.url };
   let bytes = resolved.facts?.bytes ?? null;
-  if (!have.media && order.includes('media')) {
+  // (a library-only song has its exact files already: a loose lookup here could put another version's file among the origins)
+  if (!have.media && order.includes('media') && !song.libraryOnly) {
     const hit = await findMediaServerMatch(song.artist, song.title).catch(() => null);
     if (hit) {
       have.media = { kind: 'media', url: mediaUrlForVolumePath(hit.relPath) };

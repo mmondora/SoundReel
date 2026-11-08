@@ -432,6 +432,11 @@ export interface AggregatedSong {
   tags?: string[];
   /** Set when the title says this song is a version of another one (spec no-duplicates-and-post-links §7, D5). */
   versionOf?: SongVersionOf;
+  /**
+   * True for a song that exists only as a FILE (geekom's library or the box), never saved from a post (ADR-0018). It has
+   * no mentions and no metadata; the server serves it if its file exists and never downloads it from YouTube.
+   */
+  libraryOnly?: boolean;
 }
 
 /**

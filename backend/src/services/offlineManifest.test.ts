@@ -20,6 +20,8 @@ const m = vi.hoisted(() => ({
   listOpenSpootyEntryIds: vi.fn(),
   wakeSongDownloader: vi.fn(),
   postToSpooty: vi.fn(),
+  libraryOnlySong: vi.fn(),
+  libraryFilesOf: vi.fn(),
 }));
 vi.mock('../utils/db', () => ({ getEntry: m.getEntry, query: vi.fn() }));
 vi.mock('./playlists', () => ({ getPlaylist: m.getPlaylist }));
@@ -40,6 +42,7 @@ vi.mock('./spootyRequests', () => ({ listOpenSpootyEntryIds: m.listOpenSpootyEnt
 vi.mock('./songDownloader', () => ({ wakeSongDownloader: m.wakeSongDownloader }));
 vi.mock('./spootyClient', () => ({ postToSpooty: m.postToSpooty }));
 vi.mock('./localMedia', () => ({ rebuildLocalPaths: vi.fn() }));
+vi.mock('./libraryOnlySongs', () => ({ libraryOnlySong: m.libraryOnlySong, libraryFilesOf: m.libraryFilesOf }));
 
 import {
   buildPlaylistOfflineManifest,
@@ -86,6 +89,8 @@ beforeEach(async () => {
   m.getSongFile.mockResolvedValue(null);
   m.findLibraryMatch.mockResolvedValue(null);
   m.findMediaServerMatch.mockResolvedValue(null);
+  m.libraryOnlySong.mockResolvedValue(undefined); // nothing is a file of the library unless a test says so
+  m.libraryFilesOf.mockResolvedValue(undefined);
   m.getSongPlayStats.mockResolvedValue(new Map());
   m.resolveDetail.mockImplementation(async (p: unknown) => p); // a static playlist is what is stored
   m.listOpenSpootyEntryIds.mockResolvedValue(new Set());
@@ -208,7 +213,7 @@ describe('manifest: album, genres and year on every track (ADR-0013: choosing wh
 });
 
 describe('manifest: what a track looks like in each state', () => {
-  it('ready from a recorded file: live size/version, legacy status, download path, replica only when verified and unchanged', async () => {
+  it('ready from a recorded file: live size/version, legacy status, download path, and NEVER a store address (rule P)', async () => {
     await writeSong();
     m.getSongFiles.mockResolvedValue(new Map([[KEY, row({
       status: 'ready', source: 'ytdlp', relPath: 'SoundReel/Bishop Briggs - White Flag.mp3', bytes: 10, durationS: 231,
@@ -218,15 +223,17 @@ describe('manifest: what a track looks like in each state', () => {
     expect(t).toMatchObject({
       songKey: KEY, status: 'ready', state: 'ready', source: 'ytdlp', bytes: 10, durationS: 231, error: null,
       downloadPath: '/api/mondrop/songs/bishop%20briggs%3A%3Awhite%20flag/file',
-      mediaUrl: 'http://192.168.178.10:49200/AUDIO/DLNA-1-0/x.mp3', coverUrl: 'https://c/x.jpg', canEnqueueSpooty: false,
+      mediaUrl: null, coverUrl: 'https://c/x.jpg', canEnqueueSpooty: false,
     });
     expect(t.version).toMatch(/^10-\d+$/);
     expect(songFilePath(KEY)).toBe(t.downloadPath);
   });
 
-  it('never advertises a replica that is not the file we have now (or was not verified)', async () => {
+  it('never sends the address of the box, whatever the row says: a client talks only to SoundReel (rule P, ADR-0018)', async () => {
     await writeSong();
     const base = { status: 'ready', source: 'ytdlp', relPath: 'SoundReel/Bishop Briggs - White Flag.mp3', mediaUrl: 'http://x/y.mp3' };
+    m.getSongFiles.mockResolvedValue(new Map([[KEY, row({ ...base, bytes: 10, publishedAt: new Date() })]])); // a verified replica of the very file
+    expect((await manifestTrack()).mediaUrl).toBeNull();
     m.getSongFiles.mockResolvedValue(new Map([[KEY, row({ ...base, bytes: 999, publishedAt: new Date() })]])); // size differs
     expect((await manifestTrack()).mediaUrl).toBeNull();
     m.getSongFiles.mockResolvedValue(new Map([[KEY, row({ ...base, bytes: 10, publishedAt: null })]])); // never verified
@@ -427,7 +434,7 @@ describe('a song that IS a file of the media server (ADR-0010: nothing copied)',
     expect(await manifestTrack()).toMatchObject({
       status: 'ready', state: 'ready', source: 'existing', bytes: 6109100, version: '6109100-1781000000000', error: null,
       downloadPath: '/api/mondrop/songs/bishop%20briggs%3A%3Awhite%20flag/file',
-      mediaUrl: `${BOX}/Music/Kavinsky/Nightcall/01%20-%202-01%20Nightcall.mp3`,
+      mediaUrl: null, // the file is the box's, but the client asks SoundReel for it (rule P)
     });
   });
 
@@ -526,5 +533,131 @@ describe('a song that is not in the cached list yet (an entry created seconds ag
     m.getUserSongs.mockResolvedValue(new Map());
     expect(await getTrack('ghost::song', 'mike')).toBeNull();
     expect(m.getUserSongs).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ADR-0018: a song that exists only as a FILE (geekom's library or the box), never saved from a post
+// ---------------------------------------------------------------------------
+
+const FILE_KEY = 'bassi maestro::foto di gruppo';
+const fileSong = (over: Record<string, unknown> = {}) =>
+  ({ songKey: FILE_KEY, title: 'Foto di gruppo', artist: 'Bassi Maestro', album: 'Foto di gruppo', youtubeUrl: null, spotifyUrl: null, mentions: [], meta: null, inLibrary: true, libraryOnly: true, ...over }) as never;
+
+describe('a song that exists only as a file (ADR-0018)', () => {
+  const GEEKOM_FILE = 'Bassi Maestro/Bassi Maestro - Foto di gruppo.mp3';
+  const BOX_FILE = 'Music/Bassi Maestro/Foto di gruppo/01 - Foto di gruppo.mp3';
+  const boxFile = (relPath = BOX_FILE) => ({ relPath, bytes: 5208005 });
+
+  beforeEach(() => {
+    m.getUserSongs.mockResolvedValue(new Map()); // the journal knows nothing of it
+    m.libraryOnlySong.mockImplementation(async (key: string) => (key === FILE_KEY ? fileSong() : undefined));
+  });
+
+  it('is found by its key, and a key nobody carries is still unknown', async () => {
+    expect(await getTrack(FILE_KEY, 'mike')).toMatchObject({ songKey: FILE_KEY, title: 'Foto di gruppo', artist: 'Bassi Maestro', entryId: null, canEnqueueSpooty: false, spotifyUrl: null });
+    expect(await getTrack('ghost::song', 'mike')).toBeNull();
+  });
+
+  it('a file of geekom is a ready track served from disk, with no database write and no loose name match', async () => {
+    await writeSong(GEEKOM_FILE);
+    m.libraryFilesOf.mockResolvedValue({ local: { relPath: GEEKOM_FILE }, media: null });
+    const t = await getTrack(FILE_KEY, 'mike');
+    expect(t).toMatchObject({ state: 'ready', status: 'ready', source: 'library', bytes: 10, mediaUrl: null, downloadPath: songFilePath(FILE_KEY) });
+    expect(await resolveSongServing(FILE_KEY, 'mike', false, ORDER_MONDROP)).toMatchObject({ ok: true, served: { filename: 'Bassi Maestro - Foto di gruppo.mp3', origins: [{ kind: 'local' }] } });
+    expect(m.markReady).not.toHaveBeenCalled();
+    expect(m.enqueueSongDownload).not.toHaveBeenCalled();
+    expect(m.findLibraryMatch).not.toHaveBeenCalled();
+    expect(m.findMediaServerMatch).not.toHaveBeenCalled(); // not even as a second origin: its own files are known
+  });
+
+  it('a file that is only on the box is a ready track too (the song IS that file, ADR-0010) and is served from there', async () => {
+    m.libraryFilesOf.mockResolvedValue({ local: null, media: boxFile() });
+    const t = await getTrack(FILE_KEY, 'mike');
+    expect(t).toMatchObject({ state: 'ready', source: 'existing', bytes: 5208005, mediaUrl: null, downloadPath: songFilePath(FILE_KEY), error: null });
+    expect(await resolveSongServing(FILE_KEY, 'mike', false, ORDER_MONDROP)).toMatchObject({
+      ok: true,
+      served: { filename: '01 - Foto di gruppo.mp3', origins: [{ kind: 'media', url: `${BOX}/Music/Bassi%20Maestro/Foto%20di%20gruppo/01%20-%20Foto%20di%20gruppo.mp3` }] },
+    });
+  });
+
+  it('a song on geekom AND on the box has both origins, each its own exact file: disk first for Mondrop, the box first for the web', async () => {
+    await writeSong(GEEKOM_FILE);
+    m.libraryFilesOf.mockResolvedValue({ local: { relPath: GEEKOM_FILE }, media: boxFile() });
+    const kinds = async (order: typeof ORDER_MONDROP) => {
+      const r = await resolveSongServing(FILE_KEY, 'mike', false, order);
+      return r.ok ? r.served.origins.map((o) => o.kind) : r;
+    };
+    expect(await kinds(ORDER_MONDROP)).toEqual(['local', 'media']);
+    expect(await kinds(ORDER_WEB)).toEqual(['media', 'local']);
+    expect(m.findMediaServerMatch).not.toHaveBeenCalled();
+  });
+
+  it('versions are never mixed: «S.I.C. (2019 Remastered)» plays its own file even though a loose match would find «S.I.C.»', async () => {
+    const PLAIN = 'bassi maestro::s.i.c.';
+    const REMASTER = 'bassi maestro::s.i.c. (2019 remastered)';
+    const PLAIN_FILE = 'Background/Bassi Maestro - S.I.C..mp3';
+    const REMASTER_FILE = 'Background/Bassi Maestro - S.I.C. (2019 Remastered).mp3';
+    await writeSong(PLAIN_FILE, 'plain');
+    await writeSong(REMASTER_FILE, 'the remastered one, longer');
+    m.libraryOnlySong.mockImplementation(async (key: string) =>
+      key === PLAIN ? fileSong({ songKey: PLAIN, title: 'S.I.C.', album: 'Background' })
+        : key === REMASTER ? fileSong({ songKey: REMASTER, title: 'S.I.C. (2019 Remastered)', album: 'Background' }) : undefined);
+    m.libraryFilesOf.mockImplementation(async (key: string) =>
+      key === PLAIN ? { local: { relPath: PLAIN_FILE }, media: null }
+        : key === REMASTER ? { local: { relPath: REMASTER_FILE }, media: null } : undefined);
+    // what the loose match (it strips the parentheses) answers for BOTH: the plain file
+    m.findLibraryMatch.mockResolvedValue({ relPath: PLAIN_FILE, facts: { bytes: 5, mtimeMs: 1 } });
+    m.findMediaServerMatch.mockResolvedValue({ relPath: 'Music/wrong/S.I.C..mp3', bytes: 1234567, durationS: null });
+
+    const remaster = await resolveSongServing(REMASTER, 'mike', false, ORDER_WEB);
+    expect(remaster).toMatchObject({ ok: true, served: { filename: 'Bassi Maestro - S.I.C. (2019 Remastered).mp3', origins: [{ kind: 'local' }] } });
+    expect(await resolveSongServing(PLAIN, 'mike', false, ORDER_WEB)).toMatchObject({ ok: true, served: { filename: 'Bassi Maestro - S.I.C..mp3', origins: [{ kind: 'local' }] } });
+    expect(await getTrack(REMASTER, 'mike')).toMatchObject({ state: 'ready', bytes: 'the remastered one, longer'.length });
+    expect(m.findLibraryMatch).not.toHaveBeenCalled();
+    expect(m.findMediaServerMatch).not.toHaveBeenCalled();
+  });
+
+  it('with no file anywhere it is missing, and it is NEVER sent to YouTube: asking for a download queues nothing', async () => {
+    const t = await requestSongDownload(FILE_KEY, 'mike', { priority: 'play' });
+    expect(t).toMatchObject({ state: 'missing', downloadPath: null });
+    expect(m.enqueueSongDownload).not.toHaveBeenCalled();
+    expect(m.wakeSongDownloader).not.toHaveBeenCalled();
+    expect(m.markReady).not.toHaveBeenCalled();
+    expect(await resolveSongServing(FILE_KEY, 'mike')).toEqual({ ok: false, reason: 'file_not_ready' });
+  });
+
+  it('a file that has gone from geekom\'s disk and is not on the box is missing and says so; nothing is queued or reset', async () => {
+    m.libraryFilesOf.mockResolvedValue({ local: { relPath: GEEKOM_FILE }, media: null }); // the file was never written in this test
+    expect(await getTrack(FILE_KEY, 'mike')).toMatchObject({ state: 'missing', downloadPath: null, error: 'file non più presente' });
+    expect(await resolveSongServing(FILE_KEY, 'mike')).toEqual({ ok: false, reason: 'file_not_ready' });
+    expect(m.resetToQueued).not.toHaveBeenCalled();
+    expect(m.enqueueSongDownload).not.toHaveBeenCalled();
+  });
+
+  it('a download request for a song that is on the box just reports it ready', async () => {
+    m.libraryFilesOf.mockResolvedValue({ local: null, media: boxFile('Music/Bassi Maestro/x.mp3') });
+    expect(await requestSongDownload(FILE_KEY, 'mike', { priority: 'sync' })).toMatchObject({ state: 'ready' });
+    expect(m.enqueueSongDownload).not.toHaveBeenCalled();
+  });
+
+  it('nobody can force a YouTube source on a file', async () => {
+    expect(await setSongSource(FILE_KEY, 'mike', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ')).toEqual({ ok: false, reason: 'library_only' });
+    expect(m.enqueueSongDownload).not.toHaveBeenCalled();
+    expect(m.setVideoOverride).not.toHaveBeenCalled();
+  });
+
+  it('a playlist that holds it gets a real track, not a placeholder', async () => {
+    m.getPlaylist.mockResolvedValue({ id: 'p1', name: 'Rap', songKeys: [FILE_KEY, 'ghost::song'] });
+    m.libraryFilesOf.mockResolvedValue({ local: null, media: boxFile('Music/Bassi Maestro/x.mp3') });
+    const tracks = (await buildPlaylistOfflineManifest('p1', 'mike'))!.tracks;
+    expect(tracks[0]).toMatchObject({ songKey: FILE_KEY, title: 'Foto di gruppo', state: 'ready' });
+    expect(tracks[1]).toMatchObject({ songKey: 'ghost::song', state: 'missing', title: 'ghost::song' }); // an unknown key stays a placeholder
+  });
+
+  it('preparing a playlist skips it: no job for a file', async () => {
+    m.getPlaylist.mockResolvedValue({ id: 'p1', name: 'Rap', songKeys: [FILE_KEY] });
+    await preparePlaylist('p1', 'mike');
+    expect(m.enqueueSongDownload).not.toHaveBeenCalled();
   });
 });

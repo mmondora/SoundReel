@@ -8,10 +8,11 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authenticateApiKey } from '../utils/apiKeyAuth';
 import { normalizeFamilyUser, ANONYMOUS_USER } from '../utils/requestUser';
 import { classifyNetwork } from '../utils/network';
-import { listPlaylists, getPlaylist } from '../services/playlists';
+import { addSongToPlaylist, listPlaylists, getPlaylist } from '../services/playlists';
 import { resolveDetail, resolveSummaries } from '../services/playlistResolver';
 import { computeFacets, filterSongs, parseLibraryQuery, sortByArtistTitle } from '../services/libraryFacets';
 import { getUserSongs } from '../services/userSongs';
+import { parseSearchQuery, searchEverything } from '../services/mondropSearch';
 import {
   buildPlaylistOfflineManifest,
   buildTracks,
@@ -35,6 +36,9 @@ export interface MondropCaller {
   /** Label of the device the key was issued for ("iPhone di Michele"); '' for legacy keys without one. */
   device: string;
 }
+
+/** A song key is `artist::title`; anything longer than this is not one. */
+const MAX_SONG_KEY = 500;
 
 const callerActor = (c: MondropCaller): Actor => ({ user: c.userId, device: c.device || null, channel: 'mondrop' });
 
@@ -146,6 +150,34 @@ export function registerMondropRoutes(app: FastifyInstance): void {
     return { playlist: await resolveDetail(stored, viewer), user: auth.userId };
   });
 
+  // Put a song in one of HIS static playlists, from «Cerca» or the library (ADR-0018, S3/S6). The song may be only a FILE:
+  // a playlist holds song KEYS, and a key needs no journal entry. Only the owner of a static playlist can: one that is
+  // only shared with him is read-only (404, like any playlist that is not his) and a dynamic one is a rule (409).
+  // Idempotent: a song already there stays where it is.
+  app.post<{ Params: { id: string }; Body: { songKey?: unknown } | undefined }>('/api/mondrop/playlists/:id/songs', async (req, reply) => {
+    const auth = await requireMondrop(req, reply);
+    if (!auth) return;
+    const songKey = req.body?.songKey;
+    if (typeof songKey !== 'string' || !songKey.trim() || songKey.length > MAX_SONG_KEY) {
+      return reply.code(400).send({ error: 'songKey is required' });
+    }
+    try {
+      const track = await getTrack(songKey, auth.userId, false);
+      if (!track) return reply.code(404).send({ error: 'song not found' });
+      const playlist = await addSongToPlaylist(req.params.id, songKey, auth.userId);
+      if (!playlist) return reply.code(404).send({ error: 'playlist not found' });
+      const actor = callerActor(auth);
+      logActivity('playlist', 'add_song', `${describeActor(actor)} ha aggiunto «${songLabel(track, songKey)}» alla playlist «${playlist.name}»`, actor, {
+        playlistId: playlist.id, name: playlist.name, songKey, songs: playlist.songKeys.length,
+      });
+      return { ok: true, playlist: { id: playlist.id, name: playlist.name, songs: playlist.songKeys.length }, user: auth.userId };
+    } catch (err) {
+      if (String(err).includes('playlist_is_dynamic')) return reply.code(409).send({ error: 'playlist_is_dynamic' });
+      logError('POST /api/mondrop/playlists/:id/songs failed', { id: req.params.id, err: String(err) });
+      return reply.code(500).send({ ok: false, error: 'playlist add song failed' });
+    }
+  });
+
   app.get<{ Params: { id: string }; Querystring: { lyrics?: string } }>(
     '/api/mondrop/playlists/:id/offline',
     async (req, reply) => {
@@ -224,6 +256,21 @@ export function registerMondropRoutes(app: FastifyInstance): void {
     } catch (err) {
       logError('GET /api/mondrop/library failed', { err: String(err) });
       return reply.code(500).send({ error: 'library failed' });
+    }
+  });
+
+  // «Cerca», like Spotify (ADR-0018): one search over the user's journal, geekom's library and the box, one row per song,
+  // answered by the server so that the app never knows how many stores there are (rule P). Reads only; queues nothing.
+  app.get<{ Querystring: Record<string, unknown> }>('/api/mondrop/search', async (req, reply) => {
+    const auth = await requireMondrop(req, reply);
+    if (!auth) return;
+    const parsed = parseSearchQuery(req.query);
+    if (!parsed.ok) return reply.code(400).send({ error: 'invalid_query', field: parsed.field });
+    try {
+      return { ...(await searchEverything({ ...parsed.value, userId: auth.userId })), user: auth.userId };
+    } catch (err) {
+      logError('GET /api/mondrop/search failed', { err: String(err) });
+      return reply.code(500).send({ error: 'search failed' });
     }
   });
 
