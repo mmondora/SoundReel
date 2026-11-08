@@ -3,16 +3,25 @@
  * post when there is one, else what was found on the Internet and kept. The app asks `GET /api/mondrop/songs/:key/lyrics` and nothing
  * else (rule P).
  *
- * The Internet is asked only when the text is MISSING («quando mancano»): a transcript is never replaced. A text found stays; «not
- * found» is remembered for 7 days; an outage of the archive is not an answer and is not remembered. A song that is a VERSION of
- * another (Speed, Slowed + Reverb, Remix…) with no text of its own falls back to its original, except an Instrumental or a Karaoke.
- * Two requests for the same song share one search. `LYRICS_ONLINE=0` switches the Internet off (transcripts are still served).
+ * The Internet is asked only when the text is MISSING («quando mancano»): a transcript is never replaced — unless it is only a
+ * FRAGMENT (under 100 characters: what Whisper caught in a short clip, spec L12, Michele: «Proposta accettata»), which counts as
+ * missing: the Internet is asked and, if it has nothing, the fragment is served. A text found stays; «not found» is remembered for
+ * 7 days; an outage of the archive is not an answer and is not remembered. A song that is a VERSION of another (Speed, Slowed +
+ * Reverb, Remix…) with no text of its own falls back to its original, except an Instrumental or a Karaoke. Two requests for the
+ * same song share one search. `LYRICS_ONLINE=0` switches the Internet off (transcripts, fragments included, are still served).
  */
 import { query } from '../utils/db';
 import { logInfo, logWarning } from '../utils/logger';
 import { findLyricsOnline, type OnlineLyrics, type Wanted } from './lyricsFinder';
 
 export const NOT_FOUND_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** A transcript shorter than this is a fragment, not the words of a song (spec L12). The threshold lives only here (rule P). */
+export const MIN_TRANSCRIPT_CHARS = 100;
+
+/** True when the transcript is long enough to be taken for the words of the song. */
+export const isRealTranscript = (text: string | null | undefined): text is string =>
+  typeof text === 'string' && text.trim().length >= MIN_TRANSCRIPT_CHARS;
 
 export interface LyricsRow {
   lyrics: string | null;
@@ -129,9 +138,14 @@ export function internetLyrics(song: SongForLyrics, deps: SongLyricsDeps = realL
   return run;
 }
 
-/** The server's answer for a song: the transcript of its post if there is one, else the Internet's, else null. */
+/**
+ * The server's answer for a song: the transcript of its post when it is a real one, else what the Internet has, else a fragment of
+ * transcript (better than silence), else null. A real transcript never reaches the Internet; a fragment is «text missing» (L12).
+ */
 export async function lyricsFor(song: SongForLyrics, transcript: string | null, deps: SongLyricsDeps = realLyricsDeps): Promise<LyricsAnswer | null> {
-  if (transcript && transcript.trim()) return { text: transcript, source: 'transcript', instrumental: false };
+  const given = transcript && transcript.trim() ? transcript : null;
+  if (isRealTranscript(given)) return { text: given, source: 'transcript', instrumental: false };
   const found = await internetLyrics(song, deps);
-  return found ? { text: found.text, source: 'internet', instrumental: found.instrumental } : null;
+  if (found) return { text: found.text, source: 'internet', instrumental: found.instrumental };
+  return given ? { text: given, source: 'transcript', instrumental: false } : null;
 }

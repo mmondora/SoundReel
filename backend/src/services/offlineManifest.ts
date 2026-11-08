@@ -24,7 +24,7 @@ import { mediaUrlForVolumePath, volumePathFromUrl } from './mediaServer';
 import { libraryFilesOf, libraryOnlySong } from './libraryOnlySongs';
 import { readEmbeddedCoverFromFile, readEmbeddedCoverFromUrl, type EmbeddedPicture } from './id3Cover';
 import { resolveCover, songCoverPath, type CoverBytes } from './songCovers';
-import { lyricsFor, type LyricsAnswer } from './songLyrics';
+import { isRealTranscript, lyricsFor, type LyricsAnswer } from './songLyrics';
 import { absFromRel, fileFacts, fileVersion, type FileFacts } from './musicStore';
 import type { FileOrigin } from './songStream';
 import {
@@ -124,12 +124,26 @@ async function transcriptOf(entryId: string): Promise<string | null> {
   return text;
 }
 
-async function lyricsForSong(song: AggregatedSong): Promise<string | null> {
+/**
+ * The transcript of a song as its posts have it: the first REAL one (spec L12: 100 characters or more) among the first three
+ * mentions, else the first fragment (a shorter one), else null. A fragment is not the words of the song: the route serves it only
+ * when the Internet has nothing better.
+ */
+async function transcriptForSong(song: AggregatedSong): Promise<string | null> {
+  let fragment: string | null = null;
   for (const m of song.mentions.slice(0, 3)) {
     const t = await transcriptOf(m.entryId);
-    if (t) return t;
+    if (!t) continue;
+    if (isRealTranscript(t)) return t;
+    fragment ??= t;
   }
-  return null;
+  return fragment;
+}
+
+/** What rides in a track (playlist manifest, one track): a REAL transcript only. A fragment is `null` there, so an app asks the lyrics route. */
+async function lyricsForSong(song: AggregatedSong): Promise<string | null> {
+  const t = await transcriptForSong(song);
+  return isRealTranscript(t) ? t : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -611,15 +625,16 @@ export async function getSongCover(songKey: string, ownerUser: string, isAdmin =
 }
 
 /**
- * The lyrics of a song this user can play (ADR-0021): the transcript of its post when there is one, else the words found on the
- * Internet and kept (see services/songLyrics). `undefined` = there is no such song for this user; `null` = the song has no lyrics.
+ * The lyrics of a song this user can play (ADR-0021): the transcript of its post when it is a real one, else the words found on the
+ * Internet and kept, else a fragment of transcript (see services/songLyrics, spec L12). `undefined` = there is no such song for this
+ * user; `null` = the song has no lyrics.
  */
 export async function getSongLyrics(songKey: string, ownerUser: string, isAdmin = false): Promise<LyricsAnswer | null | undefined> {
   const song = await findSong(songKey, ownerUser, isAdmin);
   if (!song) return undefined;
   return lyricsFor(
     { songKey: song.songKey, artist: song.artist, title: song.title, album: song.meta?.album ?? song.album, versionOf: song.versionOf ?? null },
-    await lyricsForSong(song),
+    await transcriptForSong(song),
   );
 }
 

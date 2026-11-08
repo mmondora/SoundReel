@@ -25,8 +25,10 @@ const m = vi.hoisted(() => ({
   resolveCover: vi.fn(),
   readCoverFromFile: vi.fn(),
   readCoverFromUrl: vi.fn(),
+  query: vi.fn(),
+  findLyricsOnline: vi.fn(),
 }));
-vi.mock('../utils/db', () => ({ getEntry: m.getEntry, query: vi.fn() }));
+vi.mock('../utils/db', () => ({ getEntry: m.getEntry, query: m.query }));
 vi.mock('./playlists', () => ({ getPlaylist: m.getPlaylist }));
 vi.mock('./userSongs', () => ({ getUserSongs: m.getUserSongs }));
 vi.mock('./listeningStats', () => ({ getSongPlayStats: m.getSongPlayStats }));
@@ -47,6 +49,7 @@ vi.mock('./spootyClient', () => ({ postToSpooty: m.postToSpooty }));
 vi.mock('./localMedia', () => ({ rebuildLocalPaths: vi.fn() }));
 vi.mock('./libraryOnlySongs', () => ({ libraryOnlySong: m.libraryOnlySong, libraryFilesOf: m.libraryFilesOf }));
 vi.mock('./songCovers', async (orig) => ({ ...(await orig<typeof import('./songCovers')>()), resolveCover: m.resolveCover }));
+vi.mock('./lyricsFinder', async (orig) => ({ ...(await orig<typeof import('./lyricsFinder')>()), findLyricsOnline: m.findLyricsOnline }));
 vi.mock('./id3Cover', async (orig) => ({ ...(await orig<typeof import('./id3Cover')>()), readEmbeddedCoverFromFile: m.readCoverFromFile, readEmbeddedCoverFromUrl: m.readCoverFromUrl }));
 
 import {
@@ -54,6 +57,7 @@ import {
   buildTracks,
   enqueueSongToSpooty,
   getSongCover,
+  getSongLyrics,
   getTrack,
   isYoutubeVideoUrl,
   preparePlaylist,
@@ -104,6 +108,8 @@ beforeEach(async () => {
   m.resolveDetail.mockImplementation(async (p: unknown) => p); // a static playlist is what is stored
   m.listOpenSpootyEntryIds.mockResolvedValue(new Set());
   m.getEntry.mockResolvedValue(null);
+  m.query.mockResolvedValue([]);                                          // the table of lyrics found on the Internet: empty
+  m.findLyricsOnline.mockResolvedValue({ answered: true, kind: 'none' }); // and the archive has nothing unless a test says so
   m.enqueueSongDownload.mockResolvedValue(row());
   m.markReady.mockResolvedValue(row({ status: 'ready' }));
 });
@@ -306,7 +312,7 @@ describe('manifest: what a track looks like in each state', () => {
 
 describe('lyrics', () => {
   it('are skipped on request and cached across polls (a client waiting for songs polls every few seconds)', async () => {
-    m.getEntry.mockResolvedValue({ results: { transcript: 'la la la '.repeat(10) } });
+    m.getEntry.mockResolvedValue({ results: { transcript: 'la la la '.repeat(20) } });
     expect((await manifestTrack({ lyrics: false })).lyrics).toBeNull();
     expect(m.getEntry).not.toHaveBeenCalled();
 
@@ -317,6 +323,73 @@ describe('lyrics', () => {
     expect(first.lyrics).toContain('la la la');
     expect(second.lyrics).toBe(first.lyrics);
     expect(m.getEntry).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Michele, 8 November: «Proposta accettata»: a transcript under 100 characters is a fragment, not the words (spec L12, ADR-0021).
+describe('lyrics: a fragment of transcript is not the words of the song (spec L12)', () => {
+  const REAL = 'the verse and the chorus go on and on, '.repeat(5);     // 194 characters once trimmed
+  const FRAGMENT = 'a few words caught in a short clip';                // 34
+  /** Entries by id (a fresh id per test: the transcripts are cached by id for ten minutes) and the song that cites them, in order. */
+  const entries = (byId: Record<string, string | undefined>, ids: string[]): void => {
+    m.getEntry.mockImplementation(async (id: string) => ({ results: { transcript: byId[id] } }));
+    m.getUserSongs.mockResolvedValue(new Map([[KEY, song({ mentions: ids.map((entryId) => ({ entryId })) })]]));
+  };
+
+  it('a track carries a real transcript, and null for a fragment: an app then asks the lyrics route', async () => {
+    entries({ 'l12-real': REAL }, ['l12-real']);
+    expect((await manifestTrack()).lyrics).toBe(REAL.trim());
+    entries({ 'l12-frag': FRAGMENT }, ['l12-frag']);
+    expect((await manifestTrack()).lyrics).toBeNull();
+  });
+
+  it('one track (GET /api/mondrop/songs/:key) is the same: a fragment is null', async () => {
+    entries({ 'l12-t-real': REAL, 'l12-t-frag': FRAGMENT }, ['l12-t-frag']);
+    expect((await getTrack(KEY, 'mike'))?.lyrics).toBeNull();
+    entries({ 'l12-t-real': REAL, 'l12-t-frag': FRAGMENT }, ['l12-t-real']);
+    expect((await getTrack(KEY, 'mike'))?.lyrics).toBe(REAL.trim());
+  });
+
+  it('the first REAL transcript among the mentions wins over a fragment that comes before it', async () => {
+    entries({ 'l12-a-frag': FRAGMENT, 'l12-a-real': REAL }, ['l12-a-frag', 'l12-a-real']);
+    expect((await manifestTrack()).lyrics).toBe(REAL.trim());
+  });
+
+  it('only the first three mentions are read', async () => {
+    entries({ 'l12-b-1': FRAGMENT, 'l12-b-2': FRAGMENT, 'l12-b-3': undefined, 'l12-b-4': REAL }, ['l12-b-1', 'l12-b-2', 'l12-b-3', 'l12-b-4']);
+    expect((await manifestTrack()).lyrics).toBeNull();
+    expect(m.getEntry).toHaveBeenCalledTimes(3);
+  });
+
+  it('the lyrics route: a real transcript is served as it is, and the Internet is not asked', async () => {
+    entries({ 'l12-r-real': REAL }, ['l12-r-real']);
+    m.findLyricsOnline.mockResolvedValue({ answered: true, kind: 'lyrics', text: 'words from the archive that must not be used', sourceId: '1' });
+    expect(await getSongLyrics(KEY, 'mike')).toEqual({ text: REAL.trim(), source: 'transcript', instrumental: false });
+    expect(m.findLyricsOnline).not.toHaveBeenCalled();
+  });
+
+  it('the lyrics route: a fragment gives way to what the Internet has', async () => {
+    entries({ 'l12-i-frag': FRAGMENT }, ['l12-i-frag']);
+    m.findLyricsOnline.mockResolvedValue({ answered: true, kind: 'lyrics', text: 'words from the archive, long enough to be real words', sourceId: '1' });
+    expect(await getSongLyrics(KEY, 'mike')).toEqual({ text: 'words from the archive, long enough to be real words', source: 'internet', instrumental: false });
+    expect(m.findLyricsOnline).toHaveBeenCalledTimes(1);
+  });
+
+  it('the lyrics route: with nothing on the Internet the fragment is served (better than silence)', async () => {
+    entries({ 'l12-n-frag': FRAGMENT }, ['l12-n-frag']);
+    expect(await getSongLyrics(KEY, 'mike')).toEqual({ text: FRAGMENT, source: 'transcript', instrumental: false });
+    expect(m.findLyricsOnline).toHaveBeenCalledTimes(1);
+  });
+
+  it('the lyrics route: with two fragments the first one (the newest post) is the one served', async () => {
+    entries({ 'l12-f1': FRAGMENT, 'l12-f2': 'another few words caught in another clip' }, ['l12-f1', 'l12-f2']);
+    expect(await getSongLyrics(KEY, 'mike')).toEqual({ text: FRAGMENT, source: 'transcript', instrumental: false });
+  });
+
+  it('the lyrics route: no transcript at all and nothing on the Internet is null; an unknown song is undefined', async () => {
+    entries({}, ['l12-z-none']);
+    expect(await getSongLyrics(KEY, 'mike')).toBeNull();
+    expect(await getSongLyrics('ghost::song', 'mike')).toBeUndefined();
   });
 });
 
