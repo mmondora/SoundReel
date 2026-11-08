@@ -1,6 +1,6 @@
 # I testi delle canzoni, cercati su Internet quando mancano (richiesta 2026-11-08)
 
-Stato: SoundReel **2.19.0** (la rotta e la ricerca) **in produzione dall'8 novembre, 20:13**; Mondrop **1.7.0 build 10** (l'app) **su TestFlight dalle 20:17**. Una rotta nuova e un'origine dati nuova sono architettura: **ADR-0021**.
+Stato: SoundReel **2.19.0** (la rotta e la ricerca) **in produzione dall'8 novembre, 20:13**; Mondrop **1.7.0 build 10** (l'app) **su TestFlight dalle 20:17**. **L12** (frammenti): SoundReel **2.19.1 in produzione dalle 20:56**, Mondrop **build 11 su TestFlight dalle 20:57**. Una rotta nuova e un'origine dati nuova sono architettura: **ADR-0021**.
 Codice: backend `services/lyricsFinder.ts`, `services/songLyrics.ts`, `db/migrations/020_song_lyrics.sql`, `routes/mondrop.ts` (`GET /api/mondrop/songs/:key/lyrics`); app `ios/MondropKit/LyricsLoader.swift`, `LocalAudioPlayer.swift`, `ios/Mondrop/WinampPlayerView.swift`.
 
 ## 1. Richieste di Michele (testuali)
