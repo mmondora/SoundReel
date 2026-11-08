@@ -835,3 +835,86 @@ describe('aggregateSongs facets (what the playlist manager filters on)', () => {
     expect(s.tags).toEqual(['ok']);
   });
 });
+
+describe('GET /api/songs/:songKey/play: what the web player plays is decided by the SERVER (rule P, ADR-0018)', () => {
+  const home = {};                                                   // a request that reached Traefik directly: no Cloudflare headers
+  const internet = { 'cf-ray': '8abc-MXP', 'cf-connecting-ip': '203.0.113.9' };
+  const PLACES = {
+    none: { fs: false, mediaServer: false },
+    disk: { fs: true, mediaServer: false },
+    media: { fs: false, mediaServer: true },
+  };
+  const play = (query = '', headers: Record<string, string> = home) =>
+    buildApp().inject({ method: 'GET', url: `/api/songs/queen%3A%3Abohemian%20rhapsody/play${query}`, headers });
+  const place = (p: { fs: boolean; mediaServer: boolean } | null) => {
+    vi.mocked(getTrack).mockResolvedValue({ songKey: 'queen::bohemian rhapsody', artist: 'Queen', title: 'Bohemian Rhapsody', state: 'ready' } as never);
+    vi.mocked(locateSongs).mockResolvedValue(new Map(p ? [['queen::bohemian rhapsody', { ...p, fsPath: null, mediaUrl: null, streamUrl: null }]] : []) as never);
+  };
+  beforeEach(() => vi.clearAllMocks());
+
+  it('at home, with the file on the media server: the file, from the API (the player follows fileUrl)', async () => {
+    place(PLACES.media);
+    const res = await play();
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.json()).toEqual({
+      songKey: 'queen::bohemian rhapsody', prefer: 'auto', network: 'internal', choice: 'media', from: 'media-server',
+      download: false, fileUrl: '/api/songs/queen%3A%3Abohemian%20rhapsody/file',
+    });
+  });
+
+  it('from the internet: YouTube, ALWAYS, even when the file is there (Michele)', async () => {
+    place(PLACES.media);
+    expect((await play('', internet)).json()).toEqual({
+      songKey: 'queen::bohemian rhapsody', prefer: 'auto', network: 'external', choice: 'internet', from: 'youtube', download: false, fileUrl: null,
+    });
+  });
+
+  it('at home with no file anywhere: YouTube in the meantime, and the download is asked for (once, by the client)', async () => {
+    place(PLACES.none);
+    expect((await play()).json()).toMatchObject({ network: 'internal', choice: 'media', from: 'youtube', download: true, fileUrl: null });
+  });
+
+  it('only on geekom\'s disk: from the disk; on both: the media server', async () => {
+    place(PLACES.disk);
+    expect((await play()).json()).toMatchObject({ from: 'disk', fileUrl: '/api/songs/queen%3A%3Abohemian%20rhapsody/file' });
+    place({ fs: true, mediaServer: true });
+    expect((await play()).json()).toMatchObject({ from: 'media-server' });
+  });
+
+  it('the preference of the switch is a preference: Internet forces YouTube at home, Media server forces the file from the internet', async () => {
+    place(PLACES.media);
+    expect((await play('?prefer=internet')).json()).toMatchObject({ prefer: 'internet', choice: 'internet', from: 'youtube', fileUrl: null });
+    expect((await play('?prefer=media', internet)).json()).toMatchObject({ prefer: 'media', network: 'external', choice: 'media', from: 'media-server' });
+  });
+
+  it('a preference that is not one is Auto', async () => {
+    place(PLACES.media);
+    expect((await play('?prefer=youtube')).json()).toMatchObject({ prefer: 'auto', from: 'media-server' });
+    expect((await play('?prefer=')).json()).toMatchObject({ prefer: 'auto' });
+  });
+
+  it('when the server cannot say where the file is (the locator failed): no file assumed and NO download asked', async () => {
+    place(null);
+    expect((await play()).json()).toMatchObject({ choice: 'media', from: 'youtube', download: false, fileUrl: null });
+    vi.mocked(locateSongs).mockRejectedValue(new Error('library scan failed'));
+    expect((await play()).json()).toMatchObject({ from: 'youtube', download: false });
+  });
+
+  it('404 for a song the user does not have, 500 without details when something breaks', async () => {
+    vi.mocked(getTrack).mockResolvedValue(null);
+    const unknown = await play();
+    expect([unknown.statusCode, unknown.json()]).toEqual([404, { error: 'song not found' }]);
+    vi.mocked(getTrack).mockRejectedValue(new Error('db down: password=hunter2'));
+    const broken = await play();
+    expect([broken.statusCode, broken.json()]).toEqual([500, { error: 'play plan failed' }]);
+    expect(logError).toHaveBeenCalled();
+  });
+
+  it('is for THE USER of the request (a family member sees his own songs)', async () => {
+    place(PLACES.media);
+    await buildApp().inject({ method: 'GET', url: '/api/songs/queen%3A%3Abohemian%20rhapsody/play', headers: { 'remote-user': 'sara' } });
+    expect(vi.mocked(getTrack).mock.calls[0].slice(0, 2)).toEqual(['queen::bohemian rhapsody', 'sara']);
+  });
+});
+

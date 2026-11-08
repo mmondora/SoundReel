@@ -14,6 +14,8 @@ import { locateSongs, type SongLocation } from '../services/songLocation';
 import { getUserSongs } from '../services/userSongs';
 import { getTrack, ORDER_WEB, requestSongDownload, resolveSongServing } from '../services/offlineManifest';
 import { serveSong } from '../services/songStream';
+import { choiceFor, parsePrefer, playPlan } from '../services/playPlan';
+import { classifyNetwork } from '../utils/network';
 import { describeActor, logActivity, shouldLogOnce, songLabel, type Actor } from '../services/activityLog';
 import type { LibraryTrack } from '../services/musicLibrary';
 import { resolveYoutubePlaySource } from '../services/youtubeResolve';
@@ -63,6 +65,13 @@ export function attachLibraryFlags(
     }
     return { ...song, inLibrary: readyKeys.has(song.songKey) || findLibraryTrack(tracks, song.artist, song.title) != null };
   });
+}
+
+/** Where a song's file is: geekom's disk, the media server, or nowhere. null when the locator cannot say. */
+async function locationOf(track: { songKey: string; artist: string; title: string }): Promise<SongLocation | null> {
+  const found = await locateSongs([{ songKey: track.songKey, artist: track.artist, title: track.title }], await getCachedLibraryTracks())
+    .catch(() => new Map<string, SongLocation>());
+  return found.get(track.songKey) ?? null;
 }
 
 async function getCachedLibraryTracks(): Promise<LibraryTrack[]> {
@@ -296,8 +305,7 @@ export function registerSongsRoutes(app: FastifyInstance): void {
       const track = await getTrack(req.params.songKey, user.id, user.isAdmin);
       if (!track) return reply.code(404).send({ error: 'song not found' });
       // where the song is (spec W2/W8): disk, media server, their path/URL and the video link
-      const loc = (await locateSongs([{ songKey: track.songKey, artist: track.artist, title: track.title }], await getCachedLibraryTracks())
-        .catch(() => new Map<string, SongLocation>())).get(track.songKey) ?? null;
+      const loc = await locationOf(track);
       return reply.send({
         state: track.state,
         source: track.source,
@@ -310,6 +318,38 @@ export function registerSongsRoutes(app: FastifyInstance): void {
     } catch (err) {
       logError('GET /api/songs/:songKey/state failed', { songKey: req.params.songKey, err: String(err) });
       return reply.code(500).send({ error: 'song state failed' });
+    }
+  });
+
+  // What the web player plays for this song (rule P, ADR-0018, spec 2026-11-08-mondrop-search-spotify-style-design.md S11): the SERVER
+  // decides, by the network of THIS request (Cloudflare headers, like /api/net used to say) and by where the song's file is; the
+  // browser sends only its preference (`prefer`, the «Sorgente» switch) and follows the answer. Read-only: asking for the file
+  // to be fetched (`download: true`) is a separate POST, once, as before. From the internet: YouTube, always; at home: the file when
+  // there is one, else YouTube in the meantime.
+  app.get<{ Params: { songKey: string }; Querystring: { prefer?: string } }>('/api/songs/:songKey/play', async (req, reply) => {
+    try {
+      const user = resolveUser(req);
+      const track = await getTrack(req.params.songKey, user.id, user.isAdmin);
+      if (!track) return reply.code(404).send({ error: 'song not found' });
+      const loc = await locationOf(track);
+      const prefer = parsePrefer(req.query.prefer);
+      const network = classifyNetwork(req.headers).network;
+      // The locator could not say where the file is (an outage): no file is assumed and NO download is asked — the video plays.
+      const plan = loc
+        ? playPlan(prefer, network, { fs: loc.fs, mediaServer: loc.mediaServer })
+        : { choice: choiceFor(prefer, network), from: 'youtube' as const, download: false };
+      // never cached: the same tab moves between Wi-Fi and mobile data, and a download may have finished a moment ago
+      reply.header('Cache-Control', 'no-store');
+      return reply.send({
+        songKey: track.songKey,
+        prefer,
+        network,
+        ...plan,
+        fileUrl: plan.from === 'youtube' ? null : `/api/songs/${encodeURIComponent(track.songKey)}/file`,
+      });
+    } catch (err) {
+      logError('GET /api/songs/:songKey/play failed', { songKey: req.params.songKey, err: String(err) });
+      return reply.code(500).send({ error: 'play plan failed' });
     }
   });
 
