@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { addMention, mentionOf } from '../utils/mentions';
 import { join } from 'path';
 import { listEntries } from '../utils/db';
 import { resolveUser } from '../utils/requestUser';
@@ -134,13 +135,13 @@ export function aggregateSongs(entries: Entry[], metaMap: Map<string, SongMetaRe
           album: raw.album ?? null,
           youtubeUrl: raw.youtubeUrl ?? null,
           spotifyUrl: raw.spotifyUrl ?? null,
-          mentions: [{ entryId: entry.id, createdAt }],
+          mentions: [mentionOf(entry)],
           meta: metaMap.get(key) ?? null,
           inLibrary: false,
         });
         latestSeenCreatedAt.set(key, createdAt);
       } else {
-        existing.mentions.push({ entryId: entry.id, createdAt });
+        addMention(existing.mentions, mentionOf(entry));
         const bestSoFar = latestSeenCreatedAt.get(key) ?? '';
         if (createdAt > bestSoFar) {
           existing.title = raw.title;

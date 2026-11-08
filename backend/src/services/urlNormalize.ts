@@ -75,3 +75,38 @@ export function extractInstagramShortcode(input: string): string | null {
     return null;
   }
 }
+
+/**
+ * The identity of a POST across the ways its address can be written: the Instagram shortcode, the YouTube video id
+ * (`watch?v=`, `youtu.be/`, `shorts/`), the TikTok video id, the X/Twitter status id, the Reddit post id; for anything
+ * else the normalized URL. Two addresses of the same post have the same key, which is what an entry must be unique on
+ * (spec 2026-11-08-no-duplicates-and-post-links, D2; ADR-0017).
+ */
+export function postKey(input: string): string {
+  const ig = extractInstagramShortcode(input);
+  if (ig) return `instagram:${ig}`;
+  try {
+    const u = new URL(input.trim());
+    const host = u.hostname.replace(/^www\./, '').toLowerCase();
+    const path = u.pathname;
+    if (host === 'youtu.be') {
+      const id = path.slice(1).split('/')[0];
+      if (id) return `youtube:${id}`;
+    }
+    if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
+      const v = u.searchParams.get('v');
+      if (v) return `youtube:${v}`;
+      const m = path.match(/^\/(shorts|live|embed)\/([\w-]+)/);
+      if (m) return `youtube:${m[2]}`;
+    }
+    const tiktok = path.match(/\/video\/(\d+)/);
+    if ((host === 'tiktok.com' || host.endsWith('.tiktok.com')) && tiktok) return `tiktok:${tiktok[1]}`;
+    const status = path.match(/\/status\/(\d+)/);
+    if ((host === 'x.com' || host === 'twitter.com' || host.endsWith('.x.com') || host.endsWith('.twitter.com')) && status) return `x:${status[1]}`;
+    const reddit = path.match(/\/comments\/(\w+)/);
+    if ((host === 'reddit.com' || host.endsWith('.reddit.com')) && reddit) return `reddit:${reddit[1]}`;
+  } catch {
+    /* not a URL: fall through to the normalized text */
+  }
+  return `url:${normalizeUrl(input)}`;
+}

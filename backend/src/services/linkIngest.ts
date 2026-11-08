@@ -11,6 +11,7 @@
  */
 import type { ActionLogItem, Entry, SocialPlatform, Song } from '../types';
 import { normalizeUrl } from './urlNormalize';
+import { withEntryKeyLock } from '../utils/entryKeyLock';
 import {
   findEntryByUrl,
   createEntry,
@@ -258,9 +259,12 @@ export async function persistCovers(tracks: SpootyTrack[], playlist: SpootyPlayl
 
 export async function ingestLink(input: IngestInput): Promise<IngestResult> {
   const { url, cls } = await resolveLink(input.url);
-  if (cls.kind === 'spotify' && cls.spotify) return ingestSpotify(cls.spotify, input);
-  if (cls.kind === 'shazam' && cls.shazam) return ingestShazam(cls.shazam, url, input);
-  return ingestGeneric(url, cls.platform, input);
+  // Look-up and creation run one at a time per (owner, post): two shares at the same instant make one entry.
+  return withEntryKeyLock(input.ownerUser, url, async () => {
+    if (cls.kind === 'spotify' && cls.spotify) return ingestSpotify(cls.spotify, input);
+    if (cls.kind === 'shazam' && cls.shazam) return ingestShazam(cls.shazam, url, input);
+    return ingestGeneric(url, cls.platform, input);
+  });
 }
 
 /** Stub entry + analysis job: the flow Telegram and share used to implement twice. */

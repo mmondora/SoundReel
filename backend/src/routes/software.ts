@@ -1,4 +1,6 @@
 import type { FastifyInstance } from 'fastify';
+import { collapseSoftware } from '../services/softwareCollapse';
+import { addMention, mentionOf } from '../utils/mentions';
 import { listEntries } from '../utils/db';
 import { resolveUser } from '../utils/requestUser';
 import {
@@ -109,11 +111,11 @@ export function aggregateSoftware(
           tag: item.tag,
           description: item.description ?? null,
           publishedAt: null,
-          mentions: [{ entryId: entry.id, createdAt }],
+          mentions: [mentionOf(entry)],
         });
         latestSeenCreatedAt.set(key, createdAt);
       } else {
-        existing.mentions.push({ entryId: entry.id, createdAt });
+        addMention(existing.mentions, mentionOf(entry));
         const bestSoFar = latestSeenCreatedAt.get(key) ?? '';
         if (createdAt > bestSoFar) {
           existing.title = item.title;
@@ -201,9 +203,11 @@ export function registerSoftwareRoutes(app: FastifyInstance): void {
         listSoftwareMeta(),
       ]);
       const byKey = aggregateSoftware(entries, metaMap);
-      const software = [...byKey.values()];
-      scheduleSoftwareEnrichment(software, metaMap);
-      return reply.send({ software });
+      const raw = [...byKey.values()];
+      // the forge lookups run on every candidate repository (that is what tells the real one from a guess)...
+      scheduleSoftwareEnrichment(raw, metaMap);
+      // ...and the page shows one card per piece of software (spec no-duplicates-and-post-links D1/D4)
+      return reply.send({ software: collapseSoftware(raw, metaMap) });
     } catch (err) {
       logError('GET /api/software failed', { err: String(err) });
       return reply.code(500).send({ error: 'software aggregation failed' });

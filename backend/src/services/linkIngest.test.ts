@@ -442,3 +442,57 @@ describe('songs that arrive from a link are enriched like every other song (cove
     expect(enqueueSongEnrichment).not.toHaveBeenCalled();
   });
 });
+
+describe('two shares of the same post at the same instant make ONE entry (spec no-duplicates-and-post-links D2)', () => {
+  /** A database that answers slowly, so without the lock both calls look the entry up before either creates it. */
+  function slowDb() {
+    const stored: Array<{ id: string; url: string }> = [];
+    vi.mocked(findEntryByUrl).mockImplementation(async (url: string) => {
+      await new Promise((r) => setTimeout(r, 10));
+      const hit = stored.find((e) => e.url === url);
+      return hit ? ({ id: hit.id, sourceUrl: hit.url, results: { songs: [], films: [], notes: [], links: [], tags: [], summary: null } } as never) : null;
+    });
+    vi.mocked(createEntry).mockImplementation(async (e: { sourceUrl: string }) => {
+      await new Promise((r) => setTimeout(r, 10));
+      const id = `entry-${stored.length + 1}`;
+      stored.push({ id, url: e.sourceUrl });
+      return id;
+    });
+    return stored;
+  }
+  const input = (url: string, user: string, channel: 'telegram' | 'ios') => ({ url, channel, inputUser: user, ownerUser: user, notify: false });
+
+  it('Telegram and Mondrop sharing the same reel (different URL forms) get the same entry', async () => {
+    const stored = slowDb();
+    const [a, b] = await Promise.all([
+      ingestLink(input('https://www.instagram.com/reel/DWDZS4Qob0U/?igsh=abc', 'mike', 'telegram')),
+      ingestLink(input('https://www.instagram.com/reel/DWDZS4Qob0U/', 'mike', 'ios')),
+    ]);
+    expect(stored).toHaveLength(1);
+    expect(a.entryId).toBe(b.entryId);
+    expect([a.existing, b.existing].sort()).toEqual([false, true]);
+  });
+
+  it('three at once are still one', async () => {
+    const stored = slowDb();
+    const url = 'https://www.instagram.com/reel/AAA/';
+    await Promise.all([ingestLink(input(url, 'mike', 'ios')), ingestLink(input(url, 'mike', 'ios')), ingestLink(input(url, 'mike', 'telegram'))]);
+    expect(stored).toHaveLength(1);
+  });
+
+  it('different users may each keep the same post (the journals are private)', async () => {
+    const stored = slowDb();
+    const url = 'https://www.instagram.com/reel/AAA/';
+    await Promise.all([ingestLink(input(url, 'mike', 'ios')), ingestLink(input(url, 'sara', 'ios'))]);
+    expect(stored).toHaveLength(2);
+  });
+
+  it('different posts do not wait for each other', async () => {
+    const stored = slowDb();
+    await Promise.all([
+      ingestLink(input('https://www.instagram.com/reel/AAA/', 'mike', 'ios')),
+      ingestLink(input('https://www.instagram.com/reel/BBB/', 'mike', 'ios')),
+    ]);
+    expect(stored).toHaveLength(2);
+  });
+});

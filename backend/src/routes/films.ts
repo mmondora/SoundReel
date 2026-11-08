@@ -1,4 +1,6 @@
 import type { FastifyInstance } from 'fastify';
+import { collapseFilms } from '../services/filmCollapse';
+import { addMention, mentionOf } from '../utils/mentions';
 import { listEntries } from '../utils/db';
 import { resolveUser } from '../utils/requestUser';
 import {
@@ -72,12 +74,12 @@ export function aggregateFilms(entries: Entry[], metaMap: Map<string, FilmMetaRe
           imdbUrl: raw.imdbUrl ?? null,
           posterUrl: raw.posterUrl ?? null,
           streamingUrls: raw.streamingUrls ?? null,
-          mentions: [{ entryId: entry.id, createdAt }],
+          mentions: [mentionOf(entry)],
           meta: metaMap.get(key) ?? null,
         });
         latestSeenCreatedAt.set(key, createdAt);
       } else {
-        existing.mentions.push({ entryId: entry.id, createdAt });
+        addMention(existing.mentions, mentionOf(entry));
         const bestSoFar = latestSeenCreatedAt.get(key) ?? '';
         if (createdAt > bestSoFar) {
           existing.title = raw.title;
@@ -102,7 +104,8 @@ export function registerFilmsRoutes(app: FastifyInstance): void {
       const visibility = { userId: user.id, isAdmin: user.isAdmin };
       const [entries, metaMap] = await Promise.all([listEntries(LIST_ENTRIES_LIMIT, visibility), listFilmMeta()]);
       const byKey = aggregateFilms(entries, metaMap);
-      return reply.send({ films: [...byKey.values()] });
+      // one card per film (spec no-duplicates-and-post-links D1): "Dune" and "Dune (2021)" are one
+      return reply.send({ films: collapseFilms([...byKey.values()]) });
     } catch (err) {
       logError('GET /api/films failed', { err: String(err) });
       return reply.code(500).send({ error: 'films aggregation failed' });

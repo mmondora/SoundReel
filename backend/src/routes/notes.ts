@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { addMention, mentionOf } from '../utils/mentions';
 import { listEntries } from '../utils/db';
 import { resolveUser } from '../utils/requestUser';
 import { noteKey, normalizeNoteCategory, listNoteMeta } from '../services/noteMeta';
@@ -48,12 +49,12 @@ export function aggregateNotes(entries: Entry[], metaMap: Map<string, NoteMetaRe
           noteKey: key,
           text,
           category,
-          mentions: [{ entryId: entry.id, createdAt }],
+          mentions: [mentionOf(entry)],
           meta: metaMap.get(key) ?? null,
         });
         latestSeenCreatedAt.set(key, createdAt);
       } else {
-        existing.mentions.push({ entryId: entry.id, createdAt });
+        addMention(existing.mentions, mentionOf(entry));
         const bestSoFar = latestSeenCreatedAt.get(key) ?? '';
         if (createdAt > bestSoFar) {
           existing.text = text;

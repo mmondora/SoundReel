@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { withEntryKeyLock } from '../utils/entryKeyLock';
 import { ingestLink, resolveLink, IngestError } from '../services/linkIngest';
 import { extractContent, detectPlatform, setLogger as setContentExtractorLogger } from '../services/contentExtractor';
 import { recognizeAudio } from '../services/_legacy/audioRecognition';
@@ -371,7 +372,12 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
       };
 
       if (!entryId) {
-        entryId = await createEntry(initialEntry);
+        // One entry per user and post (spec no-duplicates-and-post-links D2): look again, under the lock of this post,
+        // right before creating, so a share that arrived a moment ago (Telegram, Mondrop) is found instead of doubled.
+        entryId = await withEntryKeyLock(ownerUser, normalizedUrl, async () => {
+          const raced = featuresConfig.allowDuplicateUrls ? null : await findEntryByUrl(normalizedUrl, ownerUser);
+          return raced ? raced.id : createEntry(initialEntry);
+        });
       } else if (reanalyze) {
         // Deliberately does not write inputUser: a backfill job carries
         // inputUser = null, which would blank whoever originally sent the URL.

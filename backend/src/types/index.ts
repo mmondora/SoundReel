@@ -57,6 +57,9 @@ export interface SoftwareItem {
 export interface SoftwareMention {
   entryId: string;
   createdAt: string;
+  /** The original post (spec no-duplicates-and-post-links, D3). */
+  sourceUrl?: string | null;
+  sourcePlatform?: string | null;
 }
 
 export interface SoftwareMetaRecord {
@@ -77,6 +80,8 @@ export interface AggregatedSoftware {
   /** Repo creation date when known from forge enrichment. */
   publishedAt?: string | null;
   mentions: SoftwareMention[];
+  /** Other links of the same software (spec D4): the main `url` is a verified repository, else the official site. */
+  otherUrls?: string[];
 }
 
 export type ExtractedLinkCategory =
@@ -350,6 +355,9 @@ export interface FilmMetaRecord extends FilmUserMeta {
 export interface FilmMention {
   entryId: string;
   createdAt: string;
+  /** The original post (spec no-duplicates-and-post-links, D3). */
+  sourceUrl?: string | null;
+  sourcePlatform?: string | null;
 }
 
 export interface AggregatedFilm {
@@ -392,6 +400,9 @@ export interface SongMetaRecord extends SongUserMeta {
 export interface SongMention {
   entryId: string;
   createdAt: string;
+  /** The original post (spec no-duplicates-and-post-links, D3). */
+  sourceUrl?: string | null;
+  sourcePlatform?: string | null;
 }
 
 export interface AggregatedSong {
@@ -457,6 +468,9 @@ export interface NoteMetaRecord {
 export interface NoteMention {
   entryId: string;
   createdAt: string;
+  /** The original post (spec no-duplicates-and-post-links, D3). */
+  sourceUrl?: string | null;
+  sourcePlatform?: string | null;
 }
 
 export interface AggregatedNote {

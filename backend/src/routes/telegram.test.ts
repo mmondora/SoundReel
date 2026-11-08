@@ -19,6 +19,8 @@ vi.mock('../utils/jobQueue', () => ({
 
 vi.mock('../services/urlNormalize', () => ({
   normalizeUrl: (url: string) => url,
+  // the per-post lock of the ingest keys on this (spec no-duplicates-and-post-links D2)
+  postKey: (url: string) => `url:${url}`,
 }));
 
 vi.mock('../services/promptLoader', () => ({
