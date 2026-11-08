@@ -100,7 +100,8 @@ export interface MergedEntry {
 const viaAudio = (s: Song['source']): boolean => s === 'audio_fingerprint' || s === 'both';
 const viaAi = (s: Song['source']): boolean => s === 'ai_analysis' || s === 'both';
 
-function foldSong(keep: Song, other: Song): Song {
+/** The keeper's copy of a song completed with what only the other copy knew (never overwrites). Also used by fixSongIdentity. */
+export function foldSong(keep: Song, other: Song): Song {
   const bothWays = (viaAudio(keep.source) || viaAudio(other.source)) && (viaAi(keep.source) || viaAi(other.source));
   return {
     ...keep,

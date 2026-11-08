@@ -4,6 +4,7 @@ import { join } from 'path';
 import { listEntries } from '../utils/db';
 import { resolveUser } from '../utils/requestUser';
 import { songKey, listSongMeta, patchSongUserMeta, getSongMeta } from '../services/songMeta';
+import { attachSongVersions } from '../services/songVersions';
 import type { SongUserMetaPatch } from '../services/songMeta';
 import { resolveDeezerPreviewUrl } from '../services/songEnrichment';
 import { syncDownloadedFlags, findLibraryTrack } from '../services/musicLibrary';
@@ -162,6 +163,10 @@ export function aggregateSongs(entries: Entry[], metaMap: Map<string, SongMetaRe
     song.platforms = [...f.platforms].sort();
     song.tags = [...f.tags].sort();
   }
+
+  // "Versione di …": a song whose title says it is a version of another stays its own card and points at the original
+  // (spec no-duplicates-and-post-links §7, D5). Read time only: the key, hence playlists and files, does not change.
+  attachSongVersions(byKey.values());
 
   return byKey;
 }

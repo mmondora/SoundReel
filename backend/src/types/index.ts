@@ -430,6 +430,22 @@ export interface AggregatedSong {
   platforms?: string[];
   /** Tags of the entries that mention it, sorted. */
   tags?: string[];
+  /** Set when the title says this song is a version of another one (spec no-duplicates-and-post-links §7, D5). */
+  versionOf?: SongVersionOf;
+}
+
+/**
+ * "Versione di …": this song is its own card but is a version (Instrumental, Slowed + Reverb, Live, a Remix…) of another
+ * song, or a credit or remaster spelling of it. Computed at read time from the titles: the song key is unchanged.
+ */
+export interface SongVersionOf {
+  /** The title of the original (the card's own title when the journal has it, else the title without its markers). */
+  title: string;
+  artist: string | null;
+  /** The key of the original's card, or null when the journal has none (or more than one possible). */
+  songKey: string | null;
+  /** The markers as written: "Slowed + Reverb", "feat. Pusha T", "2008 Remaster". */
+  labels: string[];
 }
 
 export interface PlaylistSummary {

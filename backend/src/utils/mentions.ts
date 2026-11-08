@@ -13,11 +13,24 @@ export interface PostMention {
   sourcePlatform: string | null;
 }
 
+/**
+ * The address of a post as the card shows it. A stored address can carry a stray character in front (one entry of the
+ * real journal is `xhttps://www.instagram.com/…`, a web paste typo): up to four characters before `http(s)://` are
+ * dropped so the link still opens the post. The stored value is not touched.
+ */
+export function postUrlOf(raw: string | null | undefined): string | null {
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  if (!text) return null;
+  if (/^https?:\/\//i.test(text)) return text;
+  const at = text.search(/https?:\/\//i);
+  return at > 0 && at <= 4 ? text.slice(at) : text;
+}
+
 export function mentionOf(entry: Pick<Entry, 'id' | 'createdAt' | 'sourceUrl' | 'sourcePlatform'>): PostMention {
   return {
     entryId: entry.id,
     createdAt: String(entry.createdAt ?? ''),
-    sourceUrl: typeof entry.sourceUrl === 'string' && entry.sourceUrl.trim() ? entry.sourceUrl.trim() : null,
+    sourceUrl: postUrlOf(entry.sourceUrl),
     sourcePlatform: typeof entry.sourcePlatform === 'string' && entry.sourcePlatform ? entry.sourcePlatform : null,
   };
 }

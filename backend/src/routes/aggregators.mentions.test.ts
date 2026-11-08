@@ -59,3 +59,37 @@ describe('the same thing from several posts: one card, one link per post', () =>
     for (const m of [film.mentions[0], note.mentions[0], sw.mentions[0]]) expect(m).toMatchObject({ entryId: 'e1', sourceUrl: POST, sourcePlatform: 'instagram' });
   });
 });
+
+describe('"Versione di": a version is its own card and points at the original (spec §7, D5)', () => {
+  const by = (title: string, artist: string) => ({ ...song(title), artist });
+
+  it('a version of a song the journal has is linked to it, the key of each card is unchanged', () => {
+    const entries = [entry('e1', POST, 'instagram', { songs: [by('Circles', 'Post Malone'), by('Circles (Instrumental)', 'Post Malone'), by('Nightcall', 'Kavinsky')] })];
+    const map = aggregateSongs(entries, new Map());
+    expect([...map.keys()].sort()).toEqual(['kavinsky::nightcall', 'post malone::circles', 'post malone::circles (instrumental)']);
+    expect(map.get('post malone::circles (instrumental)')?.versionOf).toEqual({
+      title: 'Circles',
+      artist: 'Post Malone',
+      songKey: 'post malone::circles',
+      labels: ['Instrumental'],
+    });
+    expect(map.get('post malone::circles')?.versionOf).toBeUndefined();
+    expect(map.get('kavinsky::nightcall')?.versionOf).toBeUndefined();
+  });
+
+  it('with no original saved the card still says what it is a version of, without a link', () => {
+    const map = aggregateSongs([entry('e1', POST, 'instagram', { songs: [by('Goth (Slowed + Reverb)', 'Sidewalks and Skeletons')] })], new Map());
+    expect(map.get('sidewalks and skeletons::goth (slowed + reverb)')?.versionOf).toEqual({ title: 'Goth', artist: null, songKey: null, labels: ['Slowed + Reverb'] });
+  });
+
+  it('a version from another post is still linked to the original, and keeps its own mentions', () => {
+    const entries = [
+      entry('e2', 'https://www.tiktok.com/@a/video/1', 'tiktok', { songs: [by('Circles (Instrumental)', 'Post Malone')] }, '2026-11-08T08:00:00Z'),
+      entry('e1', POST, 'instagram', { songs: [by('Circles', 'Post Malone')] }),
+    ];
+    const map = aggregateSongs(entries, new Map());
+    const version = map.get('post malone::circles (instrumental)')!;
+    expect(version.versionOf?.songKey).toBe('post malone::circles');
+    expect(version.mentions.map((m) => m.entryId)).toEqual(['e2']);
+  });
+});
