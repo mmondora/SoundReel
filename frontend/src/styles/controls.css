@@ -10,7 +10,7 @@
 .seg-legend {
   padding: 0;
   margin-bottom: 0.25rem;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -76,6 +76,9 @@
 
 @media (max-width: 640px) {
   .seg-opt span {
-    padding: 0.5rem 0.65rem; /* 44px-ish touch target with the line height */
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px; /* a thumb-sized target */
+    padding: 0 0.85rem;
   }
 }

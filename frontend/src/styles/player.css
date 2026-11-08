@@ -1072,20 +1072,20 @@ body:has(.mini-player) .home--inbox {
 .source-switch-hint {
   margin: 0.3rem 0 0;
   min-height: 1.1rem;
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   color: var(--text-muted, #7a808c);
 }
 
 .source-switch-compact select {
-  max-width: 6.5rem;
-  min-height: 36px;
+  max-width: 7.5rem;
+  min-height: 44px;
   padding: 0.2rem 0.4rem;
   border: 1px solid #2a2a2a;
   border-radius: 8px;
   background: #1a1a1a;
   color: #cfcfcf;
   font: inherit;
-  font-size: 0.75rem;
+  font-size: 16px; /* below 16px iOS zooms the page when the select gets focus */
 }
 
 .source-switch-compact select:focus-visible {
@@ -1100,17 +1100,17 @@ body:has(.mini-player) .home--inbox {
   padding: 0.02rem 0.45rem;
   border: 1px solid #2f3340;
   border-radius: 999px;
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   line-height: 1.5;
   color: #b9bfcb;
   white-space: nowrap;
 }
 
 .from-chip-k {
-  color: #7a808c;
+  color: #8a909c;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-size: 0.6rem;
+  font-size: 0.75rem;
 }
 
 .from-chip-media-server { border-color: rgba(108, 182, 255, 0.45); }
@@ -1123,6 +1123,35 @@ body:has(.mini-player) .home--inbox {
 
 @media (max-width: 480px) {
   .source-switch-compact select {
-    max-width: 5rem;
+    max-width: 6.5rem;
+  }
+}
+
+/* "Sto caricando…" while a song is starting */
+.player-car-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: #3ddc97;
+}
+
+.player-car-loading-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border: 2px solid #3ddc9755;
+  border-top-color: #3ddc97;
+  border-radius: 50%;
+  animation: player-car-spin 0.8s linear infinite;
+}
+
+@keyframes player-car-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-car-loading-dot {
+    animation: none;
+    border-top-color: #3ddc97;
   }
 }

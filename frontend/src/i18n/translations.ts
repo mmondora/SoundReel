@@ -492,6 +492,8 @@ export interface Translations {
   mgrFilterGenre: string;
   mgrFilterState: string;
   mgrFilterTags: string;
+  mgrFilterYears: string;
+  mgrNoYear: string;
   mgrFilterMembership: string;
   mgrMembershipAll: string;
   mgrMembershipIn: string;
@@ -740,6 +742,37 @@ export interface Translations {
   playerWindowStatus: string;
   playerWindowHidden: string;
   playerWindowHiddenOne: string;
+  playerLoading: string;
+  chOpen: string;
+  chSearchLabel: string;
+  chPlaylist: string;
+  chAllSongs: string;
+  chGenre: string;
+  chYears: string;
+  chNoYear: string;
+  chAlbum: string;
+  chArtist: string;
+  chMoreOf: string;
+  chMoreLabel: string;
+  chMoreFilters: string;
+  chSource: string;
+  chTags: string;
+  chDownloaded: string;
+  chDlAll: string;
+  chDlYes: string;
+  chDlNo: string;
+  chWhere: string;
+  chFavorites: string;
+  chNone: string;
+  chPlay: string;
+  chShuffle: string;
+  chReset: string;
+  chQueueSearch: string;
+  chShowAll: string;
+  chShowLess: string;
+  chActive: string;
+  chOf: string;
+  chHint: string;
   mgrHelpLines: string[];
 
   // Notes page filters & categories
@@ -1241,6 +1274,8 @@ export const translations: Record<Language, Translations> = {
     mgrFilterGenre: 'Tipo (genere)',
     mgrFilterState: 'Stato',
     mgrFilterTags: 'Tag',
+    mgrFilterYears: 'Anni',
+    mgrNoYear: 'Senza anno',
     mgrFilterMembership: 'Rispetto all’altro pannello',
     mgrMembershipAll: 'Tutti',
     mgrMembershipIn: 'Già nell’altra playlist',
@@ -1505,6 +1540,37 @@ export const translations: Record<Language, Translations> = {
     playerWindowStatus: '{shown} di {total}',
     playerWindowHidden: '{n} già ascoltate nascoste',
     playerWindowHiddenOne: '1 già ascoltata nascosta',
+    playerLoading: 'Sto caricando…',
+    chOpen: 'Scegli cosa suonare',
+    chSearchLabel: 'Cerca nelle canzoni',
+    chPlaylist: 'Playlist',
+    chAllSongs: 'Tutte le canzoni',
+    chGenre: 'Tipo',
+    chYears: 'Anni',
+    chNoYear: 'Senza anno',
+    chAlbum: 'Album',
+    chArtist: 'Autore',
+    chMoreOf: 'Altri ({n})…',
+    chMoreLabel: 'Altri valori: {legend}',
+    chMoreFilters: 'Altri filtri',
+    chSource: 'Fonte',
+    chTags: 'Tag',
+    chDownloaded: 'Scaricata',
+    chDlAll: 'Tutte',
+    chDlYes: 'Scaricate',
+    chDlNo: 'Da scaricare',
+    chWhere: 'Dove sta',
+    chFavorites: 'Solo preferite',
+    chNone: 'Nessun brano con questi filtri.',
+    chPlay: 'Suona',
+    chShuffle: 'Mescola e suona',
+    chReset: 'Azzera i filtri',
+    chQueueSearch: 'Ricerca: {q}',
+    chShowAll: 'Mostra tutti ({n})',
+    chShowLess: 'Mostra meno',
+    chActive: '{n} filtri attivi',
+    chOf: 'su {n}',
+    chHint: 'I filtri si sommano; dentro un filtro si può sceglierne più di uno. Il risultato diventa la coda.',
     mgrHelpLines: [
       'Tab — passa all’altro pannello (Maiusc+Tab esce dalla lista)',
       '↑ ↓ Home Fine PagSu PagGiù — muovi il cursore',
@@ -2013,6 +2079,8 @@ export const translations: Record<Language, Translations> = {
     mgrFilterGenre: 'Type (genre)',
     mgrFilterState: 'State',
     mgrFilterTags: 'Tags',
+    mgrFilterYears: 'Years',
+    mgrNoYear: 'No year',
     mgrFilterMembership: 'Versus the other pane',
     mgrMembershipAll: 'All',
     mgrMembershipIn: 'Already in the other playlist',
@@ -2277,6 +2345,37 @@ export const translations: Record<Language, Translations> = {
     playerWindowStatus: '{shown} of {total}',
     playerWindowHidden: '{n} already played hidden',
     playerWindowHiddenOne: '1 already played hidden',
+    playerLoading: 'Loading…',
+    chOpen: 'Choose what to play',
+    chSearchLabel: 'Search songs',
+    chPlaylist: 'Playlist',
+    chAllSongs: 'All songs',
+    chGenre: 'Type',
+    chYears: 'Years',
+    chNoYear: 'No year',
+    chAlbum: 'Album',
+    chArtist: 'Artist',
+    chMoreOf: 'More ({n})…',
+    chMoreLabel: 'More values: {legend}',
+    chMoreFilters: 'More filters',
+    chSource: 'Source',
+    chTags: 'Tags',
+    chDownloaded: 'Downloaded',
+    chDlAll: 'All',
+    chDlYes: 'Downloaded',
+    chDlNo: 'Not downloaded',
+    chWhere: 'Where it is',
+    chFavorites: 'Favorites only',
+    chNone: 'No song matches these filters.',
+    chPlay: 'Play',
+    chShuffle: 'Shuffle and play',
+    chReset: 'Reset filters',
+    chQueueSearch: 'Search: {q}',
+    chShowAll: 'Show all ({n})',
+    chShowLess: 'Show less',
+    chActive: '{n} active filters',
+    chOf: 'of {n}',
+    chHint: 'Filters add up; inside one filter you can pick several. The result becomes the queue.',
     mgrHelpLines: [
       'Tab — switch to the other pane (Shift+Tab leaves the list)',
       '↑ ↓ Home End PgUp PgDn — move the cursor',

@@ -3,12 +3,16 @@ import { useLanguage } from '../../i18n';
 import { SOURCE_KINDS, SOURCE_LABEL_KEY, countLabel, platformLabel } from '../../utils/managerSongs';
 import type {
   DatasetFacets,
+  ExtraDatasetFacets,
   FacetCounts,
   ManagerFilters,
   MembershipFilter,
   SongSourceKind,
   StateFilter,
 } from '../../utils/managerSongs';
+import { withPicked } from '../../utils/facetOptions';
+import { NO_YEAR, decadeLabelFor } from '../../utils/songFacets';
+import type { DecadeValue } from '../../utils/songFacets';
 import type { ListenedFilter } from '../../utils/songFilters';
 
 export interface ManagerFilterPanelProps {
@@ -16,7 +20,7 @@ export interface ManagerFilterPanelProps {
   onChange: (patch: Partial<ManagerFilters>) => void;
   onReset: () => void;
   facets: FacetCounts;
-  dataset: DatasetFacets;
+  dataset: DatasetFacets & Partial<ExtraDatasetFacets>;
   /** The other pane shows a playlist: "already / not yet in it" is meaningful. */
   otherIsPlaylist: boolean;
 }
@@ -32,14 +36,18 @@ function ChipGroup({
   options,
   selected,
   onToggle,
+  labelOf,
 }: {
   legend: string;
   options: ChipOption[];
   selected: readonly string[];
   onToggle: (value: string) => void;
+  /** Words for a picked value the counts no longer mention. */
+  labelOf?: (value: string) => string;
 }) {
-  // A value with no match under the other filters disappears, unless it is currently picked (so it can be undone).
-  const visible = options.filter((o) => o.count > 0 || selected.includes(o.value));
+  // A value with no match under the other filters disappears, unless it is currently picked (so it can be undone):
+  // a picked value the counts no longer list is added back, with a 0.
+  const visible = withPicked(options, selected, labelOf).filter((o) => o.count > 0 || selected.includes(o.value));
   if (visible.length === 0) return null;
   return (
     <fieldset className="mgr-facet">
@@ -101,7 +109,7 @@ const byCountThenLabel = (a: ChipOption, b: ChipOption): number => b.count - a.c
 
 /** Per-pane filter drawer: tipo, fonte, genere, tag, stato, autore, album, ascolto, preferiti, membership. */
 export function ManagerFilterPanel({ filters, onChange, onReset, facets, dataset, otherIsPlaylist }: ManagerFilterPanelProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const uid = useId();
   const artistListId = `${uid}-artists`;
 
@@ -119,6 +127,17 @@ export function ManagerFilterPanel({ filters, onChange, onReset, facets, dataset
   const tagOptions: ChipOption[] = [...facets.tags.entries()]
     .map(([value, count]) => ({ value, label: value, count }))
     .sort(byCountThenLabel);
+
+  // "Anni": the decades the songs fall in, in the order of time, with "Senza anno" last (value "none").
+  const decadeOptions: ChipOption[] = facets.decades.map((d) => ({
+    value: String(d.value),
+    label: d.value === NO_YEAR ? t.mgrNoYear : decadeLabelFor(d.value, language),
+    count: d.count,
+  }));
+  const toggleDecade = (raw: string) => {
+    const value: DecadeValue = raw === NO_YEAR ? NO_YEAR : Number(raw);
+    onChange({ decades: filters.decades.includes(value) ? filters.decades.filter((v) => v !== value) : [...filters.decades, value] });
+  };
 
   const stateOptions: Array<{ value: StateFilter; label: string }> = [
     { value: 'all', label: t.mgrStateAll },
@@ -202,6 +221,15 @@ export function ManagerFilterPanel({ filters, onChange, onReset, facets, dataset
           options={genreOptions}
           selected={filters.genres}
           onToggle={(v) => onChange({ genres: toggled(filters.genres, v) })}
+        />
+      )}
+      {dataset.decades && (
+        <ChipGroup
+          legend={t.mgrFilterYears}
+          options={decadeOptions}
+          selected={filters.decades.map(String)}
+          onToggle={toggleDecade}
+          labelOf={(raw) => (raw === NO_YEAR ? t.mgrNoYear : decadeLabelFor(Number(raw), language))}
         />
       )}
       {dataset.types && (

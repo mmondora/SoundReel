@@ -99,6 +99,11 @@ export interface SongMetaRecord extends SongUserMeta {
   itunesId: number | null;
   genres: string[];
   album: string | null;
+  /**
+   * The year the song came out, as the providers (Deezer, iTunes) say it; null when none knows it (ADR-0013). The
+   * decade ("Anni 80") is derived from it, never stored. Absent from an older backend: read it as "no year".
+   */
+  releaseYear?: number | null;
   coverUrl: string | null;
   previewUrl: string | null;
   deezerUrl: string | null;

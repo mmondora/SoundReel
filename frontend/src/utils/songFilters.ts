@@ -1,4 +1,6 @@
 import type { AggregatedSong } from '../types';
+import { isCanonicalGenre } from './genres';
+import { genreKey, matchesAll, tally, tokenize, traitsOf } from './songFacets';
 
 export type ListenedFilter = 'all' | 'listened' | 'unlistened';
 export type DownloadedFilter = 'all' | 'yes' | 'no';
@@ -27,12 +29,13 @@ function songIsLiked(song: AggregatedSong): boolean {
 }
 
 export function filterSongs<T extends AggregatedSong>(songs: T[], opts: SongFilterOptions): T[] {
-  const query = opts.text?.trim().toLowerCase() ?? '';
+  // The same rules as the Playlist manager and the player (utils/songFacets): the order of the words in the text does
+  // not matter, case and accents are ignored, and the synonyms of a genre are one genre.
+  const tokens = tokenize(opts.text ?? '');
+  const genreKeys = opts.genres.length > 0 ? new Set(opts.genres.map(genreKey)) : null;
   return songs.filter((song) => {
-    if (opts.genres.length > 0) {
-      const genres = song.meta?.genres ?? [];
-      if (!opts.genres.some((g) => genres.includes(g))) return false;
-    }
+    const traits = traitsOf(song);
+    if (genreKeys && !traits.genres.some((g) => genreKeys.has(g.key))) return false;
     if (opts.listened !== 'all') {
       const listened = song.meta?.listened ?? false;
       if (opts.listened === 'listened' && !listened) return false;
@@ -50,18 +53,16 @@ export function filterSongs<T extends AggregatedSong>(songs: T[], opts: SongFilt
       if (opts.downloaded === 'yes' && !downloaded) return false;
       if (opts.downloaded === 'no' && downloaded) return false;
     }
-    if (query) {
-      const haystack = [song.title, song.artist, song.album, song.meta?.album];
-      if (!haystack.some((field) => field != null && field.toLowerCase().includes(query))) return false;
-    }
+    if (tokens.length > 0 && !matchesAll(traits.text, tokens)) return false;
     return true;
   });
 }
 
+/** The genres on offer, A to Z: the synonyms of one genre ("Alternativa", "Alternative") are ONE entry. */
 export function collectGenres(songs: AggregatedSong[]): string[] {
-  const set = new Set<string>();
-  for (const song of songs) for (const g of song.meta?.genres ?? []) set.add(g);
-  return [...set].sort((a, b) => a.localeCompare(b));
+  return tally(songs, (song) => traitsOf(song).genres.map((g) => ({ key: g.key, spelled: g.spelled })), isCanonicalGenre)
+    .map(([label]) => label)
+    .sort((a, b) => a.localeCompare(b));
 }
 
 export type SongSortMode = 'date' | 'mentions' | 'artist';

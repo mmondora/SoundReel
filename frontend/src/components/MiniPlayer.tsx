@@ -31,6 +31,7 @@ export function MiniPlayer() {
             <LocationBadge location={songLocationIn(current, player.locationOverrides)} />
             <PlayingFrom compact />
             <DownloadChip state={player.currentDownload ?? undefined} compact />
+            <span className="sr-only" role="status">{player.loading ? t.playerLoading : ''}</span>
           </span>
         </span>
       </Link>
@@ -39,12 +40,14 @@ export function MiniPlayer() {
         type="button"
         className="mini-player-toggle"
         aria-label={playing ? 'Pause' : 'Play'}
+        aria-busy={player.loading}
+        title={player.loading ? t.playerLoading : undefined}
         onClick={(e) => {
           e.preventDefault();
           player.toggle();
         }}
       >
-        {playing ? '⏸' : '▶'}
+        {player.loading ? '…' : playing ? '⏸' : '▶'}
       </button>
       <button
         type="button"

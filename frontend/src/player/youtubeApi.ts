@@ -61,7 +61,14 @@ export function loadYoutubeApi(): Promise<void> {
     tag.src = 'https://www.youtube.com/iframe_api';
     tag.async = true;
     tag.dataset.srYt = '1';
-    tag.onerror = () => reject(new Error('YouTube API load failed'));
+    // A failed load is forgotten (promise and script tag), so the next attempt — the first real play after a
+    // warm-up that failed at page load — tries again instead of inheriting the failure.
+    const fail = (message: string) => {
+      apiPromise = null;
+      tag.remove();
+      reject(new Error(message));
+    };
+    tag.onerror = () => fail('YouTube API load failed');
     document.head.appendChild(tag);
     // In case the API was already loaded by something else after we checked.
     const started = Date.now();
@@ -71,7 +78,7 @@ export function loadYoutubeApi(): Promise<void> {
         resolve();
       } else if (Date.now() - started > 15000) {
         window.clearInterval(poll);
-        reject(new Error('YouTube API timeout'));
+        fail('YouTube API timeout');
       }
     }, 50);
   });
@@ -82,3 +89,5 @@ export function loadYoutubeApi(): Promise<void> {
 export const YT_ENDED = 0;
 export const YT_PLAYING = 1;
 export const YT_PAUSED = 2;
+export const YT_BUFFERING = 3;
+export const YT_CUED = 5;

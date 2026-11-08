@@ -8,11 +8,13 @@ import { LanguageProvider } from '../i18n';
 import { setStoredLanguage } from '../i18n/translations';
 import { resetEntryThumbnailCache } from '../hooks/useEntryThumbnail';
 import * as api from '../services/api';
+import { scheduleYoutubeWarmUp } from '../player/preload';
 import type { AggregatedSong } from '../types';
 
 const { playerMock } = vi.hoisted(() => ({ playerMock: { current: {} as Record<string, unknown> } }));
 
 vi.mock('../player/PlayerContext', () => ({ usePlayer: () => playerMock.current }));
+vi.mock('../player/preload', () => ({ scheduleYoutubeWarmUp: vi.fn() }));
 
 vi.mock('../services/api', () => ({
   fetchSongs: vi.fn(),
@@ -71,6 +73,7 @@ beforeEach(() => {
   resetEntryThumbnailCache();
   vi.mocked(api.fetchSongs).mockResolvedValue([]);
   vi.mocked(api.getEntry).mockRejectedValue(new Error('not needed'));
+  vi.mocked(scheduleYoutubeWarmUp).mockReturnValue(() => undefined);
 });
 
 describe('queue window (rule W3)', () => {
@@ -337,5 +340,71 @@ describe('the "Sorgente" switch and the badge in the mini player', () => {
     playerMock.current = makePlayer([], 0, { current: null });
     renderMini('/');
     expect(screen.queryByRole('combobox', { name: 'Source' })).toBeNull();
+  });
+});
+
+describe('speed of the first play (spec 2026-11-08, X6)', () => {
+  it('warms up the YouTube side once when the page mounts, and cancels it if the page goes away first', () => {
+    const cancel = vi.fn();
+    vi.mocked(scheduleYoutubeWarmUp).mockReturnValue(cancel);
+    playerMock.current = makePlayer(songs(3), 0);
+    const view = renderPage();
+    expect(scheduleYoutubeWarmUp).toHaveBeenCalledTimes(1);
+    expect(cancel).not.toHaveBeenCalled();
+    view.unmount();
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not warm up again when the page re-renders', () => {
+    playerMock.current = makePlayer(songs(3), 0);
+    const view = renderPage();
+    view.rerender(
+      <LanguageProvider>
+        <MemoryRouter initialEntries={['/player']}>
+          <PlayerPage />
+        </MemoryRouter>
+      </LanguageProvider>,
+    );
+    expect(scheduleYoutubeWarmUp).toHaveBeenCalledTimes(1);
+  });
+
+  it('a song that is starting says "Loading…"; the play button is not blocked while it does', () => {
+    playerMock.current = makePlayer(songs(3), 0, { loading: true });
+    renderPage();
+    const status = document.querySelector('.player-car-loading') as HTMLElement;
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveTextContent('Loading…');
+    const play = screen.getByRole('button', { name: /^(Play|Pause)$/ });
+    expect(play).toBeEnabled();
+    expect(play).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('says nothing when it is not starting anything', () => {
+    playerMock.current = makePlayer(songs(3), 0, { loading: false });
+    renderPage();
+    expect(document.querySelector('.player-car-loading')).toBeEmptyDOMElement();
+    expect(screen.getByRole('button', { name: /^(Play|Pause)$/ })).toHaveAttribute('aria-busy', 'false');
+  });
+
+  it('says it in Italian: "Sto caricando…"', () => {
+    setStoredLanguage('it');
+    playerMock.current = makePlayer(songs(3), 0, { loading: true });
+    renderPage();
+    expect(document.querySelector('.player-car-loading')).toHaveTextContent('Sto caricando…');
+  });
+
+  it('the mini player shows it too (a dotted button and a status for screen readers)', () => {
+    playerMock.current = makePlayer(songs(3), 0, { loading: true });
+    render(
+      <LanguageProvider>
+        <MemoryRouter initialEntries={['/']}>
+          <MiniPlayer />
+        </MemoryRouter>
+      </LanguageProvider>,
+    );
+    const toggle = screen.getByRole('button', { name: /^(Play|Pause)$/ });
+    expect(toggle).toHaveTextContent('…');
+    expect(toggle).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByText('Loading…', { selector: '.sr-only' })).toBeInTheDocument();
   });
 });

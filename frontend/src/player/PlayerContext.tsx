@@ -28,6 +28,7 @@ import {
 } from './queueLogic';
 import {
   loadYoutubeApi,
+  YT_CUED,
   YT_ENDED,
   YT_PAUSED,
   YT_PLAYING,
@@ -51,6 +52,12 @@ import type { PlayFrom, SourceChoice, SourceMode } from './playbackSource';
 
 /** How long the first play of a page waits for `GET /api/net` before treating the network as external. */
 const NETWORK_WAIT_MS = 1500;
+
+/**
+ * A song that is starting shows "Sto caricando…" until it really plays. If nothing says so within this time (autoplay
+ * refused, a stalled request) the state is cleared anyway, so the controls never stay waiting for ever.
+ */
+export const LOADING_MAX_MS = 12_000;
 
 /** What the player knows about the network: still asking, answered, or the answer failed (counts as external). */
 export type NetworkStatus = NetworkKind | 'pending' | 'failed';
@@ -191,6 +198,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** `GET /api/net`, asked once per page load; null = failed (external). */
   const networkPromiseRef = useRef<Promise<NetworkKind | null> | null>(null);
   const networkSettledRef = useRef<{ done: boolean; value: NetworkKind | null }>({ done: false, value: null });
+  /** Songs whose video id was already asked for ahead of time (once per song). */
+  const prefetchedRef = useRef(new Set<string>());
   const downloadTrackerRef = useRef<DownloadTracker | null>(null);
   /** Listening sessions → events → offline-safe outbox (docs/mondrop-stats.md §1). */
   const playTrackerRef = useRef<PlayTracker | null>(null);
@@ -379,6 +388,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               try { tracker?.setDuration((e.target.getDuration() || 0) * 1000); } catch { /* ignore */ }
             } else if (e.data === YT_ENDED) tracker?.ended();
             else tracker?.paused();
+            // "Sto caricando…" lasts until the video plays (or is paused / cued / over): buffering and the
+            // unstarted state that can come first do not end it.
+            if (e.data === YT_PLAYING || e.data === YT_PAUSED || e.data === YT_ENDED || e.data === YT_CUED) setLoading(false);
             if (e.data === YT_PLAYING) {
               consecutiveYtErrorsRef.current = 0;
               setPlaying(true);
@@ -421,6 +433,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               videoIdByKeyRef.current.delete(song.songKey);
             }
             setError(youtubeErrorMessage(code));
+            setLoading(false);
             setPlaying(false);
             setMediaSessionPlaybackState(false);
             if (!youtubeErrorShouldSkip(code)) return;
@@ -521,6 +534,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         dispatchMedia({ type: 'localStarted', songKey: song.songKey, from: plan.from });
         const a = audioRef.current ?? new Audio();
         audioRef.current = a;
+        a.preload = 'auto'; // start as soon as the first bytes arrive: no IFrame, nothing else to wait for
         a.src = `/api/songs/${encodeURIComponent(song.songKey)}/file`;
         a.onended = () => { playTrackerRef.current?.ended(); nextTrackRef.current(); };
         a.ontimeupdate = () => setCurrentTime(a.currentTime || 0);
@@ -549,12 +563,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         };
         setMediaSessionMetadata(song);
         if (autoplay) {
+          const giveUp = window.setTimeout(() => { if (seq === loadSeqRef.current) setLoading(false); }, LOADING_MAX_MS);
           try {
             await a.play();
+            window.clearTimeout(giveUp);
             setLoading(false);
             consecutiveYtErrorsRef.current = 0;
             return;
           } catch {
+            window.clearTimeout(giveUp);
             localFileModeRef.current = false;
           }
         } else {
@@ -608,10 +625,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (autoplay) {
         player.loadVideoById(videoId);
         player.playVideo();
+        // still "Sto caricando…": the state change to PLAYING (or anything else but buffering) ends it
+        window.setTimeout(() => { if (seq === loadSeqRef.current) setLoading(false); }, LOADING_MAX_MS);
       } else {
         player.cueVideoById(videoId);
+        setLoading(false);
       }
-      setLoading(false);
     } catch {
       dispatchMedia({ type: 'videoFailed', songKey: song.songKey });
       if (seq !== loadSeqRef.current) return;
@@ -633,7 +652,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       try { return playerRef.current!.getCurrentTime(); } catch { return 0; }
     })() : 0;
     destroyPlayer();
-    if (song && videoIdByKeyRef.current.has(song.songKey)) {
+    // A song that plays from the home file has no video to bring back (its id may be cached from a prefetch).
+    if (song && !localFileModeRef.current && videoIdByKeyRef.current.has(song.songKey)) {
       void (async () => {
         try {
           const player = await ensurePlayer();
@@ -651,6 +671,29 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when mount host identity changes
   }, [mountVersion]);
+
+  // While a song plays, ask for the video id of the NEXT one (once per song) — when it will play from YouTube. The id
+  // lookup is what made starting a song slow (up to a few seconds when the server has to search); with it already in
+  // `videoIdByKeyRef` the next song goes straight to the player. A song at home never needs it.
+  const prefetchNextVideo = useCallback((fromIndex: number) => {
+    if (repeatRef.current === 'one') return; // the same song again: its id (if any) is already there
+    const q = queueRef.current;
+    const ni = nextIndex(fromIndex, q.length, repeatRef.current);
+    if (ni == null) return;
+    const upcoming = q[ni];
+    if (!upcoming || prefetchedRef.current.has(upcoming.songKey) || videoIdByKeyRef.current.has(upcoming.songKey)) return;
+    const location = resolveSongLocation(upcoming, readyLocationsRef.current[upcoming.songKey]);
+    if (effectiveSource(sourceModeRef.current, networkSettledRef.current.value, location).from !== 'youtube') return;
+    prefetchedRef.current.add(upcoming.songKey);
+    fetchSongYoutube(upcoming.songKey)
+      .then((src) => { videoIdByKeyRef.current.set(upcoming.songKey, src.videoId); })
+      .catch(() => { prefetchedRef.current.delete(upcoming.songKey); }); // not found now: the real play asks again
+  }, []);
+
+  // Only once the current song really plays (not while it is still starting: its own lookup goes first).
+  useEffect(() => {
+    if (playing && !loading) prefetchNextVideo(index);
+  }, [playing, loading, index, queue, repeat, prefetchNextVideo]);
 
   // Poll currentTime while playing (YT has no timeupdate event).
   useEffect(() => {

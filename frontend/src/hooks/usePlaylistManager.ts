@@ -27,6 +27,7 @@ import {
   EMPTY_FILTERS,
   activeFilterCount,
   datasetFacets,
+  extraDatasetFacets,
   enrichSongs,
   facetCounts,
   filterManagerSongs,
@@ -35,6 +36,7 @@ import {
 } from '../utils/managerSongs';
 import type {
   DatasetFacets,
+  ExtraDatasetFacets,
   EntryFact,
   FacetCounts,
   FilterContext,
@@ -99,7 +101,7 @@ export interface PaneModel {
   filtered: boolean;
   filterCount: number;
   facets: FacetCounts | null;
-  dataset: DatasetFacets;
+  dataset: DatasetFacets & ExtraDatasetFacets;
   /** The other pane shows a playlist (so "already / not yet in the other playlist" makes sense). */
   otherIsPlaylist: boolean;
   /** Users the playlist is shared with; null while unknown (or when the viewer is not the owner). */
@@ -265,7 +267,7 @@ export function usePlaylistManager(live: LiveSongState) {
 
   const songs = useMemo(() => enrichSongs(rawSongs, facts), [rawSongs, facts]);
   const songsByKey = useMemo(() => new Map(songs.map((s) => [s.songKey, s])), [songs]);
-  const dataset = useMemo(() => datasetFacets(songs), [songs]);
+  const dataset = useMemo(() => ({ ...datasetFacets(songs), ...extraDatasetFacets(songs) }), [songs]);
   const viewer = useMemo(() => (me ? { user: me.user, authenticated: me.authenticated } : null), [me]);
 
   // ---------------------------------------------------------------- loading

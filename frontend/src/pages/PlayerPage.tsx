@@ -1,23 +1,37 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AddToPlaylistModal } from '../components/AddToPlaylistModal';
 import { PlaylistPanel } from '../components/PlaylistPanel';
 import { DownloadChip } from '../components/manager/DownloadChip';
 import { LocationBadge } from '../components/LocationBadge';
+import { ChoosePanel } from '../components/player/ChoosePanel';
 import { PictureBox } from '../components/player/PictureBox';
 import { PlayingFrom } from '../components/player/PlayingFrom';
 import { SourceSwitch } from '../components/player/SourceSwitch';
 import { useEntryThumbnail } from '../hooks/useEntryThumbnail';
-import { fetchSongs } from '../services/api';
+import { fetchPlaylist, fetchPlaylists, fetchSongs } from '../services/api';
 import { filterSongs } from '../utils/songFilters';
+import {
+  EMPTY_FILTERS,
+  activeFilterCount,
+  datasetFacets,
+  enrichSongs,
+  extraDatasetFacets,
+  facetCounts,
+  filterManagerSongs,
+} from '../utils/managerSongs';
+import type { FilterContext, ManagerFilters } from '../utils/managerSongs';
+import { selectionLabel, shuffled } from '../utils/playerSelection';
+import { scheduleYoutubeWarmUp } from '../player/preload';
 import type { DownloadedFilter, ListenedFilter } from '../utils/songFilters';
 import { interpolate, useLanguage } from '../i18n';
 import { usePlayer } from '../player/PlayerContext';
 import { coverCandidates } from '../player/mediaBox';
 import { computeQueueWindow, windowItems } from '../player/queueWindow';
 import { songLocationIn } from '../utils/songLocation';
-import type { AggregatedSong, PlaylistDetail } from '../types';
+import type { AggregatedSong, PlaylistDetail, PlaylistSummary } from '../types';
 import '../styles/player.css';
+import '../styles/choose.css';
 
 type ShelfFilter = 'all' | 'favorites' | 'liked' | 'unlistened' | 'downloaded';
 
@@ -29,7 +43,7 @@ function formatTime(seconds: number): string {
 }
 
 export function PlayerPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const player = usePlayer();
 
   const [songs, setSongs] = useState<AggregatedSong[]>([]);
@@ -40,6 +54,13 @@ export function PlayerPage() {
   const [songToAdd, setSongToAdd] = useState<string | null>(null);
   /** When true, the list shows the shelf/playlist browse view; tap a song to lock it as sticky queue. */
   const [browsing, setBrowsing] = useState(true);
+  // "Scegli cosa suonare": the filters (type, years, album, author…) that narrow what the browse list offers.
+  const [filters, setFilters] = useState<ManagerFilters>(EMPTY_FILTERS);
+  const [chooseOpen, setChooseOpen] = useState(false);
+  const chooseToggle = useRef<HTMLButtonElement>(null);
+  const chooseWasOpen = useRef(false);
+  const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
+  const playlistsAsked = useRef(false);
 
   useEffect(() => {
     fetchSongs()
@@ -57,6 +78,23 @@ export function PlayerPage() {
     if (player.queue.length > 0) setBrowsing(false);
   }, [player.queue.length]);
 
+  // The YouTube side (preconnect + the IFrame API) is warmed up once, when the page is idle, so that the first song
+  // that needs it does not wait for it. A song at home never does.
+  useEffect(() => scheduleYoutubeWarmUp(), []);
+
+  // When the panel closes (its own close button, Escape, a song started) the focus goes back to the button that
+  // opened it — a click on a button does not focus it on every browser (Safari), so it is done here, not remembered.
+  useEffect(() => {
+    if (!chooseOpen && chooseWasOpen.current) chooseToggle.current?.focus();
+    chooseWasOpen.current = chooseOpen;
+  }, [chooseOpen]);
+
+  useEffect(() => {
+    if (!chooseOpen || playlistsAsked.current) return;
+    playlistsAsked.current = true;
+    fetchPlaylists().then(setPlaylists).catch(() => setPlaylists([]));
+  }, [chooseOpen]);
+
   const setYtMount = useCallback((el: HTMLDivElement | null) => {
     player.setYoutubeMount(el);
   }, [player.setYoutubeMount]);
@@ -66,7 +104,8 @@ export function PlayerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- clear mount on leave
   }, []);
 
-  const browseList = useMemo(() => {
+  // What the shelf tab or the chosen playlist offers…
+  const shelfList = useMemo(() => {
     if (activePlaylist) {
       const byKey = new Map(songs.map((s) => [s.songKey, s]));
       return activePlaylist.songKeys
@@ -84,7 +123,26 @@ export function PlayerPage() {
     });
   }, [songs, shelf, activePlaylist]);
 
-  const browseLabel = useMemo(() => {
+  // …narrowed by "Scegli cosa suonare": the Playlist manager's own filters and facet counts (utils/managerSongs).
+  const pool = useMemo(() => enrichSongs(shelfList), [shelfList]);
+  const filterCtx = useMemo<FilterContext>(() => {
+    const readyKeys = new Set<string>();
+    const preparingKeys = new Set<string>();
+    for (const st of Object.values(player.downloadStates ?? {})) {
+      if (st.phase === 'ready') readyKeys.add(st.songKey);
+      else if (st.phase === 'requesting' || st.phase === 'downloading') preparingKeys.add(st.songKey);
+    }
+    return { readyKeys, preparingKeys };
+  }, [player.downloadStates]);
+  const browseList = useMemo(() => filterManagerSongs(pool, filters, filterCtx), [pool, filters, filterCtx]);
+  const facets = useMemo(
+    () => (chooseOpen ? facetCounts(pool, filters, filterCtx) : null),
+    [chooseOpen, pool, filters, filterCtx],
+  );
+  const dataset = useMemo(() => ({ ...datasetFacets(pool), ...extraDatasetFacets(pool) }), [pool]);
+  const filtersActive = activeFilterCount(filters) + (filters.text.trim() ? 1 : 0);
+
+  const shelfLabel = useMemo(() => {
     if (activePlaylist) return activePlaylist.name;
     switch (shelf) {
       case 'favorites': return `⭐ ${t.songsFilterFavorites}`;
@@ -94,6 +152,16 @@ export function PlayerPage() {
       default: return t.playerFilterAll;
     }
   }, [activePlaylist, shelf, t]);
+
+  // The queue a selection becomes is named after it ("Anni 80 · Elettronica"), else after the shelf or playlist.
+  const browseLabel = useMemo(
+    () => selectionLabel(
+      filters,
+      { language, noYear: t.chNoYear, search: (q) => interpolate(t.chQueueSearch, { q }) },
+      activePlaylist?.name ?? null,
+    ) ?? shelfLabel,
+    [filters, language, t, activePlaylist, shelfLabel],
+  );
 
   // Sticky Spotify-style queue while playing; browse list only when picking a new context.
   const queueMode = !browsing && player.queue.length > 0;
@@ -140,6 +208,30 @@ export function PlayerPage() {
   function playFrom(songKey: string, list: AggregatedSong[], label: string, playlistId?: string | null) {
     player.playSong(songKey, list, label, playlistId);
     setBrowsing(false);
+  }
+
+  function changeFilters(patch: Partial<ManagerFilters>) {
+    setFilters((prev) => ({ ...prev, ...patch }));
+    setBrowsing(true); // show what the filters leave, not the queue that is playing
+  }
+
+  async function choosePlaylist(id: string | null) {
+    if (!id) {
+      handlePlaylistSelect(null);
+      return;
+    }
+    try {
+      handlePlaylistSelect(await fetchPlaylist(id));
+    } catch {
+      // the list stays as it was
+    }
+  }
+
+  /** The result of the filters becomes the queue — in order, or shuffled ("Mescola e suona"). */
+  function playSelection(mix: boolean) {
+    if (browseList.length === 0) return;
+    const list = mix ? shuffled(browseList) : browseList;
+    playFrom(list[0].songKey, list, browseLabel, activePlaylist?.id ?? null);
   }
 
   function playBrowse() {
@@ -212,6 +304,39 @@ export function PlayerPage() {
         </div>
       </header>
 
+      <div className="player-car-choose-bar">
+        <button
+          ref={chooseToggle}
+          type="button"
+          className={`player-car-choose-toggle${filtersActive > 0 ? ' has-filters' : ''}`}
+          aria-expanded={chooseOpen}
+          aria-controls="player-choose-panel"
+          onClick={() => setChooseOpen((v) => !v)}
+        >
+          🎚 {t.chOpen}{filtersActive > 0 ? ` · ${interpolate(t.chActive, { n: filtersActive })}` : ''}
+        </button>
+      </div>
+
+      {chooseOpen && facets && (
+        <div id="player-choose-panel">
+          <ChoosePanel
+            filters={filters}
+            onChange={changeFilters}
+            onReset={() => changeFilters(EMPTY_FILTERS)}
+            facets={facets}
+            dataset={dataset}
+            count={browseList.length}
+            poolSize={pool.length}
+            playlists={playlists}
+            playlistId={activePlaylist?.id ?? null}
+            onPlaylist={(id) => void choosePlaylist(id)}
+            onPlay={() => playSelection(false)}
+            onShuffle={() => playSelection(true)}
+            onClose={() => setChooseOpen(false)}
+          />
+        </div>
+      )}
+
       {showPlaylists && (
         <div className="player-car-playlists">
           <PlaylistPanel
@@ -259,6 +384,9 @@ export function PlayerPage() {
               {current && <LocationBadge location={songLocationIn(current, player.locationOverrides)} />}
               <PlayingFrom />
               <DownloadChip state={player.currentDownload ?? undefined} />
+              <span className="player-car-loading" role="status">
+                {player.loading ? (<><span className="player-car-loading-dot" aria-hidden /> {t.playerLoading}</>) : null}
+              </span>
             </div>
             {player.queueLabel && (
               <div className="player-car-context">{player.queueLabel}</div>
@@ -314,7 +442,8 @@ export function PlayerPage() {
                 type="button"
                 className="player-car-ctrl player-car-ctrl-play"
                 aria-label={player.playing ? 'Pause' : 'Play'}
-                disabled={(!current && browseList.length === 0 && player.queue.length === 0) || player.loading}
+                aria-busy={player.loading}
+                disabled={!current && browseList.length === 0 && player.queue.length === 0}
                 onClick={() => {
                   if (!current) playBrowse();
                   else player.toggle();
