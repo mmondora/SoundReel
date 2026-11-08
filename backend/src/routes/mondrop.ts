@@ -17,6 +17,7 @@ import {
   buildPlaylistOfflineManifest,
   buildTracks,
   enqueueSongToSpooty,
+  getSongCover,
   getTrack,
   preparePlaylist,
   requestSongDownload,
@@ -284,6 +285,24 @@ export function registerMondropRoutes(app: FastifyInstance): void {
     } catch (err) {
       logError('GET /api/mondrop/songs/:songKey failed', { err: String(err) });
       return reply.code(500).send({ error: 'song state failed' });
+    }
+  });
+
+  // The cover of a song (ADR-0019, spec 2026-11-08-player-cover-art-design.md): the SERVER finds it (the cover it already knows,
+  // the picture inside the file, or the Internet) and keeps it; the app asks only here. 404 when there is none.
+  app.get<{ Params: { songKey: string } }>('/api/mondrop/songs/:songKey/cover', async (req, reply) => {
+    const auth = await requireMondrop(req, reply);
+    if (!auth) return;
+    try {
+      const cover = await getSongCover(req.params.songKey, auth.userId, false);
+      if (cover === undefined) return reply.code(404).send({ error: 'song not found' });
+      if (cover === null) return reply.code(404).send({ error: 'no cover' });
+      reply.header('ETag', cover.etag).header('Cache-Control', 'private, max-age=86400');
+      if (req.headers['if-none-match'] === cover.etag) return reply.code(304).send();
+      return reply.header('Content-Type', cover.contentType).send(cover.bytes);
+    } catch (err) {
+      logError('GET /api/mondrop/songs/:songKey/cover failed', { err: String(err) });
+      return reply.code(500).send({ error: 'cover failed' });
     }
   });
 

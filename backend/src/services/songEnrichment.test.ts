@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../utils/logger', () => ({ logInfo: vi.fn(), logWarning: vi.fn(), logError: vi.fn() }));
 
-import { enrichSong, enrichSongWithYear, lookupItunesYear, _resetItunesThrottle } from './songEnrichment';
+import { enrichSong, enrichSongWithYear, findCoverOnline, largeItunesArtwork, lookupItunesYear, _resetItunesThrottle } from './songEnrichment';
 
 beforeEach(() => {
   // Every test gets a fresh 3s iTunes throttle window — without this, the
@@ -732,3 +732,86 @@ describe('lookupItunesYear (the year alone, for songs that are already enriched)
     expect(await lookupItunesYear('', 'One More Time')).toEqual({ answered: true, year: null });
   });
 });
+
+describe('findCoverOnline (ADR-0019): the cover of a song that has none, from the Internet', () => {
+  /** iTunes answers the first call, Deezer the second. */
+  const providers = (itunes: unknown, deezer: unknown) =>
+    vi
+      .fn()
+      .mockResolvedValueOnce(itunes instanceof Error ? Promise.reject(itunes) : { ok: true, json: async () => ({ results: itunes }) })
+      .mockResolvedValueOnce(deezer instanceof Error ? Promise.reject(deezer) : { ok: true, json: async () => ({ data: deezer }) });
+
+  const BIG = 'https://is1-ssl.mzstatic.com/image/thumb/Music/abc/100x100bb.jpg';
+  const DEEZER_HIT = {
+    ...DEEZER_TRACK,
+    album: { id: 222, title: 'Discovery', cover_medium: 'https://cdn.dz/250.jpg', cover_big: 'https://cdn.dz/500.jpg', cover_xl: 'https://cdn.dz/1000.jpg' },
+  };
+
+  it('uses the 600×600 version of an iTunes artwork', () => {
+    expect(largeItunesArtwork(BIG)).toBe('https://is1-ssl.mzstatic.com/image/thumb/Music/abc/600x600bb.jpg');
+    expect(largeItunesArtwork('https://x.test/a/100x100bb.png?v=2')).toBe('https://x.test/a/600x600bb.png');
+    expect(largeItunesArtwork('https://x.test/cover.jpg')).toBe('https://x.test/cover.jpg');
+  });
+
+  it('iTunes first, with a strong match: the larger artwork, and Deezer is not asked', async () => {
+    const fetchMock = providers([{ ...ITUNES_TRACK, artworkUrl100: BIG }], [DEEZER_HIT]);
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await findCoverOnline('Daft Punk', 'One More Time')).toEqual({
+      answered: true,
+      url: 'https://is1-ssl.mzstatic.com/image/thumb/Music/abc/600x600bb.jpg',
+      source: 'itunes',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain('itunes.apple.com/search');
+  });
+
+  it('searches the FIRST credited artist, not the whole credit line', async () => {
+    const fetchMock = providers([], []);
+    vi.stubGlobal('fetch', fetchMock);
+    await findCoverOnline('Bassi Maestro feat. Ape & Zampa', 'Giorni matti');
+    expect(fetchMock.mock.calls[0][0]).toContain(encodeURIComponent('Bassi Maestro Giorni matti'));
+  });
+
+  it('a weak iTunes match (the right title by another artist) is not a cover: Deezer is asked, with a plain query', async () => {
+    const fetchMock = providers([{ ...ITUNES_TRACK, artistName: 'A Cover Band' }], [DEEZER_HIT]);
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await findCoverOnline('Daft Punk', 'One More Time')).toEqual({ answered: true, url: 'https://cdn.dz/1000.jpg', source: 'deezer' });
+    expect(fetchMock.mock.calls[1][0]).toContain('api.deezer.com/search?q=');
+    expect(fetchMock.mock.calls[1][0]).toContain(encodeURIComponent('Daft Punk One More Time'));
+    expect(fetchMock.mock.calls[1][0]).not.toContain(encodeURIComponent('artist:'));
+  });
+
+  it('Deezer too wants artist AND title: the right title by someone else is no cover', async () => {
+    vi.stubGlobal('fetch', providers([], [{ ...DEEZER_HIT, artist: { name: 'Somebody Else' } }]));
+    expect(await findCoverOnline('Daft Punk', 'One More Time')).toEqual({ answered: true, url: null, source: null });
+  });
+
+  it('Deezer without the big sizes still gives the medium one', async () => {
+    vi.stubGlobal('fetch', providers([], [{ ...DEEZER_TRACK }]));
+    expect((await findCoverOnline('Daft Punk', 'One More Time')).url).toBe('https://cdn-images.dzcdn.net/images/cover/222/medium.jpg');
+  });
+
+  it('nothing found, both answered: «answered» and no address (worth remembering)', async () => {
+    vi.stubGlobal('fetch', providers([], []));
+    expect(await findCoverOnline('Nobody', 'Nothing')).toEqual({ answered: true, url: null, source: null });
+  });
+
+  it('both providers down: NOT answered (an outage is not «no cover»)', async () => {
+    vi.stubGlobal('fetch', providers(new Error('iTunes down'), new Error('Deezer down')));
+    expect(await findCoverOnline('Daft Punk', 'One More Time')).toEqual({ answered: false, url: null, source: null });
+  });
+
+  it('one provider down and the other with nothing: answered (the other did answer)', async () => {
+    vi.stubGlobal('fetch', providers(new Error('iTunes down'), []));
+    expect(await findCoverOnline('Daft Punk', 'One More Time')).toEqual({ answered: true, url: null, source: null });
+  });
+
+  it('asks nothing for a song with no artist or no title: an empty artist matches everybody', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await findCoverOnline('', 'One More Time')).toEqual({ answered: true, url: null, source: null });
+    expect(await findCoverOnline('Daft Punk', '  ')).toEqual({ answered: true, url: null, source: null });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+

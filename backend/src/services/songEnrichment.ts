@@ -1,4 +1,5 @@
 import { logInfo, logWarning } from '../utils/logger';
+import { creditsOf } from '../utils/credits';
 import { parseReleaseYear } from '../utils/releaseYear';
 
 export interface SongEnrichmentResult {
@@ -44,6 +45,8 @@ interface DeezerTrack {
     id: number;
     title?: string;
     cover_medium?: string;
+    cover_big?: string;
+    cover_xl?: string;
   };
 }
 
@@ -305,6 +308,76 @@ export async function lookupItunesYear(artist: string, title: string): Promise<{
   if (results === null) return { answered: false, year: null };
   const strong = results.find((r) => isStrongItunesMatch(r, artist, title));
   return { answered: true, year: strong ? parseReleaseYear(strong.releaseDate) : null };
+}
+
+// --- The cover, from the Internet (ADR-0019) ---------------------------------------
+
+/** An iTunes artwork address at a size worth showing: the API answers 100x100 («…/100x100bb.jpg»); the same file exists at 600x600. */
+export function largeItunesArtwork(url: string): string {
+  return url.replace(/\/\d{2,4}x\d{2,4}bb\.(jpg|png)(\?.*)?$/i, '/600x600bb.$1');
+}
+
+export interface OnlineCover {
+  /** At least one provider could be asked: only then is «no cover» worth remembering (an outage is not an answer). */
+  answered: boolean;
+  /** The address of the image, or null. */
+  url: string | null;
+  source: 'itunes' | 'deezer' | null;
+}
+
+/**
+ * One Deezer search by plain words: the fielded query (`artist:"…" track:"…"`) answers nothing since 8 September 2026, the
+ * plain one still does. `null` = could not be asked; `[]` = Deezer has nothing.
+ */
+async function searchDeezerPlain(artist: string, title: string): Promise<DeezerTrack[] | null> {
+  try {
+    const response = await fetch(`https://api.deezer.com/search?q=${encodeURIComponent(`${artist} ${title}`)}&limit=5`);
+    if (!response.ok) {
+      logWarning('Deezer search (copertina) fallita', { status: response.status });
+      return null;
+    }
+    const data = (await response.json()) as DeezerSearchResponse;
+    if (data.error) {
+      logWarning('Deezer errore nella risposta (copertina)', { error: data.error });
+      return null;
+    }
+    return data.data ?? [];
+  } catch (error) {
+    logWarning('Deezer errore rete (copertina)', { error: error instanceof Error ? error.message : error });
+    return null;
+  }
+}
+
+/**
+ * The cover of a song, from the Internet, for the songs that have none: iTunes first (its artwork is square and the same
+ * file for every edition of the album), then Deezer. Each one only with a STRONG match (artist and title both match, with a
+ * real artist to match): a cover of another song is worse than none. The search is for the FIRST credited artist
+ * («Bassi Maestro feat. Ape & Zampa» → «Bassi Maestro»). Never throws.
+ */
+export async function findCoverOnline(artist: string, title: string): Promise<OnlineCover> {
+  const lead = creditsOf(artist)[0] ?? artist.trim();
+  if (lead === '' || title.trim() === '') return { answered: true, url: null, source: null };
+  let answered = false;
+
+  const itunes = await searchItunes(lead, title);
+  if (itunes !== null) {
+    answered = true;
+    const strong = itunes.find((r) => isStrongItunesMatch(r, lead, title) && safeUrl(r.artworkUrl100) !== null);
+    const art = strong ? safeUrl(strong.artworkUrl100) : null;
+    if (art) return { answered, url: largeItunesArtwork(art), source: 'itunes' };
+  }
+
+  const deezer = await searchDeezerPlain(lead, title);
+  if (deezer !== null) {
+    answered = true;
+    const strong = deezer.find(
+      (r) => looselyMatches(r.artist?.name ?? '', lead) && looselyMatches(r.title ?? '', title) &&
+        (safeUrl(r.album?.cover_xl) ?? safeUrl(r.album?.cover_big) ?? safeUrl(r.album?.cover_medium)) !== null,
+    );
+    const art = strong ? (safeUrl(strong.album?.cover_xl) ?? safeUrl(strong.album?.cover_big) ?? safeUrl(strong.album?.cover_medium)) : null;
+    if (art) return { answered, url: art, source: 'deezer' };
+  }
+  return { answered, url: null, source: null };
 }
 
 // --- Public API ------------------------------------------------------------

@@ -22,6 +22,8 @@ import { getUserSongs } from './userSongs';
 import { findLibraryMatch, findMediaServerMatch } from './fileResolver';
 import { mediaUrlForVolumePath, volumePathFromUrl } from './mediaServer';
 import { libraryFilesOf, libraryOnlySong } from './libraryOnlySongs';
+import { readEmbeddedCoverFromFile, readEmbeddedCoverFromUrl, type EmbeddedPicture } from './id3Cover';
+import { resolveCover, songCoverPath, type CoverBytes } from './songCovers';
 import { absFromRel, fileFacts, fileVersion, type FileFacts } from './musicStore';
 import type { FileOrigin } from './songStream';
 import {
@@ -72,6 +74,12 @@ export interface OfflineTrack {
   entryId: string | null;
   canEnqueueSpooty: boolean;
   coverUrl: string | null;
+  /**
+   * Relative API path of the cover (ADR-0019): `GET` it with the API key. The SERVER finds it (the cover it already knows, the
+   * picture inside the file, or the Internet) and keeps it; the answer is the image, or 404 when there is none. A client asks
+   * SoundReel only; `coverUrl` stays for the apps already installed.
+   */
+  coverPath: string | null;
   /** Optional lyrics / transcript snippet when known. */
   lyrics: string | null;
   /** Counted plays of this user on ALL devices, ever (docs/mondrop-stats.md §3): the phone ranks "least played" with it. */
@@ -242,6 +250,7 @@ function toTrack(song: AggregatedSong, r: Resolved, lyrics: string | null): Offl
     entryId: song.mentions[0]?.entryId ?? null,
     canEnqueueSpooty: !!song.spotifyUrl,
     coverUrl: song.meta?.coverUrl ?? r.row?.coverUrl ?? null,
+    coverPath: songCoverPath(song.songKey),
     lyrics,
     plays: 0,
     lastPlayedAt: null,
@@ -261,7 +270,7 @@ async function withPlayStats<T extends OfflineTrack>(tracks: T[], userId: string
 const placeholderTrack = (songKey: string): OfflineTrack => ({
   songKey, title: songKey, artist: '', album: null, genres: [], year: null, status: 'missing', state: 'missing', source: 'none', downloadPath: null, mediaUrl: null,
   version: null, bytes: null, durationS: null, error: null, spotifyUrl: null, entryId: null, canEnqueueSpooty: false,
-  coverUrl: null, lyrics: null, plays: 0, lastPlayedAt: null,
+  coverUrl: null, coverPath: null, lyrics: null, plays: 0, lastPlayedAt: null,
 });
 
 const countsOf = (tracks: OfflineTrack[]) => ({
@@ -563,6 +572,38 @@ export async function resolveSongServing(
       origins,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// The cover (ADR-0019)
+// ---------------------------------------------------------------------------
+
+/** The picture inside the song's file: on geekom's disk first, then on the box (a small `Range` read at the start of the file). */
+async function embeddedPictureOf(songKey: string, ownerUser: string, isAdmin: boolean): Promise<EmbeddedPicture | null> {
+  const serving = await resolveSongServing(songKey, ownerUser, isAdmin, ORDER_MONDROP);
+  if (!serving.ok) return null;
+  for (const origin of serving.served.origins) {
+    const picture = origin.kind === 'local' ? await readEmbeddedCoverFromFile(origin.absPath) : await readEmbeddedCoverFromUrl(origin.url);
+    if (picture) return picture;
+  }
+  return null;
+}
+
+/**
+ * The cover of a song this user can play: kept by the server, or found now (the cover the journal knows, the picture inside the
+ * file, the Internet: see services/songCovers). `undefined` = there is no such song for this user; `null` = the song has no cover.
+ */
+export async function getSongCover(songKey: string, ownerUser: string, isAdmin = false): Promise<CoverBytes | null | undefined> {
+  const song = await findSong(songKey, ownerUser, isAdmin);
+  if (!song) return undefined;
+  const row = await getSongFile(songKey).catch(() => null);
+  return resolveCover(song.songKey, {
+    artist: song.artist,
+    title: song.title,
+    knownUrl: song.meta?.coverUrl ?? null,
+    thumbnailUrl: row?.coverUrl ?? null,
+    embedded: () => embeddedPictureOf(song.songKey, ownerUser, isAdmin),
+  });
 }
 
 // ---------------------------------------------------------------------------

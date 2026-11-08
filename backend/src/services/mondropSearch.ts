@@ -20,6 +20,7 @@
  * Album» like Spotify, and `artist=` / `album=` give the page of one artist or one album.
  */
 import type { AggregatedSong } from '../types';
+import { creditsOf } from '../utils/credits';
 import { normalizeSearch, tokenize, matchesAll } from '../utils/searchText';
 import { buildTracks, type OfflineTrack } from './offlineManifest';
 import { libraryEntries, songFromEntry, type LibraryEntry } from './libraryOnlySongs';
@@ -65,19 +66,7 @@ export function parseSearchQuery(raw: Record<string, unknown>): ParsedQuery {
   return { ok: true, value: { q, artist, album, limit, offset, sections: raw.sections !== '0' } };
 }
 
-/**
- * «Hell Raton, Ensi, Salmo feat. Gemitaiz» → each credited name, as the app shows it. Names are separated by a comma, a
- * semicolon, «feat.» / «ft.» / «featuring», « x » and « vs ». NOT by «&» or «and»: «Simon & Garfunkel» is one name, and a
- * word that merely starts with «feat» («Feather») or is an «X» («X Japan», «Malcolm X») is a name too.
- */
-const CREDIT_SPLIT = /\s*[,;]\s*|\s+(?:feat\.\s*|feat\s+|ft\.\s*|ft\s+|featuring\s+|x\s+|vs\.?\s+)/i;
-
-export function creditsOf(artist: string): string[] {
-  return artist
-    .split(CREDIT_SPLIT)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
+export { creditsOf };
 
 /** «Nightcall (feat. Lovefoxxx)» is the recording «Nightcall»: a credit written into the title is not a version. */
 const FEAT_IN_TITLE = /\s*[([]\s*(?:feat\.?|ft\.?|featuring)\s[^)\]]*[)\]]/gi;

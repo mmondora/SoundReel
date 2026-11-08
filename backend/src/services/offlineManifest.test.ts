@@ -22,6 +22,9 @@ const m = vi.hoisted(() => ({
   postToSpooty: vi.fn(),
   libraryOnlySong: vi.fn(),
   libraryFilesOf: vi.fn(),
+  resolveCover: vi.fn(),
+  readCoverFromFile: vi.fn(),
+  readCoverFromUrl: vi.fn(),
 }));
 vi.mock('../utils/db', () => ({ getEntry: m.getEntry, query: vi.fn() }));
 vi.mock('./playlists', () => ({ getPlaylist: m.getPlaylist }));
@@ -43,11 +46,14 @@ vi.mock('./songDownloader', () => ({ wakeSongDownloader: m.wakeSongDownloader })
 vi.mock('./spootyClient', () => ({ postToSpooty: m.postToSpooty }));
 vi.mock('./localMedia', () => ({ rebuildLocalPaths: vi.fn() }));
 vi.mock('./libraryOnlySongs', () => ({ libraryOnlySong: m.libraryOnlySong, libraryFilesOf: m.libraryFilesOf }));
+vi.mock('./songCovers', async (orig) => ({ ...(await orig<typeof import('./songCovers')>()), resolveCover: m.resolveCover }));
+vi.mock('./id3Cover', async (orig) => ({ ...(await orig<typeof import('./id3Cover')>()), readEmbeddedCoverFromFile: m.readCoverFromFile, readEmbeddedCoverFromUrl: m.readCoverFromUrl }));
 
 import {
   buildPlaylistOfflineManifest,
   buildTracks,
   enqueueSongToSpooty,
+  getSongCover,
   getTrack,
   isYoutubeVideoUrl,
   preparePlaylist,
@@ -91,6 +97,9 @@ beforeEach(async () => {
   m.findMediaServerMatch.mockResolvedValue(null);
   m.libraryOnlySong.mockResolvedValue(undefined); // nothing is a file of the library unless a test says so
   m.libraryFilesOf.mockResolvedValue(undefined);
+  m.resolveCover.mockResolvedValue(null);
+  m.readCoverFromFile.mockResolvedValue(null);
+  m.readCoverFromUrl.mockResolvedValue(null);
   m.getSongPlayStats.mockResolvedValue(new Map());
   m.resolveDetail.mockImplementation(async (p: unknown) => p); // a static playlist is what is stored
   m.listOpenSpootyEntryIds.mockResolvedValue(new Set());
@@ -661,3 +670,78 @@ describe('a song that exists only as a file (ADR-0018)', () => {
     expect(m.enqueueSongDownload).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// ADR-0019: the cover is found by the SERVER; a track carries only the path to ask for it
+// ---------------------------------------------------------------------------
+
+describe('the cover of a song (ADR-0019)', () => {
+  const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+  const COVER = { bytes: JPEG, contentType: 'image/jpeg' as const, etag: '"c-aaaaaaaaaaaaaaaa"', source: 'itunes' as const };
+
+  it('every track carries the path to ask for its cover, the one of a song that is only a file too; a placeholder carries none', async () => {
+    m.getUserSongs.mockResolvedValue(new Map([[KEY, song()]]));
+    m.libraryOnlySong.mockImplementation(async (key: string) => (key === FILE_KEY ? fileSong() : undefined));
+    m.getPlaylist.mockResolvedValue({ id: 'p1', name: 'Mix', songKeys: [KEY, FILE_KEY, 'ghost::song'] });
+    const tracks = (await buildPlaylistOfflineManifest('p1', 'mike'))!.tracks;
+    expect(tracks[0].coverPath).toBe('/api/mondrop/songs/bishop%20briggs%3A%3Awhite%20flag/cover');
+    expect(tracks[1].coverPath).toBe('/api/mondrop/songs/bassi%20maestro%3A%3Afoto%20di%20gruppo/cover');
+    expect(tracks[2].coverPath).toBeNull();
+  });
+
+  it('asks the cover service with what the journal knows (the cover address, the thumbnail of the download)', async () => {
+    m.getSongFile.mockResolvedValue(row({ coverUrl: 'https://yt.test/thumb.jpg' }));
+    m.resolveCover.mockResolvedValue(COVER);
+    const cover = await getSongCover(KEY, 'mike');
+    expect(cover).toBe(COVER);
+    const [key, input] = m.resolveCover.mock.calls[0];
+    expect(key).toBe(KEY);
+    expect(input).toMatchObject({ artist: 'Bishop Briggs', title: 'White Flag', knownUrl: 'https://c/x.jpg', thumbnailUrl: 'https://yt.test/thumb.jpg' });
+    expect(typeof input.embedded).toBe('function');
+  });
+
+  it('a song nobody knows has no cover to look for: undefined, and the service is not asked', async () => {
+    expect(await getSongCover('ghost::song', 'mike')).toBeUndefined();
+    expect(m.resolveCover).not.toHaveBeenCalled();
+  });
+
+  it('a song that is only a file has a cover too; it has no journal address to give', async () => {
+    m.getUserSongs.mockResolvedValue(new Map());
+    m.libraryOnlySong.mockImplementation(async (key: string) => (key === FILE_KEY ? fileSong() : undefined));
+    m.resolveCover.mockResolvedValue(COVER);
+    expect(await getSongCover(FILE_KEY, 'mike')).toBe(COVER);
+    expect(m.resolveCover.mock.calls[0][1]).toMatchObject({ artist: 'Bassi Maestro', title: 'Foto di gruppo', knownUrl: null, thumbnailUrl: null });
+  });
+
+  it('the picture INSIDE the file is read from geekom\'s disk first, and from the box when the disk has none', async () => {
+    const GEEKOM_FILE = 'Bassi Maestro/Bassi Maestro - Foto di gruppo.mp3';
+    await writeSong(GEEKOM_FILE);
+    m.getUserSongs.mockResolvedValue(new Map());
+    m.libraryOnlySong.mockImplementation(async (key: string) => (key === FILE_KEY ? fileSong() : undefined));
+    m.libraryFilesOf.mockResolvedValue({ local: { relPath: GEEKOM_FILE }, media: { relPath: 'Music/Bassi Maestro/Foto di gruppo/01.mp3', bytes: 5208005 } });
+    const inside = { mime: 'image/jpeg', data: JPEG, pictureType: 3 };
+
+    await getSongCover(FILE_KEY, 'mike');
+    const embedded = m.resolveCover.mock.calls[0][1].embedded as () => Promise<unknown>;
+
+    m.readCoverFromFile.mockResolvedValue(inside);
+    expect(await embedded()).toBe(inside);
+    expect(m.readCoverFromFile).toHaveBeenCalledWith(path.join(lib, GEEKOM_FILE));
+    expect(m.readCoverFromUrl).not.toHaveBeenCalled();
+
+    m.readCoverFromFile.mockResolvedValue(null);
+    m.readCoverFromUrl.mockResolvedValue(inside);
+    expect(await embedded()).toBe(inside);
+    expect(m.readCoverFromUrl).toHaveBeenCalledWith(`${BOX}/Music/Bassi%20Maestro/Foto%20di%20gruppo/01.mp3`);
+  });
+
+  it('a song with no file anywhere has no picture inside, and that is not an error', async () => {
+    m.getUserSongs.mockResolvedValue(new Map());
+    m.libraryOnlySong.mockImplementation(async (key: string) => (key === FILE_KEY ? fileSong() : undefined));
+    await getSongCover(FILE_KEY, 'mike');
+    const embedded = m.resolveCover.mock.calls[0][1].embedded as () => Promise<unknown>;
+    expect(await embedded()).toBeNull();
+    expect(m.readCoverFromFile).not.toHaveBeenCalled();
+  });
+});
+
