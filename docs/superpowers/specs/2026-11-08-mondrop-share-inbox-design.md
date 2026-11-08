@@ -1,7 +1,7 @@
 # Mondrop Share — foglio di condivisione, esito di ritorno, playlist, condividere con la famiglia, posta nell'app (roadmap)
 
 - **Data:** 2026-11-08
-- **Stato:** **Richieste registrate, in roadmap** (proposta: SoundReel 2.10.0 + Mondrop 1.6.0, dopo la 2.9.0). Niente è ancora implementato. Il foglio e la posta sono regole d'interfaccia (spec); la posta sul server, il push e le condivisioni tra utenti toccano dati, API e infrastruttura (**ADR-0015, proposto**)
+- **Stato:** **Implementata** in SoundReel 2.10.0 (backend) + Mondrop 1.6.0 (app), in attesa di deploy. Il foglio e la posta sono regole d'interfaccia (spec); la posta sul server, il push e le condivisioni tra utenti toccano dati, API e infrastruttura (**ADR-0015, accettato**). Il push è costruito e **spento** finché Michele non crea la chiave APNs
 - **Owner:** Michele
 - **Correlati:** `docs/share.md` (contratto di `POST /api/share`), `adr/0015-mondrop-inbox-server-side-push-as-doorbell.md` (proposto), `2026-11-07-multi-user-authelia-design.md` (utenti e condivisioni), `ios/MondropShare/ShareViewController.swift`
 
@@ -47,7 +47,7 @@
 | IN6 | **Come arriva** | La posta sta **sul server** ed è la fonte di verità: l'app la legge all'apertura, in primo piano e a ogni sync, quindi funziona **senza push**. Il **push** (APNs) è solo il campanello che avvisa subito, anche con l'app chiusa: richiede l'account sviluppatore Apple a pagamento (domanda 1). Senza push, l'app mostra una notifica locale quando il sistema la risveglia. Dettagli e alternative in ADR-0015 |
 | IN7 | **Interruttori** | Impostazioni → «Notifiche delle condivisioni» (default acceso; il permesso si chiede la prima volta che serve) e «Condividi di default con…» (default nessuno) |
 
-## 4. Contratto API (da aggiungere a `docs/share.md` e `docs/mondrop-sync.md` quando si implementa)
+## 4. Contratto API (scritto in `docs/mondrop-inbox.md` e `docs/share.md`)
 
 - `POST /api/share`: nuovi campi opzionali `playlistId` e `shareWith`. La risposta aggiunge `playlist: { id, name, added: n | "pending" } | null` e `sharedWith: string[]`, più `rejected: [{ user, reason }]` per i destinatari non validi. Resta compatibile con l'app già installata.
 - `GET /api/mondrop/inbox?since=` → `{ notifications: [...], received: [...], unread: n }`.
@@ -71,6 +71,17 @@
 5. Tre giorni per far sparire le notifiche vanno bene?
 6. Una notifica anche quando rimando un link già noto?
 
-## 7. Cosa non cambia
+## 7. Valori di default adottati per le domande ancora senza risposta (2.10.0)
+
+Michele non ha ancora risposto alle domande 2–6: si è costruito con questi default, **da correggere se non vanno**.
+- **D3 — playlist per i film:** nessuna; la scelta compare solo per link di musica e media, e si riempie con le **canzoni** del link.
+- **D4 — rispondere a una condivisione:** no; chi riceve la vede e la apre (una condivisione è un'entry, non una conversazione).
+- **D5 — tre giorni:** sì, 3 giorni per le informazioni; gli errori non scadono; le condivisioni ricevute non scadono.
+- **D6 — link già noto rimandato:** **sì, si avvisa di nuovo** il mittente (per i link che passano dal job l'analisi gira comunque e l'esito torna); i destinatari che hanno già ricevuto un avviso per quell'entry **non** vengono riavvisati (chi aveva l'entry ma mai l'avviso, per una condivisione fallita la prima volta, lo riceve alla seconda).
+- **Esiti già visti nel foglio** (Spotify, Shazam, playlist non valida): salvati **già letti** e senza push; il campanello suona solo per ciò che arriva dopo che il foglio si è chiuso.
+- **Un errore per link:** uno nuovo sostituisce il vecchio; un esito riuscito dello stesso link chiude gli errori in attesa.
+- Dettagli di implementazione in ADR-0015 §7.
+
+## 8. Cosa non cambia
 
 `POST /api/share` e il foglio attuale restano validi per l'app già installata: i campi nuovi sono opzionali. Telegram continua a funzionare come oggi.

@@ -21,15 +21,22 @@ X-SoundReel-Key: sr_…
     "model": "iPhone",
     "system": "iOS 18.0",
     "timeZone": "Europe/Rome"
-  }
+  },
+  "playlistId": "p1",
+  "shareWith": ["archi", "sara"]
 }
 ```
+
+`playlistId` e `shareWith` sono **opzionali** (default: nessuna playlist, nessuno) e valgono dalla 2.10.0: una playlist **statica** dell'utente in cui mettere le canzoni del link, e i familiari (`mike`, `archi`, `sara`, mai se stessi) con cui condividere l'entry **sul server**. Contratto completo, risposta e posta in `docs/mondrop-inbox.md`.
 
 Risposta `200`:
 
 ```json
-{ "success": true, "entryId": "…", "tags": ["#tesla", "vacanze"], "status": "queued", "kind": "generic" }
+{ "success": true, "entryId": "…", "tags": ["#tesla", "vacanze"], "status": "queued", "kind": "generic",
+  "playlist": null, "sharedWith": [], "rejected": [] }
 ```
+
+I tre campi in fondo sono **sempre presenti** (dalla 2.10.0): `playlist` (`null` se non richiesta; `{ id, name, added: n | "pending" }`; `{ id, error }` con `error` = `not_found` · `dynamic` · `read_only`), `sharedWith` (i destinatari validi, che hanno già l'entry) e `rejected` (`[{ user, reason }]` con `reason` = `self` · `unknown_user` · `sender_unknown`). Un'app che non li conosce li ignora.
 
 Per un link Spotify la risposta aggiunge titolo e artista letti da Spooty:
 
@@ -61,6 +68,7 @@ Errori: `401` key assente/sbagliata, `400` URL mancante, `500` errore interno.
    - **Tutto il resto**: normalizza URL, se esiste già merge tag + action log, altrimenti stub `processing`, poi `enqueueJob` con `notify: false` (niente Telegram).
 4. Ritorna subito — analisi/download in background come il webhook Telegram.
 5. Lo stesso link rimandato è idempotente; se l’ultimo download era fallito, rimandarlo equivale a «riprova».
+6. **Esito di ritorno (2.10.0)**: ogni condivisione da Mondrop lascia nella **posta** dell'utente (`GET /api/mondrop/inbox`) l'esito — lo stesso contenuto del messaggio Telegram: titolo, riassunto, conteggi, playlist — appena il link è pronto (subito per Spotify e Shazam, a fine analisi per gli altri); un'analisi fallita lascia un **errore che resta** finché l'utente lo toglie o lo stesso link non riesce. Le canzoni vanno nella playlist scelta **subito** se il link le porta già (Spotify, Shazam) e **a fine analisi** per un reel; chi riceve l'entry (`shareWith`) la vede subito nel proprio SoundReel e riceve un avviso quando l'entry è pronta. Il push (APNs) è solo il campanello. Dettagli, scadenze e regole in `docs/mondrop-inbox.md` e ADR-0015.
 
 La parità fra i canali è coperta da `routes/linkParity.test.ts` (stessi URL → stessi effetti da Telegram, `/api/share` e web).
 

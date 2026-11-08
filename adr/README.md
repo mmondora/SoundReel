@@ -16,4 +16,5 @@
 | 0012 | The Mac imports its music straight onto the box, into `Music/SoundReel/_MacMusic/` only | Accepted | 2026-11-07 |
 | 0013 | Release year per song, and a library endpoint for Mondrop | Accepted (implemented in 2.9.0) | 2026-11-08 |
 | 0014 | Phone photos go to home storage and are ingested by MemoryLoom; SoundReel only receives them | Proposed | 2026-11-08 |
-| 0015 | The Mondrop inbox lives on the server; push is only the doorbell | Proposed | 2026-11-08 |
+| 0015 | The Mondrop inbox lives on the server; push is only the doorbell | Accepted (implemented in 2.10.0; push dormant until the APNs key exists) | 2026-11-08 |
+| 0016 | Mondrop reaches the family through TestFlight, uploaded and managed with an App Store Connect API key | Accepted (build pipeline ready; first upload waits for the API key) | 2026-11-08 |

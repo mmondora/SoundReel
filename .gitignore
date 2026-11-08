@@ -39,6 +39,8 @@ coverage/
 
 # Temporary files
 tmp/
+# Drop folder shared with the Mac (SMB): keys and exports land here for a moment, never in a commit
+inbox/
 temp/
 migration/service-account.json
 migration/

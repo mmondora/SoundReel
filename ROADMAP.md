@@ -157,18 +157,25 @@ Spec `docs/superpowers/specs/2026-11-08-web-mobile-ux-design.md` (solo interfacc
 - **Prima un audit sul telefono vero** (Safari su iPhone di Michele + 390×844 e 360×800 simulati): un difetto per riga, con la gravità, per ognuna delle 15 pagine.
 - **Base misurata sul codice:** `manager.css` 999 righe con 1 solo `@media` (il Playlist manager è a due pannelli con F-tasti, pensato per il desktop); oltre 100 regole con testo tra 9,6 e 11,2 px; `min-width` di 300–520 px che a 390 px forzano lo scroll orizzontale (`stats.css`, `index.css`).
 - **Poi, in ordine d'uso:** Player + «Scegli cosa suonare», Home, Canzoni e Playlist manager (un pannello alla volta, azioni in un foglio al posto dei F-tasti), Impostazioni, il resto; barra di navigazione in basso; bersagli ≥ 44 pt, campi a 16 px, mai scroll orizzontale, solo tema scuro. La tastiera completa resta su desktop.
-- **Statistiche d'accesso raccolte l'8 novembre** (nella spec): dal sito si legge il journal ogni giorno (21 giorni su 30), si salva quasi solo da Telegram; playlist, ricerca e player hanno un giorno di storia. Il log di Traefik non ha lo user-agent: **contatori d'uso aggregati nel backend** (utente, tipo di dispositivo, rete, rotta) in 2.10.0, da rivedere dopo ~2 settimane.
+- **Statistiche d'accesso raccolte l'8 novembre** (nella spec): dal sito si legge il journal ogni giorno (21 giorni su 30), si salva quasi solo da Telegram; playlist, ricerca e player hanno un giorno di storia. Il log di Traefik non ha lo user-agent: **contatori d'uso aggregati nel backend** (utente, tipo di dispositivo, rete, rotta) in 2.10.0 (**fatti**: `GET /api/admin/usage?days=14`), da rivedere dopo ~2 settimane dal deploy.
 - Domande aperte per Michele: quali pagine possono restare «solo desktop», barra in basso o menu in alto; l'ordine d'uso proposto va bene?
 
-## Da fare — Mondrop Share, esito di ritorno, playlist, condividere con la famiglia, posta nell'app (richieste 2026-11-08)
+## Fatto (in attesa di deploy) — Mondrop Share, esito di ritorno, playlist, condividere con la famiglia, posta nell'app (richieste 2026-11-08)
 
-Spec `docs/superpowers/specs/2026-11-08-mondrop-share-inbox-design.md`, ADR-0015 (**proposto**). Proposta: SoundReel 2.10.0 + Mondrop 1.6.0, dopo la 2.9.0.
+**Fatto in SoundReel 2.10.0 + Mondrop 1.6.0, in attesa di deploy:** spec `docs/superpowers/specs/2026-11-08-mondrop-share-inbox-design.md`, ADR-0015 (**accettato**), contratto `docs/mondrop-inbox.md`. Resta da fare da parte di Michele: **la chiave APNs** (il push è costruito e spento fino ad allora; passi nella spec, §6) e dire se i default adottati per le domande 3–6 vanno bene (spec §7). Sotto, la richiesta com'era:
 - **Foglio di condivisione:** oggi «Invia» è un bottone di solo testo in alto a destra e dopo l'invio non torna niente. Bottone grande e pieno in fondo al foglio, gerarchia più chiara, esito visibile con «Riprova» in caso di errore.
 - **Esito di ritorno «come Telegram»:** riassunto, conteggi e link a fine analisi. La posta sta **sul server** (fonte di verità), l'app la legge quando si apre; il **push è solo il campanello** e richiede l'account sviluppatore Apple a pagamento: **confermato da Michele l'8 novembre**. Serve ancora che Michele crei la chiave APNs nel portale Apple (passi nella spec, §6) e mi dia il Key ID.
 - **Playlist** (default nessuna) per i link di musica/media: `playlistId` in `POST /api/share`; i brani noti subito vanno dentro subito, gli altri a fine analisi.
 - **Condividere con `archi` / `sara` / entrambi** dal foglio: `shareWith` in `POST /api/share`, sul server (`entry_shares`, già esistente).
 - **Scheda «Posta»** in Mondrop: condivisioni ricevute (non scadono) e notifiche (**spariscono dopo 3 giorni, tranne gli errori**, che restano finché non li tolgo io o il link non riesce).
-- Domande aperte per Michele: che altro del foglio non piace? Le notifiche a 3 giorni vanno bene? (L'account Apple è a pagamento: chiusa.)
+- Domande aperte per Michele: che altro del foglio non piace? Le notifiche a 3 giorni vanno bene? (L'account Apple è a pagamento: chiusa.) I default adottati sono nella spec, §7.
+
+## In corso — Mondrop su TestFlight, il gruppo «Family» come tester (richiesta 2026-11-08)
+
+Spec `docs/superpowers/specs/2026-11-08-mondrop-testflight-design.md`, ADR-0016. Richiesta di Michele: «Pubblica mondrop su testflight e metti il gruppo family come tester».
+- **Pronto nel repository:** privacy manifest (app ed estensione), conformità export, orientamenti iPad, entitlements push solo per la Release, `ios/scripts/testflight.sh` (archivio Release + upload, firma gestita dal cloud con la chiave API).
+- **Serve da Michele:** la **chiave API di App Store Connect** (Key ID, Issuer ID, file `.p8` in `~/.config/soundreel/appstoreconnect/`) e, se manca, il **record app** «Mondrop» (bundle `it.mikesoft.mondrop`: l'API non lo crea). Poi: build su vulcano, gruppo «Family» con i tester del gruppo che esiste già, informazioni di test, revisione beta di Apple (prima build di una versione per tester esterni).
+- Domande aperte: il nome «Mondrop» è libero? l'informativa privacy (URL) che Apple può chiedere; test interni al posto degli esterni?
 
 ## Da misurare — FTPS al posto di SMB per la replica sul Fritz e per l'import dal Mac (idea di Michele, 2026-11-08)
 

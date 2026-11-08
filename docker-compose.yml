@@ -39,8 +39,18 @@ services:
       # How the library's root is shown in a result's location (the container sees /music, the host calls it ~/Music).
       MUSIC_LIBRARY_LABEL: ${MUSIC_LIBRARY_LABEL:-~/Music}
       FILMS_LIBRARY_PATH: /films
+      # Push to the phones (APNs, ADR-0015). Off until the key exists: set APNS_KEY_ID and APNS_KEY_FILE in .env
+      # (the file name inside the container, e.g. /run/secrets/apns/AuthKey_<KeyID>.p8). The key itself is never in
+      # the repository, in .env or in a log.
+      APNS_KEY_ID: ${APNS_KEY_ID:-}
+      APNS_TEAM_ID: ${APNS_TEAM_ID:-5NZADC9YQ2}
+      APNS_KEY_FILE: ${APNS_KEY_FILE:-}
+      APNS_TOPIC: ${APNS_TOPIC:-it.mikesoft.mondrop}
     volumes:
       - soundreel_media:/data/media
+      # The APNs auth key (AuthKey_<KeyID>.p8, mode 0600), created by Michele in the Apple Developer portal. Read-only.
+      # The directory must exist on the host before `up` (else Docker creates it as root).
+      - /home/mike/.config/soundreel/apns:/run/secrets/apns:ro
       - /home/mike/Music:/music:ro
       # The one writable corner of the library: songs fetched from YouTube land here (MUSIC_STORE_DIR),
       # so the library scan, the web player and the "downloaded" flags see them like Spooty's files.
