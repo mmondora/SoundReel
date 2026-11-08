@@ -5,15 +5,17 @@ import { LOADING_MAX_MS, PlayerProvider, usePlayer } from './PlayerContext';
 import { SOURCE_MODE_STORAGE_KEY } from './playbackSource';
 import type { SourceMode } from './playbackSource';
 import * as api from '../services/api';
+import { absoluteUrl, fileUrlOf, servePlans } from '../test/playPlans';
+import type { FileAt } from '../test/playPlans';
 import type { YtPlayer, YtPlayerOptions } from './youtubeApi';
 import type { AggregatedSong, NetworkKind } from '../types';
 
-// Speed of play start (spec 2026-11-08-player-selection-and-filters-design §2, X6): the video id of the NEXT song is
-// asked for ahead of time (once per song, only when it will play from YouTube), "Sto caricando…" lasts until the song
-// really plays, and a song at home starts without the IFrame — no player, no video lookup.
+// Speed of play start (spec 2026-11-08-player-selection-and-filters-design §2, X6): the play plan and the video id of the
+// NEXT song are asked for ahead of time (once per song; the video id only when the plan says the video), "Sto caricando…"
+// lasts until the song really plays, and a song the plan sends to a file starts without the IFrame — no player, no video lookup.
 
 vi.mock('../services/api', () => ({
-  fetchNetwork: vi.fn(),
+  fetchPlayPlan: vi.fn(),
   fetchSongYoutube: vi.fn(),
   fetchSongState: vi.fn(),
   requestSongDownload: vi.fn(),
@@ -58,6 +60,8 @@ const B = song('b::two');
 const C = song('c::three');
 const HOME1 = song('h::home one', { fs: false, mediaServer: true, inLibrary: true });
 const HOME2 = song('h::home two', { fs: false, mediaServer: true, inLibrary: true });
+/** Where the files really are for the fake server: the two home songs, on the media server. */
+const HOME_FILES: Record<string, FileAt> = { [HOME1.songKey]: 'media-server', [HOME2.songKey]: 'media-server' };
 
 let list: AggregatedSong[] = [];
 
@@ -84,6 +88,7 @@ function Harness() {
 const flush = (ms = 0) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 const out = (id: string) => screen.getByTestId(id).textContent;
 const ytLookups = (): string[] => vi.mocked(api.fetchSongYoutube).mock.calls.map((c) => c[0]);
+const planCalls = () => vi.mocked(api.fetchPlayPlan).mock.calls;
 const lastPlayer = (): FakePlayer => FakePlayer.instances[FakePlayer.instances.length - 1];
 const ytEvent = (data: number) => act(() => { lastPlayer().state(data); });
 
@@ -116,7 +121,7 @@ beforeEach(() => {
   });
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
-  vi.mocked(api.fetchNetwork).mockResolvedValue('internal');
+  servePlans('internal', HOME_FILES);
   vi.mocked(api.fetchSongYoutube).mockImplementation(async (key) => ({ videoId: `vid-${key}`, watchUrl: '', source: 'yt_search' }));
   vi.mocked(api.requestSongDownload).mockResolvedValue({ ok: true, state: 'preparing' });
   vi.mocked(api.fetchSongState).mockResolvedValue({ state: 'missing', source: null, version: null, bytes: null, error: null, inLibrary: false });
@@ -130,9 +135,9 @@ afterEach(() => {
   delete (window as unknown as { YT?: unknown }).YT;
 });
 
-async function mount(mode: SourceMode = 'internet', network: NetworkKind = 'external') {
+async function mount(mode: SourceMode = 'internet', network: NetworkKind = 'external', files: Record<string, FileAt> = HOME_FILES) {
   localStorage.setItem(SOURCE_MODE_STORAGE_KEY, mode);
-  vi.mocked(api.fetchNetwork).mockResolvedValue(network);
+  servePlans(network, files);
   render(
     <PlayerProvider>
       <Harness />
@@ -154,9 +159,12 @@ describe('the next video id is asked for ahead of time', () => {
     await flush(2000);
     expect(ytLookups()).toEqual(['a::one']); // still loading: nothing ahead of time yet
 
+    expect(planCalls()).toEqual([['a::one', 'internet']]); // the plan of the song itself
+
     await ytEvent(YT.PLAYING);
     await flush();
     expect(ytLookups()).toEqual(['a::one', 'b::two']);
+    expect(planCalls()).toEqual([['a::one', 'internet'], ['b::two', 'internet']]); // and the plan of the next one, with the preference
 
     fireEvent.click(screen.getByText('patch')); // the queue changes (a favourite): same upcoming song
     await flush();
@@ -164,6 +172,7 @@ describe('the next video id is asked for ahead of time', () => {
     await ytEvent(YT.PLAYING);
     await flush(10_000);
     expect(ytLookups()).toEqual(['a::one', 'b::two']);
+    expect(planCalls()).toHaveLength(2); // once per song
   });
 
   it('the song that comes next starts from the id already known, and asks ahead for the one after it', async () => {
@@ -210,13 +219,45 @@ describe('the next video id is asked for ahead of time', () => {
     expect(ytLookups()).toEqual(['a::one']);
   });
 
-  it('a song at home will play from the file, so its video id is not worth asking for', async () => {
+  it('a song whose plan sends it to the file is not worth a video id', async () => {
     list = [A, HOME1, C];
     await mount('media', 'internal');
     await play(0);
     await ytEvent(YT.PLAYING);
     await flush();
-    expect(ytLookups()).toEqual(['a::one']); // HOME1 is next, but it plays from the media server
+    expect(planCalls()).toEqual([['a::one', 'media'], ['h::home one', 'media']]);
+    expect(ytLookups()).toEqual(['a::one']); // HOME1 is next, but its plan says the media server
+  });
+
+  it('the plan decides, not the flags of the list: a next song the list says has no file, but the plan sends to the disk, needs no id', async () => {
+    list = [A, B, C];
+    await mount('media', 'internal', { [B.songKey]: 'disk' });
+    await play(0);
+    await ytEvent(YT.PLAYING);
+    await flush();
+    expect(ytLookups()).toEqual(['a::one']);
+  });
+
+  it('…and the other way round: a next song the list says is at home, but the plan sends to the video, is looked up ahead', async () => {
+    list = [A, HOME1, C];
+    await mount('auto', 'external'); // from the internet the server answers the video, whatever the list says
+    await play(0);
+    await ytEvent(YT.PLAYING);
+    await flush();
+    expect(ytLookups()).toEqual(['a::one', 'h::home one']);
+  });
+
+  it('a next song whose plan cannot be had: nothing is looked up now, the real play asks again', async () => {
+    await mount();
+    await play(0);
+    vi.mocked(api.fetchPlayPlan).mockRejectedValueOnce(new Error('HTTP 500'));
+    await ytEvent(YT.PLAYING);
+    await flush();
+    expect(ytLookups()).toEqual(['a::one']);
+    expect(out('playing')).toBe('true');
+    await play(1);
+    expect(planCalls().map((c) => c[0])).toEqual(['a::one', 'b::two', 'b::two']);
+    expect(lastPlayer().loadVideoById).toHaveBeenLastCalledWith('vid-b::two');
   });
 
   it('…unless the switch says Internet: then even a song at home plays from YouTube and is asked for ahead', async () => {
@@ -309,7 +350,7 @@ describe('a song at home starts with no IFrame involved', () => {
     list = [HOME1, HOME2];
     await mount('auto', 'internal');
     await play(0);
-    expect(played).toEqual([expect.stringContaining(`/api/songs/${encodeURIComponent('h::home one')}/file`)]);
+    expect(played).toEqual([absoluteUrl(fileUrlOf('h::home one'))]);
     expect(audios[0].preload).toBe('auto'); // fetch as soon as the source is set (whatever the browser defaults to)
     expect(FakePlayer.instances).toHaveLength(0);
     expect(api.fetchSongYoutube).not.toHaveBeenCalled();

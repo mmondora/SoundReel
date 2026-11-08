@@ -9,9 +9,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { AggregatedSong, NetworkKind, SongMetaRecord, SongStateLocation } from '../types';
+import type { AggregatedSong, NetworkKind, PlayPlan, SongMetaRecord, SongStateLocation } from '../types';
 import type { SongMetaPatchBody } from '../services/api';
-import { fetchNetwork, fetchSongYoutube, fetchSongState, patchSongMeta, requestSongDownload, sendPlays } from '../services/api';
+import { fetchPlayPlan, fetchSongYoutube, fetchSongState, patchSongMeta, requestSongDownload, sendPlays } from '../services/api';
 import {
   bindMediaSessionHandlers,
   setMediaSessionMetadata,
@@ -39,19 +39,23 @@ import { createDownloadTracker } from './songDownload';
 import type { DownloadTracker, DownloadUiState } from './songDownload';
 import { PlayTracker } from './playTracker';
 import { PlayEventQueue, safeLocalStorage } from './playEventQueue';
-import { isAtHome, locationFromState, locationOverridesFrom, resolveSongLocation } from '../utils/songLocation';
+import { locationOverridesFrom } from '../utils/songLocation';
 import { INITIAL_MEDIA_STATE, chooseMediaBox, mediaReducer, playingFrom as playingFromOf } from './mediaBox';
 import type { MediaBoxMode } from './mediaBox';
-import {
-  effectiveSource,
-  loadSourceMode,
-  saveSourceMode,
-  sourceChoiceFor,
-} from './playbackSource';
+import { loadSourceMode, saveSourceMode } from './playbackSource';
 import type { PlayFrom, SourceChoice, SourceMode } from './playbackSource';
 
-/** How long the first play of a page waits for `GET /api/net` before treating the network as external. */
-const NETWORK_WAIT_MS = 1500;
+/**
+ * What to play for a song, as the SERVER decides it (rule P, ADR-0018): the browser sends its preference and follows the
+ * answer. null = the server could not answer: the video plays and nothing is asked of the server.
+ */
+async function askPlayPlan(songKey: string, prefer: SourceMode): Promise<PlayPlan | null> {
+  try {
+    return (await fetchPlayPlan(songKey, prefer)) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * A song that is starting shows "Sto caricando…" until it really plays. If nothing says so within this time (autoplay
@@ -59,7 +63,10 @@ const NETWORK_WAIT_MS = 1500;
  */
 export const LOADING_MAX_MS = 12_000;
 
-/** What the player knows about the network: still asking, answered, or the answer failed (counts as external). */
+/**
+ * What the player knows about the network, from the play plan of the song that started last (the server looks at the
+ * request): no plan yet, the network the server saw, or the plan could not be had (the video plays).
+ */
 export type NetworkStatus = NetworkKind | 'pending' | 'failed';
 
 const STORAGE_KEY = 'soundreel.player.v2';
@@ -125,21 +132,27 @@ export interface PlayerContextValue {
   currentDownload: DownloadUiState | null;
   /**
    * What this session learned about where files are (a finished first-play download = FS, with the addresses the
-   * server sent), by songKey.
+   * server sent), by songKey. For the badges of the lists: it plays no part in what is played (the server decides).
    */
   locationOverrides: Readonly<Record<string, Partial<SongStateLocation>>>;
-  /** The "Sorgente" switch (rule W5): Auto (by network) · Internet · Media server. Remembered by this browser. */
+  /**
+   * The "Sorgente" switch (rule W5): Auto · Internet · Media server. A PREFERENCE sent to the server with every song
+   * (`prefer`); the server decides what plays (rule P). Remembered by this browser.
+   */
   sourceMode: SourceMode;
   setSourceMode: (mode: SourceMode) => void;
-  /** What `GET /api/net` said (rule W7). Auto uses it; a failed answer counts as external. */
+  /** The network the server saw on the last play plan (rule W7): `pending` before the first song, `failed` when the plan could not be had. */
   networkStatus: NetworkStatus;
-  /** The switch with Auto resolved by the network: where the NEXT song will be taken from. */
+  /**
+   * The switch resolved, as far as the browser knows: a manual mode is its own answer, Auto is what the server said the
+   * last time it was asked with Auto (`internet` until then, the safe side). The server decides at every song.
+   */
   sourceChoice: SourceChoice;
   /** Where the current song is really playing from (media server, disk, YouTube); null while undecided or failed. */
   playingFrom: PlayFrom | null;
   /**
-   * The switch was changed after the current song started: it applies from the next song (a running song is never
-   * interrupted by the switch).
+   * The switch was changed after the current song started: it applies from the next song, which is asked with the new
+   * preference (a running song is never interrupted by the switch).
    */
   sourceChangePending: boolean;
   /**
@@ -191,14 +204,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const nextTrackRef = useRef<() => void>(() => {});
   const consecutiveYtErrorsRef = useRef(0);
   const skipTimerRef = useRef<number | null>(null);
-  /** Where files became available during this session (first-play downloads that finished), by songKey. */
-  const readyLocationsRef = useRef<Record<string, Partial<SongStateLocation>>>({});
   /** The "Sorgente" switch, mirrored for the loader (it must read the current choice, not the one it closed over). */
   const sourceModeRef = useRef<SourceMode>('auto');
-  /** `GET /api/net`, asked once per page load; null = failed (external). */
-  const networkPromiseRef = useRef<Promise<NetworkKind | null> | null>(null);
-  const networkSettledRef = useRef<{ done: boolean; value: NetworkKind | null }>({ done: false, value: null });
-  /** Songs whose video id was already asked for ahead of time (once per song). */
+  /** Songs whose play plan (and, when it says video, video id) was already asked for ahead of time (once per song). */
   const prefetchedRef = useRef(new Set<string>());
   const downloadTrackerRef = useRef<DownloadTracker | null>(null);
   /** Listening sessions → events → offline-safe outbox (docs/mondrop-stats.md §1). */
@@ -220,8 +228,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [downloadStates, setDownloadStates] = useState<Record<string, DownloadUiState>>({});
   const [sourceMode, setSourceModeState] = useState<SourceMode>(() => loadSourceMode());
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>('pending');
-  /** The switch as it was resolved when the current song was loaded (to tell a pending change from a fallback). */
-  const [loadedChoice, setLoadedChoice] = useState<SourceChoice | null>(null);
+  /** What the server chose the last time it was asked with Auto; null until then. */
+  const [autoChoice, setAutoChoice] = useState<SourceChoice | null>(null);
+  /** The preference the current song was started with (to tell a switch changed since from what the song follows). */
+  const [loadedMode, setLoadedMode] = useState<SourceMode | null>(null);
   // Picture box (rule W4): facts about WHAT is playing, per song; the decision itself is pure (player/mediaBox).
   const [media, dispatchMedia] = useReducer(mediaReducer, INITIAL_MEDIA_STATE);
   const hydratedRef = useRef(false);
@@ -235,20 +245,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => { repeatRef.current = repeat; }, [repeat]);
   useEffect(() => { shuffleRef.current = shuffle; }, [shuffle]);
   useEffect(() => { queueLabelRef.current = queueLabel; }, [queueLabel]);
-
-  // Where is this browser? Asked once per page load (rule S5): Auto follows the answer, a failure counts as external.
-  useEffect(() => {
-    let cancelled = false;
-    const asked = Promise.resolve()
-      .then(() => fetchNetwork())
-      .then((n): NetworkKind | null => n, (): NetworkKind | null => null);
-    networkPromiseRef.current = asked;
-    void asked.then((n) => {
-      networkSettledRef.current = { done: true, value: n };
-      if (!cancelled) setNetworkStatus(n ?? 'failed');
-    });
-    return () => { cancelled = true; };
-  }, []);
 
   // Listening events: sessions of the player → offline-safe outbox → POST /api/plays. A failure here must never
   // reach the playback, so everything is wrapped and the transport only reports a status.
@@ -282,8 +278,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // First-play download: request + bounded polling. When a file turns up, mark the song local so the NEXT play
-  // uses it; the playback that triggered the download is never interrupted.
+  // First-play download: request + bounded polling. When a file turns up, mark the song local for the lists (the badge);
+  // the NEXT play asks the server again and gets the file from its plan, and the playback that triggered the download is
+  // never interrupted.
   useEffect(() => {
     const tracker = createDownloadTracker({
       request: (songKey) => requestSongDownload(songKey, 'play'),
@@ -293,8 +290,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (state.phase === 'ready') {
           // The song in progress keeps playing from where it is: the picture box does not switch (W1/W4).
           dispatchMedia({ type: 'downloadReady', songKey: state.songKey });
-          const learned = locationOverridesFrom({ [state.songKey]: state })[state.songKey];
-          if (learned) readyLocationsRef.current[state.songKey] = learned;
           setQueue((q) => q.map((s) => (s.songKey === state.songKey ? { ...s, inLibrary: true } : s)));
         }
       },
@@ -474,23 +469,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     localFileModeRef.current = false;
   }, []);
 
-  /** The network, waiting a moment for `GET /api/net` on the very first play of a page. null = external. */
-  const networkNow = useCallback(async (): Promise<NetworkKind | null> => {
-    const settled = networkSettledRef.current;
-    if (settled.done) return settled.value;
-    const asked = networkPromiseRef.current;
-    if (!asked) return null;
-    let timer: number | undefined;
-    const timeout = new Promise<null>((resolve) => {
-      timer = window.setTimeout(() => resolve(null), NETWORK_WAIT_MS);
-    });
-    try {
-      return await Promise.race([asked, timeout]);
-    } finally {
-      if (timer !== undefined) window.clearTimeout(timer);
-    }
-  }, []);
-
   const loadVideoForSong = useCallback(async (song: AggregatedSong, autoplay: boolean) => {
     const seq = ++loadSeqRef.current;
     setLoading(true);
@@ -502,31 +480,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     playTrackerRef.current?.setSong({ songKey: song.songKey, playlistId: queuePlaylistIdRef.current });
     dispatchMedia({ type: 'songChanged', songKey: song.songKey });
 
-    // 1. Where is the file? The flags that came with the list are trusted when they say "at home" (a download of
-    //    this session counts). When they say "nowhere" the server is asked, fresh: a download may have finished
-    //    since the list was loaded. `knownNotLocal` is true only when the server positively said "no file".
-    let location = resolveSongLocation(song, readyLocationsRef.current[song.songKey]);
-    let knownNotLocal = false;
-    if (!isAtHome(location)) {
-      try {
-        location = locationFromState(await fetchSongState(song.songKey));
-        knownNotLocal = !isAtHome(location);
-      } catch {
-        // The server cannot say: no file is assumed, no download is asked, the video plays.
-      }
-      if (seq !== loadSeqRef.current) return;
-    }
-
-    // 2. The "Sorgente" switch (rules W5–W7). Auto looks at the network; a slow or failed answer counts as external.
-    const mode = sourceModeRef.current;
-    const network = mode === 'auto' ? await networkNow() : null;
+    // 1. What to play (rule P, ADR-0018): ONE question to the server, which looks at the network of this request and at
+    //    where the file is. The browser sends its preference (the "Sorgente" switch) and follows the answer: it tests no
+    //    network and guesses no location. A plan that cannot be had means the video, and no download is asked.
+    const prefer = sourceModeRef.current;
+    const plan = await askPlayPlan(song.songKey, prefer);
     if (seq !== loadSeqRef.current) return;
-    const plan = effectiveSource(mode, network, location);
-    setLoadedChoice(plan.choice);
+    setLoadedMode(prefer);
+    setNetworkStatus(plan ? plan.network : 'failed');
+    if (prefer === 'auto') setAutoChoice(plan ? plan.choice : null);
 
-    // 3. A file at home: the backend streams it (the media server first, geekom's disk if the Fritz does not have
-    //    it yet) and never copies it. The picture box then shows the cover and the badge says where it comes from.
-    if (plan.from !== 'youtube') {
+    // 2. A file at home: the plan says where (`fileUrl`: the backend streams it, the media server first, geekom's disk if
+    //    the Fritz does not have it yet, and never copies it). The picture box then shows the cover and the badge says
+    //    where it comes from.
+    if (plan && plan.from !== 'youtube' && plan.fileUrl) {
       try {
         stopLocalAudio();
         try { playerRef.current?.pauseVideo(); } catch { /* ignore */ }
@@ -535,7 +502,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const a = audioRef.current ?? new Audio();
         audioRef.current = a;
         a.preload = 'auto'; // start as soon as the first bytes arrive: no IFrame, nothing else to wait for
-        a.src = `/api/songs/${encodeURIComponent(song.songKey)}/file`;
+        a.src = plan.fileUrl;
         a.onended = () => { playTrackerRef.current?.ended(); nextTrackRef.current(); };
         a.ontimeupdate = () => setCurrentTime(a.currentTime || 0);
         a.onloadedmetadata = () => {
@@ -585,11 +552,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (seq !== loadSeqRef.current) return;
     }
 
-    // 4. Internet (YouTube): by choice, because the song is not at home, or because its file could not play.
-    //    First play of a song that is on neither FS nor the media server: it starts through YouTube right now and,
-    //    in parallel, the server fetches it (priority "play") and puts it on the media server. Once per song per
-    //    session, WHATEVER the switch says (S6).
-    if (plan.download && knownNotLocal && autoplay && seq === loadSeqRef.current) {
+    // 3. The video (YouTube): the plan says so (from the internet always; at home while the file is not there), the plan
+    //    could not be had, or the file could not play.
+    //    First play of a song that is on neither FS nor the media server (`plan.download`): it starts through YouTube
+    //    right now and, in parallel, the server fetches it (priority "play") and puts it on the media server. Once per
+    //    song per session (the tracker keeps count), WHATEVER the switch says (S6). No plan, no download.
+    if (plan?.download && autoplay && seq === loadSeqRef.current) {
       downloadTrackerRef.current?.start(song.songKey);
     }
 
@@ -638,7 +606,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setPlaying(false);
       setError('Impossibile avviare YouTube');
     }
-  }, [destroyPlayer, ensurePlayer, hostElement, networkNow, stopLocalAudio]);
+  }, [destroyPlayer, ensurePlayer, hostElement, stopLocalAudio]);
 
   useEffect(() => {
     loadVideoForSongRef.current = loadVideoForSong;
@@ -672,9 +640,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when mount host identity changes
   }, [mountVersion]);
 
-  // While a song plays, ask for the video id of the NEXT one (once per song) — when it will play from YouTube. The id
-  // lookup is what made starting a song slow (up to a few seconds when the server has to search); with it already in
-  // `videoIdByKeyRef` the next song goes straight to the player. A song at home never needs it.
+  // While a song plays, ask the server what the NEXT one will play from (its play plan, once per song) and, when that is the
+  // video, for its video id. The id lookup is what made starting a song slow (up to a few seconds when the server has to
+  // search); with it already in `videoIdByKeyRef` the next song goes straight to the player. A song the plan sends to a file
+  // never needs it. The real play asks for the plan again, fresh: the network and the file may have changed meanwhile.
   const prefetchNextVideo = useCallback((fromIndex: number) => {
     if (repeatRef.current === 'one') return; // the same song again: its id (if any) is already there
     const q = queueRef.current;
@@ -682,12 +651,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (ni == null) return;
     const upcoming = q[ni];
     if (!upcoming || prefetchedRef.current.has(upcoming.songKey) || videoIdByKeyRef.current.has(upcoming.songKey)) return;
-    const location = resolveSongLocation(upcoming, readyLocationsRef.current[upcoming.songKey]);
-    if (effectiveSource(sourceModeRef.current, networkSettledRef.current.value, location).from !== 'youtube') return;
-    prefetchedRef.current.add(upcoming.songKey);
-    fetchSongYoutube(upcoming.songKey)
-      .then((src) => { videoIdByKeyRef.current.set(upcoming.songKey, src.videoId); })
-      .catch(() => { prefetchedRef.current.delete(upcoming.songKey); }); // not found now: the real play asks again
+    const { songKey } = upcoming;
+    prefetchedRef.current.add(songKey);
+    void (async () => {
+      try {
+        const plan = await fetchPlayPlan(songKey, sourceModeRef.current);
+        if (plan.from !== 'youtube') return; // a file will play: no video to look for
+        const src = await fetchSongYoutube(songKey);
+        videoIdByKeyRef.current.set(songKey, src.videoId);
+      } catch {
+        prefetchedRef.current.delete(songKey); // not now: the real play asks again
+      }
+    })();
   }, []);
 
   // Only once the current song really plays (not while it is still starting: its own lookup goes first).
@@ -926,11 +901,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setSourceModeState(mode);
     saveSourceMode(mode);
   }, []);
-  const sourceChoice = sourceChoiceFor(
-    sourceMode,
-    networkStatus === 'internal' || networkStatus === 'external' ? networkStatus : null,
-  );
-  const sourceChangePending = current !== null && loadedChoice !== null && loadedChoice !== sourceChoice;
+  // A manual mode is its own answer; Auto is what the server said the last time (the safe side, the video, until it said).
+  const sourceChoice: SourceChoice = sourceMode === 'auto' ? (autoChoice ?? 'internet') : sourceMode;
+  const sourceChangePending = current !== null && loadedMode !== null && loadedMode !== sourceMode;
 
   const value = useMemo<PlayerContextValue>(() => ({
     queue,

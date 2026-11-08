@@ -27,7 +27,7 @@ export function SourceSwitch({ variant = 'full' }: { variant?: 'full' | 'compact
       : networkStatus === 'internal' ? t.sourceHintInternal
         : networkStatus === 'external' ? t.sourceHintExternal
           : networkStatus === 'failed' ? t.sourceHintFailed
-            : null; // still asking: nothing to say yet
+            : null; // no song has asked the server yet: nothing to say
   const hint = [autoHint, sourceChangePending ? t.sourceNextSong : null].filter(Boolean).join(' · ');
 
   if (variant === 'compact') {

@@ -2,7 +2,7 @@ import type {
   Entry, EntrySummary, SearchResponse, EnrichmentResult, AggregatedFilm, FilmMetaRecord, AvailabilityStatus,
   AggregatedSong, SongMetaRecord, SongRating, AggregatedNote, AggregatedSoftware,
   PlaylistSummary, PlaylistDetail, JournalStats, MeResponse, SongStateResponse, SongDownloadResponse,
-  DynamicPreset, DynamicRule, PlayEvent, NetworkInfo, NetworkKind,
+  DynamicPreset, DynamicRule, PlayEvent, PlayPlan,
   LibraryScope, LibrarySearchResponse, MusicFoldersPayload, MusicFolderInput, FolderBrowse,
 } from '../types';
 
@@ -612,13 +612,26 @@ export async function fetchSongState(songKey: string): Promise<SongStateResponse
 }
 
 /**
- * Where this browser is: "internal" (the home network, straight to Traefik) or "external" (through Cloudflare).
- * The browser cannot tell by itself, so the server decides (rule W7). Any failure is the caller's to treat as external.
+ * What to play for a song, decided by the SERVER (rule P, ADR-0018): from the internet the YouTube video, always; at home the
+ * file when SoundReel has it, else the video meanwhile (and `download: true`, the server then prepares the file). The browser
+ * sends only its preference (the "Sorgente" switch, `prefer`) and follows the answer. Read-only: the download itself is a
+ * separate request (`requestSongDownload`). A failure is the caller's to treat as "play the video and ask for nothing".
+ * An answer that is not understood is read on the safe side: the video, no file, the external network.
  */
-export async function fetchNetwork(): Promise<NetworkKind> {
-  const res = await fetch(url('/api/net'));
-  const data = await json<Partial<NetworkInfo>>(res);
-  return data.network === 'internal' ? 'internal' : 'external';
+export async function fetchPlayPlan(songKey: string, prefer: PlayPlan['prefer'] = 'auto'): Promise<PlayPlan> {
+  const res = await fetch(url(`/api/songs/${encodeURIComponent(songKey)}/play?prefer=${prefer}`), { cache: 'no-store' });
+  const raw = await json<Partial<PlayPlan>>(res);
+  const file = raw.from === 'media-server' || raw.from === 'disk' ? raw.from : null;
+  const fileUrl = file && typeof raw.fileUrl === 'string' && raw.fileUrl ? raw.fileUrl : null;
+  return {
+    songKey: typeof raw.songKey === 'string' ? raw.songKey : songKey,
+    prefer: raw.prefer === 'auto' || raw.prefer === 'internet' || raw.prefer === 'media' ? raw.prefer : prefer,
+    network: raw.network === 'internal' ? 'internal' : 'external',
+    choice: raw.choice === 'media' ? 'media' : 'internet',
+    from: file && fileUrl ? file : 'youtube',
+    download: raw.download === true,
+    fileUrl,
+  };
 }
 
 export async function patchSongMeta(

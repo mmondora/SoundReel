@@ -186,10 +186,31 @@ export interface SongPlace extends SongLocation {
 /** What `GET /api/songs/:key/state` sends as `location`: the flags always, the addresses when the backend has them. */
 export type SongStateLocation = SongLocation & Partial<Pick<SongPlace, 'fsPath' | 'mediaUrl' | 'streamUrl'>>;
 
-/** `GET /api/net`: where the request comes from, decided by the server (rule W7). */
+/** Where a request comes from, as the SERVER sees it (rule W7): "internal" = the home network, "external" = through Cloudflare. */
 export type NetworkKind = 'internal' | 'external';
-export interface NetworkInfo {
+
+/**
+ * `GET /api/songs/:songKey/play?prefer=auto|internet|media`: what the web player plays for a song, decided by the
+ * SERVER (rule P, ADR-0018). The browser sends only its preference (the "Sorgente" switch) and follows the answer: it
+ * makes no network test and no source choice of its own.
+ */
+export interface PlayPlan {
+  songKey: string;
+  /** The preference the server was asked with. */
+  prefer: 'auto' | 'internet' | 'media';
+  /** The network of THIS request, as the server sees it. */
   network: NetworkKind;
+  /** The switch with Auto resolved by the server. */
+  choice: 'internet' | 'media';
+  /** What the song plays from: the media server or geekom's disk (a file, `fileUrl`), or the YouTube video. */
+  from: 'media-server' | 'disk' | 'youtube';
+  /**
+   * The song is on neither geekom's disk nor the media server: it plays from the video now and the browser asks the server
+   * to fetch it (once), so the next plays use the file.
+   */
+  download: boolean;
+  /** Where the file is served from (a path on SoundReel), when `from` is a file; null for the video. */
+  fileUrl: string | null;
 }
 
 /** `GET /api/songs/:songKey/state` */

@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { PlayerProvider, usePlayer } from './PlayerContext';
 import { PLAY_QUEUE_KEY } from './playEventQueue';
 import * as api from '../services/api';
+import { servePlans } from '../test/playPlans';
 import type { YtPlayer, YtPlayerOptions } from './youtubeApi';
 import type { AggregatedSong, PlayEvent } from '../types';
 
@@ -11,7 +12,7 @@ import type { AggregatedSong, PlayEvent } from '../types';
 // least 3 s, offline-safe outbox, a failure never touches the playback.
 
 vi.mock('../services/api', () => ({
-  fetchNetwork: vi.fn(),
+  fetchPlayPlan: vi.fn(),
   fetchSongYoutube: vi.fn(),
   fetchSongState: vi.fn(),
   requestSongDownload: vi.fn(),
@@ -91,7 +92,7 @@ beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
   vi.mocked(api.fetchSongYoutube).mockResolvedValue({ videoId: 'vid1', watchUrl: '', source: 'yt_search' });
-  vi.mocked(api.fetchNetwork).mockResolvedValue('internal'); // Auto → the file at home, like these tests expect
+  servePlans('internal', { [LOCAL_A.songKey]: 'media-server', [LOCAL_B.songKey]: 'media-server' }); // at home: the file, like these tests expect
   vi.mocked(api.requestSongDownload).mockResolvedValue({ ok: true, state: 'preparing' });
   vi.mocked(api.fetchSongState).mockResolvedValue({ state: 'preparing', source: null, version: null, bytes: null, error: null, inLibrary: false });
   vi.mocked(api.sendPlays).mockResolvedValue(200);
