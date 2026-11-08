@@ -169,8 +169,11 @@ export interface PlayerContextValue {
    * the current one (a song picked inside the queue that is already playing).
    */
   playSong: (songKey: string, list: AggregatedSong[], label?: string | null, playlistId?: string | null) => void;
-  /** Rebuild the sticky queue from sessionStorage keys once the catalog is loaded. */
-  hydrateQueue: (catalog: AggregatedSong[]) => void;
+  /**
+   * Rebuilds the sticky queue from the sessionStorage keys once the catalog is loaded. `loadFull`: the catalog with EVERYTHING (the songs that are only files too), asked
+   * for only when the saved queue holds a song the catalog does not know.
+   */
+  hydrateQueue: (catalog: AggregatedSong[], loadFull?: () => Promise<AggregatedSong[]>) => void;
   toggle: () => void;
   next: () => void;
   previous: () => void;
@@ -707,21 +710,37 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (song) void loadVideoForSong(song, true);
   }, [shuffle, repeat, persist, loadVideoForSong]);
 
-  const hydrateQueue = useCallback((catalog: AggregatedSong[]) => {
+  const hydrateQueue = useCallback((catalog: AggregatedSong[], loadFull?: () => Promise<AggregatedSong[]>) => {
     if (hydratedRef.current) return;
     hydratedRef.current = true;
     if (queueRef.current.length > 0) return;
     const saved = loadPersisted();
-    const rebuilt = rebuildQueueFromKeys(catalog, saved.songKeys, saved.songKey);
-    if (!rebuilt) return;
-    setQueueLabel(saved.queueLabel);
-    queueLabelRef.current = saved.queueLabel;
-    queuePlaylistIdRef.current = saved.playlistId ?? null;
-    setQueue(rebuilt.queue);
-    queueRef.current = rebuilt.queue;
-    setIndex(rebuilt.index);
-    indexRef.current = rebuilt.index;
-    persist(saved.songKey, saved.shuffle, saved.repeat, rebuilt.queue, saved.queueLabel);
+    const apply = (from: AggregatedSong[]): void => {
+      const rebuilt = rebuildQueueFromKeys(from, saved.songKeys, saved.songKey);
+      if (!rebuilt) return;
+      setQueueLabel(saved.queueLabel);
+      queueLabelRef.current = saved.queueLabel;
+      queuePlaylistIdRef.current = saved.playlistId ?? null;
+      setQueue(rebuilt.queue);
+      queueRef.current = rebuilt.queue;
+      setIndex(rebuilt.index);
+      indexRef.current = rebuilt.index;
+      persist(saved.songKey, saved.shuffle, saved.repeat, rebuilt.queue, saved.queueLabel);
+    };
+    // A saved queue can hold songs that are only FILES (the playlist manager and «Scegli cosa suonare» offer everything). The
+    // journal's catalog does not know them: rebuilding from it would drop them and, worse, save the shorter queue over the real
+    // one. So when something is missing the full catalog is asked for and the queue is rebuilt once, from it (from what we
+    // have if it cannot be had); if the user has started something else meanwhile, that wins.
+    const first = rebuildQueueFromKeys(catalog, saved.songKeys, saved.songKey);
+    const complete = first !== null && first.queue.length === saved.songKeys.length;
+    if (complete || !loadFull || saved.songKeys.length === 0) {
+      apply(catalog);
+      return;
+    }
+    void loadFull().then(
+      (full) => { if (queueRef.current.length === 0) apply(full); },
+      () => { if (queueRef.current.length === 0) apply(catalog); },
+    );
   }, [persist]);
 
   const toggle = useCallback(() => {

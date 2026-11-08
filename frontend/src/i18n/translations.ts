@@ -464,6 +464,8 @@ export interface Translations {
   mgrHint: string;
   mgrLibrary: string;
   mgrFileOnly: string;
+  playerShowing: string;
+  playerShowMore: string;
   mgrFileOnlyHint: string;
   mgrShowMore: string;
   mgrShowing: string;
@@ -1253,6 +1255,8 @@ export const translations: Record<Language, Translations> = {
     mgrHint: 'Tab cambia pannello · Spazio segna · F5 copia · F6 sposta · F8 rimuove · F1 aiuto',
     mgrLibrary: 'Tutti i brani',
     mgrFileOnly: 'Solo file',
+    playerShowing: 'Mostrati {shown} di {total}',
+    playerShowMore: 'Mostra altri {n}',
     mgrFileOnlyHint: 'Esiste solo come file (geekom o media server): non è in nessun post del journal',
     mgrShowMore: 'Mostra altri {n}',
     mgrShowing: 'Mostrati {shown} di {total}',
@@ -2065,6 +2069,8 @@ export const translations: Record<Language, Translations> = {
     mgrHint: 'Tab switches pane · Space marks · F5 copy · F6 move · F8 remove · F1 help',
     mgrLibrary: 'All songs',
     mgrFileOnly: 'File only',
+    playerShowing: 'Showing {shown} of {total}',
+    playerShowMore: 'Show {n} more',
     mgrFileOnlyHint: 'Exists only as a file (geekom or the media server): it is in no journal post',
     mgrShowMore: 'Show {n} more',
     mgrShowing: 'Showing {shown} of {total}',

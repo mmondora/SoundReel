@@ -35,6 +35,9 @@ import '../styles/choose.css';
 
 type ShelfFilter = 'all' | 'favorites' | 'liked' | 'unlistened' | 'downloaded';
 
+const ROWS_AT_FIRST = 300;
+const ROWS_STEP = 300;
+
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
   const m = Math.floor(seconds / 60);
@@ -61,12 +64,22 @@ export function PlayerPage() {
   const chooseWasOpen = useRef(false);
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
   const playlistsAsked = useRef(false);
+  /**
+   * EVERYTHING SoundReel knows: the journal and the songs that are only files (geekom, the NAS). Asked for once, only when it is
+   * needed (the panel «Scegli cosa suonare» is open, a filter is on, a playlist is chosen: a playlist can hold such songs), not at
+   * every visit of the page. The plain shelves stay the journal's.
+   */
+  const [everySongs, setEverySongs] = useState<AggregatedSong[] | null>(null);
+  const everySongsAsked = useRef(false);
+  /** How many rows of the browse list are drawn: it can be thousands of songs. */
+  const [rowLimit, setRowLimit] = useState(ROWS_AT_FIRST);
 
   useEffect(() => {
     fetchSongs()
       .then((list) => {
         setSongs(list);
-        player.hydrateQueue(list);
+        // the saved queue may hold songs that are only files: they are not in this list
+        player.hydrateQueue(list, () => fetchSongs('everything'));
       })
       .catch(() => setSongs([]))
       .finally(() => setLoading(false));
@@ -95,6 +108,16 @@ export function PlayerPage() {
     fetchPlaylists().then(setPlaylists).catch(() => setPlaylists([]));
   }, [chooseOpen]);
 
+  const filtersActive = activeFilterCount(filters) + (filters.text.trim() ? 1 : 0);
+  const wantsEverything = chooseOpen || filtersActive > 0 || activePlaylist !== null;
+  useEffect(() => {
+    if (!wantsEverything || everySongsAsked.current) return;
+    everySongsAsked.current = true;
+    fetchSongs('everything')
+      .then(setEverySongs)
+      .catch(() => { everySongsAsked.current = false; }); // not now: the next time it is wanted, it asks again
+  }, [wantsEverything]);
+
   const setYtMount = useCallback((el: HTMLDivElement | null) => {
     player.setYoutubeMount(el);
   }, [player.setYoutubeMount]);
@@ -107,21 +130,25 @@ export function PlayerPage() {
   // What the shelf tab or the chosen playlist offers…
   const shelfList = useMemo(() => {
     if (activePlaylist) {
-      const byKey = new Map(songs.map((s) => [s.songKey, s]));
+      // a playlist can hold songs that are only files (put there from «Cerca» or the manager)
+      const byKey = new Map((everySongs ?? songs).map((s) => [s.songKey, s]));
       return activePlaylist.songKeys
         .map((k) => byKey.get(k))
         .filter((s): s is AggregatedSong => !!s);
     }
     const listened: ListenedFilter = shelf === 'unlistened' ? 'unlistened' : 'all';
     const downloaded: DownloadedFilter = shelf === 'downloaded' ? 'yes' : 'all';
-    return filterSongs(songs, {
+    // Choosing what to play (the panel open, or a choice still on) takes from EVERYTHING on the plain shelf; the other shelves
+    // (favourites, liked, unlistened, downloaded) are about what only the journal knows, and so is the list you open the page on.
+    const source = shelf === 'all' && everySongs && (chooseOpen || filtersActive > 0) ? everySongs : songs;
+    return filterSongs(source, {
       genres: [],
       listened,
       favorite: shelf === 'favorites',
       liked: shelf === 'liked',
       downloaded,
     });
-  }, [songs, shelf, activePlaylist]);
+  }, [songs, everySongs, chooseOpen, filtersActive, shelf, activePlaylist]);
 
   // …narrowed by "Scegli cosa suonare": the Playlist manager's own filters and facet counts (utils/managerSongs).
   const pool = useMemo(() => enrichSongs(shelfList), [shelfList]);
@@ -140,7 +167,6 @@ export function PlayerPage() {
     [chooseOpen, pool, filters, filterCtx],
   );
   const dataset = useMemo(() => ({ ...datasetFacets(pool), ...extraDatasetFacets(pool) }), [pool]);
-  const filtersActive = activeFilterCount(filters) + (filters.text.trim() ? 1 : 0);
 
   const shelfLabel = useMemo(() => {
     if (activePlaylist) return activePlaylist.name;
@@ -172,6 +198,8 @@ export function PlayerPage() {
     ? computeQueueWindow(player.queue.length, player.index, { wrap: player.repeat !== 'off' })
     : null;
   const listSongs = queueMode && queueWindow ? windowItems(player.queue, queueWindow) : browseList;
+  // only the first rows of a long browse list are drawn («Mostra altri»); a new choice starts again from the first ones
+  const drawnSongs = queueMode && queueWindow ? listSongs : listSongs.slice(0, rowLimit);
   const listLabel = queueMode
     ? (player.queueLabel || t.playerQueue)
     : browseLabel;
@@ -191,6 +219,10 @@ export function PlayerPage() {
           : null,
       ].filter(Boolean).join(' · ')
     : null;
+
+  useEffect(() => {
+    setRowLimit(ROWS_AT_FIRST);
+  }, [filters, shelf, activePlaylist, chooseOpen]);
 
   function startBrowseShelf(next: ShelfFilter) {
     setActivePlaylist(null);
@@ -550,7 +582,7 @@ export function PlayerPage() {
         )}
 
         <ul className="player-car-tracks">
-          {listSongs.map((song) => {
+          {drawnSongs.map((song) => {
             const active = current?.songKey === song.songKey;
             return (
               <li key={song.songKey}>
@@ -577,6 +609,15 @@ export function PlayerPage() {
             );
           })}
         </ul>
+        {drawnSongs.length < listSongs.length && (
+          <p className="player-car-more">
+            <span data-testid="shown-songs">{interpolate(t.playerShowing, { shown: drawnSongs.length, total: listSongs.length })}</span>
+            {' '}
+            <button type="button" className="player-car-queue-btn" onClick={() => setRowLimit(drawnSongs.length + ROWS_STEP)}>
+              {interpolate(t.playerShowMore, { n: Math.min(ROWS_STEP, listSongs.length - drawnSongs.length) })}
+            </button>
+          </p>
+        )}
       </section>
     </div>
   );
