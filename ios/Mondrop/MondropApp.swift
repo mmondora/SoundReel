@@ -16,6 +16,8 @@ struct MondropApp: App {
         // `beginBackgroundTask` is UIKit: the share extension cannot link it, so the app plugs it in.
         EventUploader.shared.backgroundRunner = UIKitBackgroundTaskRunner()
         #endif
+        // «Sync finito» notification: ready before the first download can finish (also on a background relaunch).
+        SyncNotifications.install()
     }
 
     var body: some Scene {

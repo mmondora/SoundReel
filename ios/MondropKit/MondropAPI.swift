@@ -133,11 +133,15 @@ public final class MondropAPI: MondropAPIProtocol, @unchecked Sendable {
         "/api/mondrop/songs/\(encodeSongKey(songKey))\(suffix)"
     }
 
+    /// `encodedQuery`: a query string that is ALREADY percent-encoded (see `LibraryQuery.queryString`); it is used
+    /// as is — going through `queryItems` would re-encode it and leave `+` unescaped. The `user` hint is part of it
+    /// then. Without it the `user` hint is appended the usual way.
     private func authedRequest(
         path: String,
         method: String = "GET",
         body: Data? = nil,
-        timeout: TimeInterval = 120
+        timeout: TimeInterval = 120,
+        encodedQuery: ((_ user: String) -> String)? = nil
     ) throws -> URLRequest {
         let cfg = configProvider()
         let key = cfg.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -146,9 +150,13 @@ public final class MondropAPI: MondropAPIProtocol, @unchecked Sendable {
         guard !user.isEmpty else { throw MondropAPIError.missingUser }
         let base = cfg.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/ \n"))
         guard var comps = URLComponents(string: "\(base)\(path)") else { throw MondropAPIError.badUrl }
-        var items = comps.queryItems ?? []
-        items.append(URLQueryItem(name: "user", value: user))
-        comps.queryItems = items
+        if let encodedQuery {
+            comps.percentEncodedQuery = encodedQuery(user)
+        } else {
+            var items = comps.queryItems ?? []
+            items.append(URLQueryItem(name: "user", value: user))
+            comps.queryItems = items
+        }
         guard let url = comps.url else { throw MondropAPIError.badUrl }
         var req = URLRequest(url: url)
         req.httpMethod = method
@@ -241,6 +249,15 @@ public final class MondropAPI: MondropAPIProtocol, @unchecked Sendable {
         _ = try await send(try authedRequest(path: Self.songPath(songKey, suffix: "/source"), method: "PUT", body: body, timeout: 30))
     }
 
+    /// Choosing what to play (ADR-0013): every song this user can see, filtered, with the headings to choose from.
+    /// Read-only; an older server answers 404 (the caller falls back to the songs on the phone).
+    public func library(_ query: LibraryQuery) async throws -> LibraryPage {
+        let data = try await send(
+            try authedRequest(path: "/api/mondrop/library", timeout: 30, encodedQuery: { query.queryString(user: $0) })
+        )
+        return try decode(LibraryPage.self, from: data)
+    }
+
     /// Legacy (pre-sync) Spooty enqueue; the new flow uses `prepare` / `requestDownload`.
     public func enqueueSpooty(songKey: String) async throws {
         _ = try await send(
@@ -249,6 +266,20 @@ public final class MondropAPI: MondropAPIProtocol, @unchecked Sendable {
     }
 }
 
+
+extension MondropAPI: LibraryTransport {
+    public func library(
+        q: String = "", genre: String = "", album: String = "", artist: String = "", decade: DecadeFilter? = nil,
+        limit: Int = LibraryQuery.defaultLimit, offset: Int = 0, facets: Bool = true
+    ) async throws -> LibraryPage {
+        try await library(
+            LibraryQuery(
+                filters: LibraryFilters(q: q, genre: genre, album: album, artist: artist, decade: decade),
+                limit: limit, offset: offset, withFacets: facets
+            )
+        )
+    }
+}
 
 // MARK: - Listening events + device events (docs/mondrop-stats.md §1–§2)
 

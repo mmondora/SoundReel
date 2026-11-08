@@ -1,6 +1,9 @@
 // ios/Mondrop/SettingsView.swift
 
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 struct SettingsView: View {
     @State private var backendUrl: String = Settings.shared.backendBaseUrl
@@ -9,6 +12,8 @@ struct SettingsView: View {
     @State private var username: String = Settings.shared.autheliaUsername
     @State private var savedMessage: String = ""
     @State private var allowCellular: Bool = Settings.shared.allowCellularDownloads
+    @State private var notifyWhenDone: Bool = Settings.shared.syncNotificationsEnabled
+    @State private var notificationPermission: NotificationPermission?
     @ObservedObject private var net = NetStatus.shared
     @ObservedObject private var uploader = EventUploader.shared
 
@@ -112,6 +117,7 @@ struct SettingsView: View {
         .task {
             if net.info == nil { await net.refresh(api: MondropAPI()) }
         }
+        .task { await refreshNotificationPermission() }
         .onReceive(NotificationCenter.default.publisher(for: KeyConnect.didChange)) { _ in
             // A key was just issued (in-app sheet or deep link): refresh @State so "Salva" can't overwrite it.
             apiKey = Settings.shared.apiKey
@@ -127,6 +133,22 @@ struct SettingsView: View {
                 .onChange(of: allowCellular) { _, newValue in
                     Settings.shared.allowCellularDownloads = newValue
                 }
+            Toggle("Avvisami a sync finito", isOn: $notifyWhenDone)
+                .onChange(of: notifyWhenDone) { _, newValue in
+                    Settings.shared.syncNotificationsEnabled = newValue
+                    // Asked when the switch is turned on (or at the first Sync), never behind the user's back.
+                    if newValue { Task { await SyncNotifier.shared.ensurePermission(); await refreshNotificationPermission() } }
+                }
+            if notifyWhenDone && notificationPermission == .denied {
+                Text("Le notifiche di Mondrop sono disattivate nelle Impostazioni di iOS: il Sync funziona lo stesso, ma non ti avviso quando finisce.")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                #if os(iOS)
+                Button("Apri le impostazioni di iOS") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }
+                #endif
+            }
             HStack {
                 Text("Rete: \(net.checking ? "controllo…" : net.label)")
                 Spacer()
@@ -144,7 +166,7 @@ struct SettingsView: View {
         } header: {
             Text("Sync")
         } footer: {
-            Text("I download del Sync usano solo il Wi-Fi, salvo che attivi la rete cellulare. A casa i brani arrivano direttamente dal media server (il file non passa da internet); fuori casa dal server SoundReel. In «Spazio» vedi quanto pesano i brani, elimini i meno ascoltati (doppia conferma per più brani) e riscarichi ciò che serve.")
+            Text("I download del Sync usano solo il Wi-Fi, salvo che attivi la rete cellulare. A casa i brani arrivano direttamente dal media server (il file non passa da internet); fuori casa dal server SoundReel. Quando un Sync finisce e l'app non è aperta ti arriva una notifica con quanti brani sono stati scaricati e quanti errori ci sono (iOS lo chiede la prima volta). In «Spazio» vedi quanto pesano i brani, elimini i meno ascoltati (doppia conferma per più brani) e riscarichi ciò che serve.")
         }
     }
 
@@ -197,6 +219,10 @@ struct SettingsView: View {
     private var lastUploadText: String {
         guard let last = uploader.lastUploadAt else { return "mai" }
         return last.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private func refreshNotificationPermission() async {
+        notificationPermission = await SyncNotifier.shared.center?.permission()
     }
 
     private func save() {

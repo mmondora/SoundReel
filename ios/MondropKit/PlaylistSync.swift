@@ -27,6 +27,8 @@ public final class PlaylistSyncCoordinator: ObservableObject {
     private let clock: PreparationClock
     private let pollInterval: TimeInterval
     private let pollTimeout: TimeInterval
+    private let activity: SyncActivity?
+    private let onSyncStarted: @MainActor () -> Void
 
     /// Playlists the user pressed Sync on during this app run: if the view is reopened while the server is
     /// still preparing them, polling resumes WITH downloads (otherwise reopening only refreshes the list).
@@ -39,7 +41,9 @@ public final class PlaylistSyncCoordinator: ObservableObject {
         net: NetStatus,
         clock: PreparationClock = .real,
         pollInterval: TimeInterval = 5,
-        pollTimeout: TimeInterval = 600
+        pollTimeout: TimeInterval = 600,
+        activity: SyncActivity? = nil,
+        onSyncStarted: @escaping @MainActor () -> Void = {}
     ) {
         self.playlist = playlist
         self.api = api
@@ -48,6 +52,8 @@ public final class PlaylistSyncCoordinator: ObservableObject {
         self.clock = clock
         self.pollInterval = pollInterval
         self.pollTimeout = pollTimeout
+        self.activity = activity
+        self.onSyncStarted = onSyncStarted
     }
 
     public var isBusy: Bool { phase != .idle }
@@ -74,6 +80,7 @@ public final class PlaylistSyncCoordinator: ObservableObject {
     /// Idempotent: tracks already on the device (same version) or already in flight are skipped.
     public func sync(retryFailed: Bool = false) async {
         guard phase == .idle else { return }
+        onSyncStarted()          // the right moment to ask iOS for notifications, once — never waited for
         phase = .syncing
         message = "Preparo la playlist…"
         errorText = nil
@@ -167,6 +174,8 @@ public final class PlaylistSyncCoordinator: ObservableObject {
         manifest = next
         engine.store.recordPlaylist(id: playlist.id, name: next.name, songKeys: next.tracks.map(\.songKey))
         engine.store.recordServerNumbers(from: next)      // plays / lastPlayedAt for the "meno ascoltate" ranking
+        engine.store.recordMetadata(from: next.tracks)    // album / genres / year: «Libreria» browses the phone offline
+        activity?.observe(next.tracks)                    // the line at the top: how many the server is preparing
     }
 
     /// "Riscarica": the user wants a song they deleted back. Clears the skip-list entry and downloads it now.
@@ -212,6 +221,7 @@ public enum PlaylistSnapshots {
             let manifest = try await api.offlineManifest(playlistId: playlist.id)
             store.recordPlaylist(id: playlist.id, name: manifest.name, songKeys: manifest.tracks.map(\.songKey))
             store.recordServerNumbers(from: manifest)
+            store.recordMetadata(from: manifest.tracks)
         }
         store.pruneMemberships(keeping: Set(playlists.map(\.id)))
         return playlists

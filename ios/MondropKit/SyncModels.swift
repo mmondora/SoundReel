@@ -54,6 +54,12 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
     public let plays: Int?
     /// ISO date of the last counted listen; nil = never played (or an older backend).
     public let lastPlayedAt: String?
+    /// Album (the provider's spelling when known, else the mention's); nil when unknown or on an older backend (ADR-0013).
+    public let album: String?
+    /// Canonical genres, the «tipo» of the song; `[]` when unknown or on an older backend.
+    public let genres: [String]
+    /// Release year; nil when unknown or on an older backend. The decade is derived (`DecadeFilter.of(year:)`).
+    public let year: Int?
 
     public var lastPlayedDate: Date? { ISO.parse(lastPlayedAt) }
 
@@ -82,7 +88,10 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
         coverUrl: String? = nil,
         lyrics: String? = nil,
         plays: Int? = nil,
-        lastPlayedAt: String? = nil
+        lastPlayedAt: String? = nil,
+        album: String? = nil,
+        genres: [String] = [],
+        year: Int? = nil
     ) {
         self.songKey = songKey
         self.title = title.isEmpty ? songKey : title
@@ -103,12 +112,15 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
         self.lyrics = lyrics
         self.plays = plays
         self.lastPlayedAt = lastPlayedAt
+        self.album = Self.tidy(album)
+        self.genres = Self.tidyList(genres)
+        self.year = Self.plausibleYear(year)
     }
 
     private enum CodingKeys: String, CodingKey {
         case songKey, title, artist, status, state, source, downloadPath, mediaUrl, version
         case bytes, durationS, error, spotifyUrl, entryId, canEnqueueSpooty, coverUrl, lyrics
-        case plays, lastPlayedAt
+        case plays, lastPlayedAt, album, genres, year
     }
 
     public init(from decoder: Decoder) throws {
@@ -134,6 +146,43 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
         lyrics = try? c.decodeIfPresent(String.self, forKey: .lyrics)
         plays = Self.flexibleInt(c, .plays)
         lastPlayedAt = try? c.decodeIfPresent(String.self, forKey: .lastPlayedAt)
+        // 2.9.0 (ADR-0013): all three are optional — an older server simply does not send them.
+        album = Self.tidy(try? c.decodeIfPresent(String.self, forKey: .album))
+        genres = Self.decodeGenres(c)
+        year = Self.plausibleYear(Self.flexibleInt(c, .year))
+    }
+
+    /// Collapses whitespace; blank → nil.
+    static func tidy(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let joined = text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        return joined.isEmpty ? nil : joined
+    }
+
+    /// Tidy, no blanks, no repeats, order kept.
+    static func tidyList(_ items: [String]) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for item in items {
+            guard let t = tidy(item), seen.insert(t).inserted else { continue }
+            out.append(t)
+        }
+        return out
+    }
+
+    /// An array of names (anything that is not a string is skipped), or one bare name.
+    private static func decodeGenres(_ c: KeyedDecodingContainer<CodingKeys>) -> [String] {
+        if let items = try? c.decodeIfPresent([LossyDecodable<String>].self, forKey: .genres) {
+            return tidyList(items.compactMap { $0.value })
+        }
+        if let single = try? c.decodeIfPresent(String.self, forKey: .genres) { return tidyList([single]) }
+        return []
+    }
+
+    /// The server only keeps 1900…next year; anything outside is garbage and must not invent a decade.
+    static func plausibleYear(_ year: Int?) -> Int? {
+        guard let year, (1900...2099).contains(year) else { return nil }
+        return year
     }
 
     private static func flexibleInt(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> Int? {
@@ -144,7 +193,7 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
 }
 
 /// Decodes an element or yields nil, so one malformed track never hides the whole playlist.
-private struct LossyDecodable<T: Decodable>: Decodable {
+struct LossyDecodable<T: Decodable>: Decodable {
     let value: T?
     init(from decoder: Decoder) throws { value = try? T(from: decoder) }
 }

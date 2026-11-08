@@ -34,10 +34,15 @@ public struct InstallMetadata: Equatable, Sendable {
     /// Server numbers at download time (docs/mondrop-stats.md §3), for the "meno ascoltate" ranking.
     public var plays: Int?
     public var lastPlayedAt: Date?
+    /// Album / genres / year as the server described the track (ADR-0013): what lets «Libreria» browse the phone offline.
+    public var album: String?
+    public var genres: [String]
+    public var year: Int?
 
     public init(
         title: String, artist: String, coverURL: String? = nil, lyrics: String? = nil, version: String? = nil,
-        plays: Int? = nil, lastPlayedAt: Date? = nil
+        plays: Int? = nil, lastPlayedAt: Date? = nil,
+        album: String? = nil, genres: [String] = [], year: Int? = nil
     ) {
         self.title = title
         self.artist = artist
@@ -46,6 +51,9 @@ public struct InstallMetadata: Equatable, Sendable {
         self.version = version
         self.plays = plays
         self.lastPlayedAt = lastPlayedAt
+        self.album = album
+        self.genres = genres
+        self.year = year
     }
 }
 
@@ -83,6 +91,11 @@ public final class OfflineStore: @unchecked Sendable {
         public var version: String?
         public var bytes: Int?
         public var addedAt: Date?
+        /// ADR-0013: what the server said about the song when it was downloaded (or when a playlist / the library
+        /// was read since). nil for files that predate Mondrop 1.5; the index of an earlier build still loads.
+        public var album: String?
+        public var genres: [String]?
+        public var year: Int?
 
         public init(
             songKey: String,
@@ -93,7 +106,10 @@ public final class OfflineStore: @unchecked Sendable {
             lyrics: String? = nil,
             version: String? = nil,
             bytes: Int? = nil,
-            addedAt: Date? = nil
+            addedAt: Date? = nil,
+            album: String? = nil,
+            genres: [String]? = nil,
+            year: Int? = nil
         ) {
             self.songKey = songKey
             self.title = title
@@ -104,6 +120,9 @@ public final class OfflineStore: @unchecked Sendable {
             self.version = version
             self.bytes = bytes
             self.addedAt = addedAt
+            self.album = album
+            self.genres = genres
+            self.year = year
         }
     }
 
@@ -276,7 +295,10 @@ public final class OfflineStore: @unchecked Sendable {
             lyrics: index.lyricsOverrides[songKey] ?? metadata.lyrics ?? previous?.lyrics,
             version: metadata.version,
             bytes: fileSize(destination),
-            addedAt: Date()
+            addedAt: Date(),
+            album: metadata.album ?? previous?.album,
+            genres: metadata.genres.isEmpty ? previous?.genres : metadata.genres,
+            year: metadata.year ?? previous?.year
         )
         index.items.removeAll { $0.songKey == songKey }
         index.items.insert(item, at: 0)
@@ -318,6 +340,62 @@ public final class OfflineStore: @unchecked Sendable {
             try? fm.removeItem(at: root.appendingPathComponent(item.relativePath))
         }
         index.items.removeAll { $0.songKey == songKey }
+    }
+
+    // MARK: - What the library can browse offline (ADR-0013)
+
+    /// Every song that is really on the phone (exists, not empty), as the tracks «Libreria» filters and lists.
+    /// Offline, the phone answers the same questions the server does, from what it stored at download time.
+    public func localTracks() -> [OfflineTrack] {
+        lock.lock(); defer { lock.unlock() }
+        return index.items.compactMap { item in
+            guard isUsableFile(root.appendingPathComponent(item.relativePath)) else { return nil }
+            let stat = index.playStats[item.songKey]
+            return OfflineTrack(
+                songKey: item.songKey,
+                title: item.title,
+                artist: item.artist,
+                state: TrackState.ready.rawValue,
+                version: item.version,
+                bytes: item.bytes,
+                coverUrl: item.coverURL,
+                lyrics: index.lyricsOverrides[item.songKey] ?? item.lyrics,
+                plays: stat?.plays,
+                lastPlayedAt: stat?.lastPlayedAt.map { ISO.string($0) },
+                album: item.album,
+                genres: item.genres ?? [],
+                year: item.year
+            )
+        }
+    }
+
+    /// The songKeys that are on the phone, in one pass (a list of 500 rows must not stat 500 files per redraw).
+    public func localSongKeys() -> Set<String> {
+        lock.lock(); defer { lock.unlock() }
+        return Set(index.items.filter { isUsableFile(root.appendingPathComponent($0.relativePath)) }.map(\.songKey))
+    }
+
+    /// The server described these songs (a manifest, a library page): remember album / genres / year for the ones
+    /// that are on the phone, so they can be browsed offline. Never erases: a track without the field changes nothing.
+    public func recordMetadata(from tracks: [OfflineTrack]) {
+        lock.lock(); defer { lock.unlock() }
+        var changed = false
+        for track in tracks {
+            guard let i = index.items.firstIndex(where: { $0.songKey == track.songKey }) else { continue }
+            if let album = track.album, index.items[i].album != album {
+                index.items[i].album = album
+                changed = true
+            }
+            if !track.genres.isEmpty, index.items[i].genres != track.genres {
+                index.items[i].genres = track.genres
+                changed = true
+            }
+            if let year = track.year, index.items[i].year != year {
+                index.items[i].year = year
+                changed = true
+            }
+        }
+        if changed { save() }
     }
 
     // MARK: - Listening numbers (docs/mondrop-stats.md §3)
@@ -471,6 +549,14 @@ public final class OfflineStore: @unchecked Sendable {
         return Set(index.playlists.keys)
     }
 
+    /// The playlists the app has seen and the songs each one held (offline, «Libreria» lists them from here).
+    public func playlistMemberships() -> [(id: String, name: String, songKeys: [String])] {
+        lock.lock(); defer { lock.unlock() }
+        return index.playlists
+            .map { (id: $0.key, name: $0.value.name, songKeys: $0.value.songKeys) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     /// Downloaded songs that no known playlist references any more.
     public func orphans() -> [Item] {
         lock.lock(); defer { lock.unlock() }
@@ -572,6 +658,20 @@ public final class OfflineStore: @unchecked Sendable {
 
     private func resumeFile(songKey: String, url: String) -> URL {
         resumeDirectory.appendingPathComponent("\(Self.fnv1a(songKey))-\(Self.fnv1a(url)).resume")
+    }
+
+    public var batchURL: URL { root.appendingPathComponent("sync-batch.json") }
+
+    /// The sync in progress (which songs it started, which finished): survives a relaunch, so the «Sync finito»
+    /// notification still knows what the sync was when iOS wakes the app to deliver the last download.
+    public func readBatchData() -> Data? { try? Data(contentsOf: batchURL) }
+
+    public func writeBatchData(_ data: Data?) {
+        if let data {
+            try? data.write(to: batchURL, options: .atomic)
+        } else {
+            try? fm.removeItem(at: batchURL)
+        }
     }
 
     public func readQueueData() -> Data? { try? Data(contentsOf: queueURL) }

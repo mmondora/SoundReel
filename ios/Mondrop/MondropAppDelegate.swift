@@ -19,6 +19,9 @@ final class MondropAppDelegate: NSObject, UIApplicationDelegate {
         }
         BackgroundDownloadTransport.shared.setBackgroundCompletion(completionHandler)
         Task { @MainActor in
+            // Before the engine sees the downloads that finished while the app was away: if one of them is the last
+            // of the sync, «Sync finito» is posted from here.
+            SyncNotifications.install()
             await SyncEngine.shared.attachExisting()
         }
     }

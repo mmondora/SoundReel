@@ -21,12 +21,16 @@ enum TestSupport {
         downloadPath: String? = nil,
         error: String? = nil,
         status: String? = nil,
-        title: String? = nil
+        title: String? = nil,
+        artist: String = "Artist",
+        album: String? = nil,
+        genres: [String] = [],
+        year: Int? = nil
     ) -> OfflineTrack {
         OfflineTrack(
             songKey: key,
             title: title ?? key,
-            artist: "Artist",
+            artist: artist,
             status: status,
             state: state,
             source: "ytdlp",
@@ -35,7 +39,10 @@ enum TestSupport {
             version: version,
             bytes: bytes,
             error: error,
-            coverUrl: "https://img.test/\(key).jpg"
+            coverUrl: "https://img.test/\(key).jpg",
+            album: album,
+            genres: genres,
+            year: year
         )
     }
 
@@ -75,12 +82,15 @@ struct EngineRig {
     let transport: FakeTransport
     let engine: SyncEngine
 
-    init(config: EngineConfig = .test, persistQueue: Bool = false, root: URL? = nil, transport: FakeTransport = FakeTransport()) throws {
+    init(
+        config: EngineConfig = .test, persistQueue: Bool = false, root: URL? = nil, transport: FakeTransport = FakeTransport(),
+        now: @escaping () -> Date = { Date() }
+    ) throws {
         let dir = try root ?? TestSupport.tempDir("engine")
         self.root = dir
         self.store = OfflineStore(root: dir)
         self.transport = transport
-        self.engine = SyncEngine(transport: transport, store: store, config: { config }, persistQueue: persistQueue)
+        self.engine = SyncEngine(transport: transport, store: store, config: { config }, persistQueue: persistQueue, now: now)
     }
 
     /// A finished download, delivered exactly like the transport does (a file already in staging).
@@ -379,5 +389,131 @@ extension TestSupport {
 
     static func jsonObject(_ data: Data) throws -> NSDictionary {
         try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? NSDictionary)
+    }
+}
+
+
+// MARK: - 2.9.0: Libreria, status line, notifications
+
+/// The server's library endpoint, answered from a catalog with the same rules (LibraryCatalog) unless a test scripts it.
+final class FakeLibrary: LibraryTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _queries: [LibraryQuery] = []
+    private var _catalog: [OfflineTrack]
+    private var _failure: Error?
+    private var _handler: ((LibraryQuery) throws -> LibraryPage)?
+    private var _gate: (@Sendable (LibraryQuery) async -> Void)?
+
+    init(catalog: [OfflineTrack] = []) { _catalog = catalog }
+
+    var queries: [LibraryQuery] { lock.withLock { _queries } }
+    func setCatalog(_ songs: [OfflineTrack]) { lock.withLock { _catalog = songs } }
+    func fail(_ error: Error?) { lock.withLock { _failure = error } }
+    func script(_ handler: ((LibraryQuery) throws -> LibraryPage)?) { lock.withLock { _handler = handler } }
+    /// Runs (and may suspend) before a request is answered: lets a test make one answer arrive late.
+    func gate(_ gate: (@Sendable (LibraryQuery) async -> Void)?) { lock.withLock { _gate = gate } }
+
+    func library(_ query: LibraryQuery) async throws -> LibraryPage {
+        let (failure, handler, catalog, gate) = lock.withLock { () -> (Error?, ((LibraryQuery) throws -> LibraryPage)?, [OfflineTrack], (@Sendable (LibraryQuery) async -> Void)?) in
+            _queries.append(query)
+            return (_failure, _handler, _catalog, _gate)
+        }
+        if let gate { await gate(query) }
+        if let failure { throw failure }
+        if let handler { return try handler(query) }
+        return LibraryCatalog.page(of: catalog, filters: query.filters, limit: query.limit, offset: query.offset, withFacets: query.withFacets)
+    }
+}
+
+/// Playlists (FakeAPI) + library (FakeLibrary) behind the one type the Libreria model takes.
+final class FakeBackend: MondropAPIProtocol, LibraryTransport, @unchecked Sendable {
+    let api: FakeAPI
+    let lib: FakeLibrary
+
+    init(api: FakeAPI = FakeAPI(), library: FakeLibrary = FakeLibrary()) {
+        self.api = api
+        self.lib = library
+    }
+
+    func listPlaylists() async throws -> [MondropPlaylist] { try await api.listPlaylists() }
+    func offlineManifest(playlistId: String) async throws -> OfflineManifest { try await api.offlineManifest(playlistId: playlistId) }
+    func prepare(playlistId: String, retryFailed: Bool) async throws -> OfflineManifest {
+        try await api.prepare(playlistId: playlistId, retryFailed: retryFailed)
+    }
+    func net() async throws -> NetInfo { try await api.net() }
+    func track(songKey: String) async throws -> OfflineTrack { try await api.track(songKey: songKey) }
+    func requestDownload(songKey: String, priority: DownloadPriority) async throws -> DownloadAck {
+        try await api.requestDownload(songKey: songKey, priority: priority)
+    }
+    func setSource(songKey: String, youtubeUrl: String) async throws { try await api.setSource(songKey: songKey, youtubeUrl: youtubeUrl) }
+    func library(_ query: LibraryQuery) async throws -> LibraryPage { try await lib.library(query) }
+}
+
+/// UNUserNotificationCenter stand-in: records what would have been asked and posted. A unit test must never raise
+/// the real permission prompt.
+final class FakeNotificationCenter: SyncNotificationCenter, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _permission: NotificationPermission
+    private var _grantOnRequest: Bool
+    private var _posted: [SyncNotificationContent] = []
+    private var _requests = 0
+
+    init(permission: NotificationPermission, grantOnRequest: Bool = true) {
+        _permission = permission
+        _grantOnRequest = grantOnRequest
+    }
+
+    var posted: [SyncNotificationContent] { lock.withLock { _posted } }
+    var requestCount: Int { lock.withLock { _requests } }
+
+    func permission() async -> NotificationPermission { lock.withLock { _permission } }
+
+    func requestPermission() async -> Bool {
+        lock.withLock {
+            _requests += 1
+            if _permission == .notDetermined { _permission = _grantOnRequest ? .allowed : .denied }
+            return _permission == .allowed
+        }
+    }
+
+    func post(_ content: SyncNotificationContent) async { lock.withLock { _posted.append(content) } }
+}
+
+extension TestSupport {
+    /// A small library with the shapes the filters care about (same songs as the backend's libraryFacets tests).
+    static func catalog() -> [OfflineTrack] {
+        [
+            track("mj::billie", title: "Billie Jean", artist: "Michael Jackson", album: "Thriller", genres: ["Pop"], year: 1982),
+            track("mj::beat", title: "Beat It", artist: "Michael Jackson", album: "Thriller", genres: ["Pop", "Rock"], year: 1982),
+            track("md::prayer", title: "Like a Prayer", artist: "Madonna", album: "Like a Prayer", genres: ["Pop"], year: 1989),
+            track("dp::one", title: "One More Time", artist: "Daft Punk", album: "Discovery", genres: ["Elettronica"], year: 2001),
+            track("dp::around", title: "Around the World", artist: "Daft Punk", album: "Homework", genres: ["Elettronica"], year: 1997),
+            track("bm::ragazzo", title: "Il Mio Ragazzo", artist: "Bassi Maestro", album: "Fastidio", genres: ["Hip-Hop/Rap"], year: 2000),
+            track("rh::creep", title: "Creep", artist: "Radiohead", album: "Pablo Honey", genres: ["Alternative"], year: 1992),
+            track("ff::everlong", title: "Everlong", artist: "Foo Fighters", album: "The Colour and the Shape", genres: ["Alternative"], year: 1997),
+            track("ua::mystery", title: "Mystery", artist: "Unknown Artist", album: "Mystery LP"),
+            track("na::untitled", title: "Untitled", artist: "", genres: ["Pop"], year: 1983),
+        ]
+    }
+
+    static func titles(_ tracks: [OfflineTrack]) -> [String] { tracks.map(\.title) }
+}
+
+
+/// A door a test opens by hand: whoever waits at it stays suspended until `open()`.
+actor AsyncGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        let pending = waiters
+        waiters = []
+        for waiter in pending { waiter.resume() }
     }
 }

@@ -61,6 +61,13 @@ public final class Settings {
         set { defaults.set(newValue, forKey: "allowCellularDownloads") }
     }
 
+    /// «Avvisami a sync finito»: a local notification when a sync ends while the app is not in front. ON by default
+    /// (a missing key means ON — `bool(forKey:)` would say OFF); iOS is only asked for permission when it is first needed.
+    public var syncNotificationsEnabled: Bool {
+        get { (defaults.object(forKey: "syncNotificationsEnabled") as? Bool) ?? true }
+        set { defaults.set(newValue, forKey: "syncNotificationsEnabled") }
+    }
+
     public var recentTags: [String] {
         get { defaults.stringArray(forKey: "recentTags") ?? [] }
         set { defaults.set(Array(newValue.prefix(24)), forKey: "recentTags") }

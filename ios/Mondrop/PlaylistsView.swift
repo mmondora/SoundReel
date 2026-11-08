@@ -40,6 +40,7 @@ struct PlaylistsView: View {
         .overlay {
             if busy { ProgressView() }
         }
+        .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
         .safeAreaInset(edge: .bottom) {
             if !status.isEmpty {
                 Text(status)
@@ -75,6 +76,7 @@ struct PlaylistOfflineView: View {
     @ObservedObject private var net = NetStatus.shared
     @State private var youtubeTarget: OfflineTrack?
     @State private var youtubeText = ""
+    @State private var showQueue = false
 
     init(playlist: MondropPlaylist) {
         self.playlist = playlist
@@ -83,7 +85,10 @@ struct PlaylistOfflineView: View {
                 playlist: playlist,
                 api: MondropAPI(),
                 engine: .shared,
-                net: .shared
+                net: .shared,
+                activity: .shared,
+                // The right moment to ask iOS for notifications, once: the user has just started a sync.
+                onSyncStarted: { Task { await SyncNotifier.shared.ensurePermission() } }
             )
         )
     }
@@ -110,6 +115,12 @@ struct PlaylistOfflineView: View {
                 }
                 Section {
                     summaryLine(manifest)
+                    HStack(spacing: 14) {
+                        Button { play(nil, shuffled: false, in: manifest) } label: { Label("Suona", systemImage: "play.fill") }
+                        Button { play(nil, shuffled: true, in: manifest) } label: { Label("Mescola", systemImage: "shuffle") }
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(manifest.tracks.isEmpty)
                     HStack {
                         Button(model.isBusy ? "Sync…" : "Sync") {
                             Task { await model.sync() }
@@ -155,7 +166,9 @@ struct PlaylistOfflineView: View {
         }
         .navigationTitle(playlist.name)
         .task { await model.load() }
-        .safeAreaInset(edge: .bottom) { miniPlayer }
+        .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
+        .safeAreaInset(edge: .bottom, spacing: 0) { MiniPlayerBar(onOpenQueue: { showQueue = true }) }
+        .sheet(isPresented: $showQueue) { QueueView() }
         .alert("Link YouTube", isPresented: Binding(
             get: { youtubeTarget != nil },
             set: { if !$0 { youtubeTarget = nil } }
@@ -193,30 +206,16 @@ struct PlaylistOfflineView: View {
             progress: engine.progress[track.songKey],
             isSkipListed: engine.store.isSkipped(track.songKey)
         )
-        let isCurrent = player.currentSongKey == track.songKey
         return HStack {
             Button {
-                play(track, in: manifest)
+                play(track.songKey, shuffled: false, in: manifest)
             } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        if isCurrent {
-                            Image(systemName: player.playing ? "speaker.wave.2.fill" : "speaker.fill")
-                                .font(.caption)
-                        }
-                        Text(track.title)
-                    }
-                    Text("\(track.artist) · \(status.label)")
-                        .font(.caption2)
-                        .foregroundStyle(statusColor(status))
-                    if case .downloading(let fraction) = status.kind, let fraction {
-                        ProgressView(value: fraction)
-                    }
-                }
+                SongRowView(
+                    track: track, status: status,
+                    isCurrent: player.currentSongKey == track.songKey, isPlaying: player.playing
+                )
             }
             .buttonStyle(.plain)
-            Spacer()
-            icon(for: status)
             if status.canRedownload {
                 Button("Riscarica") { Task { await model.redownload(songKey: track.songKey) } }
                     .buttonStyle(.borderless)
@@ -238,68 +237,17 @@ struct PlaylistOfflineView: View {
         }
     }
 
-    @ViewBuilder
-    private func icon(for status: TrackRowStatus) -> some View {
-        switch status.kind {
-        case .local: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-        case .downloading, .queued: Image(systemName: "arrow.down.circle").foregroundStyle(.blue)
-        case .preparing: ProgressView()
-        case .readyOnServer: Image(systemName: "icloud.and.arrow.down")
-        case .removedFromPhone: Image(systemName: "trash.circle").foregroundStyle(.secondary)
-        case .failed: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
-        case .noSource: Image(systemName: "questionmark.circle").foregroundStyle(.orange)
-        case .missing: Image(systemName: "circle.dashed").foregroundStyle(.secondary)
-        }
-    }
-
-    private func statusColor(_ status: TrackRowStatus) -> Color {
-        switch status.kind {
-        case .failed: return .red
-        case .noSource: return .orange
-        default: return .secondary
-        }
-    }
-
-    /// Whole playlist as the queue (minus tracks with no source at all), starting at the tapped track.
-    private func play(_ track: OfflineTrack, in manifest: OfflineManifest) {
-        let playable = manifest.tracks.filter { $0.resolvedState != .noSource || engine.store.fileURL(songKey: $0.songKey) != nil }
-        guard let start = playable.firstIndex(where: { $0.songKey == track.songKey }) else { return }
-        player.setQueue(playable.map { QueueItem(track: $0) }, startAt: start, playlistId: playlist.id)
-    }
-
-    @ViewBuilder
-    private var miniPlayer: some View {
-        if !player.title.isEmpty {
-            VStack(spacing: 6) {
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(player.title).font(.subheadline.bold())
-                        Text(player.artist).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button { player.previous() } label: { Image(systemName: "backward.fill") }
-                    Button { player.toggle() } label: {
-                        Image(systemName: player.playing ? "pause.fill" : "play.fill")
-                    }
-                    Button { player.next() } label: { Image(systemName: "forward.fill") }
-                }
-                if let line = PlaybackStatusText.make(
-                    status: player.playbackStatus,
-                    progress: player.currentSongKey.flatMap { engine.progress[$0] }
-                ) {
-                    HStack(spacing: 6) {
-                        if player.playbackStatus == .preparing { ProgressView().controlSize(.small) }
-                        Text(line.text)
-                            .font(.caption)
-                            .foregroundStyle(line.isError ? Color.red : Color.secondary)
-                        Spacer()
-                    }
-                }
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
-        }
+    /// The playlist as the queue («In coda: Playlist · Road trip»), from the tapped song — or from the top / shuffled.
+    /// A song the server found no source for is left out unless it is already on the phone.
+    private func play(_ songKey: String?, shuffled: Bool, in manifest: OfflineManifest) {
+        guard let queue = LibraryQueueBuilder.make(
+            choice: .playlist(id: playlist.id, name: playlist.name),
+            tracks: manifest.tracks,
+            startAt: songKey,
+            shuffled: shuffled,
+            isLocal: { engine.store.fileURL(songKey: $0) != nil }
+        ) else { return }
+        player.setQueue(queue.items, startAt: queue.startIndex, playlistId: queue.playlistId, label: queue.label)
     }
 }
 

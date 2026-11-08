@@ -7,6 +7,10 @@ struct WinampPlayerView: View {
     @State private var showLyrics = false
     @State private var lyricsDraft = ""
     @State private var editingLyrics = false
+    @State private var showQueue = false
+
+    /// «Scegli dalla Libreria»: the player has nothing to play until something is chosen.
+    var onChoose: () -> Void = {}
 
     var body: some View {
         ZStack {
@@ -40,7 +44,7 @@ struct WinampPlayerView: View {
                         .font(.title2.bold())
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
-                    Text(player.artist.isEmpty ? "Sync una playlist per partire" : player.artist)
+                    Text(player.artist.isEmpty ? "Scegli cosa suonare dalla Libreria" : player.artist)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     statusLine
@@ -94,11 +98,7 @@ struct WinampPlayerView: View {
                     .background(.ultraThinMaterial, in: Capsule())
                 }
 
-                if player.queue.count > 1 {
-                    Text("\(player.index + 1) / \(player.queue.count)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
+                queueButton
 
                 Spacer(minLength: 0)
             }
@@ -107,6 +107,8 @@ struct WinampPlayerView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
+        .sheet(isPresented: $showQueue) { QueueView(onChooseMore: onChoose) }
         .sheet(isPresented: $showLyrics) {
             NavigationStack {
                 Group {
@@ -153,6 +155,37 @@ struct WinampPlayerView: View {
             }
             .presentationDetents([.medium, .large])
         }
+    }
+
+    /// «In coda: Album · Thriller · 3 / 9» (tap: the queue, with the state of every song), or — nothing chosen yet —
+    /// the way to the Libreria.
+    @ViewBuilder
+    private var queueButton: some View {
+        if player.queue.isEmpty {
+            Button(action: onChoose) {
+                Label("Scegli dalla Libreria", systemImage: "music.note.house")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+        } else {
+            Button { showQueue = true } label: {
+                Label(queueTitle, systemImage: "list.bullet")
+                    .font(.footnote.weight(.semibold))
+                    .lineLimit(1)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+            .accessibilityLabel("In coda")
+        }
+    }
+
+    private var queueTitle: String {
+        let position = "\(player.index + 1) / \(player.queue.count)"
+        guard let label = player.queueLabel else { return "In coda · \(position)" }
+        return "In coda: \(label) · \(position)"
     }
 
     /// "Preparo il brano…" / "In streaming · scarico 40 %" / "Dal telefono" / the error.

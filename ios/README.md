@@ -117,7 +117,7 @@ Contratto: `docs/mondrop-stats.md` §1–§4 · decisioni D1–D9: `docs/superpo
 - **Numeri per brano**: `plays` / `lastPlayedAt` del manifest e di `GET /songs/:key` finiscono nell'indice locale; ogni ascolto contato
   (stessa regola del server: `listenedMs ≥ min(30 s, 50 % della durata)`) li aggiorna subito, anche offline. I numeri del server sono su
   **tutti** i dispositivi; gli ascolti di questo telefono non ancora confermati restano in più, così la classifica non torna mai indietro.
-- **Spazio** (Impostazioni → Sync → *Spazio e brani scaricati*, o «Spazio» dalla tab Coda): spazio occupato, brani scaricati con peso / ascolti /
+- **Spazio** (Impostazioni → Sync → *Spazio e brani scaricati*, o «Spazio» dalla tab Libreria): spazio occupato, brani scaricati con peso / ascolti /
   ultimo ascolto; ordinamento *Meno ascoltate* (default: meno ascolti contati, poi ultimo ascolto più vecchio, mai ascoltati per primi),
   *Più pesanti*, *Più vecchie*, *Nome*; selezione multipla; scorciatoie **«Elimina le N meno ascoltate»** (N da 1, default 20),
   **«Libera spazio»** (100 / 250 / 500 MB, 1 GB: toglie i meno ascoltati finché non si libera tanto) e «Elimina i brani non più in nessuna playlist».
@@ -134,6 +134,46 @@ Contratto: `docs/mondrop-stats.md` §1–§4 · decisioni D1–D9: `docs/superpo
 - **Compatibilità**: ogni campo nuovo è opzionale; con un backend senza `plays`/`device-events`/`kind` l'app funziona come prima e gli eventi
   restano in coda (se l'endpoint risponde 404 riprova con backoff).
 - **Test**: stessi comandi di sopra; i test non toccano la rete (`URLProtocol` stub, orologi e trasporti finti).
+
+---
+
+## Libreria, stati e notifiche (2.9.0)
+
+Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/library» e i campi `album` / `genres` / `year`) · ADR-0013 · spec
+`docs/superpowers/specs/2026-11-08-player-selection-and-filters-design.md` (X1–X3).
+
+- **Libreria** (la tab «Coda» è stata sostituita): si sceglie **una playlist, un album, un autore, un tipo** (genere), **un decennio**
+  («Anni 80» = 1980–1989, più «Senza anno») **o un brano**, con la ricerca (le parole in qualsiasi ordine: «Maestro Bassi» trova «Bassi Maestro»).
+  La scelta diventa la coda e resta visibile come **«In coda: Album · Thriller · 3 / 9»**: nel Player, nel mini player in fondo alle schermate e nella
+  schermata «In coda» (ogni brano con il suo stato; tocca per saltarci). Il Player senza coda propone «Scegli dalla Libreria».
+  - *Tocca un brano*: parte quello e la lista che stai guardando è la coda; *tieni premuto* → «Suona solo questo brano» (coda di uno).
+    «Suona» / «Mescola» (con il brano toccato per primo) usano **tutta** la scelta: le pagine successive del server si caricano prima.
+  - *Online* si sfoglia `GET /api/mondrop/library` (filtri `q genre album artist decade`, voci con conteggio, pagine da 100). *Offline* — o con
+    «Solo sul telefono» dal menu — le **stesse regole** girano sui brani scaricati: album / tipo / anno si salvano accanto al file al download e si
+    completano per i file vecchi appena l'app rilegge una playlist o la Libreria. Un file vecchio senza dati sta sotto «Senza anno».
+    Se il server non risponde (rete, backend senza l'endpoint) compare l'avviso e la lista passa ai brani sul telefono: mai una schermata vuota.
+  - Le playlist si aprono come prima (Sync, stati, «Riscarica»…) e ora hanno «Suona» / «Mescola». «Spazio» è nella barra della Libreria.
+- **Stati del download** (sulla riga del singolo brano, ovunque: playlist, Libreria, «In coda»): **spinner** mentre il server prepara il brano o
+  il telefono lo scarica (con **NN %** del trasferimento e la barra), **segno verde** quando è sul telefono; poi *in coda*, *da cercare ·
+  nessuna sorgente trovata* (`no_source`), *errore* con il motivo (del telefono o del server). In cima a ogni schermata una **riga di stato**:
+  «Preparo 3 brani sul server · 1 in download dal telefono · 2 in coda · 1 errore» (anche «In attesa del Wi-Fi»); sparisce quando non succede niente.
+  Il telefono non vede la coda del server: sa che un brano è `preparing` solo quando legge una playlist / la Libreria / aspetta un primo play, e
+  se ne dimentica dopo 2 minuti senza nuove letture (`SyncActivity`). Mentre una lista ha brani in preparazione la schermata la rilegge ogni 5 s (max 10 min).
+- **Notifica a sync finito**: quando un Sync (Sync, Riprova, Riscarica) finisce e l'app **non è in primo piano**, una notifica locale
+  «Sync finito — 12 brani scaricati, 2 errori» (+ «N ancora in preparazione sul server» se il server non ha finito). Interruttore in
+  *Impostazioni → Sync → «Avvisami a sync finito»*, **acceso di default**. Il permesso a iOS si chiede **solo quando serve**: al primo Sync o
+  accendendo l'interruttore (mai a fine sync: da background iOS non mostrerebbe la richiesta). Se è negato o l'app è in primo piano non si
+  notifica niente e **il Sync non si ferma mai**. Il download che parte da solo al primo play **non** è un Sync e non notifica. Il Sync in corso
+  sta in `sync-batch.json`: se iOS risveglia l'app in background per consegnare l'ultimo file, il riepilogo sa ancora quali brani aveva avviato
+  (un file lasciato da un crash di oltre 6 ore fa si scarta). Con una notifica già in lista, quella nuova la sostituisce.
+- **Compatibilità**: `album` / `genres` / `year` sono opzionali ovunque (un backend vecchio non li manda: nessun tipo / «Senza anno»);
+  l'indice, la coda su disco e la descrizione dei task di download delle versioni precedenti si leggono ancora. Spazio con doppia conferma,
+  skip-list, coda eventi di ascolto, playlist dinamiche e logica del primo play non sono cambiati.
+- **Non verificabile senza un dispositivo**: l'arrivo vero della notifica (e il suo permesso), l'ascolto, e il risveglio in background con download
+  finiti mentre l'app era chiusa. I test coprono le decisioni (quando / cosa), la contabilità del Sync e la persistenza con trasporti e centri
+  di notifica finti.
+- **Test** nuovi: costruzione e codifica della query (`+`, `&`, accenti, emoji), lettura delle risposte vecchie e nuove, stati → riga, testo della
+  riga di stato, decisione e testo della notifica, coda da album / autore / decennio / brano / playlist, regole offline = regole del server.
 
 ---
 

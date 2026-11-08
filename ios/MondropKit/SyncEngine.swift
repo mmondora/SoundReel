@@ -58,11 +58,17 @@ public struct JobInfo: Codable, Equatable, Sendable {
     /// Server numbers at the time of the download (docs/mondrop-stats.md §3); optional like every new field.
     public var plays: Int?
     public var lastPlayedAt: String?
+    /// ADR-0013: what the server said about the song, kept with the file so «Libreria» can browse the phone offline.
+    /// Optional: the description of a task started by an earlier build does not have them.
+    public var album: String?
+    public var genres: [String]?
+    public var year: Int?
 
     public init(
         songKey: String, title: String, artist: String, coverUrl: String? = nil, lyrics: String? = nil,
         version: String? = nil, bytes: Int? = nil, kind: String, proxyPath: String? = nil,
-        plays: Int? = nil, lastPlayedAt: String? = nil
+        plays: Int? = nil, lastPlayedAt: String? = nil,
+        album: String? = nil, genres: [String]? = nil, year: Int? = nil
     ) {
         self.songKey = songKey
         self.title = title
@@ -75,6 +81,9 @@ public struct JobInfo: Codable, Equatable, Sendable {
         self.proxyPath = proxyPath
         self.plays = plays
         self.lastPlayedAt = lastPlayedAt
+        self.album = album
+        self.genres = genres
+        self.year = year
     }
 }
 
@@ -104,6 +113,13 @@ public protocol DownloadTransportHandler: AnyObject {
     /// `stagedFile` is already in our own staging directory (the system temp file is gone after the callback).
     func transportFinished(info: JobInfo, stagedFile: URL, httpStatus: Int?)
     func transportFailed(info: JobInfo, message: String, resumeData: Data?, requestURL: URL?, cancelled: Bool)
+}
+
+/// Why a download was queued. Only a `sync` is announced when it ends (SyncBatch): the download a first play starts
+/// in parallel is not.
+public enum DownloadOrigin: Sendable {
+    case sync
+    case play
 }
 
 struct QueuedJob: Codable, Equatable {
@@ -136,18 +152,35 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
     private var failedJobs: [String: QueuedJob] = [:]
     private var userCancelled: Set<String> = []
     private var lastPercent: [String: Int] = [:]
+    private var batch = SyncBatch()
+    private let now: () -> Date
+    /// The queue on disk has been read (relaunch) or replaced by what this run queued. Until then a finished download
+    /// that iOS delivers first must not rewrite the file from an empty in-memory queue — the songs still waiting in it
+    /// would be lost, and with them the end of the sync.
+    private var queueLoaded = false
+
+    /// A sync ended: everything it queued has finished or failed. The app plugs the «Sync finito» notification in here.
+    public var onBatchFinished: (@MainActor (SyncBatchSummary) -> Void)?
 
     public init(
         transport: DownloadTransport,
         store: OfflineStore,
         config: @escaping () -> EngineConfig,
-        persistQueue: Bool = false
+        persistQueue: Bool = false,
+        now: @escaping () -> Date = { Date() }
     ) {
         self.transport = transport
         self.store = store
         self.config = config
         self.persistQueue = persistQueue
+        self.now = now
         transport.handler = self
+        // The sync in progress when the app was last alive (read here, not in `attachExisting`: iOS may deliver a
+        // finished download before the relaunch code has run).
+        if persistQueue, let data = store.readBatchData(),
+           let saved = try? JSONDecoder.batch.decode(SyncBatch.self, from: data), !saved.isStale(now: now()) {
+            batch = saved
+        }
     }
 
     public var activeCount: Int { active.count }
@@ -157,7 +190,8 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
 
     /// Plans (skip-present / adopt / download) and queues the downloads. Idempotent.
     @discardableResult
-    public func enqueue(_ tracks: [OfflineTrack], home: Bool, front: Bool = false) -> SyncPlan {
+    public func enqueue(_ tracks: [OfflineTrack], home: Bool, front: Bool = false, origin: DownloadOrigin = .sync) -> SyncPlan {
+        queueLoaded = true
         let inFlight = Set(active.keys).union(queue.map { $0.track.songKey })
         let plan = SyncPlanner.plan(
             tracks: tracks,
@@ -177,6 +211,11 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
             progress[job.track.songKey] = .queued
         }
         if front { queue.insert(contentsOf: jobs, at: 0) } else { queue.append(contentsOf: jobs) }
+        if origin == .sync {
+            // What the sync asked for: the songs it queues now, plus the ones already on their way (they settle it too).
+            batch.enqueue(jobs.map { $0.track.songKey } + plan.inFlight, at: now())
+            persistBatch()
+        }
         pump()
         persist()
         return plan
@@ -205,8 +244,10 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
         active.removeValue(forKey: songKey)
         progress.removeValue(forKey: songKey)
         failedJobs.removeValue(forKey: songKey)
+        batch.forget(songKey)
         pump()
         persist()
+        finishBatchIfDone()
     }
 
     /// App (re)launch: pick up downloads the background session kept running, and the queue we had not started yet.
@@ -229,8 +270,12 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
                 progress[job.track.songKey] = .queued
             }
         }
+        queueLoaded = true
         pump()
         persist()
+        // A song the old sync was waiting for that is neither running nor queued nor failed any more is done with.
+        batch.reconcile(stillActive: Set(active.keys).union(queue.map { $0.track.songKey }))
+        finishBatchIfDone()
     }
 
     // MARK: - Queue
@@ -249,6 +294,8 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
         guard let first = candidates.first else {
             progress[track.songKey] = .failed("nessun indirizzo di download")
             failedJobs[track.songKey] = job
+            batch.markFailed(track.songKey, message: "nessun indirizzo di download")
+            finishBatchIfDone()
             return
         }
         let info = JobInfo(
@@ -262,7 +309,10 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
             kind: first.kind.rawValue,
             proxyPath: first.kind == .media ? DownloadURLChooser.proxyPath(for: track) : nil,
             plays: track.plays,
-            lastPlayedAt: track.lastPlayedAt
+            lastPlayedAt: track.lastPlayedAt,
+            album: track.album,
+            genres: track.genres.isEmpty ? nil : track.genres,
+            year: track.year
         )
         failedJobs[track.songKey] = job
         launch(info: info, candidate: first, config: cfg)
@@ -300,7 +350,7 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
     }
 
     private func persist() {
-        guard persistQueue else { return }
+        guard persistQueue, queueLoaded else { return }
         store.writeQueueData(queue.isEmpty ? nil : try? JSONEncoder().encode(queue))
     }
 
@@ -364,7 +414,10 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
                     lyrics: info.lyrics,
                     version: info.version,
                     plays: info.plays,
-                    lastPlayedAt: ISO.parse(info.lastPlayedAt)
+                    lastPlayedAt: ISO.parse(info.lastPlayedAt),
+                    album: info.album,
+                    genres: info.genres ?? [],
+                    year: info.year
                 )
             )
             store.clearResumeData(songKey: info.songKey)
@@ -373,13 +426,16 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
             progress.removeValue(forKey: info.songKey)
             lastPercent.removeValue(forKey: info.songKey)
             revision += 1
+            batch.markInstalled(info.songKey)
         } catch {
             try? fm.removeItem(at: stagedFile)
             active.removeValue(forKey: info.songKey)
             progress[info.songKey] = .failed("salvataggio non riuscito")
+            batch.markFailed(info.songKey, message: "salvataggio non riuscito")
         }
         pump()
         persist()
+        finishBatchIfDone()
     }
 
     func handleFailed(info: JobInfo, message: String, resumeData: Data?, requestURL: URL?, cancelled: Bool) {
@@ -408,7 +464,45 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
         active.removeValue(forKey: info.songKey)
         progress[info.songKey] = .failed(message)
         lastPercent.removeValue(forKey: info.songKey)
+        batch.markFailed(info.songKey, message: message)
         pump()
         persist()
+        finishBatchIfDone()
+    }
+
+    // MARK: - «Sync finito»
+
+    private func persistBatch() {
+        guard persistQueue else { return }
+        store.writeBatchData(batch.isEmpty ? nil : try? JSONEncoder.batch.encode(batch))
+    }
+
+    /// Saves the batch, and if everything the sync queued has settled → says so once and starts from a clean batch.
+    private func finishBatchIfDone() {
+        guard batch.isFinished else {
+            persistBatch()
+            return
+        }
+        let summary = batch.summary
+        batch = SyncBatch()
+        persistBatch()
+        onBatchFinished?(summary)
+    }
+}
+
+private extension JSONEncoder {
+    static var batch: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }
+}
+
+private extension JSONDecoder {
+    static var batch: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
     }
 }

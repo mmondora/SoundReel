@@ -65,6 +65,8 @@ public final class LocalAudioPlayer: ObservableObject {
     @Published public private(set) var currentTime: Double = 0
     @Published public private(set) var duration: Double = 0
     @Published public private(set) var playbackStatus: PlaybackStatus = .idle
+    /// What the queue is, in the user's words («Album · Thriller», «Playlist · Road trip»): the «In coda» title.
+    @Published public private(set) var queueLabel: String?
 
     private let store: OfflineStore
     private let api: MondropAPIProtocol
@@ -143,16 +145,18 @@ public final class LocalAudioPlayer: ObservableObject {
     // MARK: - Queue
 
     /// `playlistId`: the playlist the user started this queue from (recorded with every listen), nil otherwise.
-    public func setQueue(_ items: [QueueItem], startAt: Int = 0, playlistId: String? = nil) {
+    /// `label`: what the user chose («Album · Thriller»), shown as «In coda».
+    public func setQueue(_ items: [QueueItem], startAt: Int = 0, playlistId: String? = nil, label: String? = nil) {
         queue = items
         queuePlaylistId = playlistId
+        queueLabel = label
         guard !items.isEmpty else { return }
         play(at: min(max(0, startAt), items.count - 1))
     }
 
-    /// Local-only convenience (the "Coda offline" tab).
+    /// Local-only convenience: everything downloaded on the phone, as one explicit choice («Sul telefono»).
     public func setQueue(local items: [OfflineStore.Item], startAt: Int = 0) {
-        setQueue(items.map { QueueItem(local: $0) }, startAt: startAt, playlistId: nil)
+        setQueue(items.map { QueueItem(local: $0) }, startAt: startAt, playlistId: nil, label: LibraryChoice.onPhone.label)
     }
 
     public func play(at i: Int) {
@@ -197,12 +201,15 @@ public final class LocalAudioPlayer: ObservableObject {
         case .local(let url):
             start(sources: [PlaybackSource(url: url, headers: [:], kind: nil)], status: .local)
         case .stream(let sources, let download):
-            SyncEngine.shared.enqueue([download], home: home, front: true)   // in parallel, for next time
+            SyncEngine.shared.enqueue([download], home: home, front: true, origin: .play)   // in parallel, for next time
             start(sources: sources, status: .streaming)
         case .streamWithoutDownload(let sources):
             start(sources: sources, status: .streaming)
         case .prepare(let track):
             playbackStatus = .preparing
+            // The line at the top says «Preparo 1 brano sul server» while the user waits for this one.
+            SyncActivity.shared.markPreparing(track.songKey)
+            defer { SyncActivity.shared.clear(track.songKey) }
             do {
                 let ready = try await PlaybackPreparation.awaitReady(track, api: api)
                 guard !Task.isCancelled, index == i else { return }
@@ -211,7 +218,7 @@ public final class LocalAudioPlayer: ObservableObject {
                 case .local(let url):
                     start(sources: [PlaybackSource(url: url, headers: [:], kind: nil)], status: .local)
                 case .stream(let sources, let download):
-                    SyncEngine.shared.enqueue([download], home: home, front: true)
+                    SyncEngine.shared.enqueue([download], home: home, front: true, origin: .play)
                     start(sources: sources, status: .streaming)
                 case .streamWithoutDownload(let sources):
                     start(sources: sources, status: .streaming)
