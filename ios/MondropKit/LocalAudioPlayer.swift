@@ -99,6 +99,8 @@ public final class LocalAudioPlayer: ObservableObject {
     private let snapshots: QueueSnapshotStore
     private let lyricsLoader: LyricsLoader
     private var lyricsTask: Task<Void, Never>?
+    /// For the tests: the question being asked for the song that plays (nil when none), to wait for its answer instead of guessing how long it takes.
+    var lyricsWork: Task<Void, Never>? { lyricsTask }
     /// Where the user was inside the song a restored queue points at: applied once, when that song starts, never before.
     private var pendingResume: (songKey: String, seconds: Double)?
     private var lastPositionSave = Date.distantPast
@@ -364,8 +366,11 @@ public final class LocalAudioPlayer: ObservableObject {
         return ("", .none)
     }
 
-    /// The words of the song that starts: what the user typed, what the phone has, what it kept of an earlier find and — when there is
-    /// nothing — what SoundReel finds (ADR-0021). A song that changed meanwhile never takes the words of another.
+    /// The words of the song that starts: what the user typed (never asked, never replaced), what the phone kept of an earlier find and —
+    /// otherwise — what SoundReel says (ADR-0021). The transcript the sync brought shows at once, but SoundReel is asked anyway: it
+    /// decides what is the words of a song (a transcript that is only a fragment gives way to the text it finds, spec L12) and the
+    /// phone keeps its own copy when SoundReel cannot be reached or has nothing. A song that changed meanwhile never takes the words
+    /// of another.
     private func loadLyrics(for entry: QueueItem) {
         lyricsTask?.cancel()
         lyricsTask = nil
@@ -373,19 +378,19 @@ public final class LocalAudioPlayer: ObservableObject {
         let local = Self.localLyrics(for: entry, store: store)
         lyrics = local.text
         lyricsOrigin = local.origin
-        guard local.origin == .none else { return }
+        guard local.origin != .typed else { return }
         if let kept = lyricsLoader.cached(songKey: entry.songKey) {
             applyFound(kept)
             return
         }
-        lyricsSearching = true
+        lyricsSearching = local.origin == .none          // «Cerco il testo…» only when there is nothing to read meanwhile
         let key = entry.songKey
         lyricsTask = Task { [weak self] in
             let found = await self?.lyricsLoader.fetch(songKey: key)
             guard let self, !Task.isCancelled, self.currentSongKey == key else { return }
             self.lyricsSearching = false
             // The user may have typed words while SoundReel was being asked: they stay.
-            if let found, self.lyricsOrigin == .none { self.applyFound(found) }
+            if let found, self.lyricsOrigin != .typed { self.applyFound(found) }
         }
     }
 

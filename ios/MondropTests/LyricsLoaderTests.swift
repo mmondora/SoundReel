@@ -64,11 +64,29 @@ final class LyricsLoaderTests: XCTestCase {
         XCTAssertEqual(transport.asked.count, 1)
     }
 
-    func testTheTranscriptOfThePostIsKeptWithItsSource() async {
+    // Spec L12: an answer «the transcript of the post» can be only a fragment, and the Internet may have the text tomorrow: it is not kept.
+    func testATranscriptAnswerIsGivenButNotKeptSoItIsAskedAgain() async {
         let transcript = SongLyrics(text: "quello che dice il video", source: .transcript)
-        let (l, _) = loader([.success(transcript)])
-        _ = await l.fetch(songKey: "a::b")
-        XCTAssertEqual(l.cached(songKey: "a::b")?.source, .transcript)
+        let (l, transport) = loader([.success(transcript), .success(words)])
+        let first = await l.fetch(songKey: "a::b")
+        XCTAssertEqual(first, transcript, "the answer itself is given")
+        XCTAssertNil(l.cached(songKey: "a::b"), "…but not kept: it can be a fragment")
+        let second = await l.fetch(songKey: "a::b")
+        XCTAssertEqual(second, words, "asked again: by now the server may have the text")
+        XCTAssertEqual(transport.asked.count, 2)
+        XCTAssertEqual(l.cached(songKey: "a::b"), words, "a text found is kept")
+    }
+
+    func testATranscriptKeptByAnEarlierBuildIsNotBelieved() async throws {
+        // Build 10 kept every answer, transcripts included: such a file must not stop the app from asking.
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let old = SongLyrics(text: "frammento del post", source: .transcript)
+        try JSONEncoder().encode(old).write(to: dir.appendingPathComponent(LyricsLoader.fileStem("a::b") + ".json"))
+        let (l, transport) = loader([.success(words)])
+        XCTAssertNil(l.cached(songKey: "a::b"))
+        let found = await l.fetch(songKey: "a::b")
+        XCTAssertEqual(found, words)
+        XCTAssertEqual(transport.asked.count, 1)
     }
 
     // MARK: «no words»

@@ -1,8 +1,9 @@
 import XCTest
 @testable import Mondrop
 
-/// The player and the words of a song (ADR-0021, spec 2026-11-08-lyrics-from-the-internet-design.md L1, L8): what the user typed wins, then
-/// what the phone has, then what SoundReel finds; a song that changed meanwhile never takes the words of another.
+/// The player and the words of a song (ADR-0021, spec 2026-11-08-lyrics-from-the-internet-design.md L1, L8, L12): what the user typed wins
+/// (never asked, never replaced); the transcript the sync brought shows at once but SoundReel decides what the words are (a fragment gives
+/// way to the text it finds); a song that changed meanwhile never takes the words of another.
 @MainActor
 final class LyricsPlayerTests: XCTestCase {
     private var dir: URL!
@@ -121,12 +122,87 @@ final class LyricsPlayerTests: XCTestCase {
         XCTAssertEqual(transport.asked, [])
     }
 
-    func testTheWordsTheSyncBroughtAreTheTranscriptAndNothingIsAsked() async {
-        let transport = FakeLyricsTransport([.success(words)])
+    // MARK: what the sync brought (spec L12: SoundReel decides what the words of a song are)
+
+    func testTheTranscriptTheSyncBroughtShowsAtOnceAndSoundReelIsAskedAnyway() async throws {
+        let transport = FakeLyricsTransport([.success(words)], held: true)
         let (player, _, _) = make(transport)
-        player.setQueue([item("a::b", lyrics: "la trascrizione del post")], startAt: 0, autoplay: false)
-        XCTAssertEqual(player.lyrics, "la trascrizione del post")
+        player.setQueue([item("a::b", lyrics: "frammento del post")], startAt: 0, autoplay: false)
+        XCTAssertEqual(player.lyrics, "frammento del post", "no waiting: what the sync brought is there at once")
         XCTAssertEqual(player.lyricsOrigin, .transcript)
+        XCTAssertFalse(player.lyricsSearching, "there is something to read: no «Cerco il testo…»")
+        let work = try XCTUnwrap(player.lyricsWork, "SoundReel is asked even though the phone has a transcript")
+        await settle { !transport.asked.isEmpty }
+        XCTAssertEqual(transport.asked, ["a::b"])
+        transport.release()
+        await work.value
+        XCTAssertEqual(player.lyrics, words.text, "a fragment gives way to the text SoundReel found")
+        XCTAssertFalse(player.lyricsSearching)
+    }
+
+    func testTheTranscriptSoundReelGivesReplacesTheOneTheSyncBrought() async throws {
+        let latest = SongLyrics(text: "la trascrizione di adesso, più lunga di quella di prima", source: .transcript)
+        let transport = FakeLyricsTransport([.success(latest)])
+        let (player, _, _) = make(transport)
+        player.setQueue([item("a::b", lyrics: "quella di prima")], startAt: 0, autoplay: false)
+        await (try XCTUnwrap(player.lyricsWork)).value
+        XCTAssertEqual(player.lyrics, latest.text)
+        XCTAssertEqual(player.lyricsOrigin, .transcript)
+    }
+
+    func testTheTranscriptTheSyncBroughtStaysWhenSoundReelHasNothing() async throws {
+        let transport = FakeLyricsTransport([.success(nil)])
+        let (player, _, _) = make(transport)
+        player.setQueue([item("a::b", lyrics: "frammento del post")], startAt: 0, autoplay: false)
+        await (try XCTUnwrap(player.lyricsWork)).value                    // the answer has been given and dealt with
+        XCTAssertEqual(transport.asked, ["a::b"])
+        XCTAssertEqual(player.lyrics, "frammento del post", "«nothing» from the server does not erase what the phone has")
+        XCTAssertEqual(player.lyricsOrigin, .transcript)
+    }
+
+    func testTheTranscriptTheSyncBroughtStaysWhenSoundReelCannotBeReached() async throws {
+        let transport = FakeLyricsTransport([.failure(MondropAPIError.transport("offline"))])
+        let (player, _, _) = make(transport)
+        player.setQueue([item("a::b", lyrics: "frammento del post")], startAt: 0, autoplay: false)
+        await (try XCTUnwrap(player.lyricsWork)).value
+        XCTAssertEqual(transport.asked, ["a::b"])
+        XCTAssertEqual(player.lyrics, "frammento del post", "offline, the song keeps the words it has")
+        XCTAssertEqual(player.lyricsOrigin, .transcript)
+    }
+
+    func testWordsTypedWhileSoundReelIsAskedStayEvenWhenThePhoneHadTheTranscript() async throws {
+        let transport = FakeLyricsTransport([.success(words)], held: true)
+        let (player, _, _) = make(transport)
+        player.setQueue([item("a::b", lyrics: "frammento del post")], startAt: 0, autoplay: false)
+        let work = try XCTUnwrap(player.lyricsWork)
+        await settle { !transport.asked.isEmpty }
+        player.setLyrics("scritto mentre aspettavo")
+        transport.release()
+        await work.value                                                   // the answer comes, after the user typed
+        XCTAssertEqual(player.lyrics, "scritto mentre aspettavo")
+        XCTAssertEqual(player.lyricsOrigin, .typed)
+    }
+
+    func testWhatThePhoneKeptOfAFindBeatsTheTranscriptTheSyncBroughtAndNothingIsAsked() async {
+        let first = FakeLyricsTransport([.success(words)])
+        let (_, loader, _) = make(first)
+        _ = await loader.fetch(songKey: "a::b")                                   // an earlier find, kept in Caches
+        let offline = FakeLyricsTransport([.failure(MondropAPIError.transport("offline"))])
+        let (player, _, _) = make(offline)
+        player.setQueue([item("a::b", lyrics: "frammento del post")], startAt: 0, autoplay: false)
+        XCTAssertEqual(player.lyrics, words.text, "the text SoundReel found beats the fragment the sync brought")
+        XCTAssertEqual(player.lyricsOrigin, .internet)
+        await settle { !offline.asked.isEmpty }
+        XCTAssertEqual(offline.asked, [])
+    }
+
+    func testTheTypedWordsAreNotAskedEvenWhenThePhoneHasATranscriptToo() async {
+        let transport = FakeLyricsTransport([.success(words)])
+        let (player, _, store) = make(transport)
+        store.saveLyrics(songKey: "a::b", text: "il mio testo")
+        player.setQueue([item("a::b", lyrics: "frammento del post")], startAt: 0, autoplay: false)
+        XCTAssertEqual(player.lyrics, "il mio testo")
+        XCTAssertEqual(player.lyricsOrigin, .typed)
         await settle { !transport.asked.isEmpty }
         XCTAssertEqual(transport.asked, [])
     }
@@ -148,7 +224,8 @@ final class LyricsPlayerTests: XCTestCase {
 
     func testASongThatChangedMeanwhileNeverTakesTheWordsOfAnother() async {
         let other = SongLyrics(text: "Le parole dell'altra canzone", source: .internet)
-        let transport = FakeLyricsTransport([.success(words), .success(other)], held: true)
+        // Each song has its own words: two held questions released together are answered in no fixed order.
+        let transport = FakeLyricsTransport(bySong: ["a::b": .success(words), "c::d": .success(other)], held: true)
         let (player, _, _) = make(transport)
         player.setQueue([item("a::b"), item("c::d")], startAt: 0, autoplay: false)       // asks for a::b, held
         player.setQueue([item("a::b"), item("c::d")], startAt: 1, autoplay: false)       // the user skipped: asks for c::d, held

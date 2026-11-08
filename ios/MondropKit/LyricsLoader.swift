@@ -3,8 +3,10 @@
 // parole» and, asked whether the words should be searched on the Internet when they are missing: «Sì, cercale su Internet».
 //
 // The SERVER finds them (the transcript of the post when there is one, else what it found and kept) and the app asks SoundReel — and
-// only SoundReel (rule P): it never talks to an archive of lyrics. What the phone has seen it keeps (Caches, like the covers), so a
-// song shows its words offline too; «no words» is remembered for a day, an unreachable server is not an answer and is asked again.
+// only SoundReel (rule P): it never talks to an archive of lyrics. What SoundReel FOUND (a text from the Internet, an instrumental) the
+// phone keeps (Caches, like the covers), so a song shows its words offline too; its answers «the transcript of the post» it does not
+// keep (spec L12: they may be only a fragment, and the server will have a text when the Internet does: asked again). «No words» is
+// remembered for a day, an unreachable server is not an answer and is asked again.
 
 import Foundation
 #if canImport(CryptoKit)
@@ -85,10 +87,15 @@ public final class LyricsLoader: @unchecked Sendable {
 
     // MARK: - What the phone already has
 
+    /// What the phone keeps is what SoundReel FOUND: a text from the Internet or an instrumental. An answer «transcript» is not kept
+    /// (spec L12): it can be a fragment that the Internet will have a text for. A file an earlier build wrote for one is not believed.
+    static func isKept(_ lyrics: SongLyrics) -> Bool { lyrics.source == .internet || lyrics.instrumental }
+
     /// The words the phone kept for the song (an earlier find), or nil. No network: safe to call at once when a song starts.
     public func cached(songKey: String) -> SongLyrics? {
-        guard let data = try? Data(contentsOf: file(songKey, "json")) else { return nil }
-        return try? JSONDecoder().decode(SongLyrics.self, from: data)
+        guard let data = try? Data(contentsOf: file(songKey, "json")),
+              let kept = try? JSONDecoder().decode(SongLyrics.self, from: data), Self.isKept(kept) else { return nil }
+        return kept
     }
 
     // MARK: - Asking SoundReel
@@ -144,6 +151,7 @@ public final class LyricsLoader: @unchecked Sendable {
     }
 
     private func keep(_ songKey: String, _ lyrics: SongLyrics) {
+        guard Self.isKept(lyrics) else { return }          // the transcript of the post is asked again (spec L12)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try JSONEncoder().encode(lyrics).write(to: file(songKey, "json"), options: .atomic)
