@@ -1,7 +1,7 @@
 # ADR-0021: The server finds the lyrics on the Internet when a song has none, keeps them and serves them; the clients only ask SoundReel
 
 ## Status
-**Accepted** (8 November 2026), SoundReel 2.19.0 is **in production since 8 November 2026, 20:13** (Michele: «Sì, deploy ora»; 162 read-only post-deploy checks passed; two real songs found on the Internet, three served from their post transcript); Mondrop 1.7.0 (build 10) is built and tested. Michele answered the open question of ADR-0019 («Sì, cercale su Internet»).
+**Accepted** (8 November 2026), SoundReel 2.19.0 is **in production since 8 November 2026, 20:13** (Michele: «Sì, deploy ora»; 162 read-only post-deploy checks passed; two real songs found on the Internet, three served from their post transcript); Mondrop 1.7.0 (build 10) is on TestFlight since 20:17 (Michele: «Sì, carica la build 10»). Michele answered the open question of ADR-0019 («Sì, cercale su Internet»).
 
 ## Date
 2026-11-08
