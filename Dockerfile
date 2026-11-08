@@ -1,17 +1,30 @@
 ARG NODE_VERSION=20
 
+# ---------- Dependency manifests, without the release number ----------
+# A version bump rewrote package.json and the lock file and, with them, the cache key of every `npm install` below:
+# three installs per release, about five minutes, against the 300 s the deploy watcher gives a build (2.9.1 needed a
+# manual warm-up). The stages below take their manifests from here, byte-identical from one release to the next, so
+# the installs stay cached until a dependency really changes. See docker/strip-version.cjs.
+FROM node:${NODE_VERSION}-bookworm-slim AS manifests
+WORKDIR /m
+COPY docker/strip-version.cjs /strip-version.cjs
+COPY backend/package.json backend/package-lock.json* ./backend/
+COPY frontend/package.json frontend/package-lock.json ./frontend/
+RUN node /strip-version.cjs backend/package.json backend/package-lock.json frontend/package.json frontend/package-lock.json
+
 # ---------- Frontend build ----------
 FROM node:${NODE_VERSION}-bookworm-slim AS frontend-build
 WORKDIR /app/frontend
-COPY frontend/package.json frontend/package-lock.json ./
+COPY --from=manifests /m/frontend/ ./
 RUN npm ci --no-fund --no-audit
+# the real package.json comes with the sources (vite reads the version from it)
 COPY frontend/ ./
 RUN npm run build
 
 # ---------- Backend build ----------
 FROM node:${NODE_VERSION}-bookworm-slim AS backend-build
 WORKDIR /app/backend
-COPY backend/package.json backend/package-lock.json* ./
+COPY --from=manifests /m/backend/ ./
 RUN npm install --no-fund --no-audit
 COPY backend/tsconfig.json ./
 COPY backend/src ./src
@@ -45,9 +58,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # returns nothing (see services/claudeFallback.ts)
 RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force
 
-# Install prod deps only
-COPY backend/package.json backend/package-lock.json* ./
+# Install prod deps only (from the manifests without the release number: see the first stage)
+COPY --from=manifests /m/backend/ ./
 RUN npm install --omit=dev --no-fund --no-audit && npm cache clean --force
+# The real manifest (the release number the app reports) goes in after the install, where it invalidates nothing.
+COPY backend/package.json ./package.json
 
 # Compiled backend
 COPY --from=backend-build /app/backend/dist ./dist
