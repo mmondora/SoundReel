@@ -1,7 +1,7 @@
 # ADR-0017: One identity per thing, and every card links back to the post it came from
 
 ## Status
-**Accepted** for the entry rules, the collapse of software and films, the post links and the merge script (spec D1–D4, D6); built in 2.11.0 (not yet deployed; the merge has not been run). The treatment of song versions (D5) is **Accepted** since Michele answered on 8 November («Versione di»: separate cards that link to the original); it is built in the release after 2.11.0.
+**Accepted** for the entry rules, the collapse of software and films, the post links and the merge script (spec D1–D4, D6); 2.11.0 is deployed and the merge was run on 8 November (9 groups, 9 entries united, 1700 to 1691, backup kept outside the container). The treatment of song versions (D5) is **Accepted** since Michele answered on 8 November («Versione di»: separate cards that link to the original); it is built in 2.12.0 (built, not yet deployed).
 
 ## Date
 2026-11-08
@@ -25,7 +25,7 @@ Measured on the real journal that day (1,700 entries): 9 entries are the same In
 3. **An entry is unique per user and post, and its creation is atomic** (D2): a lock per (owner, post key) around "look up, then create" in every creation path, so two shares at the same instant make one entry. The existing lookup (clean URL, then Instagram shortcode) stays.
 4. **The 9 historical duplicates are merged once**, by `scripts/mergeDuplicateEntries.ts` (dry run by default, a backup, Michele's OK to run it): the oldest entry with data is kept; songs, films, notes, software, tags, links, shares and the action log are united (the keeper's copy of the same song, film or software is completed, never overwritten); every table that points at an entry (`entry_shares`, `job_queue`, `inbox_items`, `share_intents`, `spooty_requests`, `logs`) is moved to the keeper before the duplicate is deleted (`job_queue` has no cascade). One transaction per group, rows locked and read again inside it, a group with a job running is skipped. Nothing outside the journal is touched (D6): MP3 files, playlists and the library stay as they are; the duplicate's `/media/<id>/` files are not copied and go with the orphan cleanup after 7 days. The backup is written to `/tmp` in the container, never under `/data/media` (served over HTTP, and cleaned after 7 days), and copied out by hand.
 5. **Software has one main link** (D4): a verified forge repository, else the official site, else any; the others are kept as "other links"; placeholder URLs are dropped; tags merge.
-6. **Versions with different audio** (instrumental, slowed, live, remix, acoustic, cover, karaoke) stay separate cards that carry "Versione di <original>" with a link to the original (D5, accepted by Michele on 8 November; the link sits next to the "×N menzioni" count, which still opens the journal entry). Decided, not built in 2.11.0.
+6. **Versions with different audio** (instrumental, slowed, live, remix, acoustic, cover, karaoke) stay separate cards that carry "Versione di <original>" with a link to the original (D5, accepted by Michele on 8 November; the link sits next to the "×N menzioni" count, which still opens the journal entry). Built in 2.12.0 as `versionOf` on each aggregated song (`services/songVersions.ts`, read time, song key unchanged): 94 of 796 songs on the real journal, 9 of them linked to an original.
 
 ## 3. Alternatives considered
 | Option | Why not |

@@ -170,13 +170,14 @@ Spec `docs/superpowers/specs/2026-11-08-web-mobile-ux-design.md` (solo interfacc
 - **Scheda «Posta»** in Mondrop: condivisioni ricevute (non scadono) e notifiche (**spariscono dopo 3 giorni, tranne gli errori**, che restano finché non li tolgo io o il link non riesce).
 - Domande aperte per Michele: che altro del foglio non piace? Le notifiche a 3 giorni vanno bene? (L'account Apple è a pagamento: chiusa.) I default adottati sono nella spec, §7.
 
-## In corso — Niente duplicati e il link al post su ogni card (richiesta 2026-11-08)
+## Fatto e in corso — Niente duplicati, il link al post su ogni card, «Versione di» (richiesta 2026-11-08)
 
 Spec `docs/superpowers/specs/2026-11-08-no-duplicates-and-post-links-design.md`, ADR-0017. Richiesta di Michele: entry, canzoni, software, film «non devono essere duplicate (al massimo si mette un link all'originale)» e «nelle card dei media trovati, compreso il software, voglio anche il link al post. Es 5 canzoni sono state estratte dallo stesso link».
-- **Misurato sul journal reale:** 9 entry doppie (Instagram, forme d'URL diverse), 10 card software in più (stesso prodotto con URL, tag e grafie diversi, anche URL segnaposto), 14 film e 8 canzoni sotto più grafie; nessuna card porta il link al post.
-- **Costruito per la 2.11.0 (nel repository, non distribuito):** un software = una card e un film = una card (alla lettura, senza migrazione: software 207 → 197, film 635 → 631 sul journal reale); ogni menzione porta `sourceUrl` e le card di canzoni, film, software e note mostrano «Dal post»; creazione delle entry atomica (un blocco per utente e post); `scripts/mergeDuplicateEntries.ts` per le 9 entry doppie, provato su un Postgres vero e in anteprima sul journal reale (**non lanciato**).
-- **Aspetta Michele:** l'OK al deploy della 2.11.0; l'OK a lanciare la fusione (dopo aver visto l'anteprima: 9 gruppi, nessun file perso); le versioni delle canzoni (D5: card separate con «Versione di…» o righe nella card originale; le canzoni restano come sono finché non decide); il link al post accanto o al posto del link alla entry.
-- Poi: copiare fuori dal container la copia di sicurezza della fusione; rivedere la pagina Software dopo il riempimento dei software citati (`backfillSoftware`), che aggiunge voci e quindi nuove occasioni di doppione.
+- **2.11.0, distribuita l'8 novembre:** un software = una card e un film = una card (alla lettura, senza migrazione); ogni menzione porta `sourceUrl` e le card di canzoni, film, software e note mostrano «Dal post»; creazione delle entry atomica (un blocco per utente e post); **fusione delle 9 entry doppie eseguita** (1700 → 1691, copia di sicurezza fuori dal container); il Dockerfile non rifà più chromium a ogni deploy.
+- **2.12.0, distribuita l'8 novembre:** «Versione di «Titolo»» sulle card delle canzoni (risposta di Michele: «3 si ( Versione di )»; 95 canzoni su 796, 9 collegate a un originale), l'indirizzo di post con un carattere di troppo ora si apre (e la riga è stata corretta), `scripts/fixSongIdentity.ts` (applicato: 3 correzioni su 2 entry, chieste dall'agente Mac) e `scripts/retag_mp3.py` (applicato: tag ID3 dei 39 file «Edmea»).
+- **Eseguito con l'OK di Michele:** il riempimento dei software citati (701 entry su 934, 1.370 voci).
+- **Aspetta Michele:** la qualità del riempimento dei software (circa una voce su sei è rumore: tenerlo, restringere il filtro alla lettura o annullarlo, che è preciso perché ogni entry toccata è segnata); il gruppo esterno per Sara e Archi su TestFlight (serve una chiave API con ruolo Admin, oppure il sito).
+- Poi: rivedere le 10 canzoni con un handle Instagram che sono in realtà album registrati come canzoni («Moon Safari», «Dummy», «Endtroducing»…); rivedere la pagina Software dopo il riempimento.
 
 ## In corso — Mondrop su TestFlight, il gruppo «Family» come tester (richiesta 2026-11-08)
 

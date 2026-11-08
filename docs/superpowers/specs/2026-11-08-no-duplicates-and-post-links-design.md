@@ -1,7 +1,7 @@
 # Niente duplicati, e il link al post su ogni card (richiesta 2026-11-08)
 
 - **Data:** 2026-11-08
-- **Stato:** **Costruito, non ancora distribuito** (SoundReel 2.11.0, aspetta l'OK di Michele al deploy). Le decisioni D1–D4 e D6 sono costruite con i default sotto; **D5 (le versioni delle canzoni) è deciso da Michele («Versione di») e si costruisce dopo**; la **fusione delle 9 entry doppie** è uno script pronto e provato (sezione 6): Michele ha dato l'OK a lanciarla dopo il deploy. Identità delle entry e dei media toccano i dati (**ADR-0017**).
+- **Stato:** **2.11.0 distribuita l'8 novembre** (entry uniche e atomiche, un software e un film = una card, «Dal post» su ogni card) e **la fusione delle 9 entry doppie eseguita** (9 gruppi, 9 entry unite, nessun gruppo saltato, nessun errore; 1700 → 1691 entry; copia di sicurezza fuori dal container). **D5, «Versione di …»: costruito (2.12.0, non ancora distribuito, aspetta l'OK di Michele al deploy).** Identità delle entry e dei media toccano i dati (**ADR-0017**).
 - **Owner:** Michele
 - **Correlati:** `adr/0017-one-identity-per-thing-and-cards-link-back-to-the-post.md`, `docs/superpowers/specs/2026-11-07-multi-user-authelia-design.md` (le entry sono private per utente), ADR-0011 (la chiave normalizzata `normKey`)
 
@@ -29,7 +29,7 @@
 | D2 | **Entry uniche** | Una entry per utente e per post. La creazione diventa **atomica** (un blocco per chiave del post: due condivisioni insieme non fanno due entry). Le **9 entry doppie** si fondono con uno script una tantum (`--dry-run`, copia di sicurezza, un OK di Michele prima di lanciarlo): resta la più vecchia con dati, si uniscono canzoni, film, note, software, tag, link, condivisioni e registro azioni, e si cancella il doppione (come è costruito: sezione 6) |
 | D3 | **Il link al post sulle card** | Ogni menzione porta anche `sourceUrl` e `sourcePlatform`. Le card di **canzoni, film, software e note** mostrano «Dal post» con un link per menzione (fino a 3, poi «+N»), che apre il **post originale** in una nuova scheda; il «×N menzioni» continua a portare alla entry nel journal. Cinque canzoni dello stesso post hanno lo stesso link |
 | D4 | **Software: un solo link principale** | Il link principale è, in ordine, un **repository verificato** (GitHub, GitLab, Codeberg), il sito ufficiale, un altro; gli altri URL restano come «Altri link». Gli **URL segnaposto** (`…/...`, `your-…`, `example`, `<…>`) si scartano; i tag si fondono (`repo` se c'è un repo) |
-| D5 | **Versioni delle canzoni** *(confermato da Michele l'8 novembre: «Versione di»; si costruisce dopo la 2.11.0, sezione 7)* | Instrumental, slowed / sped up, live, remix, acoustic, cover, karaoke sono **audio diversi**: restano card separate ma portano **«Versione di <originale>»** con il link alla canzone originale. `feat.`, `Official Video`, `Lyrics`, `Remastered` sono la stessa canzone (D1) |
+| D5 | **Versioni delle canzoni** *(confermato da Michele l'8 novembre: «Versione di»; costruito nella 2.12.0, sezione 7)* | Instrumental, slowed / sped up, live, remix, acoustic, cover, karaoke sono **audio diversi**: restano card separate ma portano **«Versione di <originale>»** con il link alla canzone originale. `feat.`, `Official Video`, `Lyrics`, `Remastered` sono la stessa canzone (D1) |
 | D6 | **Niente si cancella dai file** | La fusione riguarda le schede e le voci del journal, mai gli MP3, le playlist o la libreria |
 
 ## 4. Test
@@ -47,13 +47,13 @@ Risposta testuale di Michele all'elenco di cinque domande (deploy, fusione, D5, 
 
 1. **Deploy della 2.11.0: sì, e commit** (commit e push dopo il deploy, come nella sua regola).
 2. **Fusione delle 9 entry doppie: sì**, dopo il deploy, con l'anteprima e la copia di sicurezza (sezione 6).
-3. **D5, le versioni delle canzoni: sì, «Versione di …».** Instrumental, slowed, sped up, live, remix, acoustic, cover, karaoke restano **card separate** che portano **«Versione di <originale>»** con il link alla canzone originale (non righe dentro la card originale). Non è nella 2.11.0: è la release successiva, e vale la regola «nessun deploy senza un OK nuovo». Come si costruisce: sezione 7.
+3. **D5, le versioni delle canzoni: sì, «Versione di …».** Instrumental, slowed, sped up, live, remix, acoustic, cover, karaoke restano **card separate** che portano **«Versione di <originale>»** con il link alla canzone originale (non righe dentro la card originale). Non è nella 2.11.0: è la 2.12.0 (costruita, non distribuita: vale la regola «nessun deploy senza un OK nuovo»). Come è costruito: sezione 7.
 4. **Il link al post sta accanto a «×N menzioni»** (com'è costruito), non al posto del link alla entry del journal.
 5. **Riempimento dei software citati (`backfillSoftware`): sì.** «Se serve usi vulcano»: il lavoro del modello passa già dal gpu-router, che preferisce vulcano (poi archi-PC, poi GEEKOM); i dati non escono dal journal e il lavoro è tutto locale.
 
 ## 6. La fusione delle entry doppie, com'è costruita (`backend/src/scripts/mergeDuplicateEntries.ts`)
 
-**Cosa vedrebbe Michele (anteprima sul journal reale, 8 novembre, nessuna modifica):** 9 gruppi, 9 entry in più. Otto sono coppie `completed` della stessa reel con forme d'URL diverse; una è una story Instagram, entrambe in `error`, senza niente dentro (`stories/spiritmoderna/3885815053622458244`). In ogni gruppo la tenuta ha già la miniatura e le slide sono tante quante quelle del doppione: **nessun avviso di file persi**. I doppioni portano 0–3 job (tutti `done` o `failed`, nessuno in coda né in corso) e fino a 45 righe di log, nessuna condivisione, avviso, intenzione o richiesta Spooty.
+**Cosa ha fatto (anteprima sul journal reale e poi esecuzione, 8 novembre; l'anteprima nel container ha dato lo stesso piano approvato):** 9 gruppi, 9 entry in più. Otto sono coppie `completed` della stessa reel con forme d'URL diverse; una è una story Instagram, entrambe in `error`, senza niente dentro (`stories/spiritmoderna/3885815053622458244`). In ogni gruppo la tenuta ha già la miniatura e le slide sono tante quante quelle del doppione: **nessun avviso di file persi**. I doppioni portano 0–3 job (tutti `done` o `failed`, nessuno in coda né in corso) e fino a 45 righe di log, nessuna condivisione, avviso, intenzione o richiesta Spooty.
 
 **Regole (decise costruendo, nel solco di D2):**
 - **Chi resta:** la entry **più vecchia che ha dati** (canzoni, film, note, software, un riassunto o una trascrizione); se nessuna ha dati, la più vecchia completata; altrimenti la più vecchia. Perché la più vecchia: il suo id è quello che un messaggio di Telegram, una condivisione o un segnalibro hanno più probabilità di avere già in mano. Il gruppo è «stesso utente + stesso post» (`postKey`): mai fra utenti diversi.
@@ -67,7 +67,7 @@ Risposta testuale di Michele all'elenco di cinque domande (deploy, fusione, D5, 
 - **Una transazione per gruppo:** le righe si bloccano e si **rileggono dentro la transazione** (il lotto di ri-analisi in corso scrive sulle entry), il piano si rifà sulle righe fresche; **un gruppo con un job in corso si salta**, non si forza (un solo gruppo saltato non ferma gli altri); un errore su un gruppo fa `ROLLBACK` di quel gruppo e il resto continua; uscita non zero se c'è stato un errore.
 - Rilanciarlo è sicuro: dopo la fusione non restano gruppi da unire.
 
-## 7. D5 — «Versione di …» (deciso da Michele l'8 novembre; si costruisce dopo la 2.11.0)
+## 7. D5 — «Versione di …» (deciso da Michele l'8 novembre; costruito nella 2.12.0)
 
 **Richiesta (sua risposta):** le versioni delle canzoni restano card separate con **«Versione di <originale>»** e il link alla canzone originale; il link al post sta accanto a «×N menzioni».
 
@@ -80,3 +80,7 @@ Risposta testuale di Michele all'elenco di cinque domande (deploy, fusione, D5, 
 - **V4 · La card** mostra «Versione di «Titolo»» (con il link all'originale quando c'è: apre la pagina Canzoni filtrata su quel titolo) più i tipi riconosciuti («slowed + reverb», «strumentale»…), accanto a «×N menzioni» e al link «Dal post».
 - **V5 · Test.** Una tabella con i titoli reali sopra (versioni, decorazioni, e i negativi che restano titolo), il collegamento con originale presente, assente, con artista diverso o mancante, e due originali possibili (nessun link se è ambiguo); la card con e senza `versionOf`.
 
+
+**Esito (8 novembre, dopo il deploy della 2.11.0):** `--apply` ha unito i 9 gruppi (9 entry in meno: 1700 → 1691), 0 saltati, 0 in errore; una seconda anteprima dà 0 gruppi; nessun job punta a una entry che non c'è; ogni tenuta ha la riga `merged_duplicate` nel registro. La copia di sicurezza (208 righe, 18 entry) è stata copiata fuori dal container in `~/.local/share/soundreel/backups/` (`0600`).
+
+**Dopo il deploy il controllo di sola lettura ha trovato** una entry salvata con un indirizzo di post con una `x` davanti (`xhttps://www.instagram.com/…`, incollata dal web a maggio): le sue card non avevano il link «Dal post». Letto con tolleranza dalla 2.12.0 (`postUrlOf`) e, con l'OK di Michele, la riga è stata corretta (una riga, copia della riga prima della modifica fuori dal repository): nessuna entry ha più un indirizzo non `http(s)`.
