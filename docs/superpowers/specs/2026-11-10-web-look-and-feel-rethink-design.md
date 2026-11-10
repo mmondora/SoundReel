@@ -33,6 +33,20 @@ Una tela di tre direzioni a 1440 px, con la **palette di Mondrop** (giallo `#FFD
 
 Tutte e tre sono fluide: a schermo intero si adattano alla finestra e sul telefono la navigazione diventa una fila in alto. Il colore dell'accento si cambia dai ritocchi (giallo di Mondrop, verde di oggi, azzurro). Non sono ancora codice del sito.
 
+### 3.2 Le risposte di Michele alla prima tornata (10 novembre, testuali)
+
+> «1 - si, mi piace la A con le sezioni di C - possiamo metterle tute e tre configurabili ?
+> 2 Giallo e nero - Mondrop like ( e devon andare insieme gli stili )
+> 3 si, ma spostabile»
+
+Lette così (letture mie, da correggere):
+
+- **L1. Il telaio è la A (Studio)** (barra in alto, menu a sinistra, area centrale, Player): la Home usa **le sezioni della C** (Riprendi, nuove canzoni, playlist, raccolte, da vedere). **Le tre viste esistono tutte e sono configurabili**: *Home* (le sezioni), *Studio* (elenco e dettaglio), *Bacheca* (parete di schede); si passa dall'una all'altra con un interruttore in testa alla pagina, e ogni pagina **ricorda** la sua vista. Anche le sezioni della Home si scelgono (quali, e in che ordine).
+- **L2. Colori e forme di Mondrop, uguali.** Giallo `#FFD60A` come unico accento; il **nero di sistema** (`#000`, righe e schede `#1C1C1E`, rialzi `#2C2C2E`, testo secondario bianco al 72 %, riempimento dei pulsanti-pillola bianco al 12 %) e il **blu notte** (`#242945` → `#080911`) solo dove l'app lo usa (Home e Player); pulsanti a pillola, schede con angoli 14–16, cifre a larghezza fissa. **Devono andare insieme**: un solo elenco di valori (token) per sito e app, con un test che fallisce se i due si allontanano (come `RulePTests` per la regola P). Il colore non si cambia dall'utente.
+- **L3. Il Player è una barra sempre disponibile, ma spostabile:** in basso (predefinito), fluttuante e trascinabile, a destra (pannello con copertina e coda), o nascosto (una riga nel menu a sinistra). La scelta si ricorda.
+
+**Domanda ancora aperta (mia):** la configurazione (vista di ogni pagina, sezioni della Home, posto del Player) si ricorda **per browser** o **per utente, su tutti i dispositivi**? Consiglio per utente sul server (una famiglia con più dispositivi: stesso aspetto ovunque; una tabella e una rotta).
+
 ## 4. Domande aperte per Michele (per quando si comincia)
 
 - Quali pagine contano di più per lui, oggi? (l'ordine d'uso decide dove lavorare per prima.)
