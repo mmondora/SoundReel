@@ -23,6 +23,16 @@ Letta così (lettura mia, da correggere): **(1)** l'aspetto del sito oggi gli se
 3. Vale **anche sul telefono** (la spec `2026-11-08-web-mobile-ux-design.md` è ancora da fare): un solo ripensamento che regga schermo largo e stretto, non due.
 4. Le regole che restano: tema scuro unico, niente dipendenze pesanti, le pagine continuano a parlare solo con il server (regola P).
 
+### 3.1 Prima tornata di mockup (10 novembre, dopo il suo «vai con il look and feel»)
+
+Una tela di tre direzioni a 1440 px, con la **palette di Mondrop** (giallo `#FFD60A` su blu notte, un solo accento), contenuto d'esempio e **numeri veri** della libreria (1,7k link, 943 canzoni, 731 film, 1,4k software, 56 playlist; i numeri delle raccolte sono d'esempio perché le raccolte non esistono ancora): <https://claude.ai/artifact/KLVkyBKY96mXZR6Wptn6y3> (privata: la apre solo il suo account).
+
+- **A · Studio:** tre colonne (navigazione, elenco, dettaglio) e il Player come barra sempre in basso; si clicca una riga e il dettaglio cambia.
+- **B · Bacheca:** parete di schede (ogni post con i suoi brani, film e software in vista) e pannello di dettaglio a destra che si chiude.
+- **C · Home:** sezioni come nella Home di Mondrop (Riprendi, nuove canzoni, playlist, raccolte scoperte, da vedere), con le raccolte al loro posto.
+
+Tutte e tre sono fluide: a schermo intero si adattano alla finestra e sul telefono la navigazione diventa una fila in alto. Il colore dell'accento si cambia dai ritocchi (giallo di Mondrop, verde di oggi, azzurro). Non sono ancora codice del sito.
+
 ## 4. Domande aperte per Michele (per quando si comincia)
 
 - Quali pagine contano di più per lui, oggi? (l'ordine d'uso decide dove lavorare per prima.)
