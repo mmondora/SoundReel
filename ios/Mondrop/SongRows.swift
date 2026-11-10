@@ -91,6 +91,7 @@ struct SongRowView: View {
                 }
             }
             Spacer(minLength: 8)
+            LikedMark(songKey: track.songKey)
             StatusAccessoryView(status: status)
         }
         .contentShape(Rectangle())

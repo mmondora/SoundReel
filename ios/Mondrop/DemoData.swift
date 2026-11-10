@@ -1,7 +1,8 @@
 // DemoData.swift — DEBUG builds only. Launching with `-MondropDemo` makes the Home draw the data below (no server needed) and starts the
 // player with a queue, so the screens can be looked at on a simulator: the Home with its rows, the mini player, «Riprendi», the Player.
 // `-MondropDemoTab search|playlists|inbox|share|settings` opens another tab, `-MondropDemoPlayer` opens the Player, `-MondropDemoSearch`
-// does what a tap on the field of the Home does. None of this exists in a Release build (TestFlight, the App Store).
+// does what a tap on the field of the Home does; `-MondropDemoLiked`, `-MondropDemoRepeat off|all|one` and `-MondropDemoCommands` show
+// the hearts, the loop and the list of the commands received (spec 2026-11-10-mondrop-like-and-repeat-design.md). None of this exists in a Release build (TestFlight, the App Store).
 
 #if DEBUG
 import Foundation
@@ -24,6 +25,17 @@ enum DemoData {
         return arguments[at + 1]
     }
     static var opensLyricsSheet: Bool { isOn && arguments.contains("-MondropDemoLyricsSheet") }
+    /// `-MondropDemoLiked`: three of the demo songs are liked, as if SoundReel had said so (the one the queue is on is among them).
+    static var showsLikes: Bool { isOn && arguments.contains("-MondropDemoLiked") }
+    /// `-MondropDemoRepeat off|all|one`: the loop the Player starts with.
+    static var repeatMode: RepeatMode? {
+        guard isOn, let at = arguments.firstIndex(of: "-MondropDemoRepeat"), arguments.indices.contains(at + 1) else { return nil }
+        return RepeatMode(rawValue: arguments[at + 1])
+    }
+    /// `-MondropDemoCommands`: the list of the commands received (Settings) has a few lines, as after a drive, and is open.
+    static var showsCommands: Bool { isOn && arguments.contains("-MondropDemoCommands") }
+    /// `-MondropDemoQueueSheet` opens «In coda» on the Player: the rows of the songs, with the hearts of the liked ones.
+    static var opensQueueSheet: Bool { isOn && arguments.contains("-MondropDemoQueueSheet") }
     static var startTab: RootTab? {
         guard isOn, let at = arguments.firstIndex(of: "-MondropDemoTab"), arguments.indices.contains(at + 1) else { return nil }
         switch arguments[at + 1] {
@@ -74,6 +86,32 @@ enum DemoData {
         store.save(QueueSnapshot.make(queue: items, index: 1, label: "Playlist · Road trip", playlistId: "p1"))
         store.save(position: items[1].songKey, seconds: 74, duration: 241)
         seedLyrics(for: items[1].songKey)
+        seedLikes()
+        DefaultsRepeatModeStore(defaults: Settings.shared.storage).mode = repeatMode ?? .off
+        seedCommands()
+    }
+
+    /// The likes file of the phone, written BEFORE the store exists (it reads it at its start). Always written in the demo, so that the
+    /// hearts of an earlier run never linger.
+    private static func seedLikes() {
+        let owner = Settings.shared.autheliaUsername.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let keys: Set<String> = showsLikes ? ["daft punk::one more time", "toto::africa", "michael jackson::billie jean"] : []
+        guard let data = try? EventCoding.encoder().encode(LikesState(owner: owner, serverKeys: keys, pending: [])) else { return }
+        let dir = OfflineStore.defaultRoot()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? data.write(to: dir.appendingPathComponent("likes.json"), options: .atomic)
+    }
+
+    /// A few lines for the list of the commands received, as the list keeps them (newest first).
+    private static func seedCommands() {
+        var list: [RemoteCommandRecord] = []
+        if showsCommands {
+            let names = ["Play/Pausa", "Avanti", "Ripeti: tutto", "Mi piace", "Siri: Ripeti: questo brano", "Siri: Mi piace"]
+            let start = Date().addingTimeInterval(-3_600)
+            for (n, name) in names.enumerated() { list = RemoteCommandHistory.adding(name, at: start.addingTimeInterval(Double(n) * 340), to: list) }
+        }
+        let data = (try? EventCoding.encoder().encode(list)) ?? Data()
+        Settings.shared.storage.set(data, forKey: RemoteCommandLog.key)
     }
 
     /// Words of the demo (a short original text, not a real song's), kept as if SoundReel had found them earlier.
@@ -103,6 +141,23 @@ enum DemoData {
         }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try? data.write(to: file, options: .atomic)
+    }
+}
+
+import SwiftUI
+
+/// With `-MondropDemoCommands` the Settings scroll to the list of the commands received (it is below the fold): a screenshot cannot scroll.
+struct DemoSettingsScroll<Content: View>: View {
+    let content: Content
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            content.task {
+                guard DemoData.showsCommands else { return }
+                try? await Task.sleep(for: .seconds(1))
+                proxy.scrollTo("commandsRow", anchor: .top)
+            }
+        }
     }
 }
 #endif

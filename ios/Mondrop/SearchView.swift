@@ -256,7 +256,7 @@ struct SearchView: View {
         guard let queue = SearchPlayback.queue(
             choice: choice, tracks: model.tracks, tapped: track.songKey, isLocal: { localKeys.contains($0) }
         ) else { return }
-        LocalAudioPlayer.shared.setQueue(queue.items, startAt: queue.startIndex, playlistId: queue.playlistId, label: queue.label)
+        LocalAudioPlayer.shared.start(queue)
     }
 
     // MARK: recent searches

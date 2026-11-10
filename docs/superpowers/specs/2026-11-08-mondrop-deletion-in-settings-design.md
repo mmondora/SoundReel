@@ -2,6 +2,8 @@
 
 Stato: **costruita** (Mondrop 1.7.0). Solo interfaccia: nessuna ADR (regole d'interfaccia stanno nella spec).
 
+**Aggiornamento 10 novembre (Michele): «La canzone viene cancellata solo con uno swipe della canzone in ricerca, non nel browser di una playlist.»** D1 e D2 qui sotto sono **sostituite in parte** da U8 di `2026-11-10-mondrop-simplify-playlists-and-song-states-design.md`: un brano si cancella dal telefono **solo dalle Impostazioni («Spazio e brani scaricati») e con lo scorrimento della riga in Cerca**, mai da una playlist, dalla Home o dal Player. Il resto (D3 e le conferme) resta. Vale dalla build che porta quella spec (1.8.0).
+
 ## 1. Richiesta di Michele (testuale)
 
 > «su mondrop la cancellazione è una opzione speciale e deve stare in impostazione.»

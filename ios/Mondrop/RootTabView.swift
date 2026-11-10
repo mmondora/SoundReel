@@ -72,7 +72,11 @@ struct RootTabView: View {
             .tag(RootTab.share)
 
             NavigationStack {
+                #if DEBUG
+                DemoSettingsScroll(content: SettingsView())
+                #else
                 SettingsView()
+                #endif
             }
             .miniPlayer(open: openPlayer)
             .tabItem { Label("Impostazioni", systemImage: "gearshape") }

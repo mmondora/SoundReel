@@ -17,6 +17,12 @@
 	     for every build and holds it back from testers until someone answers. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- The app is written in Italian and says so: Siri understands the sentences of the App Shortcuts («Ehi Siri, mi piace questa canzone su
+	     Mondrop») only in the languages the app supports (spec 2026-11-10-mondrop-like-and-repeat-design.md L9). -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>it</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<!-- Everything is HTTPS and goes to SoundReel only (rule P, ADR-0018): no exception for the local network any more.

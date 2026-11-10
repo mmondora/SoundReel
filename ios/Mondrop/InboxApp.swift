@@ -130,6 +130,8 @@ enum InboxWiring {
     static func refreshPlaylistsCache() async {
         guard let playlists = try? await MondropAPI().listPlaylists() else { return }
         PlaylistsCache.shared.store(playlists, user: Settings.shared.autheliaUsername)
+        // The same whole list, for Siri: «metti la playlist X su Mondrop» (dynamic and automatic playlists too).
+        PlaylistCatalog.shared.remember(playlists, user: Settings.shared.autheliaUsername)
     }
 
     /// The first time notifications are NEEDED — the Posta tab opened, the switch turned on, something shared from this

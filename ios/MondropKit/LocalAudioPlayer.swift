@@ -72,13 +72,15 @@ public final class LocalAudioPlayer: ObservableObject {
     @Published public private(set) var lyricsOrigin: LyricsOrigin = .none
     @Published public private(set) var lyricsSearching: Bool = false
     @Published public private(set) var playing: Bool = false
-    @Published public private(set) var index: Int = 0
-    @Published public private(set) var queue: [QueueItem] = []
+    @Published public private(set) var index: Int = 0 { didSet { refreshLikeCommand() } }
+    @Published public private(set) var queue: [QueueItem] = [] { didSet { refreshLikeCommand() } }
     @Published public private(set) var currentTime: Double = 0
     @Published public private(set) var duration: Double = 0
     @Published public private(set) var playbackStatus: PlaybackStatus = .idle
     /// What the queue is, in the user's words («Album · Thriller», «Playlist · Road trip»): the «In coda» title.
     @Published public private(set) var queueLabel: String?
+    /// The loop: none, the whole queue, this song (spec 2026-11-10-mondrop-like-and-repeat-design.md L4). Kept between launches.
+    @Published public private(set) var repeatMode: RepeatMode = .off
 
     private let store: OfflineStore
     private let api: MondropAPIProtocol
@@ -106,19 +108,32 @@ public final class LocalAudioPlayer: ObservableObject {
     private var lastPositionSave = Date.distantPast
     /// True while the saved queue is being put back: it must not be written over itself.
     private var restoring = false
+    private let repeatStore: RepeatModeStore
+    private let likes: LikesStore
+    private let commandLog: RemoteCommandLog
+    private var likesObservation: AnyCancellable?
 
     /// Internal, not private: the tests build their own player on a folder of their own.
     init(
         store: OfflineStore = .shared, api: MondropAPIProtocol = MondropAPI(), recorder: PlayRecorder? = nil,
-        snapshots: QueueSnapshotStore = QueueSnapshotStore(), lyricsLoader: LyricsLoader = .shared
+        snapshots: QueueSnapshotStore = QueueSnapshotStore(), lyricsLoader: LyricsLoader = .shared,
+        repeatStore: RepeatModeStore? = nil, likes: LikesStore? = nil, commandLog: RemoteCommandLog? = nil
     ) {
         self.store = store
         self.api = api
         self.recorder = recorder ?? PlayRecorder.shared
         self.snapshots = snapshots
         self.lyricsLoader = lyricsLoader
+        self.repeatStore = repeatStore ?? DefaultsRepeatModeStore(defaults: Settings.shared.storage)
+        self.likes = likes ?? LikesStore.shared
+        self.commandLog = commandLog ?? RemoteCommandLog.shared
+        repeatMode = self.repeatStore.mode
         configureSession()
         configureRemoteCommands()
+        // The heart the car shows follows the likes (a like given on the screen, or one that arrived from another phone).
+        likesObservation = self.likes.$revision.sink { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshLikeCommand() }
+        }
         #if os(iOS)
         NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
@@ -143,6 +158,8 @@ public final class LocalAudioPlayer: ObservableObject {
         #endif
     }
 
+    /// Everything the system can press, from Bluetooth, the car, the lock screen and Control Center. The handlers are thin: they reach the
+    /// main actor (the system may call from any thread) and ask `perform`, which writes the command down and does it.
     private func configureRemoteCommands() {
         let cc = MPRemoteCommandCenter.shared()
         cc.playCommand.isEnabled = true
@@ -150,29 +167,100 @@ public final class LocalAudioPlayer: ObservableObject {
         cc.togglePlayPauseCommand.isEnabled = true
         cc.nextTrackCommand.isEnabled = true
         cc.previousTrackCommand.isEnabled = true
-        cc.playCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.playOnly() }
-            return .success
+        cc.changeRepeatModeCommand.isEnabled = true
+        cc.changeRepeatModeCommand.currentRepeatType = repeatMode.systemType
+        cc.likeCommand.isEnabled = true
+        cc.likeCommand.localizedTitle = "Mi piace"
+        cc.likeCommand.localizedShortTitle = "Mi piace"
+        cc.playCommand.addTarget { [weak self] _ in self.map { player in Self.onMain { player.perform(.play) } } ?? .commandFailed }
+        cc.pauseCommand.addTarget { [weak self] _ in self.map { player in Self.onMain { player.perform(.pause) } } ?? .commandFailed }
+        cc.togglePlayPauseCommand.addTarget { [weak self] _ in self.map { player in Self.onMain { player.perform(.togglePlayPause) } } ?? .commandFailed }
+        cc.nextTrackCommand.addTarget { [weak self] _ in self.map { player in Self.onMain { player.perform(.next) } } ?? .commandFailed }
+        cc.previousTrackCommand.addTarget { [weak self] _ in self.map { player in Self.onMain { player.perform(.previous) } } ?? .commandFailed }
+        cc.changeRepeatModeCommand.addTarget { [weak self] event in
+            guard let self, let change = event as? MPChangeRepeatModeCommandEvent else { return .commandFailed }
+            let mode = RepeatMode(change.repeatType)
+            return Self.onMain { self.perform(.repeatMode(mode)) }
         }
-        cc.pauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.pauseOnly() }
-            return .success
-        }
-        cc.togglePlayPauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.toggle() }
-            return .success
-        }
-        cc.nextTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.next() }
-            return .success
-        }
-        cc.previousTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in self?.previous() }
-            return .success
+        cc.likeCommand.addTarget { [weak self] event in
+            guard let self, let feedback = event as? MPFeedbackCommandEvent else { return .commandFailed }
+            let negative = feedback.isNegative
+            return Self.onMain { self.perform(.like(negative: negative)) }
         }
     }
 
+    /// The system calls its handlers from any thread; the player lives on the main actor and the answer has to be given before returning.
+    private nonisolated static func onMain<T: Sendable>(_ work: @MainActor @Sendable () -> T) -> T {
+        if Thread.isMainThread { return MainActor.assumeIsolated { work() } }
+        return DispatchQueue.main.sync { MainActor.assumeIsolated { work() } }
+    }
+
+    /// The ONE place where a command from outside is written down (the list in the Settings) and done. Returns what the system is told.
+    @discardableResult
+    func perform(_ command: RemoteCommand) -> MPRemoteCommandHandlerStatus {
+        recordCommand(named: command.logName)
+        switch command {
+        case .play: playOnly()
+        case .pause: pauseOnly()
+        case .togglePlayPause: toggle()
+        case .next: next()
+        case .previous: previous()
+        case .repeatMode(let mode): setRepeatMode(mode)
+        case .like(let negative):
+            guard let key = currentSongKey else { return .noActionableNowPlayingItem }
+            // A press on the heart of a liked song takes the like back, whether the system says «negative» or not.
+            likes.setLiked(negative ? false : !likes.isLiked(key), songKey: key)
+        }
+        return .success
+    }
+
+    /// A voice command (Siri, spec 2026-11-10-mondrop-like-and-repeat-design.md L9): the same player and the same likes as the buttons and the
+    /// car, written down in the same list («Siri: Mi piace»). Unlike the heart of the car, the voice is never a switch: «mi piace» on a liked
+    /// song changes nothing. Returns what Siri says.
+    @discardableResult
+    func perform(voice command: VoiceCommand) -> VoiceOutcome {
+        recordCommand(named: command.logName)
+        switch command {
+        case .like, .unlike:
+            let wanted = command == .like
+            let current = queue.indices.contains(index) ? CurrentSong(songKey: queue[index].songKey, title: queue[index].title) : nil
+            let decision = VoiceDecision.like(wanted: wanted, current: current, isLiked: current.map { likes.isLiked($0.songKey) } ?? false)
+            if decision.change, let current { likes.setLiked(wanted, songKey: current.songKey) }
+            return decision.outcome
+        case .repeatMode(let mode):
+            setRepeatMode(mode)
+            return .repeatSet(mode)
+        }
+    }
+
+    /// The ONE place that writes a command from outside (the buttons of the car, the lock screen, Siri) in the list of the Settings.
+    func recordCommand(named name: String) {
+        commandLog.record(name)
+    }
+
+    // MARK: - The loop and the like, as the system sees them
+
+    public func setRepeatMode(_ mode: RepeatMode) {
+        repeatMode = mode
+        repeatStore.mode = mode
+        MPRemoteCommandCenter.shared().changeRepeatModeCommand.currentRepeatType = mode.systemType
+    }
+
+    /// The button of the Player: none → the whole queue → this song → none.
+    public func cycleRepeatMode() { setRepeatMode(repeatMode.next) }
+
+    /// The heart the system shows is the heart of the song that plays.
+    private func refreshLikeCommand() {
+        MPRemoteCommandCenter.shared().likeCommand.isActive = currentSongKey.map(likes.isLiked) ?? false
+    }
+
     // MARK: - Queue
+
+    /// What a tap on a playlist or on a song does once the queue is built (`LibraryQueueBuilder`, `SearchPlayback`): the queue loads and plays.
+    /// The one way every screen, and Siri, starts a queue.
+    public func start(_ queue: PlayQueue) {
+        setQueue(queue.items, startAt: queue.startIndex, playlistId: queue.playlistId, label: queue.label)
+    }
 
     /// `playlistId`: the playlist the user started this queue from (recorded with every listen), nil otherwise.
     /// `label`: what the user chose («Album · Thriller»), shown as «In coda».
@@ -443,10 +531,7 @@ public final class LocalAudioPlayer: ObservableObject {
             object: item,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
-                self?.recorder.tracker.finish(completed: true)   // it arrived at the end
-                self?.next()
-            }
+            Task { @MainActor in self?.songEnded() }
         }
         statusObservation = item.observe(\.status, options: [.new]) { [weak self] observed, _ in
             guard observed.status == .failed else { return }
@@ -541,13 +626,53 @@ public final class LocalAudioPlayer: ObservableObject {
 
     public func next() {
         guard !queue.isEmpty else { return }
-        let n = index + 1
-        if n < queue.count {
-            play(at: n)
-        } else {
+        switch RepeatPolicy.whenNext(mode: repeatMode, index: index, count: queue.count) {
+        case .play(let i):
+            play(at: i)
+        case .replay:
+            replayCurrent(completed: false)
+        case .stop:
             playing = false
             publishNowPlaying()
         }
+    }
+
+    /// The song reached its end by itself. The loop decides what comes next (`RepeatPolicy`); the pass that ended is a listen that arrived at
+    /// the end, a repeat included.
+    func songEnded() {
+        switch RepeatPolicy.whenSongEnds(mode: repeatMode, index: index, count: queue.count) {
+        case .play(let i):
+            recorder.tracker.finish(completed: true)
+            play(at: i)
+        case .replay:
+            replayCurrent(completed: true)
+        case .stop:
+            recorder.tracker.finish(completed: true)
+            playing = false
+            publishNowPlaying()
+        }
+    }
+
+    /// The same song again from the top: the pass that ended is closed and the next one is a listen of its own.
+    private func replayCurrent(completed: Bool) {
+        guard let player else {
+            // Nothing is loaded (a queue that was restored and never played): start the song the usual way.
+            recorder.tracker.finish(completed: completed)
+            play(at: index)
+            return
+        }
+        closeListenAndStartAnother(completed: completed)
+        player.seek(to: .zero) { [weak player] _ in player?.play() }
+        currentTime = 0
+        playing = true
+        publishNowPlaying()
+    }
+
+    /// The accounting of a loop: the pass that ended counts as it is (`completed` when it arrived at the end, not when the user cut it with
+    /// «avanti»), and a new listen, with a new id, begins for the same song.
+    func closeListenAndStartAnother(completed: Bool) {
+        if completed { recorder.tracker.finish(completed: true) }
+        recorder.tracker.restart()
     }
 
     public func previous() {

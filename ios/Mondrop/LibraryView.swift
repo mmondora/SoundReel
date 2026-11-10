@@ -48,7 +48,7 @@ enum LibraryPlayback {
         guard let queue = LibraryQueueBuilder.make(
             choice: choice, tracks: tracks, startAt: songKey, shuffled: shuffled, isLocal: { localKeys.contains($0) }
         ) else { return }
-        LocalAudioPlayer.shared.setQueue(queue.items, startAt: queue.startIndex, playlistId: queue.playlistId, label: queue.label)
+        LocalAudioPlayer.shared.start(queue)
     }
 }
 
@@ -269,6 +269,7 @@ struct LibraryView: View {
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
+                    LikeMenuButton(songKey: track.songKey)
                     Button("Suona solo questo brano") { playOnly(track) }
                 }
                 .onAppear {
@@ -363,6 +364,7 @@ struct LibrarySelectionView: View {
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
+                        LikeMenuButton(songKey: track.songKey)
                         Button("Suona solo questo brano") { playOnly(track) }
                     }
                     .onAppear {

@@ -72,6 +72,7 @@ struct MiniPlayerBar: View {
 
     private var controls: some View {
         HStack(spacing: 0) {
+            LikeButton(songKey: player.currentSongKey, size: 18)
             Button { player.previous() } label: { glyph("backward.fill", size: 18) }
                 .accessibilityLabel("Brano precedente")
             Button { player.toggle() } label: {

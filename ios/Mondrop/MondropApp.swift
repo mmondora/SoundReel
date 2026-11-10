@@ -21,6 +21,8 @@ struct MondropApp: App {
         #endif
         // «Sync finito» notification: ready before the first download can finish (also on a background relaunch).
         SyncNotifications.install()
+        // Siri learns the names of the playlists whenever they change (spec 2026-11-10-mondrop-like-and-repeat-design.md L10).
+        PlaylistCatalog.shared.onChange = { Task { @MainActor in MondropShortcuts.updateAppShortcutParameters() } }
     }
 
     var body: some Scene {
@@ -52,6 +54,9 @@ struct MondropApp: App {
                 // foreground timer here too (it is stopped when the app goes to background).
                 EventUploader.shared.startForegroundTimer()
                 await EventUploader.shared.flush(.launch)
+                // The likes given while the app was closed or offline (SoundReel before 2.25.0 has no likes yet: they wait, quietly).
+                Task { await LikesStore.shared.flush() }
+                MondropShortcuts.updateAppShortcutParameters()                   // Siri knows the names the phone already holds
                 // The Posta: what happened to my shares while the app was closed (and the playlists the share sheet offers).
                 await InboxWiring.appBecameActive(first: true)
             }
@@ -59,6 +64,7 @@ struct MondropApp: App {
                 switch phase {
                 case .active:
                     EventUploader.shared.startForegroundTimer()              // every 15 minutes while in foreground
+                    Task { await LikesStore.shared.flush() }                 // the likes that could not leave, and the set of this person
                     Task { await InboxWiring.appBecameActive(first: false) } // the Posta, the sheet's playlists, the push token
                 case .background:
                     PlayRecorder.shared.checkpoint()                          // the open listen survives a kill
@@ -73,6 +79,8 @@ struct MondropApp: App {
                 // A new key: a 401 pause was about the old one.
                 EventUploader.shared.clearAuthPause()
                 Task { await EventUploader.shared.flush(.keyChanged) }
+                LikesStore.shared.userMayHaveChanged()                       // another person's likes are not mine
+                Task { await LikesStore.shared.flush() }
             }
         }
         #if os(macOS)

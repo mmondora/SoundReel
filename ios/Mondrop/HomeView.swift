@@ -238,7 +238,7 @@ struct HomeView: View {
             actions.show(QueueAppend.Outcome.notPlayable.message)
             return
         }
-        LocalAudioPlayer.shared.setQueue(queue.items, startAt: queue.startIndex, playlistId: queue.playlistId, label: queue.label)
+        LocalAudioPlayer.shared.start(queue)
     }
 
     private var secondary: Color { Color(MondropPalette.text).opacity(MondropPalette.secondaryTextOpacity) }
@@ -360,6 +360,7 @@ private struct HomeTrackCard: View {
         }
         .frame(width: side, alignment: .leading)
         .contextMenu {
+            LikeMenuButton(songKey: track.songKey) { actions.likeToggled(track, liked: $0) }
             Button { actions.addToQueue(track, isLocal: isLocal) } label: {
                 Label("Aggiungi in coda", systemImage: "text.badge.plus")
             }

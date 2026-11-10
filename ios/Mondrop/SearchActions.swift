@@ -33,6 +33,11 @@ final class TrackActions: ObservableObject {
         playlistTarget = track
     }
 
+    /// «Mi piace» / «Non mi piace più» (spec 2026-11-10-mondrop-like-and-repeat-design.md L2): one short line says what happened.
+    func likeToggled(_ track: OfflineTrack, liked: Bool) {
+        show(liked ? "Ti piace «\(track.title)»" : "«\(track.title)» non ti piace più")
+    }
+
     /// An explicit download goes before the sync, and a song the user once removed from the phone comes back.
     func download(_ track: OfflineTrack, status: TrackRowStatus) {
         if status.canRedownload {
@@ -166,6 +171,7 @@ struct SearchTrackRow: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
+            LikeMenuButton(songKey: track.songKey) { actions.likeToggled(track, liked: $0) }
             Button { actions.addToQueue(track, isLocal: isLocal) } label: {
                 Label("Aggiungi in coda", systemImage: "text.badge.plus")
             }

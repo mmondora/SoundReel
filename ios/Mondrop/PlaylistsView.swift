@@ -78,6 +78,8 @@ struct PlaylistsView: View {
         // A playlist deleted on the server no longer protects its songs from "Libera spazio": that needs EVERY playlist, not a page.
         if let all = try? await MondropAPI().listPlaylists() {
             OfflineStore.shared.pruneMemberships(keeping: Set(all.map(\.id)))
+            // The names Siri can be asked for by voice («metti la playlist X su Mondrop»): every playlist the screen knows, not a page.
+            PlaylistCatalog.shared.remember(all, user: Settings.shared.autheliaUsername)
         }
     }
 }
@@ -293,7 +295,7 @@ struct PlaylistOfflineView: View {
             shuffled: shuffled,
             isLocal: { engine.store.fileURL(songKey: $0) != nil }
         ) else { return }
-        player.setQueue(queue.items, startAt: queue.startIndex, playlistId: queue.playlistId, label: queue.label)
+        player.start(queue)
     }
 }
 

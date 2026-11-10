@@ -19,6 +19,8 @@ struct SettingsView: View {
     @ObservedObject private var push = PushRegistrar.shared
     @ObservedObject private var net = NetStatus.shared
     @ObservedObject private var uploader = EventUploader.shared
+    @ObservedObject private var commands = RemoteCommandLog.shared
+    @State private var commandsOpen = false
 
     private let users = Settings.autheliaUsers
 
@@ -89,6 +91,8 @@ struct SettingsView: View {
 
             statsSection
 
+            commandsSection
+
             Section {
                 TextField("Nome", text: $displayName)
                     #if os(iOS)
@@ -121,6 +125,9 @@ struct SettingsView: View {
                 username = Settings.suggestAutheliaUsername()
             }
             uploader.refreshCounts()
+            #if DEBUG
+            if DemoData.showsCommands { commandsOpen = true }
+            #endif
         }
         .task {
             if net.info == nil { await net.refresh(api: MondropAPI()) }
@@ -262,6 +269,37 @@ struct SettingsView: View {
             Text("Statistiche di ascolto")
         } footer: {
             Text("Mondrop registra quanto ascolti davvero (pause e salti non contano) e le cancellazioni di brani, e li invia a SoundReel di tanto in tanto: a gruppi di 20, quando l'app va in background, all'avvio e ogni 15 minuti. Offline restano in coda sul telefono.")
+        }
+    }
+
+    /// What Bluetooth, the car, the lock screen and Siri sent to Mondrop (spec 2026-11-10-mondrop-like-and-repeat-design.md L6): nobody could
+    /// say what a car sends to an app that is not its own, so the phone writes it down.
+    @ViewBuilder
+    private var commandsSection: some View {
+        Section {
+            DisclosureGroup("Ultimi comandi ricevuti (\(commands.entries.count))", isExpanded: $commandsOpen) {
+                if commands.entries.isEmpty {
+                    Text("Nessuno, per ora: premi un tasto dell'auto, delle cuffie o della schermata di blocco mentre suona un brano, o chiedi a Siri.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(commands.entries.enumerated()), id: \.offset) { _, entry in
+                        HStack {
+                            Text(entry.name)
+                            Spacer()
+                            Text(entry.at.formatted(date: .abbreviated, time: .standard))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Button("Svuota la lista") { commands.clear() }
+                }
+            }
+            .id("commandsRow")
+        } header: {
+            Text("Comandi dall'esterno")
+        } footer: {
+            Text("Quello che l'auto, le cuffie, la schermata di blocco e Siri mandano a Mondrop: play, pausa, avanti, indietro, ripeti, Mi piace. Serve a capire cosa arriva davvero; restano gli ultimi venti.")
         }
     }
 

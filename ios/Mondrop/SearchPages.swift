@@ -143,7 +143,7 @@ struct SearchResultsPage: View {
                 queue = SearchPlayback.queue(choice: choice, tracks: model.tracks, shuffled: shuffled, isLocal: { localKeys.contains($0) })
             }
             guard let queue else { return }
-            LocalAudioPlayer.shared.setQueue(queue.items, startAt: queue.startIndex, playlistId: queue.playlistId, label: queue.label)
+            LocalAudioPlayer.shared.start(queue)
         }
     }
 }

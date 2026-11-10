@@ -22,6 +22,7 @@ struct WinampPlayerView: View {
                 lyricsDraft = player.lyrics
                 showLyrics = true
             }
+            if DemoData.opensQueueSheet { showQueue = true }
         }
         #endif
         .sheet(isPresented: $showQueue) { QueueView() }
@@ -213,25 +214,34 @@ struct WinampPlayerView: View {
         .padding(.top, layout.gap + 6)
     }
 
+    /// The transport in the middle (it stays centred: both sides weigh the same), the loop on its left and the heart on its right
+    /// (spec 2026-11-10-mondrop-like-and-repeat-design.md L2, L4): no row of its own, so the Player is no taller than it was.
     private func transport(_ layout: PlayerLayout) -> some View {
-        HStack(spacing: layout.isWide ? 56 : 40) {
+        HStack(spacing: 0) {
+            RepeatButton(size: layout.isWide ? 26 : 22)
+            Spacer(minLength: 8)
             Button { player.previous() } label: {
                 Image(systemName: "backward.fill").font(.system(size: layout.isWide ? 32 : 26))
             }
             .accessibilityLabel("Brano precedente")
+            Spacer(minLength: 8)
             Button { player.toggle() } label: {
                 Image(systemName: player.playing ? "pause.circle.fill" : "play.circle.fill")
                     .font(.system(size: layout.isWide ? 92 : 76))
                     .foregroundStyle(Color(MondropPalette.accent))
             }
             .accessibilityLabel(player.playing ? "Pausa" : "Riproduci")
+            Spacer(minLength: 8)
             Button { player.next() } label: {
                 Image(systemName: "forward.fill").font(.system(size: layout.isWide ? 32 : 26))
             }
             .accessibilityLabel("Brano successivo")
+            Spacer(minLength: 8)
+            LikeButton(songKey: player.currentSongKey, size: layout.isWide ? 28 : 24)
         }
         .buttonStyle(.plain)
         .foregroundStyle(Color(MondropPalette.text))
+        .padding(.horizontal, layout.margin - 6)
         .padding(.top, layout.gap + 8)
     }
 
