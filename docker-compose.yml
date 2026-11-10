@@ -20,6 +20,9 @@ services:
       DB_NAME: soundreel
       DB_USER: soundreel
       OLLAMA_URL: http://gpu-router:9000
+      # Il modello dei TITOLI delle playlist automatiche per i post che elencano musica (ADR-0023). Il piccolo di default lascia refusi; un
+      # modello grosso sta su vulcano (via gpu-router, ~2 s a post) e, se non risponde, il titolo lo fa il modello di default. Vuoto = solo il default.
+      AUTO_PLAYLIST_MODEL: ${AUTO_PLAYLIST_MODEL-qwen3.5:122b}
       INSTALOADER_URL: http://soundreel-instaloader:5000
       # Chi trascrive lo sceglie il gpu-router: archi-pc quando c'e', altrimenti
       # accende il whisper locale. Puntare qui direttamente ad archi-pc

@@ -3,9 +3,11 @@ import type { Entry } from '../types';
 import {
   MemoryAutoPlaylistStore,
   MIN_SONGS,
+  allSongs,
   contentSongs,
   findTheme,
   processEntry,
+  songsFor,
   talksAboutMusic,
   type AutoPlaylistDeps,
   type ThemeRow,
@@ -265,8 +267,8 @@ describe('a generic title: one playlist for the theme, the newest songs first', 
 });
 
 describe('when there is nothing to make', () => {
-  it('a post that does not talk about music is not even asked to the model, and leaves no trace', async () => {
-    const e = entry([song('A', 'X', 'audio_fingerprint')]);
+  it('a post with no song at all is not even asked to the model, and leaves no trace', async () => {
+    const e = entry([]);
     expect(await run(e)).toEqual({ status: 'skipped', reason: 'not_music_post' });
     expect(titles).not.toHaveBeenCalled();
     expect(store.runs.size).toBe(0);
@@ -381,5 +383,90 @@ describe('the memory store keeps the rules of the database', () => {
     expect(await store.addSongs(id, ['c'], { front: true, addedAt: new Date() })).toBe(0);
     expect(store.songKeysOf(id)).toEqual(['c', 'd', 'a', 'b']);
     expect(await store.addSongs('missing', ['x'], { front: false, addedAt: new Date() })).toBe(0);
+  });
+});
+
+
+describe('a post with ONE song: only ever a theme, and only when it is about music (Michele: «di tutti i post»)', () => {
+  const fingerprint = (title: string) => entry([song(title, 'Various', 'audio_fingerprint')], { caption: 'questo pezzo e\' una bomba' });
+  const asked = () => titles.mock.calls[0][0] as TitleSource;
+
+  it('songsFor: several content songs are a LIST; one song (named, else recognised) is SINGLE; none is nothing', () => {
+    expect(songsFor(entry(christmas()))?.mode).toBe('list');
+    expect(songsFor(entry([song('A', 'X', 'ai_analysis')]))).toMatchObject({ mode: 'single', keys: ['x::a'] });
+    expect(songsFor(entry([song('A', 'X', 'audio_fingerprint')]))).toMatchObject({ mode: 'single', keys: ['x::a'] });
+    expect(songsFor(entry([]))).toBeNull();
+    expect(songsFor(entry([song('', 'X')]))).toBeNull();
+  });
+
+  it('a song the post NAMES wins over the track recognised from the audio', () => {
+    const found = songsFor(entry([song('Named', 'X', 'ai_analysis'), song('Background', 'Y', 'audio_fingerprint')]));
+    expect(found).toMatchObject({ mode: 'single', keys: ['x::named'] });
+    expect(allSongs(entry([song('Named', 'X', 'ai_analysis'), song('Background', 'Y', 'audio_fingerprint')])).keys).toEqual(['x::named', 'y::background']);
+  });
+
+  it('two recognised tracks and nothing named are still a single-song post (they are not a list the post makes)', () => {
+    expect(songsFor(entry([song('A', 'X', 'audio_fingerprint'), song('B', 'Y', 'audio_fingerprint')]))).toMatchObject({ mode: 'single', keys: ['x::a', 'y::b'] });
+  });
+
+  it('the title step is told which kind of post it is', async () => {
+    titles.mockResolvedValue(theme('Synthwave da ascoltare'));
+    await run(fingerprint('Nightcall'));
+    expect(asked().mode).toBe('single');
+    expect(asked().songs).toEqual([{ title: 'Nightcall', artist: 'Various' }]);
+    titles.mockClear();
+    titles.mockResolvedValue(oneOff('Le 5 musiche di Natale'));
+    await run(entry(christmas()));
+    expect(asked().mode).toBe('list');
+  });
+
+  it('about music: it goes into a theme, the first one makes the playlist, the next one joins it', async () => {
+    titles.mockResolvedValueOnce(theme('Synthwave da ascoltare'));
+    const first = await run(fingerprint('Nightcall'));
+    titles.mockResolvedValueOnce(theme('Synthwave da ascoltare', 'Synthwave da ascoltare'));
+    const second = await run(entry([song('Dynamite Girl', 'Mitch Murder', 'audio_fingerprint')], { createdAt: '2026-11-08T10:00:00.000Z' }));
+    if (first.status !== 'done' || second.status !== 'done') throw new Error('x');
+    expect(first).toMatchObject({ kind: 'theme', created: true, mode: 'single', added: 1 });
+    expect(second).toMatchObject({ playlistId: first.playlistId, created: false, mode: 'single', added: 1 });
+    expect(store.songKeysOf(first.playlistId)).toEqual(['mitch murder::dynamite girl', 'various::nightcall']);
+  });
+
+  it('a precise title for ONE song is still a theme (one song is no list)', async () => {
+    titles.mockResolvedValue(oneOff('Nightcall di Kavinsky'));
+    const out = await run(fingerprint('Nightcall'));
+    expect(out).toMatchObject({ status: 'done', kind: 'theme', created: true });
+    expect([...store.playlists.values()][0]).toMatchObject({ kind: 'theme', themeKey: expect.any(String) });
+  });
+
+  it('not about music (the background track of a recipe): skipped, said once, no playlist', async () => {
+    titles.mockResolvedValue({ aboutMusic: false, title: '', kind: 'theme', existingTheme: null });
+    const e = fingerprint('Levitating');
+    expect(await run(e)).toEqual({ status: 'skipped', reason: 'not_about_music' });
+    expect(store.playlists.size).toBe(0);
+    expect(await run(e)).toEqual({ status: 'skipped', reason: 'already_done' });
+    expect(titles).toHaveBeenCalledTimes(1);
+  });
+
+  it('a NEW theme is announced, one more single song in a theme is not news; a LIST joining a theme still is', async () => {
+    titles.mockResolvedValueOnce(theme('Synthwave da ascoltare'));
+    await run(fingerprint('Nightcall'));
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Nuova playlist: Synthwave da ascoltare', body: '1 brano' }));
+    announce.mockClear();
+    titles.mockResolvedValueOnce(theme('Synthwave da ascoltare', 'Synthwave da ascoltare'));
+    await run(entry([song('Dynamite Girl', 'Mitch Murder', 'audio_fingerprint')]));
+    expect(announce).not.toHaveBeenCalled();
+    titles.mockResolvedValueOnce(theme('Synthwave da ascoltare', 'Synthwave da ascoltare'));
+    await run(entry([song('Turbo Killer', 'Carpenter Brut'), song('Resistance', 'Perturbator')]));
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Synthwave da ascoltare', body: '+2 brani' }));
+  });
+
+  it('a deleted theme is not made again for a single song either', async () => {
+    titles.mockResolvedValue(theme('Synthwave da ascoltare', 'Synthwave da ascoltare'));
+    const first = await run(fingerprint('Nightcall'));
+    if (first.status !== 'done') throw new Error('x');
+    store.deletePlaylist(first.playlistId);
+    expect(await run(entry([song('Dynamite Girl', 'Mitch Murder', 'audio_fingerprint')]))).toEqual({ status: 'skipped', reason: 'theme_deleted' });
   });
 });

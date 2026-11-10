@@ -5,6 +5,9 @@ import {
   cleanTitle,
   generatePlaylistTitle,
   parseTitleResponse,
+  SINGLE_SCHEMA,
+  SINGLE_THEMES,
+  THEME_GENRES,
   themeKey,
   themeWords,
   titleOverlap,
@@ -37,6 +40,14 @@ describe('a title is what a person would write', () => {
     expect(cleanTitle('MUSICA PER LA NOTTE')).toBe('Musica per la notte');
     expect(cleanTitle('SADE Acid House')).toBe('SADE Acid House');
     expect(cleanTitle('ABBA')).toBe('ABBA');           // one word in capitals is a name or an acronym
+  });
+
+  it('an apostrophe inside a title stays, quotes around it go', () => {
+    expect(cleanTitle("L'estate dei Måneskin")).toBe("L'estate dei Måneskin");
+    expect(cleanTitle("Canzoni dell'anno")).toBe("Canzoni dell'anno");
+    expect(cleanTitle("'Jazz da ascoltare'")).toBe('Jazz da ascoltare');
+    expect(cleanTitle("The Most Beautiful Albums I've Ever Heard")).toBe("The Most Beautiful Albums I've Ever Heard");
+    expect(cleanTitle('« Musica per la cena »')).toBe('Musica per la cena');
   });
 
   it('starts with a capital and has no loose punctuation at the ends', () => {
@@ -146,14 +157,15 @@ describe('the question', () => {
     expect(prompt).toContain('Jazz da ascoltare');
     expect(prompt).toContain('TEMI GIÀ ESISTENTI: Jazz da ascoltare');
     expect(prompt).toContain('Wham! - Last Christmas');
-    expect(prompt).toContain('in italiano');
+    expect(prompt).toContain('SEMPRE in italiano, anche se il post è in un\'altra lingua');
+    expect(prompt).toContain('5 canzoni per guidare di notte');   // a post in English gets an Italian title
   });
 
   it('says so when there is nothing yet, and in which language the title is written', () => {
     const prompt = buildTitlePrompt(source({ themes: [], caption: null, summary: null, language: 'en' }));
     expect(prompt).toContain('TEMI GIÀ ESISTENTI: (nessuno)');
     expect(prompt).toContain('Didascalia: (nessuna)');
-    expect(prompt).toContain('in inglese');
+    expect(prompt).toContain('always in English');
   });
 
   it('does not send more than a dozen songs or forty themes', () => {
@@ -177,6 +189,58 @@ describe('asking the local model', () => {
     expect(generate).toHaveBeenCalledWith(expect.stringContaining('POST'), expect.objectContaining({ json: true, maxTokens: 200, schema: expect.objectContaining({ required: ['aboutMusic', 'title', 'kind', 'existingTheme'] }) }));
   });
 
+  const withModel = async (value: string, run: () => Promise<unknown>) => {
+    process.env.AUTO_PLAYLIST_MODEL = value;
+    try {
+      return await run();
+    } finally {
+      delete process.env.AUTO_PLAYLIST_MODEL;
+    }
+  };
+  const good = '{"aboutMusic":true,"title":"Jazz da ascoltare","kind":"theme","existingTheme":null}';
+
+  it('with AUTO_PLAYLIST_MODEL a list post is asked to that model, with a ceiling that leaves room to think', async () => {
+    const generate = vi.fn().mockResolvedValue(answer(good));
+    await withModel('gpt-oss:120b', () => generatePlaylistTitle(source(), { generate }));
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ model: 'gpt-oss:120b', maxTokens: 1500 }));
+    // and without it: the default model, the short ceiling, no model field at all
+    generate.mockClear();
+    await generatePlaylistTitle(source(), { generate });
+    const opts = generate.mock.calls[0][1] as Record<string, unknown>;
+    expect(opts.maxTokens).toBe(200);
+    expect('model' in opts).toBe(false);
+  });
+
+  it('a big model that is down, cut short or says nothing usable falls back to the default model', async () => {
+    for (const failure of [
+      () => Promise.reject(new Error('vulcano asleep')),
+      () => Promise.resolve(answer(good, true)),
+      () => Promise.resolve(answer('not json')),
+      () => Promise.resolve(answer('{"aboutMusic":true,"title":"Playlist","kind":"theme","existingTheme":null}')),
+    ]) {
+      const generate = vi.fn().mockImplementationOnce(failure).mockResolvedValueOnce(answer(good));
+      const plan = await withModel('gpt-oss:120b', () => generatePlaylistTitle(source(), { generate }));
+      expect(plan).toMatchObject({ title: 'Jazz da ascoltare' });
+      expect(generate).toHaveBeenCalledTimes(2);
+      expect((generate.mock.calls[0][1] as { model?: string }).model).toBe('gpt-oss:120b');
+      expect('model' in (generate.mock.calls[1][1] as object)).toBe(false);
+    }
+  });
+
+  it('when both fail it is no plan', async () => {
+    const generate = vi.fn().mockRejectedValue(new Error('down'));
+    expect(await withModel('gpt-oss:120b', () => generatePlaylistTitle(source(), { generate }))).toBeNull();
+    expect(generate).toHaveBeenCalledTimes(2);
+  });
+
+  it('a post with ONE song is always asked to the default model (hundreds of them, a short list of genres)', async () => {
+    const generate = vi.fn().mockResolvedValue(answer(good));
+    await withModel('gpt-oss:120b', () => generatePlaylistTitle(source({ mode: 'single' }), { generate }));
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect('model' in (generate.mock.calls[0][1] as object)).toBe(false);
+  });
+
   it('an answer cut at the ceiling is no answer, even when what is left reads like one', async () => {
     const generate = vi.fn().mockResolvedValue(answer('{"aboutMusic":true,"title":"Jazz da ascoltare","kind":"theme","existingTheme":null}', true));
     expect(await generatePlaylistTitle(source(), { generate })).toBeNull();
@@ -187,5 +251,57 @@ describe('asking the local model', () => {
   it('a model that is down is no plan, and never an exception (the analysis does not fail for it)', async () => {
     const generate = vi.fn().mockRejectedValue(new Error('router down'));
     expect(await generatePlaylistTitle(source(), { generate })).toBeNull();
+  });
+});
+
+
+describe('a post with ONE song (single mode): the model only chooses a theme of a closed list', () => {
+  const single = (over: Partial<TitleSource> = {}) => source({ mode: 'single', songs: [{ title: 'Nightcall', artist: 'Kavinsky' }], ...over });
+
+  it('the question: the rules, the list to choose from, the examples, the song; no free title and no list of existing themes', () => {
+    const prompt = buildTitlePrompt(single({ themes: ['Qualcosa che non conta'] }));
+    expect(prompt).toContain('UNA canzone');
+    expect(prompt).toContain('SCEGLI UNO');
+    for (const theme of ['Jazz da ascoltare', 'Synthwave da ascoltare', 'Colonne sonore da ascoltare', 'Musica italiana da ascoltare', 'Musica per la notte']) expect(prompt).toContain(theme);
+    expect(prompt).toContain('Kavinsky - Nightcall');
+    expect(prompt).toContain('carbonara');                   // the example of a post that is not about music
+    expect(prompt).not.toContain('Le 5 musiche di Natale');  // the list examples are not in it
+    expect(prompt).not.toContain('TEMI GIÀ ESISTENTI');
+    expect(prompt).not.toContain('Qualcosa che non conta');
+  });
+
+  it('the closed list: 31 genres «… da ascoltare» and 5 occasions, every title unique and clean', () => {
+    expect(THEME_GENRES.length).toBe(31);
+    expect(SINGLE_THEMES.length).toBe(36);
+    expect(new Set(SINGLE_THEMES).size).toBe(SINGLE_THEMES.length);
+    for (const title of SINGLE_THEMES) expect(cleanTitle(title)).toBe(title);
+    expect(SINGLE_SCHEMA.properties.theme.enum).toContain('');
+    expect(SINGLE_SCHEMA.properties.theme.enum).toContain('Elettronica da ascoltare');
+  });
+
+  it('a theme of the list is the plan: the title is OURS, exact, whatever the case', () => {
+    expect(parseTitleResponse('{"aboutMusic":true,"theme":"synthwave DA ascoltare"}', [], 'single')).toEqual({ aboutMusic: true, title: 'Synthwave da ascoltare', kind: 'theme', existingTheme: null });
+  });
+
+  it('a theme that is not in the list is no answer (no invented title ever gets in)', () => {
+    expect(parseTitleResponse('{"aboutMusic":true,"theme":"Synthwave de Ascolare"}', [], 'single')).toBeNull();
+    expect(parseTitleResponse('{"aboutMusic":true,"theme":""}', [], 'single')).toBeNull();
+    expect(parseTitleResponse('{"aboutMusic":true}', [], 'single')).toBeNull();
+    expect(parseTitleResponse('not json', [], 'single')).toBeNull();
+  });
+
+  it('not about music is a plan with no title', () => {
+    expect(parseTitleResponse('{"aboutMusic":false,"theme":""}', [], 'single')).toEqual({ aboutMusic: false, title: '', kind: 'theme', existingTheme: null });
+  });
+
+  it('the list question is the default, and the schema follows the mode', async () => {
+    expect(buildTitlePrompt(source())).toContain('Le 5 musiche di Natale');
+    const generate = vi.fn().mockResolvedValue({ text: '{"aboutMusic":true,"theme":"Jazz da ascoltare"}', usageMetadata: null });
+    expect(await generatePlaylistTitle(single(), { generate })).toMatchObject({ title: 'Jazz da ascoltare', kind: 'theme' });
+    expect((generate.mock.calls[0][1] as { schema: { required: string[] } }).schema.required).toEqual(['aboutMusic', 'theme']);
+    generate.mockClear();
+    generate.mockResolvedValue({ text: '{"aboutMusic":true,"title":"Jazz da ascoltare","kind":"theme","existingTheme":null}', usageMetadata: null });
+    await generatePlaylistTitle(source(), { generate });
+    expect((generate.mock.calls[0][1] as { schema: { required: string[] } }).schema.required).toEqual(['aboutMusic', 'title', 'kind', 'existingTheme']);
   });
 });

@@ -5,6 +5,10 @@
  * passate di li': questo script le riprende, dalla piu' VECCHIA, con le stesse regole e lo stesso modello locale (mai Claude), cosi' i temi
  * generici finiscono con i brani piu' nuovi in cima e ogni playlist ha la data del suo post.
  *
+ * Tutte le voci con canzoni (10 novembre, Michele: «vorrei di tutti i post non solo di 42 già salvati»): quelle che ELENCANO musica (2 o piu' brani dal
+ * contenuto) fanno una playlist a se' o entrano in un tema; quelle con UNA canzone (nominata o riconosciuta dall'audio) entrano in un tema per genere,
+ * ma solo se il post parla davvero di musica (il sottofondo di una ricetta no).
+ *
  * ANTEPRIMA PER DEFAULT: senza `--apply` non scrive niente (le playlist si fanno in memoria e si stampano: titolo, tipo, brani, mai il testo dei
  * post). Con `--apply` scrive, **solo con l'OK di Michele**, e manda UN messaggio in Posta per utente (non uno per playlist).
  * Le voci gia' viste (fatte, saltate) non si rivedono; quelle `pending` (nessun titolo buono) si riprovano.
@@ -14,12 +18,17 @@
  *   node dist/scripts/buildAutoPlaylists.js --owner mike      # solo le voci di un utente
  *   node dist/scripts/buildAutoPlaylists.js --limit 10        # prova sulle prime 10 (le piu' vecchie)
  *   node dist/scripts/buildAutoPlaylists.js --apply           # scrive davvero
+ *   AUTO_PLAYLIST_MODEL=gpt-oss:120b node dist/scripts/buildAutoPlaylists.js --apply   # titoli da un modello piu' grande (vedi il ripiego)
+ *
+ * ANNULLARE un'applicazione (anteprima per default, `--apply` toglie davvero): le playlist automatiche nate da corse con `processed_at` dal
+ * momento dato in poi, le loro corse e i loro temi (le voci si possono rifare):
+ *   node dist/scripts/buildAutoPlaylists.js --undo-since 2026-11-10T02:00:00Z [--apply]
  */
 import type { Entry } from '../types';
 import {
   MemoryAutoPlaylistStore,
   processEntry,
-  talksAboutMusic,
+  songsFor,
   type AutoOutcome,
   type AutoPlaylistStore,
 } from '../services/autoPlaylists';
@@ -29,6 +38,8 @@ export interface Options {
   apply: boolean;
   owner: string | null;
   limit: number | null;
+  /** ISO moment: undo what the runs from then on made (a preview unless `apply`). */
+  undoSince: string | null;
 }
 
 export function parseArgs(argv: string[]): Options {
@@ -39,11 +50,13 @@ export function parseArgs(argv: string[]): Options {
   const rawLimit = value('--limit');
   const limit = rawLimit === null ? null : Number(rawLimit);
   if (limit !== null && (!Number.isInteger(limit) || limit < 1)) throw new Error(`--limit vuole un intero positivo, non "${rawLimit}"`);
-  return { apply: argv.includes('--apply'), owner: value('--owner'), limit };
+  const undoSince = value('--undo-since');
+  if (undoSince !== null && !Number.isFinite(Date.parse(undoSince))) throw new Error(`--undo-since vuole una data (ISO), non "${undoSince}"`);
+  return { apply: argv.includes('--apply'), owner: value('--owner'), limit, undoSince };
 }
 
 export interface Deps {
-  /** Le voci che parlano di musica, dalla piu' vecchia. */
+  /** Le voci con canzoni, dalla piu' vecchia. */
   candidates(opts: Pick<Options, 'owner' | 'limit'>): Promise<Entry[]>;
   /** Lo store su cui lavorare: quello vero con `--apply`, uno in memoria (con i temi e le voci gia' viste) per l'anteprima. */
   store(apply: boolean): Promise<AutoPlaylistStore>;
@@ -56,6 +69,9 @@ export interface Deps {
 
 export interface Summary {
   candidates: number;
+  /** Quante hanno UNA canzone (finiscono in un tema) e quante ne elencano di piu'. */
+  singles: number;
+  lists: number;
   created: number;
   joined: number;
   pending: number;
@@ -66,15 +82,16 @@ export interface Summary {
 const day = (e: Entry): string => String(e.createdAt).slice(0, 10);
 
 export async function buildAutoPlaylists(deps: Deps, opts: Options): Promise<Summary> {
-  const found = (await deps.candidates(opts)).filter(talksAboutMusic);
+  const found = (await deps.candidates(opts)).filter((e) => songsFor(e) !== null);
   const entries = opts.limit ? found.slice(0, opts.limit) : found;
+  const singles = entries.filter((e) => songsFor(e)?.mode === 'single').length;
   deps.say(
-    `[auto-playlists] voci che parlano di musica: ${entries.length}` +
+    `[auto-playlists] voci con canzoni: ${entries.length} (${entries.length - singles} ne elencano piu' di una, ${singles} ne hanno una sola)` +
       `${opts.owner ? ` | utente ${opts.owner}` : ''} | ${opts.apply ? 'SCRIVE (--apply)' : 'ANTEPRIMA (niente scritto)'}`,
   );
   const store = await deps.store(opts.apply);
   const language = await deps.language();
-  const summary: Summary = { candidates: entries.length, created: 0, joined: 0, pending: 0, skipped: 0, songs: 0 };
+  const summary: Summary = { candidates: entries.length, singles, lists: entries.length - singles, created: 0, joined: 0, pending: 0, skipped: 0, songs: 0 };
   const perOwner = new Map<string, { playlists: number; songs: number }>();
   const playlists = new Map<string, { title: string; kind: string; songs: number }>();
 
@@ -97,7 +114,7 @@ export async function buildAutoPlaylists(deps: Deps, opts: Options): Promise<Sum
       row.songs += outcome.added;
       playlists.set(outcome.playlistId, row);
       deps.say(
-        `  ${day(entry)}  ${entry.id}  ${outcome.kind === 'theme' ? 'tema    ' : 'preciso '} «${outcome.title}»  ` +
+        `  ${day(entry)}  ${entry.id}  ${outcome.kind === 'theme' ? 'tema    ' : 'preciso '}${outcome.mode === 'single' ? ' (1 canzone)' : ''} «${outcome.title}»  ` +
           `${outcome.created ? `${outcome.added} brani (nuova)` : `+${outcome.added} brani (nella stessa playlist)`}`,
       );
     } else if (outcome.status === 'pending') {
@@ -119,6 +136,29 @@ export async function buildAutoPlaylists(deps: Deps, opts: Options): Promise<Sum
   return summary;
 }
 
+export interface UndoDeps {
+  /** The automatic playlists that the runs from `since` on made (the entry that made each was run from then on). */
+  findMade(since: Date): Promise<Array<{ id: string; name: string; ownerUser: string; themeKey: string | null }>>;
+  countRuns(since: Date): Promise<number>;
+  /** Takes the playlists away, with their runs and their themes (so the posts can be made again). */
+  remove(since: Date, playlists: Array<{ id: string; ownerUser: string; themeKey: string | null }>): Promise<void>;
+  say(line: string): void;
+}
+
+/**
+ * Undoes an application: the automatic playlists that the runs from `since` on made, those runs and those themes. A PREVIEW unless `apply`.
+ * It takes away a playlist even if the user has since renamed or changed it: look at the preview first.
+ */
+export async function undoAutoPlaylists(deps: UndoDeps, opts: { since: string; apply: boolean }): Promise<{ playlists: number; runs: number }> {
+  const since = new Date(opts.since);
+  const made = await deps.findMade(since);
+  const runs = await deps.countRuns(since);
+  deps.say(`[auto-playlists] ANNULLA dal ${since.toISOString()}: ${made.length} playlist automatiche, ${runs} corse | ${opts.apply ? 'TOGLIE (--apply)' : 'ANTEPRIMA (niente tolto)'}`);
+  for (const p of made.slice(0, 300)) deps.say(`    «${p.name}»`);
+  if (opts.apply && (made.length > 0 || runs > 0)) await deps.remove(since, made);
+  return { playlists: made.length, runs };
+}
+
 async function main(): Promise<void> {
   const [{ pool, getEntry, query }, { PgAutoPlaylistStore }, { generatePlaylistTitle }, { createInboxItem }, { realAutoPlaylistDeps }] = await Promise.all([
     import('../utils/db'),
@@ -129,12 +169,39 @@ async function main(): Promise<void> {
   ]);
   const options = parseArgs(process.argv.slice(2));
   try {
+    if (options.undoSince) {
+      await undoAutoPlaylists(
+        {
+          findMade: async (since) => {
+            const rows = await query<{ id: string; name: string; owner_user: string; theme_key: string | null }>(
+              `SELECT p.id, p.name, p.owner_user, p.theme_key FROM playlists p
+                WHERE p.origin = 'auto'
+                  AND p.source_entry_id IN (SELECT entry_id FROM auto_playlist_runs WHERE processed_at >= $1 AND status = 'done')
+                ORDER BY p.created_at ASC`,
+              [since],
+            );
+            return rows.map((r) => ({ id: r.id, name: r.name, ownerUser: r.owner_user, themeKey: r.theme_key }));
+          },
+          countRuns: async (since) => (await query<{ n: string }>(`SELECT count(*) AS n FROM auto_playlist_runs WHERE processed_at >= $1`, [since]))[0]?.n as unknown as number,
+          remove: async (since, playlists) => {
+            if (playlists.length > 0) await pool.query(`DELETE FROM playlists WHERE id = ANY($1::text[])`, [playlists.map((p) => p.id)]);
+            await pool.query(`DELETE FROM auto_playlist_runs WHERE processed_at >= $1`, [since]);
+            for (const p of playlists) {
+              if (p.themeKey) await pool.query(`DELETE FROM auto_playlist_themes WHERE owner_user = $1 AND theme_key = $2`, [p.ownerUser, p.themeKey]);
+            }
+          },
+          say: (line) => console.log(line),
+        },
+        { since: options.undoSince, apply: options.apply },
+      );
+      return;
+    }
     await buildAutoPlaylists(
       {
         candidates: async ({ owner, limit }) => {
           const rows = await query<{ id: string }>(
             `SELECT e.id FROM entries e
-              WHERE e.status = 'completed' AND jsonb_array_length(COALESCE(e.results->'songs', '[]'::jsonb)) >= 2
+              WHERE e.status = 'completed' AND jsonb_array_length(COALESCE(e.results->'songs', '[]'::jsonb)) >= 1
                 AND ($1::text IS NULL OR e.owner_user = $1)
               ORDER BY e.created_at ASC
               LIMIT COALESCE($2::int, 100000)`,

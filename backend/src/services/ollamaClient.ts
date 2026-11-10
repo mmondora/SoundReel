@@ -369,6 +369,11 @@ export interface GenerateOptions {
    * dall'oggetto non puo' esistere. Conta solo con `json: true` e senza immagini.
    */
   schema?: Record<string, unknown>;
+  /**
+   * Un altro modello di testo al posto di `OLLAMA_TEXT_MODEL`, per una chiamata che lo vale (i titoli delle playlist, 10 novembre:
+   * il modello piccolo lascia refusi). Il router lo manda dove sta (i grossi stanno su vulcano). Senza immagini.
+   */
+  model?: string;
 }
 
 export async function generateText(
@@ -376,7 +381,7 @@ export async function generateText(
   images: OllamaImage[] = [],
   opts: GenerateOptions = {}
 ): Promise<OllamaResponse> {
-  const model = images.length > 0 ? VISION_MODEL : TEXT_MODEL;
+  const model = images.length > 0 ? VISION_MODEL : opts.model || TEXT_MODEL;
   const body: Record<string, unknown> = {
     model,
     prompt,

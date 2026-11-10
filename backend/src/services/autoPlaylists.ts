@@ -12,7 +12,11 @@ import type { Entry } from '../types';
 import { songKey } from './songMeta';
 import { themeKey, titleOverlap, type PlaylistKind, type TitlePlan, type TitleSource } from './autoPlaylistTitle';
 
-/** A post talks about music when it names at least this many songs (a single song, or only the background track, makes no playlist). */
+/**
+ * A post that LISTS music names at least this many songs from its content: a playlist of its own when the title is precise, or a theme when it
+ * is generic. A post with fewer (one song named in the text, or the track recognised from the audio) can only feed a THEME, and only when it is
+ * really about music (Michele, 10 November: «vorrei di tutti i post non solo di 42 già salvati»).
+ */
 export const MIN_SONGS = 2;
 /** A song whose source is the CONTENT of the post. `audio_fingerprint` is the background track of any reel, and a Spotify or Shazam link has its own path. */
 export const CONTENT_SONG_SOURCES: ReadonlySet<string> = new Set(['ai_analysis', 'both', 'music_list']);
@@ -64,7 +68,7 @@ export interface AutoPlaylistDeps {
 export type AutoOutcome =
   | { status: 'skipped'; reason: 'not_music_post' | 'not_about_music' | 'already_done' | 'theme_deleted' | 'no_owner' | 'entry_not_found' }
   | { status: 'pending'; reason: 'no_title' }
-  | { status: 'done'; playlistId: string; title: string; kind: PlaylistKind; created: boolean; added: number };
+  | { status: 'done'; playlistId: string; title: string; kind: PlaylistKind; created: boolean; added: number; mode: PostMode };
 
 export interface ContentSongs {
   keys: string[];
@@ -90,6 +94,41 @@ export function contentSongs(entry: Pick<Entry, 'results'>): ContentSongs {
 }
 
 export const talksAboutMusic = (entry: Pick<Entry, 'results'>): boolean => contentSongs(entry).keys.length >= MIN_SONGS;
+
+/** `list`: the post names several songs. `single`: it has one (or only a recognised track): it can only feed a theme. */
+export type PostMode = 'list' | 'single';
+
+export interface PostSongs extends ContentSongs {
+  mode: PostMode;
+}
+
+/** Every song with a title, whatever its source, once each, in order. */
+export function allSongs(entry: Pick<Entry, 'results'>): ContentSongs {
+  const list = Array.isArray(entry.results?.songs) ? entry.results.songs : [];
+  const seen = new Set<string>();
+  const out: ContentSongs = { keys: [], songs: [] };
+  for (const s of list) {
+    if (!s || typeof s.title !== 'string' || !s.title.trim()) continue;
+    const artist = typeof s.artist === 'string' ? s.artist : '';
+    const key = songKey(artist, s.title);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.keys.push(key);
+    out.songs.push({ title: s.title.trim(), artist: artist.trim() });
+  }
+  return out;
+}
+
+/**
+ * The songs a post can give to a playlist, and how: a LIST (two or more from the content), or SINGLE (what is left: the song the post names, else
+ * the track recognised from the audio). null when the post has no song at all.
+ */
+export function songsFor(entry: Pick<Entry, 'results'>): PostSongs | null {
+  const content = contentSongs(entry);
+  if (content.keys.length >= MIN_SONGS) return { mode: 'list', ...content };
+  const picked = content.keys.length > 0 ? content : allSongs(entry);
+  return picked.keys.length > 0 ? { mode: 'single', ...picked } : null;
+}
 
 /** The theme a title belongs to: the one the model named, else the same key, else the same words (nearly). */
 export function findTheme(plan: TitlePlan, themes: ThemeRow[]): ThemeRow | null {
@@ -134,8 +173,9 @@ export async function processEntry(
   const before = await deps.store.getRun(entry.id, owner);
   if (before && before.status !== 'pending') return { status: 'skipped', reason: 'already_done' };
 
-  const { keys, songs } = contentSongs(entry);
-  if (keys.length < MIN_SONGS) return { status: 'skipped', reason: 'not_music_post' };
+  const found = songsFor(entry);
+  if (!found) return { status: 'skipped', reason: 'not_music_post' };
+  const { keys, songs, mode } = found;
 
   const themes = await deps.store.listThemes(owner);
   const plan = await deps.title({
@@ -144,6 +184,7 @@ export async function processEntry(
     songs,
     themes: themes.filter((t) => t.playlistId !== null).map((t) => t.title),
     language: await deps.language(),
+    mode,
   });
   if (!plan) {
     // no good title: nothing is made with a bad one; the entry stays «to do» (the script retries the pending ones)
@@ -163,22 +204,25 @@ export async function processEntry(
   let front: boolean;
   let title = plan.title;
 
-  if (plan.kind === 'one_off') {
+  // one song has no list to be: it only ever feeds a theme, whatever the title step said
+  const kind: PlaylistKind = mode === 'single' ? 'theme' : plan.kind;
+
+  if (kind === 'one_off') {
     const made = await deps.store.createPlaylist({ owner, name: plan.title, kind: 'one_off', themeKey: null, sourceEntryId: entry.id, createdAt: at });
     playlistId = made.id;
     created = made.created;
     front = false;
   } else {
-    const found = findTheme(plan, themes);
-    if (found && found.playlistId === null) {
+    const known = findTheme(plan, themes);
+    if (known && known.playlistId === null) {
       await deps.store.saveRun(entry.id, owner, { status: 'skipped', playlistId: null, reason: 'theme_deleted' });
       return { status: 'skipped', reason: 'theme_deleted' };
     }
-    if (found && found.playlistId) {
-      playlistId = found.playlistId;
+    if (known && known.playlistId) {
+      playlistId = known.playlistId;
       created = false;
       front = true;
-      title = found.title;
+      title = known.title;
     } else {
       const made = await deps.store.createPlaylist({ owner, name: plan.title, kind: 'theme', themeKey: themeKey(plan.title), sourceEntryId: entry.id, createdAt: at });
       playlistId = made.id;
@@ -191,7 +235,8 @@ export async function processEntry(
   const added = await deps.store.addSongs(playlistId, keys, { front, addedAt: at });
   await deps.store.saveRun(entry.id, owner, { status: 'done', playlistId, reason: null });
 
-  if (opts.announce !== false && (created || added > 0)) {
+  // a list that feeds a theme says so; one more single song in a theme is not news (a theme that is NEW is)
+  if (opts.announce !== false && (created || (added > 0 && mode === 'list'))) {
     await deps
       .announce({
         userId: owner,
@@ -201,7 +246,7 @@ export async function processEntry(
       })
       .catch(() => undefined);
   }
-  return { status: 'done', playlistId, title, kind: plan.kind, created, added };
+  return { status: 'done', playlistId, title, kind, created, added, mode };
 }
 
 // ---------------------------------------------------------------------------
