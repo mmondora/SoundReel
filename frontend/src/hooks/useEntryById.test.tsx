@@ -87,4 +87,46 @@ describe('useEntryById', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.entry).toBeNull();
   });
+
+  describe('a version (the library changed: an analysis moved)', () => {
+    const open = (id: string, version: number) => useEntryById(id, undefined, version);
+
+    it('a new version reads the same post again, and the post that is on the screen stays until the new answer comes', async () => {
+      const again = deferred<Entry>();
+      getEntry.mockResolvedValueOnce({ ...entry('a'), status: 'processing' }).mockReturnValueOnce(again.promise);
+      const { result, rerender } = renderHook(({ version }) => open('a', version), { initialProps: { version: 0 } });
+      await waitFor(() => expect(result.current.entry?.status).toBe('processing'));
+      rerender({ version: 1 });
+      expect(result.current.entry?.status).toBe('processing');
+      expect(result.current.loading).toBe(false);
+      await act(async () => { again.resolve(entry('a')); });
+      expect(result.current.entry?.status).toBe('completed');
+      expect(getEntry).toHaveBeenCalledTimes(2);
+    });
+
+    it('the same version does not read again', async () => {
+      getEntry.mockResolvedValue(entry('a'));
+      const { result, rerender } = renderHook(({ version }) => open('a', version), { initialProps: { version: 3 } });
+      await waitFor(() => expect(result.current.entry?.id).toBe('a'));
+      rerender({ version: 3 });
+      expect(getEntry).toHaveBeenCalledTimes(1);
+    });
+
+    it('a re-read that fails keeps the post that is on the screen', async () => {
+      getEntry.mockResolvedValueOnce(entry('a')).mockRejectedValueOnce(new Error('HTTP 500'));
+      const { result, rerender } = renderHook(({ version }) => open('a', version), { initialProps: { version: 0 } });
+      await waitFor(() => expect(result.current.entry?.id).toBe('a'));
+      rerender({ version: 1 });
+      await waitFor(() => expect(getEntry).toHaveBeenCalledTimes(2));
+      await act(async () => { await Promise.resolve(); });
+      expect(result.current.entry?.id).toBe('a');
+    });
+
+    it('a post that is not there any more after a re-read is no post at the first read, but a first read that fails is still no post', async () => {
+      getEntry.mockRejectedValue(new Error('HTTP 404'));
+      const { result } = renderHook(() => open('gone', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.entry).toBeNull();
+    });
+  });
 });

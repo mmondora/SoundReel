@@ -7,6 +7,7 @@ import { SOURCE_LABEL_KEY, countLabel, isSongDownloaded, isSongPreparing, platfo
 import type { LibrarySortMode, ManagerSong } from '../../utils/managerSongs';
 import type { PaneLocation } from '../../utils/managerPermissions';
 import { LocationBadge } from '../LocationBadge';
+import { PlaylistPicker } from '../PlaylistPicker';
 import { useRuleLabels } from '../../hooks/useRuleLabels';
 import { describeRule } from '../../utils/dynamicRule';
 import { resolveSongLocation, resolveSongPlace } from '../../utils/songLocation';
@@ -38,8 +39,6 @@ const ROWS_STEP = 300;
 const ROWS_AFTER_CURSOR = 40;
 
 const locationValue = (loc: PaneLocation): string => (loc.kind === 'library' ? 'library' : `playlist:${loc.id}`);
-const parseLocation = (value: string): PaneLocation =>
-  value.startsWith('playlist:') ? { kind: 'playlist', id: value.slice('playlist:'.length) } : { kind: 'library' };
 
 export function ManagerPane({ manager, paneId, paneLabel, live, listRef, onPlay, showPaths = false, onTogglePaths }: ManagerPaneProps) {
   const { t, language } = useLanguage();
@@ -47,10 +46,9 @@ export function ManagerPane({ manager, paneId, paneLabel, live, listRef, onPlay,
   const model = manager.models[paneId];
   const isActive = manager.active === paneId;
   const other = manager.models[OTHER_PANE[paneId]];
-  const { playlists, viewer } = manager;
+  const { viewer } = manager;
+  const libraryLabel = `${t.mgrLibrary} (${manager.songs.length})`;
 
-  const mine = playlists.filter((p) => !viewer || (p.ownerUser ?? viewer.user) === viewer.user);
-  const shared = playlists.filter((p) => !mine.includes(p));
   // «di fianco al nome la data di creazione» (Michele, ADR-0023): the menu says when each playlist was made
   const createdSuffix = (iso: string): string => {
     const date = formatPlaylistDate(iso, language, t);
@@ -126,30 +124,15 @@ export function ManagerPane({ manager, paneId, paneLabel, live, listRef, onPlay,
       <header className="mgr-pane-head">
         <div className="mgr-pane-top">
           <span className="mgr-pane-tag">{paneLabel}</span>
-          <select
-            className="mgr-select"
-            aria-label={`${t.mgrLocationLabel} (${paneLabel})`}
-            value={locationValue(model.state.location)}
-            onChange={(e) => manager.selectLocation(paneId, parseLocation(e.target.value))}
-          >
-            <option value="library">{t.mgrLibrary} ({manager.songs.length})</option>
-            {mine.length > 0 && (
-              <optgroup label={t.mgrMine}>
-                {mine.map((p) => (
-                  <option key={p.id} value={`playlist:${p.id}`}>{p.kind === 'dynamic' ? `${DYNAMIC_GLYPH} ` : ''}{p.name} ({p.songCount}){createdSuffix(p.createdAt)}</option>
-                ))}
-              </optgroup>
-            )}
-            {shared.length > 0 && (
-              <optgroup label={t.mgrSharedWithMe}>
-                {shared.map((p) => (
-                  <option key={p.id} value={`playlist:${p.id}`}>
-                    {p.kind === 'dynamic' ? `${DYNAMIC_GLYPH} ` : ''}{p.name} ({p.songCount}){createdSuffix(p.createdAt)} · {interpolate(t.mgrOwnerOf, { name: manager.familyName(p.ownerUser ?? '') })}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
+          <PlaylistPicker
+            className="mgr-select mgr-picker-btn"
+            value={model.state.location.kind === 'playlist' ? model.state.location.id : null}
+            onChange={(id) => manager.selectLocation(paneId, id ? { kind: 'playlist', id } : { kind: 'library' })}
+            allLabel={libraryLabel}
+            valueLabel={playlist ? `${playlist.kind === 'dynamic' ? `${DYNAMIC_GLYPH} ` : ''}${playlist.name} (${playlist.songCount})${createdSuffix(playlist.createdAt)}${playlist.ownerUser && viewer && playlist.ownerUser !== viewer.user ? ` · ${interpolate(t.mgrOwnerOf, { name: manager.familyName(playlist.ownerUser) })}` : ''}` : libraryLabel}
+            ariaLabel={`${t.mgrLocationLabel} (${paneLabel})`}
+            ownerLabel={(p) => (viewer && (p.ownerUser ?? viewer.user) !== viewer.user ? interpolate(t.mgrOwnerOf, { name: manager.familyName(p.ownerUser ?? '') }) : null)}
+          />
           {model.state.location.kind === 'library' && (
             <select
               className="mgr-select mgr-select-sort"

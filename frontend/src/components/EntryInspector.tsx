@@ -10,6 +10,8 @@ import {
 import type { EntryMediaUrls } from '../services/api';
 import { useLanguage, interpolate } from '../i18n';
 import { VERDICT_TONE, VERDICT_ICON } from '../utils/enrichmentVerdict';
+import { visibleTags } from './CollectionChips';
+import { VenueList } from './VenueList';
 
 interface EntryInspectorProps {
   entry: Entry;
@@ -158,7 +160,10 @@ export function EntryInspector({ entry, onBack, onDeleted }: EntryInspectorProps
   const hasSongs = entry.results.songs.length > 0;
   const hasFilms = entry.results.films.length > 0;
   const hasNotes = (entry.results.notes?.length || 0) > 0;
-  const hasTags = (entry.results.tags?.length || 0) > 0;
+  // the real tags: the placeholders the model copied from its prompt (#tag, @utente, #hashtag) are not shown
+  const tags = visibleTags(entry.results.tags, Infinity);
+  const hasTags = tags.length > 0;
+  const places = entry.places ?? [];
   const hasEnrichments = !!entry.results.enrichments;
   const slides = entry.results.slides ?? [];
   // Top-level links + slide suggestions + enrichment deep links (older
@@ -509,6 +514,19 @@ export function EntryInspector({ entry, onBack, onDeleted }: EntryInspectorProps
         </section>
       )}
 
+      {/* Where the post is (the places the server found in its text) and the venues it names, with «Apri in Maps» */}
+      {places.length > 0 && (
+        <section className="inspector-section inspector-places">
+          <h3 className="inspector-section-title">{t.entryPlaces}</h3>
+          <ul className="inspector-place-list">
+            {places.map((place) => (
+              <li key={`${place.kind}:${place.name}`} className="inspector-place">{place.name}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <VenueList venues={entry.venues ?? []} />
+
       {/* Links (AI + destinazioni suggerite dalle slide) */}
       {hasLinks && (
         <section className="inspector-section">
@@ -534,7 +552,7 @@ export function EntryInspector({ entry, onBack, onDeleted }: EntryInspectorProps
                 {VERDICT_ICON[verdict.label]} {verdict.label.toUpperCase()}
               </span>
             )}
-            {entry.results.tags.map((tag, i) => (
+            {tags.map((tag, i) => (
               <span key={i} className="tag-badge">{tag}</span>
             ))}
           </div>

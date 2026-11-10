@@ -5,16 +5,17 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { Home } from './Home';
 import { LanguageProvider } from '../i18n';
 import { UiPrefsProvider } from '../hooks/useUiPrefs';
-import { useJournal } from '../hooks/useJournal';
+import { useInbox } from '../hooks/useInbox';
 import { useSearch } from '../hooks/useSearch';
 import * as api from '../services/api';
 import { translations } from '../i18n/translations';
-import type { Entry, InboxView, SearchResult, UiPrefs } from '../types';
+import type { Entry, EntryFacets, EntrySummary, InboxView, SearchResult, UiPrefs } from '../types';
 
 // Look and feel P3: the Inbox has three views, chosen by the user and kept on the server: Studio (list and detail, the default), Bacheca (a wall
-// of cards and a detail panel that closes) and Home (the sections). The filters, the search and the deep link `?entry=` work in each.
+// of cards and a detail panel that closes) and Home (the sections). The filters, the search and the deep link `?entry=` work in each. The list is a
+// page of the whole library, 40 posts, asked to the server (Michele, 10 November: «la paginazione con 30 o 40 per pagina»): see Home.pages.test.tsx.
 
-vi.mock('../hooks/useJournal', () => ({ useJournal: vi.fn() }));
+vi.mock('../hooks/useInbox', () => ({ useInbox: vi.fn(), INBOX_PAGE_SIZE: 40 }));
 vi.mock('../hooks/useSearch', () => ({ useSearch: vi.fn() }));
 vi.mock('../services/api', () => ({
   getEntry: vi.fn(),
@@ -50,13 +51,12 @@ function makeEntry(id: string, summary: string, over: Partial<Entry> = {}, resul
   };
 }
 
-function mockJournal(entries: Entry[], over: Record<string, unknown> = {}) {
-  vi.mocked(useJournal).mockReturnValue({
-    entries, stats: { totalEntries: entries.length, totalSongs: 0, totalFilms: 0, totalNotes: 0 }, loading: false, error: null,
-    currentPage: 1, totalPages: 1, hasNext: false, hasPrev: false, nextPage: vi.fn(), prevPage: vi.fn(),
-    availablePlatforms: [], availableChannels: [], availableUsers: [], availableCategories: [], availableVerdicts: [], availableTags: [],
-    filteredCount: entries.length, ...over,
-  } as ReturnType<typeof useJournal>);
+const EMPTY_FACETS: EntryFacets = { platforms: [], channels: [], users: [], categories: [], verdicts: [], tags: [] };
+
+function mockInbox(entries: EntrySummary[], over: Partial<ReturnType<typeof useInbox>> = {}) {
+  vi.mocked(useInbox).mockReturnValue({
+    entries, total: entries.length, pageCount: 1, loading: false, error: false, facets: EMPTY_FACETS, version: 0, reload: vi.fn(), ...over,
+  });
 }
 
 function LocationProbe() {
@@ -75,8 +75,17 @@ function renderInbox(path = '/') {
 const wall = () => screen.queryByRole('list', { name: t.wallLabel });
 const card = (text: RegExp | string) => screen.getByRole('button', { name: text });
 
-const NIGHT = makeEntry('night', 'SUMMARY NIGHT', {}, { songs: [song('Nightcall', 'Kavinsky'), song('Lux Aeterna', 'Clint Mansell')] });
-const PLAIN = makeEntry('plain', 'SUMMARY PLAIN');
+const summary = (id: string, text: string, over: Partial<EntrySummary> = {}): EntrySummary => ({
+  id, sourceUrl: `https://instagram.com/reel/${id}`, sourcePlatform: 'instagram', caption: null, thumbnailUrl: null, status: 'completed',
+  createdAt: '2026-11-10T10:00:00.000Z', summary: text, songCount: 0, filmCount: 0, noteCount: 0, tags: [], ...over,
+});
+const NIGHT = summary('night', 'SUMMARY NIGHT', { songCount: 2 });
+const PLAIN = summary('plain', 'SUMMARY PLAIN');
+// what the post opens to: the list holds summaries, so the post is read by its id
+const FULL: Record<string, Entry> = {
+  night: makeEntry('night', 'SUMMARY NIGHT', {}, { songs: [song('Nightcall', 'Kavinsky'), song('Lux Aeterna', 'Clint Mansell')] }),
+  plain: makeEntry('plain', 'SUMMARY PLAIN'),
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -84,34 +93,35 @@ beforeEach(() => {
   vi.mocked(api.fetchUiPrefs).mockResolvedValue(prefsWith('studio'));
   vi.mocked(api.fetchWebHome).mockResolvedValue({ sections: [] });
   vi.mocked(useSearch).mockReturnValue({ results: [], expandedTerms: [], loading: false, error: null } as ReturnType<typeof useSearch>);
-  mockJournal([NIGHT, PLAIN]);
+  mockInbox([NIGHT, PLAIN]);
+  vi.mocked(api.getEntry).mockImplementation(async (id: string) => FULL[id] ?? makeEntry(id, `SUMMARY ${id.toUpperCase()}`));
 });
 
 describe('Inbox — which view', () => {
   it('the Studio is the default: list on the left, inspector on the right, no wall', async () => {
     renderInbox();
     await screen.findByRole('group', { name: t.viewSwitchLabel });
-    expect(document.querySelector('.master-detail')).not.toBeNull();
+    expect(document.querySelector('.links-split')).not.toBeNull();
     expect(wall()).toBeNull();
     expect(screen.getByRole('radio', { name: t.viewStudio })).toBeChecked();
   });
 
-  it('a saved Bacheca opens as the wall, one card per post with its songs in view, and no list-and-detail', async () => {
+  it('a saved Bacheca opens as the wall, one card per post with its counts in view, and no list-and-detail', async () => {
     vi.mocked(api.fetchUiPrefs).mockResolvedValue(prefsWith('wall'));
     renderInbox();
     await screen.findByRole('list', { name: t.wallLabel });
     expect(within(wall() as HTMLElement).getAllByRole('listitem')).toHaveLength(2);
-    expect(card(/SUMMARY NIGHT/)).toHaveTextContent('Nightcall — Kavinsky');
-    expect(document.querySelector('.master-detail')).toBeNull();
+    expect(card(/SUMMARY NIGHT/)).toHaveTextContent('2');
+    expect(document.querySelector('.links-split')).toBeNull();
     expect(screen.getByRole('radio', { name: t.viewWall })).toBeChecked();
   });
 
-  it('the wall shows every post that was loaded; the Studio keeps its five recent ones', async () => {
-    const many = Array.from({ length: 8 }, (_, i) => makeEntry(`e${i}`, `POST ${i}`));
-    mockJournal(many);
+  it('both views show every post of the page the server gave (a page of 40), not five of them', async () => {
+    const many = Array.from({ length: 8 }, (_, i) => summary(`e${i}`, `POST ${i}`));
+    mockInbox(many);
     const studio = renderInbox();
     await screen.findByRole('group', { name: t.viewSwitchLabel });
-    expect(document.querySelectorAll('.compact-card')).toHaveLength(5);
+    expect(document.querySelectorAll('.library-row')).toHaveLength(8);
     studio.unmount();
     vi.mocked(api.fetchUiPrefs).mockResolvedValue(prefsWith('wall'));
     renderInbox();
@@ -127,21 +137,21 @@ describe('Inbox — which view', () => {
     expect(api.saveUiPrefs).toHaveBeenCalledWith({ views: { inbox: 'wall' } });
     await userEvent.click(screen.getByRole('radio', { name: t.viewStudio }));
     await waitFor(() => expect(wall()).toBeNull());
-    expect(document.querySelector('.master-detail')).not.toBeNull();
+    expect(document.querySelector('.links-split')).not.toBeNull();
   });
 
   it('while the first answer about the views is on its way the page shows neither, only the wait', async () => {
     vi.mocked(api.fetchUiPrefs).mockReturnValue(new Promise(() => undefined));
     renderInbox();
     expect(await screen.findByText(t.loading)).toBeInTheDocument();
-    expect(document.querySelector('.master-detail')).toBeNull();
+    expect(document.querySelector('.links-split')).toBeNull();
     expect(wall()).toBeNull();
   });
 
   it('if the server cannot be asked the page is the Studio, never blank', async () => {
     vi.mocked(api.fetchUiPrefs).mockRejectedValue(new Error('network down'));
     renderInbox();
-    await waitFor(() => expect(document.querySelector('.master-detail')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('.links-split')).not.toBeNull());
   });
 });
 
@@ -172,17 +182,17 @@ describe('Inbox — the wall and its panel', () => {
     expect(within(panel).queryByText('SUMMARY PLAIN')).toBeNull();
   });
 
-  it('a link with ?entry= opens its panel (here the post is on the loaded page), and closing it takes ?entry= out of the address', async () => {
+  it('a link with ?entry= opens its panel (the post is read by its id), and closing it takes ?entry= out of the address', async () => {
     renderInbox('/?entry=night');
     const panel = await screen.findByRole('complementary', { name: t.detailLabel });
-    expect(within(panel).getByText('SUMMARY NIGHT')).toBeInTheDocument();
-    expect(api.getEntry).not.toHaveBeenCalled();
+    expect(await within(panel).findByText('SUMMARY NIGHT')).toBeInTheDocument();
+    expect(api.getEntry).toHaveBeenCalledWith('night');
     await userEvent.click(within(panel).getByRole('button', { name: t.detailClose }));
     await waitFor(() => expect(screen.queryByRole('complementary', { name: t.detailLabel })).toBeNull());
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/);
   });
 
-  it('a link to a post that is not on the loaded page fetches it and shows it in the panel', async () => {
+  it('a link to a post that is on no page shown fetches it and shows it in the panel', async () => {
     vi.mocked(api.getEntry).mockResolvedValue(makeEntry('old', 'SUMMARY OLD ONE'));
     renderInbox('/?entry=old');
     const panel = await screen.findByRole('complementary', { name: t.detailLabel });
@@ -190,21 +200,16 @@ describe('Inbox — the wall and its panel', () => {
     expect(api.getEntry).toHaveBeenCalledWith('old');
   });
 
-  it('under the wall, «open the whole library» leads to the Link page; with a filter on, it is not offered', async () => {
+  it('under the wall there is no «open the whole library»: the pages are the way to the rest', async () => {
+    mockInbox([NIGHT, PLAIN], { total: 1721, pageCount: 44 });
     renderInbox();
-    expect(await screen.findByRole('link', { name: t.seeAllJournal })).toHaveAttribute('href', '/entries');
-  });
-
-  it('the filter on: no «open the whole library» link under the filtered wall', async () => {
-    mockJournal([NIGHT, PLAIN], { availablePlatforms: [{ platform: 'instagram', count: 2 }, { platform: 'tiktok', count: 1 }] });
-    renderInbox();
-    await userEvent.click(await screen.findByRole('button', { name: t.filterToggle }));
-    await userEvent.click(screen.getByRole('button', { name: /^IG\s*2$/ }));
-    await waitFor(() => expect(screen.queryByRole('link', { name: t.seeAllJournal })).toBeNull());
+    await screen.findByRole('list', { name: t.wallLabel });
+    expect(screen.queryByRole('link', { name: /libreria|library/i })).toBeNull();
+    expect(screen.getByRole('navigation', { name: t.pageNavLabel })).toBeInTheDocument();
   });
 
   it('no posts: the empty message, not an empty wall', async () => {
-    mockJournal([]);
+    mockInbox([]);
     renderInbox();
     expect(await screen.findByText(t.noEntries)).toBeInTheDocument();
     expect(wall()).toBeNull();
@@ -228,12 +233,12 @@ describe('Inbox — the wall and its panel', () => {
     expect(wall()).toBeNull();
   });
 
-  it('the filters work in the wall: the toggle opens the chips and a chip asks the journal for that platform', async () => {
-    mockJournal([NIGHT, PLAIN], { availablePlatforms: [{ platform: 'instagram', count: 2 }, { platform: 'tiktok', count: 1 }] });
+  it('the filters work in the wall: the toggle opens the chips and a chip asks the server for that platform', async () => {
+    mockInbox([NIGHT, PLAIN], { facets: { ...EMPTY_FACETS, platforms: [{ platform: 'instagram', count: 2 }, { platform: 'tiktok', count: 1 }] } });
     renderInbox();
     await userEvent.click(await screen.findByRole('button', { name: t.filterToggle }));
     await userEvent.click(screen.getByRole('button', { name: /^IG\s*2$/ }));      // the chip «IG 2» (jsdom has no layout, so no space between the two spans), not a card
-    await waitFor(() => expect(vi.mocked(useJournal)).toHaveBeenLastCalledWith(20, expect.objectContaining({ platform: 'instagram' })));
+    await waitFor(() => expect(vi.mocked(useInbox)).toHaveBeenLastCalledWith(1, expect.objectContaining({ platform: 'instagram' })));
   });
 });
 
@@ -257,7 +262,7 @@ describe('Inbox — the Home view', () => {
     renderInbox();
     expect(await screen.findByRole('heading', { level: 2, name: t.homeSectionResume })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 2, name: t.homeSectionFilms })).toBeInTheDocument();
-    expect(document.querySelector('.master-detail')).toBeNull();
+    expect(document.querySelector('.links-split')).toBeNull();
     expect(wall()).toBeNull();                                       // the cards of «pick up» are a list named after their section
     expect(screen.getByRole('radio', { name: t.viewHome })).toBeChecked();
   });
@@ -279,7 +284,7 @@ describe('Inbox — the Home view', () => {
   });
 
   it('the filters of the journal are not offered here (the Home has no list to filter)', async () => {
-    mockJournal([NIGHT, PLAIN], { availablePlatforms: [{ platform: 'instagram', count: 2 }, { platform: 'tiktok', count: 1 }] });
+    mockInbox([NIGHT, PLAIN], { facets: { ...EMPTY_FACETS, platforms: [{ platform: 'instagram', count: 2 }, { platform: 'tiktok', count: 1 }] } });
     renderInbox();
     await screen.findByRole('heading', { level: 2, name: t.homeSectionResume });
     expect(screen.queryByRole('button', { name: t.filterToggle })).toBeNull();
@@ -299,7 +304,7 @@ describe('Inbox — the Home view', () => {
   it('a link with ?entry= opens its panel here too', async () => {
     renderInbox('/?entry=night');
     const panel = await screen.findByRole('complementary', { name: t.detailLabel });
-    expect(within(panel).getByText('SUMMARY NIGHT')).toBeInTheDocument();
+    expect(await within(panel).findByText('SUMMARY NIGHT')).toBeInTheDocument();
   });
 
   it('choosing Home from the Studio saves only this page', async () => {

@@ -1,0 +1,90 @@
+/*
+ * The pages of a long list (components/PageNav.tsx). Colours and forms only from the tokens (tokens.css = Mondrop, ADR-0025): never write a hex here.
+ */
+.page-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.page-nav-btn {
+  min-width: 2.2rem;
+  height: 2.2rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--mp-radius-pill);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.page-nav-btn:hover:not(:disabled):not(.is-current) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.page-nav-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.page-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.page-nav-num.is-current {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+  cursor: default;
+}
+
+.page-nav-gap {
+  min-width: 1.2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* «page X of Y» in words: the phone shows only that and the two steps */
+.page-nav-status {
+  display: none;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 760px) {
+  .page-nav-num,
+  .page-nav-gap {
+    display: none;
+  }
+
+  .page-nav-status {
+    display: inline;
+  }
+
+  .page-nav-step {
+    min-width: 2.6rem;
+    height: 2.6rem;
+  }
+
+  /* «‹ Page 7 of 43 ›»: the words go between the two steps */
+  .page-nav > button:first-child {
+    order: 0;
+  }
+
+  .page-nav-status {
+    order: 1;
+  }
+
+  .page-nav > button:last-of-type {
+    order: 2;
+  }
+}

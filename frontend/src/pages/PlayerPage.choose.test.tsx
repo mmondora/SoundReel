@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { PlayerPage } from './PlayerPage';
 import { PHONE_QUERY } from '../hooks/useMediaQuery';
@@ -8,6 +9,7 @@ import { LanguageProvider } from '../i18n';
 import { setStoredLanguage } from '../i18n/translations';
 import { resetEntryThumbnailCache } from '../hooks/useEntryThumbnail';
 import * as api from '../services/api';
+import { choosePlaylist, playlistButton, pickerDialog, servePlaylistPages } from '../testing/managerPicker';
 import type { AggregatedSong, PlaylistDetail, PlaylistSummary } from '../types';
 
 // "Scegli cosa suonare" in the web player (spec 2026-11-08-player-selection-and-filters-design.md X4): filters by type,
@@ -21,6 +23,7 @@ vi.mock('../services/api', () => ({
   fetchSongs: vi.fn(),
   getEntry: vi.fn(),
   fetchPlaylists: vi.fn(),
+  fetchPlaylistsPage: vi.fn(),
   fetchPlaylist: vi.fn(),
   createPlaylist: vi.fn(),
   deletePlaylist: vi.fn(),
@@ -357,17 +360,26 @@ describe('a playlist', () => {
   };
 
   beforeEach(() => {
-    vi.mocked(api.fetchPlaylists).mockResolvedValue(PLAYLISTS);
+    servePlaylistPages(() => PLAYLISTS);
     vi.mocked(api.fetchPlaylist).mockResolvedValue(DETAIL);
   });
 
-  it('is picked from a select; the list shows its songs in ITS order, and the facets count inside it', async () => {
+  it('is picked in a dialog (asked a page at a time); the list shows its songs in ITS order, and the facets count inside it', async () => {
     await open();
-    const select = within(panel()).getByRole('combobox', { name: 'Playlist' });
-    await waitFor(() => expect(within(select).getByRole('option', { name: 'Road trip (3)' })).toBeInTheDocument());
-    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['All songs', 'Road trip (3)', 'Empty (0)']);
-    fireEvent.change(select, { target: { value: 'p1' } });
+    expect(playlistButton(panel())).toHaveTextContent('All songs');
+    await userEvent.click(playlistButton(panel()));
+    const rows = within(pickerDialog()).getAllByRole('button').filter((b) => b.hasAttribute('data-pl-option'));
+    await waitFor(() => expect(within(pickerDialog()).getAllByRole('button').filter((b) => b.hasAttribute('data-pl-option'))).toHaveLength(2));
+    void rows;
+    expect(within(pickerDialog()).getByRole('button', { name: /^All songs/ })).toBeInTheDocument();
+    await userEvent.click(within(pickerDialog()).getByRole('button', { name: /^Road trip 3 songs/ }));
+    expect(playlistButton(panel())).toHaveTextContent('Road trip (3)');
     await waitFor(() => expect(listTitles()).toEqual(['One More Time', 'Like a Prayer', 'Billie Jean']));
+    // opened again, the dialog marks the playlist the list comes from
+    await userEvent.click(playlistButton(panel()));
+    await waitFor(() => expect(within(pickerDialog()).getByRole('button', { name: /^Road trip 3 songs/ })).toHaveAttribute('aria-current', 'true'));
+    expect(within(pickerDialog()).getByRole('button', { name: /^All songs/ })).not.toHaveAttribute('aria-current');
+    await userEvent.keyboard('{Escape}');
     expect(api.fetchPlaylist).toHaveBeenCalledWith('p1');
     // the years offered are the ones inside the playlist
     expect(within(group('Years')).getAllByRole('button').map((b) => b.textContent?.replace(/\s+/g, ' ').trim())).toEqual(['1980s 2', '2000s 1']);
@@ -375,9 +387,7 @@ describe('a playlist', () => {
 
   it('plays it with its name, and a filter inside it narrows it ("Road trip · 1980s")', async () => {
     await open();
-    const select = within(panel()).getByRole('combobox', { name: 'Playlist' });
-    await waitFor(() => expect(within(select).getByRole('option', { name: 'Road trip (3)' })).toBeInTheDocument());
-    fireEvent.change(select, { target: { value: 'p1' } });
+    await choosePlaylist(panel(), 'Road trip');
     await waitFor(() => expect(listTitles()).toHaveLength(3));
     fireEvent.click(playButton());
     expect((fns.playSong.mock.calls[0] as unknown[])[2]).toBe('Road trip');
@@ -392,32 +402,32 @@ describe('a playlist', () => {
 
   it('"All songs" goes back to the whole library', async () => {
     await open();
-    const select = within(panel()).getByRole('combobox', { name: 'Playlist' });
-    await waitFor(() => expect(within(select).getByRole('option', { name: 'Road trip (3)' })).toBeInTheDocument());
-    fireEvent.change(select, { target: { value: 'p1' } });
+    await choosePlaylist(panel(), 'Road trip');
     await waitFor(() => expect(listTitles()).toHaveLength(3));
-    fireEvent.change(select, { target: { value: '' } });
+    await choosePlaylist(panel(), 'library');
     await waitFor(() => expect(listTitles()).toHaveLength(SONGS.length));
+    expect(playlistButton(panel())).toHaveTextContent('All songs');
   });
 
   it('a playlist that cannot be read leaves the list as it was', async () => {
     vi.mocked(api.fetchPlaylist).mockRejectedValue(new Error('HTTP 500'));
     await open();
-    const select = within(panel()).getByRole('combobox', { name: 'Playlist' });
-    await waitFor(() => expect(within(select).getByRole('option', { name: 'Road trip (3)' })).toBeInTheDocument());
-    fireEvent.change(select, { target: { value: 'p1' } });
+    await choosePlaylist(panel(), 'Road trip');
     await new Promise((resolve) => { setTimeout(resolve, 20); });
     expect(listTitles()).toHaveLength(SONGS.length);
   });
 
-  it('the playlists are asked for once, when the panel is first opened', async () => {
+  it('the whole list of playlists is never asked for: the dialog asks a page of them, and only when it is opened', async () => {
     renderPage();
     await waitFor(() => expect(listTitles()).toHaveLength(SONGS.length));
+    fireEvent.click(toggleButton());
+    await screen.findByTestId('choose-panel');
     expect(api.fetchPlaylists).not.toHaveBeenCalled();
-    fireEvent.click(toggleButton());
-    fireEvent.click(toggleButton());
-    fireEvent.click(toggleButton());
-    await waitFor(() => expect(api.fetchPlaylists).toHaveBeenCalledTimes(1));
+    expect(api.fetchPlaylistsPage).not.toHaveBeenCalled();
+    await userEvent.click(playlistButton(panel()));
+    await waitFor(() => expect(api.fetchPlaylistsPage).toHaveBeenCalledTimes(1));
+    expect(api.fetchPlaylistsPage).toHaveBeenCalledWith(expect.objectContaining({ limit: 30, offset: 0 }));
+    expect(api.fetchPlaylists).not.toHaveBeenCalled();
   });
 });
 

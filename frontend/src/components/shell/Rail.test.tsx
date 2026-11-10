@@ -33,10 +33,26 @@ describe('Rail', () => {
     const nav = screen.getByRole('navigation', { name: 'Sezioni' });
     const links = within(nav).getAllByRole('link');
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
-      '/', '/entries', '/songs', '/films', '/software', '/notes', '/player', '/playlist-manager', '/stats',
+      '/', '/collections', '/entries', '/songs', '/films', '/software', '/notes', '/player', '/playlist-manager', '/stats',
     ]);
     expect(within(nav).getByText('Archivio')).toBeInTheDocument();
     expect(within(nav).getByText('Ascolto')).toBeInTheDocument();
+  });
+
+  it('«Raccolte» sits between the Inbox and Link (spec §6.2), with no count of its own', () => {
+    renderRail('/');
+    const nav = screen.getByRole('navigation', { name: 'Sezioni' });
+    const names = within(nav).getAllByRole('link').slice(0, 3).map((a) => a.textContent ?? '');
+    expect(names[0]).toMatch(/Inbox/);
+    expect(names[1]).toMatch(/Raccolte/);
+    expect(names[2]).toMatch(/Link/);
+    expect(screen.getByRole('link', { name: /Raccolte/ })).not.toHaveTextContent(/\d/);
+  });
+
+  it('«Raccolte» is the current page on /collections and on one collection, and the Inbox is not', () => {
+    renderRail('/collections/type%3Amusic');
+    expect(screen.getByRole('link', { name: /Raccolte/ })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: /Inbox/ })).not.toHaveAttribute('aria-current');
   });
 
   it('shows the counts of the journal the way the old header did: 943, 1,7k, 6,1k', () => {

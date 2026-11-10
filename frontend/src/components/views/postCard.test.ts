@@ -44,6 +44,15 @@ describe('postFromEntry', () => {
     expect(post.tags).toEqual(['a', 'b', 'c', 'd']);
   });
 
+  it('the placeholder tags the model copied from its prompt are not tags of the post', () => {
+    const post = postFromEntry(entry({}, { tags: ['#tag', '#vino', '@utente', '#hashtag', '#cantina'] }));
+    expect(post.tags).toEqual(['#vino', '#cantina']);
+  });
+
+  it('an entry of the full journal carries no chips of collections (the server sends them on the summaries)', () => {
+    expect(postFromEntry(entry()).collections).toEqual([]);
+  });
+
   it('a date in the form of the old database ({ _seconds }) is read; one that cannot be read is no date', () => {
     expect(postFromEntry(entry({ createdAt: { _seconds: 1_794_304_800 } as never })).createdAt).toBe(new Date(1_794_304_800 * 1000).toISOString());
     expect(postFromEntry(entry({ createdAt: 'not a date' })).createdAt).toBeNull();
@@ -66,8 +75,14 @@ describe('postFromSummary', () => {
   it('has only the counts (the list of summaries carries no songs), and the same fields otherwise', () => {
     expect(postFromSummary(row)).toEqual({
       id: 's1', platform: 'tiktok', createdAt: '2026-11-09T08:00:00.000Z', thumbnailUrl: null, summary: 'sum', status: 'processing',
-      songs: [], films: [], songCount: 12, filmCount: 2, noteCount: 1, tags: ['t1', 't2'],
+      songs: [], films: [], songCount: 12, filmCount: 2, noteCount: 1, tags: ['t1', 't2'], collections: [],
     });
+  });
+
+  it('carries the chips of the collections the server sent, in its order', () => {
+    const chips = [{ id: 'abc', name: 'Vino' }, { id: 'place:milano', name: 'Milano' }];
+    expect(postFromSummary({ ...row, collections: chips }).collections).toEqual(chips);
+    expect(postFromSummary(row).collections).toEqual([]);
   });
 
   it('without a summary the caption, then the link', () => {
@@ -86,7 +101,7 @@ describe('postFromSearch', () => {
   it('puts in view what the result carries (a film of a search has no year)', () => {
     expect(postFromSearch(found)).toMatchObject({
       id: 'r1', platform: 'youtube', summary: 'found', thumbnailUrl: 'https://img/2.jpg', status: 'completed',
-      songs: [{ title: 'S', artist: 'A' }, { title: 'S2', artist: 'A2' }], films: [{ title: 'F', year: null }], songCount: 2, filmCount: 1, noteCount: 0, tags: ['x'],
+      songs: [{ title: 'S', artist: 'A' }, { title: 'S2', artist: 'A2' }], films: [{ title: 'F', year: null }], songCount: 2, filmCount: 1, noteCount: 0, tags: ['x'], collections: [],
     });
   });
 });

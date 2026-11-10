@@ -1,4 +1,5 @@
-import type { Entry, EntrySummary, SearchResult } from '../../types';
+import type { CollectionChip, Entry, EntrySummary, SearchResult } from '../../types';
+import { isPlaceholderTag } from '../CollectionChips';
 
 // One model for the card of a post, whatever list it comes from (the journal, the list of summaries, a search): the wall and the Home draw only
 // this. The wall puts the media of the post in view (the first songs and films); a list that carries only counts shows the counts.
@@ -19,6 +20,8 @@ export interface PostCardModel {
   filmCount: number;
   noteCount: number;
   tags: string[];
+  /** The collections the post is in, as the server chose them (the summaries carry them; the full journal does not). */
+  collections: CollectionChip[];
 }
 
 export const SONGS_IN_VIEW = 3;
@@ -49,7 +52,7 @@ function summaryOf(summary: string | null | undefined, caption: string | null | 
 
 function tagsOf(tags: unknown): string[] {
   if (!Array.isArray(tags)) return [];
-  return tags.filter((tag): tag is string => typeof tag === 'string' && tag.trim() !== '').slice(0, TAGS_IN_VIEW);
+  return tags.filter((tag): tag is string => typeof tag === 'string' && tag.trim() !== '' && !isPlaceholderTag(tag)).slice(0, TAGS_IN_VIEW);
 }
 
 export function postFromEntry(entry: Entry): PostCardModel {
@@ -69,6 +72,7 @@ export function postFromEntry(entry: Entry): PostCardModel {
     filmCount: films.length,
     noteCount: (results.notes ?? []).length,
     tags: tagsOf(results.tags),
+    collections: [],
   };
 }
 
@@ -86,6 +90,7 @@ export function postFromSummary(row: EntrySummary): PostCardModel {
     filmCount: row.filmCount,
     noteCount: row.noteCount,
     tags: tagsOf(row.tags),
+    collections: row.collections ?? [],
   };
 }
 
@@ -104,5 +109,6 @@ export function postFromSearch(result: SearchResult): PostCardModel {
     filmCount: films.length,
     noteCount: notes.length,
     tags: tagsOf(tags),
+    collections: [],
   };
 }

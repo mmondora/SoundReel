@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import { interpolate, useLanguage } from '../../i18n';
 import { useUiPrefs } from '../../hooks/useUiPrefs';
 import { useWebHome } from '../../hooks/useWebHome';
+import { initial } from '../../utils/initial';
 import { orderHomeSections } from '../../utils/homeSections';
 import { HOME_SECTION_TITLE } from '../../utils/homeSectionTitles';
 import type { HomeSectionId, WebHomeFilm, WebHomePlaylist, WebHomeSection, WebHomeSong } from '../../types';
+import { CollectionCard } from '../CollectionCard';
 import { Wall } from './Wall';
 import { postFromSummary } from './postCard';
 
@@ -18,12 +20,9 @@ const SEE_ALL: Record<HomeSectionId, string> = {
   resume: '/entries',
   songs: '/songs',
   playlists: '/playlist-manager',
-  collections: '/library',
+  collections: '/collections',
   films: '/films',
 };
-
-/** The first letter of a name (an emoji counts as one), for the tile that has no picture. */
-const initial = (name: string): string => Array.from(name.trim())[0]?.toUpperCase() ?? '♪';
 
 function Art({ src, name, poster = false }: { src: string | null; name: string; poster?: boolean }) {
   const className = poster ? 'home-tile-art poster' : 'home-tile-art';
@@ -89,6 +88,9 @@ function HomeSection({ section, selectedId, onOpenEntry }: HomeSectionProps) {
       break;
     case 'playlists':
       body = <ul className="home-rail" aria-label={title}>{section.items.map((pl) => <li key={pl.id}><PlaylistTile playlist={pl} /></li>)}</ul>;
+      break;
+    case 'collections':
+      body = <ul className="home-rail" aria-label={title}>{section.items.map((collection) => <li key={collection.id}><CollectionCard collection={collection} /></li>)}</ul>;
       break;
     case 'films':
       body = <ul className="home-rail" aria-label={title}>{section.items.map((film) => <li key={film.filmKey}><FilmTile film={film} /></li>)}</ul>;

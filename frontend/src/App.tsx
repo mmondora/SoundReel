@@ -9,6 +9,8 @@ import { Prompts } from './pages/Prompts';
 import { Console } from './pages/Console';
 import { Admin } from './pages/Admin';
 import { EntriesPage } from './pages/EntriesPage';
+import { CollectionsPage } from './pages/CollectionsPage';
+import { CollectionPage } from './pages/CollectionPage';
 import { SongsPage } from './pages/SongsPage';
 import { FilmsPage } from './pages/FilmsPage';
 import { NotesPage } from './pages/NotesPage';
@@ -20,6 +22,7 @@ import { PlaylistManagerPage } from './pages/PlaylistManagerPage';
 import { StatsPage } from './pages/StatsPage';
 import './styles/index.css';
 import './styles/views.css';
+import './styles/collections.css';
 
 export function App() {
   return (
@@ -31,6 +34,8 @@ export function App() {
             <Route element={<AppShell />}>
               <Route path="/" element={<Home />} />
               <Route path="/entries" element={<EntriesPage />} />
+              <Route path="/collections" element={<CollectionsPage />} />
+              <Route path="/collections/:id" element={<CollectionPage />} />
               <Route path="/songs" element={<SongsPage />} />
               <Route path="/player" element={<PlayerPage />} />
               <Route path="/playlist-manager" element={<PlaylistManagerPage />} />

@@ -1,0 +1,808 @@
+/*
+ * The collections (spec 2026-11-09-library-collections-auto-topics-design.md §6, contract docs/collections.md): the rail of chips on the Link page,
+ * the facets, the page «Raccolte» (cards with a 2×2 mosaic), the page of one collection (menu of corrections, «Why is it here?», views, «Play all»),
+ * the chips of a post, the venues with «Open in Maps», and the places of a post in full. Colours and forms only from the tokens (tokens.css =
+ * Mondrop, ADR-0025): never write a hex here.
+ */
+
+/* ---------- the badge «New» ---------- */
+.collection-new {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 1px 8px;
+  border-radius: var(--mp-radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+/* ---------- the rail of chips on the Link page ---------- */
+.collection-rail {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.collection-chip,
+.collection-facet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.85rem;
+  border: 0;
+  border-radius: var(--mp-radius-pill);
+  background: var(--border);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.85rem;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.collection-chip:hover,
+.collection-facet-chip:hover {
+  background: var(--bg-hover);
+}
+
+.collection-chip[aria-pressed='true'],
+.collection-facet-chip[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.collection-chip:focus-visible,
+.collection-facet-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.collection-chip .collection-new {
+  margin-left: 0;
+}
+
+.collection-chip[aria-pressed='true'] .collection-new {
+  background: var(--on-accent);
+  color: var(--accent);
+}
+
+.collection-chip-count {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+/* ---------- the facets: Dove · Fonte · Quando ---------- */
+.collection-facets {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.collection-facet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.collection-facet-label {
+  min-width: 4.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.collection-facet-chip {
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+/* ---------- the page «Raccolte» ---------- */
+.collections-header {
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.collections-filter {
+  min-width: 220px;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--mp-radius-pill);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.collections-filter:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.collections-group {
+  margin-bottom: 1.75rem;
+}
+
+.collections-group h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.collections-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 1rem;
+}
+
+.collection-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.collection-mosaic {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--bg-hover);
+}
+
+/* no picture at all: the first letter of the name on one square (the Home tiles do the same) */
+.collection-mosaic.is-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.6rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.collection-tile {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-card);
+}
+
+.collection-tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.collection-card:hover .collection-mosaic,
+.collection-card:focus-visible .collection-mosaic {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.collection-card:focus-visible {
+  outline: none;
+}
+
+.collection-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.collection-card:hover .collection-card-name,
+.collection-card:focus-visible .collection-card-name {
+  color: var(--accent);
+}
+
+.collection-card-sub {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+/* a shelf of the Home: the cards sit in a row */
+.home-rail .collection-card {
+  width: 160px;
+}
+
+.collections-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.collections-more {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.collections-disclose {
+  padding: 0.4rem 0.9rem;
+  border: 0;
+  border-radius: var(--mp-radius-pill);
+  background: var(--border);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.collections-disclose:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.collections-hidden-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.collections-hidden-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  font-size: 0.88rem;
+}
+
+.collections-hidden-list button {
+  padding: 0.2rem 0.7rem;
+  border: 0;
+  border-radius: var(--mp-radius-pill);
+  background: var(--border);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.collections-watching-count {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- the page of one collection ---------- */
+.collection-header h1 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.collection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.collection-menu {
+  position: relative;
+}
+
+.collection-menu-btn {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.collection-menu-btn:hover,
+.collection-menu-btn[aria-expanded='true'] {
+  background: var(--bg-hover);
+}
+
+.collection-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-lg);
+}
+
+.collection-menu-list button {
+  padding: 0.55rem 0.8rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.collection-menu-list button:hover,
+.collection-menu-list button:focus-visible {
+  background: var(--bg-hover);
+}
+
+.collection-panel {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+}
+
+.collection-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.collection-panel input[type='text'] {
+  min-width: 240px;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.92rem;
+}
+
+.collection-panel input[type='text']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.collection-panel p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.collection-merge-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.collection-cancel {
+  padding: 0.45rem 1rem;
+  border: 0;
+  border-radius: var(--mp-radius-pill);
+  background: var(--border);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.collection-cancel:hover {
+  background: var(--bg-hover);
+}
+
+.collection-action-error {
+  flex: none;
+  align-self: flex-start;
+  margin: 0 0 0.75rem;
+  padding: 0.35rem 0.9rem;
+  border-radius: var(--mp-radius-pill);
+  background: var(--error-soft);
+  color: var(--error);
+  font-size: 0.85rem;
+}
+
+/* «Why is it here?» */
+.collection-why {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.collection-why-btn {
+  padding: 0.3rem 0.9rem;
+  border: 0;
+  border-radius: var(--mp-radius-pill);
+  background: var(--border);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.collection-why-btn:hover,
+.collection-why-btn[aria-expanded='true'] {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.collection-why-words {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.collection-why-posts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  max-width: 640px;
+}
+
+.collection-why-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.collection-typical {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  padding: 0.4rem 0.8rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.collection-typical:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* «Play all» */
+.collection-play {
+  flex: none;
+  margin-bottom: 0.75rem;
+}
+
+.collection-play-all {
+  padding: 0.55rem 1.4rem;
+  border: 0;
+  border-radius: var(--mp-radius-pill);
+  background: var(--accent);
+  color: var(--on-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.collection-play-all:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.collection-play-all:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.collection-gone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* ---------- the chips of a post (a row of the list, a card of the wall) ---------- */
+.collection-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+/* the row is opened by a button laid over it: the links and the «×» of the chips stay above it */
+.library-row .collection-chips {
+  position: relative;
+  z-index: 2;
+}
+
+/* the menu of the «+» opens over the rows below it: the chips that hold it go above theirs */
+.library-row .collection-chips.has-menu-open {
+  z-index: 30;
+}
+
+.collection-post-chip-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.collection-post-chip,
+.collection-tag-chip {
+  padding: 0.1rem 0.55rem;
+  border-radius: var(--mp-radius-pill);
+  font-size: 0.7rem;
+  text-decoration: none;
+}
+
+.collection-post-chip {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+a.collection-post-chip:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.collection-tag-chip {
+  background: var(--border);
+  color: var(--text-secondary);
+}
+
+.collection-post-chip-wrap .collection-chip-x {
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.collection-post-chip-wrap .collection-chip-x:hover,
+.collection-post-chip-wrap .collection-chip-x:focus-visible {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+/* the «+»: put the post in a theme by hand */
+.collection-add {
+  position: relative;
+  display: inline-flex;
+}
+
+.collection-add-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px dashed var(--text-muted);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.collection-add-btn:hover,
+.collection-add-btn[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.collection-add-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-lg);
+}
+
+.collection-add-menu button {
+  padding: 0.45rem 0.7rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.collection-add-menu button:hover,
+.collection-add-menu button:focus-visible {
+  background: var(--bg-hover);
+}
+
+/* ---------- the venues, with «Open in Maps» ---------- */
+.venue-list {
+  margin: 0 0 1rem;
+}
+
+.venue-list h3 {
+  margin: 0 0 0.6rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.venue-list ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.venue-show-all {
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.9rem;
+  border: 0;
+  border-radius: var(--mp-radius-pill);
+  background: var(--border);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.venue-show-all:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.venue-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+
+.venue-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.6rem;
+  min-width: 0;
+}
+
+.venue-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.venue-sub {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.venue-maps {
+  flex: none;
+  padding: 0.3rem 0.85rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--mp-radius-pill);
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.venue-maps:hover,
+.venue-maps:focus-visible {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ---------- the places of a post in full ---------- */
+.inspector-place-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inspector-place {
+  padding: 0.2rem 0.7rem;
+  border-radius: var(--mp-radius-pill);
+  background: var(--border);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+/* ---------- the phone ---------- */
+@media (max-width: 760px) {
+  /* the rail is one row that scrolls sideways, not a wall of chips that pushes the posts away */
+  .collection-rail {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
+
+  .collection-chip {
+    flex: none;
+  }
+
+  .collections-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .collections-filter {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .collection-actions {
+    margin-left: 0;
+  }
+
+  .collection-menu-list {
+    right: auto;
+    left: 0;
+  }
+
+  .collection-panel input[type='text'] {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .venue-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

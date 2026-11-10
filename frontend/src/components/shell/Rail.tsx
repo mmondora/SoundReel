@@ -14,6 +14,7 @@ export function formatCount(n: number | undefined | null): string {
 /** The icon of each section: plain strokes, like the symbols of the app. */
 const ICONS: Record<string, ReactNode> = {
   '/': (<><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></>),
+  '/collections': (<><rect x="3" y="3" width="8" height="8" rx="1.5" /><rect x="13" y="3" width="8" height="8" rx="1.5" /><rect x="3" y="13" width="8" height="8" rx="1.5" /><rect x="13" y="13" width="8" height="8" rx="1.5" /></>),
   '/entries': (<><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></>),
   '/songs': (<><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></>),
   '/films': (<><rect x="2" y="2" width="20" height="20" rx="2.2" /><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5" /></>),
@@ -36,6 +37,7 @@ export function Rail({ stats, hiddenPlayer = false }: RailProps) {
 
   const archive = [
     { to: '/', end: true, label: t.navInbox, count: undefined as number | undefined },
+    { to: '/collections', end: false, label: t.collectionsNav, count: undefined as number | undefined },
     { to: '/entries', end: false, label: t.navLinks, count: stats?.totalEntries },
     { to: '/songs', end: false, label: t.songs, count: stats?.totalSongs },
     { to: '/films', end: false, label: t.films, count: stats?.totalFilms },

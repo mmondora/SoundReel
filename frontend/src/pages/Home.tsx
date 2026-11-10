@@ -1,21 +1,23 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { UrlInput } from '../components/UrlInput';
-import { CompactCard } from '../components/CompactCard';
+import { EntriesView } from '../components/EntriesView';
 import { EntryInspector } from '../components/EntryInspector';
+import { PageNav } from '../components/PageNav';
 import { ViewSwitch } from '../components/views/ViewSwitch';
 import { Wall } from '../components/views/Wall';
 import { HomeSections } from '../components/views/HomeSections';
 import { DetailPanel } from '../components/views/DetailPanel';
-import { postFromEntry, postFromSearch } from '../components/views/postCard';
+import { postFromSearch } from '../components/views/postCard';
 import { usePageView } from '../hooks/useUiPrefs';
-import { useJournal } from '../hooks/useJournal';
+import { useEntryById } from '../hooks/useEntryById';
+import { useInbox } from '../hooks/useInbox';
 import { useSearch } from '../hooks/useSearch';
 import { useAnalyze } from '../hooks/useAnalyze';
-import { useLanguage } from '../i18n';
-import { getEntry } from '../services/api';
+import { interpolate, useLanguage } from '../i18n';
 import { CATEGORY_ICON, VERDICT_ICON } from '../utils/enrichmentVerdict';
-import type { Entry, SearchResult, EnrichmentCategory, EnrichmentVerdictLabel } from '../types';
+import { pageFromParam } from '../utils/pageParam';
+import type { InboxFilter, SearchResult, EnrichmentCategory, EnrichmentVerdictLabel } from '../types';
 
 const CATEGORY_LABEL: Record<EnrichmentCategory, string> = {
   tech: 'Tech',
@@ -62,8 +64,6 @@ function parseFirestoreDate(timestamp: unknown): Date | null {
   }
   return null;
 }
-
-const RECENT_COUNT = 5;
 
 function truncate(s: string | null, max: number): string {
   if (!s) return '';
@@ -119,24 +119,15 @@ function SearchResultRow({ result, selected, onSelect }: SearchResultRowProps) {
 }
 
 export function Home() {
-  const [filterPlatform, setFilterPlatform] = useState<string | null>(null);
-  const [filterChannel, setFilterChannel] = useState<string | null>(null);
-  const [filterUser, setFilterUser] = useState<string | null>(null);
-  const [filterCategory, setFilterCategory] = useState<string | null>(null);
-  const [filterVerdict, setFilterVerdict] = useState<string | null>(null);
-  const [filterTag, setFilterTag] = useState<string | null>(null);
-
-  const {
-    entries, loading: journalLoading,
-    availablePlatforms, availableChannels, availableUsers, availableCategories, availableVerdicts,
-    availableTags, filteredCount,
-  } = useJournal(20, {
-    platform: filterPlatform, channel: filterChannel, user: filterUser,
-    category: filterCategory, verdict: filterVerdict, tag: filterTag,
-  });
-  const { analyze, loading: analyzeLoading, error, successStatus, clearError } = useAnalyze();
+  const [filter, setFilter] = useState<InboxFilter>({});
   const { t } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
+  // the page of the whole library the person is on, in the address (`?pagina=3`): the back button and a link to a page work
+  const page = pageFromParam(searchParams.get('pagina'));
+  const {
+    entries, total, pageCount, loading: journalLoading, error: journalError, facets, version, reload,
+  } = useInbox(page, filter);
+  const { analyze, loading: analyzeLoading, error, successStatus, clearError } = useAnalyze();
   const { view, ready: viewReady } = usePageView('inbox');
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [mobileInspector, setMobileInspector] = useState(false);
@@ -150,17 +141,30 @@ export function Home() {
 
   const { results: searchResults, expandedTerms, loading: searchLoading } = useSearch(q);
 
-  const hasFilter = !!(filterPlatform || filterChannel || filterUser || filterCategory || filterVerdict || filterTag);
+  const goToPage = useCallback((n: number, replace = false) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (n <= 1) next.delete('pagina');
+      else next.set('pagina', String(n));
+      return next;
+    }, { replace });
+  }, [setSearchParams]);
+
+  // an address that asks for a page beyond the last one (a link that is old, a library that got smaller) lands on the last page there is
+  useEffect(() => {
+    if (!journalLoading && !journalError && page > pageCount) goToPage(pageCount, true);
+  }, [journalLoading, journalError, page, pageCount, goToPage]);
+
+  const hasFilter = Object.values(filter).some(Boolean);
   const clearFilters = useCallback(() => {
-    setFilterPlatform(null); setFilterChannel(null); setFilterUser(null);
-    setFilterCategory(null); setFilterVerdict(null); setFilterTag(null);
-  }, []);
-  const togglePlatform = useCallback((p: string) => setFilterPlatform(prev => prev === p ? null : p), []);
-  const toggleChannel = useCallback((ch: string) => setFilterChannel(prev => prev === ch ? null : ch), []);
-  const toggleUser = useCallback((u: string) => setFilterUser(prev => prev === u ? null : u), []);
-  const toggleCategory = useCallback((c: string) => setFilterCategory(prev => prev === c ? null : c), []);
-  const toggleVerdict = useCallback((v: string) => setFilterVerdict(prev => prev === v ? null : v), []);
-  const toggleTag = useCallback((tag: string) => setFilterTag(prev => prev === tag ? null : tag), []);
+    setFilter({});
+    goToPage(1, true);
+  }, [goToPage]);
+  /** A filter is the server's to apply on the whole library: a different one starts again from the first page. */
+  const toggleFilter = useCallback((key: keyof InboxFilter, value: string) => {
+    setFilter((prev) => ({ ...prev, [key]: prev[key] === value ? null : value }));
+    goToPage(1, true);
+  }, [goToPage]);
 
   // Auto-select from query param ?entry=id. On mobile this must also open
   // the inspector panel (CSS hides it behind `.mobile-visible` below 768px) —
@@ -182,74 +186,23 @@ export function Home() {
     }
   }, [searchParams]);
 
-  const [selectedSearchEntry, setSelectedSearchEntry] = useState<Entry | null>(null);
-
-  useEffect(() => {
-    if (isSearchMode && selectedEntryId) {
-      getEntry(selectedEntryId).then(setSelectedSearchEntry).catch(() => setSelectedSearchEntry(null));
-    } else {
-      setSelectedSearchEntry(null);
-    }
-  }, [isSearchMode, selectedEntryId]);
-
-  // Fallback fetch for a journal-mode selection that isn't in the currently
-  // loaded page — e.g. a Telegram deep link `?entry=<id>` pointing at an
-  // entry older than the first page. Mirrors the getEntry-on-select shape
-  // used above for search mode.
-  const [fetchedEntry, setFetchedEntry] = useState<Entry | null>(null);
-  const fetchedEntryIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (isSearchMode || !selectedEntryId || entries.some(e => e.id === selectedEntryId)) {
-      fetchedEntryIdRef.current = null;
-      setFetchedEntry(null);
-      return;
-    }
-    // Already attempted this id (success or failure) — don't refetch just
-    // because `entries` got a new reference from an SSE-triggered reload.
-    if (fetchedEntryIdRef.current === selectedEntryId) return;
-    fetchedEntryIdRef.current = selectedEntryId;
-    let cancelled = false;
-    getEntry(selectedEntryId)
-      .then((e) => { if (!cancelled) setFetchedEntry(e); })
-      // Missing/deleted entry: fall back to no selection rather than a
-      // spinner or an uncaught rejection.
-      .catch(() => { if (!cancelled) setFetchedEntry(null); });
-    return () => { cancelled = true; };
-  }, [isSearchMode, selectedEntryId, entries]);
-
-  const selectedEntry = isSearchMode
-    ? selectedSearchEntry
-    : (entries.find(e => e.id === selectedEntryId) || fetchedEntry);
+  // The post that is open is read by its id (the list holds summaries): a deep link to a post on another page, a post of the search, a post of the
+  // sections. In the list views the list reads it itself (EntriesView), so it is not read twice. It is read again when the library changes.
+  const listShowsIt = !isSearchMode && (effectiveView === 'studio' || effectiveView === 'wall');
+  const { entry: selectedEntry } = useEntryById(listShowsIt ? null : selectedEntryId, undefined, version);
 
   const handleSubmit = async (url: string) => {
     clearError();
     const entryId = await analyze(url);
     if (entryId) {
       setSelectedEntryId(entryId);
+      goToPage(1, true);    // the new post arrives at the top of the first page
     }
   };
 
-  useEffect(() => {
-    if (selectedEntryId && !entries.find(e => e.id === selectedEntryId)) {
-      // Don't clear if it's from a query param — entry might be on another page
-      if (!searchParams.get('entry')) {
-        setSelectedEntryId(null);
-        setMobileInspector(false);
-      }
-    }
-  }, [entries, selectedEntryId, searchParams]);
-
-  const handleSelect = useCallback((entry: Entry) => {
-    setSelectedEntryId(entry.id);
-    if (window.innerWidth < 768) {
-      setMobileInspector(true);
-    }
-  }, []);
-
-  const handleSearchSelect = useCallback((id: string) => {
+  const handleSelect = useCallback((id: string | null) => {
     setSelectedEntryId(id);
-    if (window.innerWidth < 768) {
+    if (id && window.innerWidth < 768) {
       setMobileInspector(true);
     }
   }, []);
@@ -258,7 +211,7 @@ export function Home() {
     setMobileInspector(false);
   }, []);
 
-  /** The detail panel of the wall closes: no selection, and a `?entry=` link does not bring it back. */
+  /** The detail panel closes: no selection, and a `?entry=` link does not bring it back. */
   const closeDetail = useCallback(() => {
     setSelectedEntryId(null);
     setMobileInspector(false);
@@ -269,17 +222,22 @@ export function Home() {
     }
   }, [searchParams, setSearchParams]);
 
-  const recentEntries = useMemo(() => entries.slice(0, RECENT_COUNT), [entries]);
-  const listEntries = hasFilter ? entries : recentEntries;
+  /** A post of the list that is selected, or none: a deep link that was closed leaves the address too. */
+  const selectInList = useCallback((id: string | null) => {
+    if (id === null) closeDetail();
+    else handleSelect(id);
+  }, [closeDetail, handleSelect]);
+
   const showFilterBar =
     !isSearchMode &&
     effectiveView !== 'home' &&
-    (availablePlatforms.length > 1 ||
-      availableChannels.length > 1 ||
-      availableCategories.length > 0 ||
-      availableVerdicts.length > 0 ||
-      availableUsers.length > 1 ||
-      availableTags.length > 0);
+    facets !== null &&
+    (facets.platforms.length > 1 ||
+      facets.channels.length > 1 ||
+      facets.categories.length > 0 ||
+      facets.verdicts.length > 0 ||
+      facets.users.length > 1 ||
+      facets.tags.length > 0);
   const filtersVisible = filtersOpen || hasFilter;
 
   /** «N risultati per …» (and the terms the search added): the same line over the list of the Studio and over the wall. */
@@ -297,6 +255,8 @@ export function Home() {
       )}
     </div>
   );
+
+  const pager = <PageNav page={page} pageCount={pageCount} onPage={(n) => goToPage(n)} />;
 
   return (
     <div className="home home--inbox">
@@ -320,12 +280,15 @@ export function Home() {
               aria-expanded={filtersVisible}
             >
               {t.filterToggle}
-              {hasFilter ? ` · ${filteredCount}` : ''}
+              {hasFilter ? ` · ${total}` : ''}
             </button>
+          )}
+          {!isSearchMode && effectiveView !== 'home' && !journalLoading && !journalError && (
+            <span className="inbox-count">{interpolate(t.inboxCount, { total })}</span>
           )}
           <ViewSwitch page="inbox" />
         </div>
-        {showFilterBar && filtersVisible && (
+        {showFilterBar && filtersVisible && facets && (
             <div className="journal-filter-bar inbox-filter-bar">
               <button
                 className={`filter-chip ${!hasFilter ? 'active' : ''}`}
@@ -333,25 +296,25 @@ export function Home() {
               >
                 Tutti
               </button>
-              {availablePlatforms.map(({ platform, count }) => (
+              {facets.platforms.map(({ platform, count }) => (
                 <button
                   key={platform}
-                  className={`filter-chip ${filterPlatform === platform ? 'active' : ''}`}
-                  onClick={() => togglePlatform(platform)}
+                  className={`filter-chip ${filter.platform === platform ? 'active' : ''}`}
+                  onClick={() => toggleFilter('platform', platform)}
                   title={platform}
                 >
                   {PLATFORM_LABEL[platform] ?? platform}
                   <span className="filter-chip-count"> {count}</span>
                 </button>
               ))}
-              {availableChannels.length > 1 && (
+              {facets.channels.length > 1 && (
                 <>
                   <span className="filter-divider" />
-                  {availableChannels.map(({ channel, count }) => (
+                  {facets.channels.map(({ channel, count }) => (
                     <button
                       key={channel}
-                      className={`filter-chip ${filterChannel === channel ? 'active' : ''}`}
-                      onClick={() => toggleChannel(channel)}
+                      className={`filter-chip ${filter.channel === channel ? 'active' : ''}`}
+                      onClick={() => toggleFilter('channel', channel)}
                     >
                       {CHANNEL_LABEL[channel] ?? channel}
                       <span className="filter-chip-count"> {count}</span>
@@ -359,14 +322,14 @@ export function Home() {
                   ))}
                 </>
               )}
-              {availableUsers.length > 1 && (
+              {facets.users.length > 1 && (
                 <>
                   <span className="filter-divider" />
-                  {availableUsers.map(({ user, count }) => (
+                  {facets.users.map(({ user, count }) => (
                     <button
                       key={user}
-                      className={`filter-chip ${filterUser === user ? 'active' : ''}`}
-                      onClick={() => toggleUser(user)}
+                      className={`filter-chip ${filter.user === user ? 'active' : ''}`}
+                      onClick={() => toggleFilter('user', user)}
                     >
                       {user}
                       <span className="filter-chip-count"> {count}</span>
@@ -374,14 +337,14 @@ export function Home() {
                   ))}
                 </>
               )}
-              {availableCategories.length > 0 && (
+              {facets.categories.length > 0 && (
                 <>
                   <span className="filter-divider" />
-                  {availableCategories.map(({ category, count }) => (
+                  {facets.categories.map(({ category, count }) => (
                     <button
                       key={category}
-                      className={`filter-chip ${filterCategory === category ? 'active' : ''}`}
-                      onClick={() => toggleCategory(category)}
+                      className={`filter-chip ${filter.category === category ? 'active' : ''}`}
+                      onClick={() => toggleFilter('category', category)}
                     >
                       {CATEGORY_ICON[category as EnrichmentCategory] ?? ''} {CATEGORY_LABEL[category as EnrichmentCategory] ?? category}
                       <span className="filter-chip-count"> {count}</span>
@@ -389,14 +352,14 @@ export function Home() {
                   ))}
                 </>
               )}
-              {availableVerdicts.length > 0 && (
+              {facets.verdicts.length > 0 && (
                 <>
                   <span className="filter-divider" />
-                  {availableVerdicts.map(({ verdict, count }) => (
+                  {facets.verdicts.map(({ verdict, count }) => (
                     <button
                       key={verdict}
-                      className={`filter-chip ${filterVerdict === verdict ? 'active' : ''}`}
-                      onClick={() => toggleVerdict(verdict)}
+                      className={`filter-chip ${filter.verdict === verdict ? 'active' : ''}`}
+                      onClick={() => toggleFilter('verdict', verdict)}
                     >
                       {VERDICT_ICON[verdict as EnrichmentVerdictLabel]} {verdict.toUpperCase()}
                       <span className="filter-chip-count"> {count}</span>
@@ -404,14 +367,14 @@ export function Home() {
                   ))}
                 </>
               )}
-              {availableTags.length > 0 && (
+              {facets.tags.length > 0 && (
                 <>
                   <span className="filter-divider" />
-                  {availableTags.slice(0, 24).map(({ tag, count }) => (
+                  {facets.tags.slice(0, 24).map(({ tag, count }) => (
                     <button
                       key={tag}
-                      className={`filter-chip ${filterTag === tag ? 'active' : ''}`}
-                      onClick={() => toggleTag(tag)}
+                      className={`filter-chip ${filter.tag === tag ? 'active' : ''}`}
+                      onClick={() => toggleFilter('tag', tag)}
                       title={tag}
                     >
                       {tag}
@@ -432,7 +395,7 @@ export function Home() {
       ) : effectiveView === 'home' ? (
         <main className="wall-layout home-layout">
           <div className="wall-scroll">
-            <HomeSections selectedId={selectedEntryId} onOpenEntry={handleSearchSelect} />
+            <HomeSections selectedId={selectedEntryId} onOpenEntry={handleSelect} />
           </div>
           {selectedEntry && (
             <DetailPanel onClose={closeDetail}>
@@ -440,39 +403,16 @@ export function Home() {
             </DetailPanel>
           )}
         </main>
-      ) : effectiveView === 'wall' ? (
+      ) : isSearchMode && effectiveView === 'wall' ? (
         <main className="wall-layout">
           <div className="wall-scroll">
-            {isSearchMode ? (
-              <>
-                {searchStatus}
-                {!searchLoading && searchResults.length === 0 && (
-                  <div className="journal-empty">
-                    <p>Nessun risultato per &ldquo;{q}&rdquo;</p>
-                  </div>
-                )}
-                <Wall posts={searchResults.map(postFromSearch)} selectedId={selectedEntryId} onSelect={handleSearchSelect} />
-              </>
-            ) : journalLoading ? (
-              <div className="journal-loading">
-                <span className="spinner" />
-                <p>{t.loading}</p>
-              </div>
-            ) : entries.length === 0 ? (
+            {searchStatus}
+            {!searchLoading && searchResults.length === 0 && (
               <div className="journal-empty">
-                <p>{t.noEntries}</p>
-                <p>{t.noEntriesHint}</p>
+                <p>Nessun risultato per &ldquo;{q}&rdquo;</p>
               </div>
-            ) : (
-              <>
-                <Wall posts={entries.map(postFromEntry)} selectedId={selectedEntryId} onSelect={handleSearchSelect} />
-                {!hasFilter && (
-                  <Link to="/entries" className="inbox-see-all">
-                    {t.seeAllJournal}
-                  </Link>
-                )}
-              </>
             )}
+            <Wall posts={searchResults.map(postFromSearch)} selectedId={selectedEntryId} onSelect={handleSelect} />
           </div>
           {selectedEntry && (
             <DetailPanel onClose={closeDetail}>
@@ -480,10 +420,9 @@ export function Home() {
             </DetailPanel>
           )}
         </main>
-      ) : (
-      <main className={`master-detail ${!selectedEntry ? 'no-selection' : ''}`}>
-        <div className={`journal-panel ${mobileInspector ? 'mobile-hidden' : ''}`}>
-          {isSearchMode ? (
+      ) : isSearchMode ? (
+        <main className={`master-detail ${!selectedEntry ? 'no-selection' : ''}`}>
+          <div className={`journal-panel ${mobileInspector ? 'mobile-hidden' : ''}`}>
             <div className="journal-list">
               {searchStatus}
               {!searchLoading && searchResults.length === 0 && (
@@ -496,55 +435,54 @@ export function Home() {
                   key={result.id}
                   result={result}
                   selected={result.id === selectedEntryId}
-                  onSelect={handleSearchSelect}
-                />
-              ))}
-            </div>
-          ) : journalLoading ? (
-            <div className="journal-loading">
-              <span className="spinner" />
-              <p>{t.loading}</p>
-            </div>
-          ) : entries.length === 0 ? (
-            <div className="journal-empty">
-              <p>{t.noEntries}</p>
-              <p>{t.noEntriesHint}</p>
-            </div>
-          ) : (
-            <div className="journal-list inbox-list">
-              <div className="date-group-header">{hasFilter ? t.filtersButton : t.recentEntries}</div>
-              {listEntries.map((entry) => (
-                <CompactCard
-                  key={entry.id}
-                  entry={entry}
-                  selected={entry.id === selectedEntryId}
                   onSelect={handleSelect}
                 />
               ))}
-              {!hasFilter && (
-                <Link to="/entries" className="inbox-see-all">
-                  {t.seeAllJournal}
-                </Link>
-              )}
             </div>
-          )}
-        </div>
+          </div>
 
-        <div className={`inspector-panel ${mobileInspector ? 'mobile-visible' : ''} ${!selectedEntry ? 'empty' : ''}`}>
-          {selectedEntry ? (
-            <EntryInspector
-              entry={selectedEntry}
-              onBack={window.innerWidth < 768 ? handleMobileBack : undefined}
-            />
-          ) : (
-            <div className="inspector-placeholder">
-              <div className="inspector-placeholder-icon">📋</div>
-              <p>{t.selectEntry}</p>
-              <p className="inspector-placeholder-hint">{t.inboxEmptyHint}</p>
-            </div>
-          )}
+          <div className={`inspector-panel ${mobileInspector ? 'mobile-visible' : ''} ${!selectedEntry ? 'empty' : ''}`}>
+            {selectedEntry ? (
+              <EntryInspector
+                entry={selectedEntry}
+                onBack={window.innerWidth < 768 ? handleMobileBack : undefined}
+              />
+            ) : (
+              <div className="inspector-placeholder">
+                <div className="inspector-placeholder-icon">📋</div>
+                <p>{t.selectEntry}</p>
+                <p className="inspector-placeholder-hint">{t.inboxEmptyHint}</p>
+              </div>
+            )}
+          </div>
+        </main>
+      ) : journalLoading && entries.length === 0 ? (
+        <div className="journal-loading">
+          <span className="spinner" />
+          <p>{t.loading}</p>
         </div>
-      </main>
+      ) : journalError ? (
+        <div className="home-error" role="alert">
+          <p>{t.inboxLoadError}</p>
+          <button type="button" onClick={reload}>{t.libRetry}</button>
+        </div>
+      ) : entries.length === 0 ? (
+        <div className="journal-empty">
+          <p>{hasFilter ? t.inboxNoMatch : t.noEntries}</p>
+          {!hasFilter && <p>{t.noEntriesHint}</p>}
+          {hasFilter && <button type="button" className="library-load-btn" onClick={clearFilters}>{t.inboxClearFilters}</button>}
+        </div>
+      ) : (
+        <EntriesView
+          entries={entries}
+          mode={effectiveView === 'wall' ? 'wall' : 'studio'}
+          selectedId={selectedEntryId}
+          onSelect={selectInList}
+          onDeleted={() => { setSelectedEntryId(null); reload(); }}
+          scrollKey={page}
+          version={version}
+          footer={pager}
+        />
       )}
     </div>
   );

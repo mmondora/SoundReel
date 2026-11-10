@@ -10,6 +10,12 @@ vi.mock('./playlistResolver', () => ({ resolveSummaries: vi.fn() }));
 // a limit that is NOT the one a careless copy would write, so «which limit was used» can be told
 vi.mock('../routes/songs', () => ({ aggregateSongs: vi.fn(), LIST_ENTRIES_LIMIT: 12345 }));
 vi.mock('../routes/films', () => ({ aggregateFilms: vi.fn() }));
+// the collections have their own tests: here only who is asked for what
+vi.mock('./collectionsView', () => ({ collectionList: vi.fn() }));
+vi.mock('./collectionsViewData', () => ({
+  realViewSources: vi.fn(() => ({ marker: 'the real sources of the collections' })),
+  withCollectionChips: vi.fn(async (items: Array<{ id: string }>) => items.map((i) => ({ ...i, collections: [{ id: 'chip', name: 'A chip' }] }))),
+}));
 
 import { realWebHomeDeps } from './webHomeData';
 import { listEntries, listEntrySummaries } from '../utils/db';
@@ -19,6 +25,8 @@ import { listPlaylists } from './playlists';
 import { resolveSummaries } from './playlistResolver';
 import { aggregateSongs } from '../routes/songs';
 import { aggregateFilms } from '../routes/films';
+import { collectionList } from './collectionsView';
+import { realViewSources, withCollectionChips } from './collectionsViewData';
 import type { AggregatedFilm, AggregatedSong, Entry, PlaylistSummary } from '../types';
 
 const mike = { userId: 'mike', isAdmin: false };
@@ -41,16 +49,49 @@ beforeEach(() => {
 });
 
 describe('the posts', () => {
-  it('are the first rows of the list of entries, asked for the viewer with the same visibility as that list', async () => {
+  it('are the first rows of the list of entries, asked for the viewer with the same visibility as that list, with the chips of their collections', async () => {
     const answer = { items: [{ id: 'e1' }], total: 700 } as unknown as Awaited<ReturnType<typeof listEntrySummaries>>;
     vi.mocked(listEntrySummaries).mockResolvedValue(answer);
-    expect(await realWebHomeDeps().posts({ userId: 'sara', isAdmin: false }, 6)).toBe(answer);
+    expect(await realWebHomeDeps().posts({ userId: 'sara', isAdmin: false }, 6)).toEqual({ items: [{ id: 'e1', collections: [{ id: 'chip', name: 'A chip' }] }], total: 700 });
     expect(listEntrySummaries).toHaveBeenCalledWith(6, 0, { userId: 'sara', isAdmin: false });
+    expect(withCollectionChips).toHaveBeenCalledWith([{ id: 'e1' }], 'sara');
+  });
+
+  it('get their chips from the collections of the viewer, as the list of entries does (never an administrator\'s: collections are per user)', async () => {
+    vi.mocked(listEntrySummaries).mockResolvedValue({ items: [{ id: 'e1' }], total: 1 } as unknown as Awaited<ReturnType<typeof listEntrySummaries>>);
+    await realWebHomeDeps().posts({ userId: 'mike', isAdmin: true }, 6);
+    expect(withCollectionChips).toHaveBeenCalledWith([{ id: 'e1' }], 'mike');
   });
 
   it('are asked for an admin as an admin (the anonymous posts are theirs to see, like in the list of entries)', async () => {
     await realWebHomeDeps().posts({ userId: 'mike', isAdmin: true }, 6);
     expect(listEntrySummaries).toHaveBeenCalledWith(6, 0, { userId: 'mike', isAdmin: true });
+  });
+});
+
+describe('the collections', () => {
+  it('are the active list of the viewer, built from the real sources, as of now', async () => {
+    const list = [{ id: 't1' }] as unknown as Awaited<ReturnType<typeof collectionList>>;
+    vi.mocked(collectionList).mockResolvedValue(list);
+    const before = Date.now();
+    expect(await realWebHomeDeps().collections({ userId: 'sara', isAdmin: false })).toBe(list);
+    const [userId, which, sources, now] = vi.mocked(collectionList).mock.calls[0];
+    expect(userId).toBe('sara');
+    expect(which).toBe('active');
+    expect(sources).toEqual({ marker: 'the real sources of the collections' });
+    expect(now.getTime()).toBeGreaterThanOrEqual(before);
+    expect(realViewSources).toHaveBeenCalledTimes(1);
+  });
+
+  it('are those of the user also for an administrator: an administrator sees no more than anyone, here', async () => {
+    vi.mocked(collectionList).mockResolvedValue([]);
+    await realWebHomeDeps().collections({ userId: 'mike', isAdmin: true });
+    expect(vi.mocked(collectionList).mock.calls[0][0]).toBe('mike');
+  });
+
+  it('a failure is the failure of the section only: the source lets it go', async () => {
+    vi.mocked(collectionList).mockRejectedValue(new Error('db down'));
+    await expect(realWebHomeDeps().collections({ userId: 'mike', isAdmin: false })).rejects.toThrow('db down');
   });
 });
 

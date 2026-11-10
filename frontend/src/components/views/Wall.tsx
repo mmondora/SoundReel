@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { interpolate, useLanguage } from '../../i18n';
 import { platformLabel } from '../../utils/platformLabel';
 import { relativeTime } from '../../utils/relativeTime';
+import { CollectionChips } from '../CollectionChips';
 import type { PostCardModel } from './postCard';
 
 // The Bacheca (look and feel P3, board B of the mockups): a wall of cards, each post with its media in view. A card is a real button (keyboard,
@@ -65,10 +66,10 @@ function WallCard({ post, selected, onSelect }: WallCardProps) {
             {moreFilms > 0 && <span className="wall-more">{interpolate(t.wallMoreFilms, { count: moreFilms })}</span>}
           </span>
         )}
-        {(counts.length > 0 || post.tags.length > 0) && (
+        {(counts.length > 0 || post.tags.length > 0 || post.collections.length > 0) && (
           <span className="wall-chips">
             {counts.map((count) => <span key={count} className="wall-chip wall-count">{count}</span>)}
-            {post.tags.map((tag) => <span key={tag} className="wall-chip">{tag}</span>)}
+            <CollectionChips chips={post.collections} tags={post.tags} interactive={false} />
           </span>
         )}
       </span>

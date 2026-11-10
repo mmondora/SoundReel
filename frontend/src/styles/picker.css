@@ -1,0 +1,193 @@
+/*
+ * The choice of a playlist (components/PlaylistPicker.tsx; spec 2026-11-10-web-look-and-feel-rethink-design.md §3.6): a button that says what is
+ * chosen, and a dialog with search, «show», sort and pages of 30. Colours and forms only from the tokens (tokens.css = Mondrop, ADR-0025): never
+ * write a hex here.
+ */
+
+/* ---------- the button ---------- */
+.pl-picker-btn,
+.mgr-picker-btn,
+.ch-picker-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pl-picker-btn {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.pl-picker-btn:hover,
+.mgr-picker-btn:hover,
+.ch-picker-btn:hover,
+.pl-picker-btn[aria-expanded='true'],
+.mgr-picker-btn[aria-expanded='true'],
+.ch-picker-btn[aria-expanded='true'] {
+  border-color: var(--accent);
+}
+
+.pl-picker-btn:focus-visible,
+.mgr-picker-btn:focus-visible,
+.ch-picker-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pl-picker-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pl-picker-caret {
+  flex: none;
+  color: var(--text-muted);
+}
+
+/* ---------- the dialog ---------- */
+.pl-pick-root {
+  display: contents;
+}
+
+.pl-pick-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100%);
+  max-height: min(86vh, 760px);
+}
+
+.pl-pick-dialog .mgr-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+/* «All songs»: always the first thing, whatever the search says */
+.pl-pick-all {
+  display: block;
+  width: 100%;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pl-pick-all:hover,
+.pl-pick-all:focus-visible {
+  border-color: var(--accent);
+}
+
+.pl-pick-all[aria-current='true'],
+.pl-pick-row[aria-current='true'] {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.pl-pick-total {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.pl-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  max-height: 46vh;
+  margin: 0;
+  padding: 0 2px 0 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.pl-pick-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pl-pick-row:hover,
+.pl-pick-row:focus-visible {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.pl-pick-all:focus-visible,
+.pl-pick-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.pl-pick-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.pl-pick-glyph {
+  color: var(--accent);
+}
+
+.pl-pick-meta {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.pl-pick-status {
+  margin: 0;
+  padding: 1rem 0;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.pl-pick-failed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  color: var(--error);
+}
+
+.pl-pick-failed p {
+  margin: 0;
+}
+
+.pl-pick-dialog .pagination-bar {
+  justify-content: center;
+}
+
+/* the dialog of the choice keeps the filters of the list on one line where it can, and lets them wrap where it cannot */
+.pl-pick-dialog .playlist-controls {
+  gap: 0.5rem;
+}

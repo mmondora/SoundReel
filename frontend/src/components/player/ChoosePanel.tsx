@@ -2,7 +2,6 @@ import { useId, useRef } from 'react';
 import { PHONE_QUERY, useMediaQuery } from '../../hooks/useMediaQuery';
 import { useSheetFocus } from '../../hooks/useSheetFocus';
 import { interpolate, useLanguage } from '../../i18n';
-import type { PlaylistSummary } from '../../types';
 import { activeFilterCount, countLabel, platformLabel } from '../../utils/managerSongs';
 import type {
   DatasetFacets,
@@ -14,6 +13,7 @@ import type {
 } from '../../utils/managerSongs';
 import { NO_YEAR, decadeLabelFor } from '../../utils/songFacets';
 import type { DecadeValue } from '../../utils/songFacets';
+import { PlaylistPicker } from '../PlaylistPicker';
 import { FacetGroup } from './FacetGroup';
 import type { FacetOption } from './FacetGroup';
 import '../../styles/choose.css';
@@ -30,8 +30,8 @@ export interface ChoosePanelProps {
   count: number;
   /** Songs before the filters (the shelf, or the playlist). */
   poolSize: number;
-  playlists: readonly PlaylistSummary[];
-  playlistId: string | null;
+  /** The playlist the list comes from (the page holds it), or null for all the songs. The panel never gets the whole list of playlists: the choice asks the server a page at a time. */
+  playlist: { id: string; name: string; songCount: number } | null;
   onPlaylist: (id: string | null) => void;
   onPlay: () => void;
   onShuffle: () => void;
@@ -57,7 +57,7 @@ const asOptions = (pairs: ReadonlyArray<readonly [string, number]>): FacetOption
  * in, Tab stays in, Escape closes). From 641 px up it is the card above the queue it always was.
  */
 export function ChoosePanel({
-  filters, onChange, onReset, facets, dataset, count, poolSize, playlists, playlistId, onPlaylist, onPlay, onShuffle,
+  filters, onChange, onReset, facets, dataset, count, poolSize, playlist, onPlaylist, onPlay, onShuffle,
   onClose,
 }: ChoosePanelProps) {
   const { t, language } = useLanguage();
@@ -137,15 +137,17 @@ export function ChoosePanel({
               onChange={(e) => onChange({ text: e.target.value })}
             />
           </label>
-          <label className="ch-field">
+          <div className="ch-field">
             <span>{t.chPlaylist}</span>
-            <select className="ch-select" value={playlistId ?? ''} onChange={(e) => onPlaylist(e.target.value || null)}>
-              <option value="">{t.chAllSongs}</option>
-              {playlists.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} ({p.songCount})</option>
-              ))}
-            </select>
-          </label>
+            <PlaylistPicker
+              className="ch-select ch-picker-btn"
+              value={playlist?.id ?? null}
+              onChange={onPlaylist}
+              allLabel={t.chAllSongs}
+              valueLabel={playlist ? `${playlist.name} (${playlist.songCount})` : t.chAllSongs}
+              ariaLabel={t.chPlaylist}
+            />
+          </div>
         </div>
 
         {dataset.genres && (

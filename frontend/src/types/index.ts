@@ -494,6 +494,9 @@ export interface Entry {
   results: EntryResults;
   actionLog: ActionLogItem[];
   createdAt: string;
+  /** The place the post names (read from its text) and the venues it lists, with the address of Maps built by the server (`GET /api/entries/:id`). */
+  places?: Array<{ name: string; kind: 'city' | 'region' | 'country' }>;
+  venues?: CollectionVenue[];
 }
 
 export interface MeResponse {
@@ -550,6 +553,88 @@ export interface EntrySummary {
   filmCount: number;
   noteCount: number;
   tags: string[];
+  /** The chips of the collections the post is in (≤ 2 of theme + the place); an older server does not send them. */
+  collections?: CollectionChip[];
+  /** Who sent it and what the enrichment found (docs/entries-index.md): the Inbox draws the verdict and filters on these; an older server does not send them. */
+  inputChannel?: string;
+  inputUser?: string | null;
+  category?: string | null;
+  verdict?: { label: string; confidence: number } | null;
+}
+
+/** The filters of the Inbox, all of them the server's to apply (docs/entries-index.md). An empty one is no filter. */
+export interface InboxFilter {
+  platform?: string | null;
+  channel?: string | null;
+  user?: string | null;
+  category?: string | null;
+  verdict?: string | null;
+  tag?: string | null;
+}
+
+/** What there is in the library, to choose a filter from (`GET /api/entries/facets`, docs/entries-index.md). */
+export interface EntryFacets {
+  platforms: Array<{ platform: string; count: number }>;
+  channels: Array<{ channel: string; count: number }>;
+  users: Array<{ user: string; count: number }>;
+  categories: Array<{ category: string; count: number }>;
+  verdicts: Array<{ verdict: string; count: number }>;
+  tags: Array<{ tag: string; count: number }>;
+}
+
+// --- The collections of the library (docs/collections.md): the server decides, the site draws ---
+
+export type CollectionKind = 'type' | 'theme' | 'place';
+export type CollectionView = 'grid' | 'list' | 'play';
+
+export interface CollectionListItem {
+  /** `type:music` · a uuid (a theme) · `place:milano`. */
+  id: string;
+  name: string;
+  kind: CollectionKind;
+  /** The fixed heading of the seed list («Cibo e bevande»); null = «Altre». */
+  group: string | null;
+  parentId: string | null;
+  count: number;
+  isNew: boolean;
+  /** Up to four pictures for the mosaic. */
+  thumbs: string[];
+  /** The views the data can fill; `play` only for the music type. */
+  views: CollectionView[];
+  defaultView: CollectionView;
+}
+
+export interface CollectionChip { id: string; name: string }
+
+export interface CollectionVenuePost { entryId: string; sourceUrl: string; sourcePlatform: string; createdAt: string }
+
+/** A venue a post names: one row even when several posts cite it; `mapsUrl` is built by the SERVER (the site never builds an address of Maps). */
+export interface CollectionVenue {
+  key: string;
+  name: string;
+  kind: string;
+  place: string | null;
+  mapsUrl: string;
+  posts: CollectionVenuePost[];
+}
+
+export interface CollectionFacets {
+  places: Array<{ name: string; count: number }>;
+  sources: Array<{ platform: string; count: number }>;
+  months: Array<{ month: string; count: number }>;
+}
+
+export type CollectionEntry = EntrySummary & { collections: CollectionChip[] };
+
+export interface CollectionPage {
+  collection: CollectionListItem;
+  why: { words: string[]; entryIds: string[] };
+  facets: CollectionFacets;
+  entries: CollectionEntry[];
+  venues: CollectionVenue[];
+  /** Only when `views` has `play`: the keys of the songs, newest first. */
+  songKeys?: string[];
+  total: number;
 }
 
 // --- The sections of the Home view, ready from the server (`GET /api/home`, docs/web-home.md) ---
@@ -559,10 +644,13 @@ export interface WebHomePlaylist { id: string; name: string; songCount: number; 
 export interface WebHomeFilm { filmKey: string; title: string; year: string | null; posterUrl: string | null; imdbUrl: string | null; entryId: string; sourceUrl: string | null; createdAt: string }
 
 /** `total` is how many there are in all (for «see all (N)»); `items` are the first ones. `collections` is not built yet: that section is simply absent. */
+export interface WebHomeCollection { id: string; name: string; count: number; isNew: boolean; thumbs: string[] }
+
 export type WebHomeSection =
   | { id: 'resume'; total: number; items: EntrySummary[] }
   | { id: 'songs'; total: number; items: WebHomeSong[] }
   | { id: 'playlists'; total: number; items: WebHomePlaylist[] }
+  | { id: 'collections'; total: number; items: WebHomeCollection[] }
   | { id: 'films'; total: number; items: WebHomeFilm[] };
 
 export interface WebHomeResponse { sections: WebHomeSection[] }

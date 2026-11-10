@@ -5,7 +5,8 @@
  * The server decides which sections exist, what is in each and in which order (rule P: the site draws what it gets). The ORDER and the
  * VISIBILITY of the sections are the user's configuration (`home.sections` of GET /api/me/prefs): the site draws these sections in that
  * order, skips the ones the configuration hides and the ones it does not know. A section with nothing in it is not sent, and one that
- * fails costs only itself. The collections (ADR-0022) are not built yet: their section is simply absent.
+ * fails costs only itself. The collections (ADR-0022) are tiles of the themes and the places the server discovered, in the order of the list
+ * of collections; with nothing discovered yet their section is simply absent.
  *
  * Reads only. The viewer is who the route resolved from `Remote-User` (own entries and the ones shared with them; an admin also sees the
  * anonymous ones, exactly like the lists of the site), and the sources below apply that visibility: nothing of another user gets here.
@@ -16,12 +17,12 @@ import { logWarning } from '../utils/logger';
 import type { AggregatedFilm, AggregatedSong, EntrySummaryRow, PlaylistSummary } from '../types';
 import { applyPlaylistList, type PlaylistListQuery } from './playlistList';
 import { collapseFilms } from './filmCollapse';
+import { COLLECTION_VIEW, type CollectionListItem } from './collectionsView';
 
 /** How much each section carries: a front page, not a catalogue (the pages of posts, songs, playlists and films hold the rest). */
-export const WEB_HOME_LIMITS = { resume: 6, songs: 12, playlists: 12, films: 12 } as const;
+export const WEB_HOME_LIMITS = { resume: 6, songs: 12, playlists: 12, collections: COLLECTION_VIEW.homeTiles, films: 12 } as const;
 
-/** `collections` is not here: it is not built yet (ADR-0022), so the section is absent, not empty. */
-export type WebHomeSectionId = 'resume' | 'songs' | 'playlists' | 'films';
+export type WebHomeSectionId = 'resume' | 'songs' | 'playlists' | 'collections' | 'films';
 
 export interface WebHomeSong {
   songKey: string;
@@ -50,6 +51,16 @@ export interface WebHomePlaylist {
   ownerUser: string;
 }
 
+/** A tile of the collections: the line of the list without what only the page of the collection needs (views, heading, parent). */
+export interface WebHomeCollection {
+  id: string;
+  name: string;
+  count: number;
+  isNew: boolean;
+  /** Up to four pictures for the mosaic. */
+  thumbs: string[];
+}
+
 export interface WebHomeFilm {
   filmKey: string;
   title: string;
@@ -69,6 +80,8 @@ export type WebHomeSection =
   | { id: 'songs'; total: number; items: WebHomeSong[] }
   /** The playlists the viewer reads, the newest created first. */
   | { id: 'playlists'; total: number; items: WebHomePlaylist[] }
+  /** The themes and the places discovered in the posts of the viewer (never the types), in the order of the list of collections. */
+  | { id: 'collections'; total: number; items: WebHomeCollection[] }
   /** New films of the posts, one card per film (as the Films page collapses them). */
   | { id: 'films'; total: number; items: WebHomeFilm[] };
 
@@ -96,6 +109,8 @@ export interface WebHomeDeps {
   playlists(viewer: WebHomeViewer): Promise<StoredPlaylist[]>;
   /** The same playlists with the count of what a rule selects now (a rule is evaluated: only ask for the ones that are shown). */
   resolvePlaylists(list: StoredPlaylist[], viewer: WebHomeViewer): Promise<StoredPlaylist[]>;
+  /** The collections the viewer sees, as the list of collections gives them (types, themes, places, in that list's order). */
+  collections(viewer: WebHomeViewer): Promise<CollectionListItem[]>;
 }
 
 interface MentionLike {
@@ -191,6 +206,17 @@ async function playlistsSection(viewer: WebHomeViewer, deps: WebHomeDeps): Promi
   };
 }
 
+async function collectionsSection(viewer: WebHomeViewer, deps: WebHomeDeps): Promise<WebHomeSection | null> {
+  // the tiles are what was DISCOVERED (themes and places); the types are always there and have their own page
+  const discovered = (await deps.collections(viewer)).filter((c) => c.kind !== 'type');
+  if (discovered.length === 0) return null;
+  return {
+    id: 'collections',
+    total: discovered.length,
+    items: discovered.slice(0, WEB_HOME_LIMITS.collections).map((c): WebHomeCollection => ({ id: c.id, name: c.name, count: c.count, isNew: c.isNew, thumbs: c.thumbs })),
+  };
+}
+
 async function filmsSection(viewer: WebHomeViewer, deps: WebHomeDeps): Promise<WebHomeSection | null> {
   // one card per film, as the Films page has it («Dune» and «Dune (2021)» are one; two years stay two films)
   const found: Array<{ film: AggregatedFilm; mention: AggregatedFilm['mentions'][number]; at: number }> = [];
@@ -229,12 +255,13 @@ async function guarded(id: WebHomeSectionId, build: () => Promise<WebHomeSection
   }
 }
 
-/** The sections of the front page for this viewer: posts, songs, playlists, films, in that order, the empty and the failed left out. */
+/** The sections of the front page for this viewer: posts, songs, playlists, collections, films, in that order, the empty and the failed left out. */
 export async function buildWebHome(viewer: WebHomeViewer, deps: WebHomeDeps): Promise<WebHomeResponse> {
   const built = await Promise.all([
     guarded('resume', () => resumeSection(viewer, deps)),
     guarded('songs', () => songsSection(viewer, deps)),
     guarded('playlists', () => playlistsSection(viewer, deps)),
+    guarded('collections', () => collectionsSection(viewer, deps)),
     guarded('films', () => filmsSection(viewer, deps)),
   ]);
   return { sections: built.filter((section): section is WebHomeSection => section !== null) };

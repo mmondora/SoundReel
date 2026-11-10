@@ -1,10 +1,10 @@
 import type {
-  Entry, EntrySummary, SearchResponse, EnrichmentResult, AggregatedFilm, FilmMetaRecord, AvailabilityStatus,
+  Entry, EntrySummary, EntryFacets, InboxFilter, SearchResponse, EnrichmentResult, AggregatedFilm, FilmMetaRecord, AvailabilityStatus,
   AggregatedSong, SongMetaRecord, SongRating, AggregatedNote, AggregatedSoftware,
   PlaylistSummary, PlaylistDetail, PlaylistFilter, PlaylistSort, PlaylistPage, JournalStats, MeResponse, SongStateResponse, SongDownloadResponse,
   DynamicPreset, DynamicRule, PlayEvent, PlayPlan,
   LibraryScope, LibrarySearchResponse, MusicFoldersPayload, MusicFolderInput, FolderBrowse,
-  UiPrefs, UiPrefsPatch, WebHomeResponse,
+  UiPrefs, UiPrefsPatch, WebHomeResponse, CollectionListItem, CollectionPage,
 } from '../types';
 
 // When served from the same origin as the backend, relative paths work.
@@ -64,14 +64,24 @@ export interface EntrySummaryPage {
   offset: number;
 }
 
-export async function listEntrySummaries(limit = 40, offset = 0): Promise<EntrySummaryPage> {
+/** A page of the posts, newest first; with `filter` the server narrows the whole library (and `total` follows it), see docs/entries-index.md. */
+export async function listEntrySummaries(limit = 40, offset = 0, filter: InboxFilter = {}): Promise<EntrySummaryPage> {
   const params = new URLSearchParams({
     view: 'summary',
     limit: String(limit),
     offset: String(offset),
   });
+  for (const [key, value] of Object.entries(filter)) {
+    if (typeof value === 'string' && value.trim() !== '') params.set(key, value.trim());
+  }
   const res = await fetch(url(`/api/entries?${params}`));
   return json<EntrySummaryPage>(res);
+}
+
+/** What the library holds (platforms, channels, users, categories, verdicts, the most used tags), each with its count, over ALL the posts. */
+export async function fetchEntryFacets(): Promise<EntryFacets> {
+  const res = await fetch(url('/api/entries/facets'));
+  return json<EntryFacets>(res);
 }
 
 /** Every entry summary visible to the user (pages of 1000, the backend cap). */
@@ -94,6 +104,79 @@ export async function fetchJournalStats(): Promise<JournalStats> {
 export async function fetchMe(): Promise<MeResponse> {
   const res = await fetch(url('/api/me'));
   return json<MeResponse>(res);
+}
+
+// --- The collections of the library (docs/collections.md): the server decides, the site asks and draws ---
+
+/** The collections the user sees (`active`, the default), the ones he hid (to bring them back) or, for an administrator, those under observation. */
+export async function fetchCollections(state: 'active' | 'hidden' | 'watching' = 'active'): Promise<CollectionListItem[]> {
+  const res = await fetch(url(state === 'active' ? '/api/collections' : `/api/collections?state=${state}`), { cache: 'no-store' });
+  return (await json<{ collections: CollectionListItem[] }>(res)).collections;
+}
+
+export interface CollectionQuery {
+  /** A place of the facet «Dove». */
+  dove?: string;
+  /** A platform of the facet «Fonte». */
+  fonte?: string;
+  /** A month of the facet «Quando» (`AAAA-MM`). */
+  quando?: string;
+  q?: string;
+  offset?: number;
+  limit?: number;
+}
+
+/** One collection: its posts (filtered by the facets), the venues the posts name, the reason it exists. The id of a type has a colon: it is encoded. */
+export async function fetchCollection(id: string, query: CollectionQuery = {}): Promise<CollectionPage> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== '') params.set(key, String(value));
+  }
+  const qs = params.toString();
+  const res = await fetch(url(`/api/collections/${encodeURIComponent(id)}${qs ? `?${qs}` : ''}`), { cache: 'no-store' });
+  return json<CollectionPage>(res);
+}
+
+async function collectionWrite(path: string, method: 'POST' | 'DELETE', body?: unknown): Promise<Response> {
+  const res = await fetch(url(path), {
+    method,
+    ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+  return res;
+}
+
+/** From now on the name is the user's and is never touched again. */
+export async function renameCollection(id: string, name: string): Promise<CollectionListItem> {
+  const res = await collectionWrite(`/api/collections/${encodeURIComponent(id)}/rename`, 'POST', { name });
+  return (await res.json() as { collection: CollectionListItem }).collection;
+}
+
+/** The posts of this collection pass to `targetId`, which keeps its own name. */
+export async function mergeCollection(id: string, targetId: string): Promise<CollectionListItem> {
+  const res = await collectionWrite(`/api/collections/${encodeURIComponent(id)}/merge`, 'POST', { targetId });
+  return (await res.json() as { collection: CollectionListItem }).collection;
+}
+
+export async function hideCollection(id: string): Promise<void> {
+  await collectionWrite(`/api/collections/${encodeURIComponent(id)}/hide`, 'POST');
+}
+
+export async function unhideCollection(id: string): Promise<void> {
+  await collectionWrite(`/api/collections/${encodeURIComponent(id)}/unhide`, 'POST');
+}
+
+/** «Add to…»: the post enters the collection and never leaves it. */
+export async function addEntryToCollection(id: string, entryId: string): Promise<void> {
+  await collectionWrite(`/api/collections/${encodeURIComponent(id)}/entries/${encodeURIComponent(entryId)}`, 'POST');
+}
+
+/** «Not this one»: the post leaves the collection and never comes back. */
+export async function removeEntryFromCollection(id: string, entryId: string): Promise<void> {
+  await collectionWrite(`/api/collections/${encodeURIComponent(id)}/entries/${encodeURIComponent(entryId)}`, 'DELETE');
 }
 
 // --- The sections of the Home view (docs/web-home.md): the server decides what each holds, the page draws ---

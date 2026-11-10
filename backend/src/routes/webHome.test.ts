@@ -46,6 +46,7 @@ function stand(over: Partial<WebHomeDeps> = {}): { deps: WebHomeDeps; viewers: A
     films: note([]),
     playlists: note([]),
     resolvePlaylists: async (list) => list,
+    collections: note([]),
     ...over,
   };
   return { deps, viewers };
@@ -74,6 +75,25 @@ describe('GET /api/home', () => {
     expect(body.sections.map((s: { id: string }) => s.id)).toEqual(['resume', 'songs']);
     expect(body.sections[0]).toEqual({ id: 'resume', total: 1, items: [row('post-of-mike')] });
     expect(body.sections[1].items[0]).toMatchObject({ songKey: 'a::one', entryId: 'e1' });
+  });
+
+  it('answers the collections of the viewer as tiles, between the playlists and the films, and never the types', async () => {
+    const aCollection = (id: string, kind: 'type' | 'theme' | 'place') => ({
+      id, name: id.toUpperCase(), kind, group: null, parentId: null, count: 9, isNew: kind === 'theme', thumbs: ['https://img/a.jpg'], views: ['list' as const], defaultView: 'list' as const,
+    });
+    const { deps, viewers } = stand({
+      playlists: async () => [{ id: 'p1', name: 'Road trip', songCount: 1, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', kind: 'static', ownerUser: 'mike' } as never],
+      films: async () => [],
+      collections: async (viewer) => { viewers.push(viewer); return [aCollection('type:music', 'type'), aCollection('t1', 'theme'), aCollection('place:milano', 'place')]; },
+    });
+    sources.deps = deps;
+    const body = (await get({ 'remote-user': 'mike' })).json();
+    expect(body.sections.map((s: { id: string }) => s.id)).toEqual(['resume', 'songs', 'playlists', 'collections']);
+    expect(body.sections[3]).toEqual({
+      id: 'collections', total: 2,
+      items: [{ id: 't1', name: 'T1', count: 9, isNew: true, thumbs: ['https://img/a.jpg'] }, { id: 'place:milano', name: 'PLACE:MILANO', count: 9, isNew: false, thumbs: ['https://img/a.jpg'] }],
+    });
+    expect(viewers.every((v) => v.userId === 'mike')).toBe(true);
   });
 
   it('is never cached: the same tab asks again after a post arrived', async () => {
@@ -167,7 +187,7 @@ describe('when something fails', () => {
 
   it('every section failing is still an answer: 200 and no section', async () => {
     const boom = async () => { throw new Error('boom'); };
-    sources.deps = stand({ posts: boom, songs: boom, films: boom, playlists: boom }).deps;
+    sources.deps = stand({ posts: boom, songs: boom, films: boom, playlists: boom, collections: boom }).deps;
     const res = await get({ 'remote-user': 'mike' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ sections: [] });

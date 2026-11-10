@@ -36,6 +36,15 @@ describe('the shell wraps every page', () => {
   });
 });
 
+describe('the collections have their pages', () => {
+  it('the list and the page of one collection are routes of the shell, and their styles are loaded', () => {
+    expect(APP).toMatch(/<Route path="\/collections" element=\{<CollectionsPage \/>\} \/>/);
+    expect(APP).toMatch(/<Route path="\/collections\/:id" element=\{<CollectionPage \/>\} \/>/);
+    expect(APP).toMatch(/import '\.\/styles\/collections\.css';/);
+    expect(existsSync(join(SRC, 'styles/collections.css'))).toBe(true);
+  });
+});
+
 describe('no page draws a header of its own', () => {
   it('the old Header component is gone and nobody imports it', () => {
     expect(existsSync(join(SRC, 'components/Header.tsx'))).toBe(false);

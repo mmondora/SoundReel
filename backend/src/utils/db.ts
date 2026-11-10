@@ -123,7 +123,7 @@ export interface VisibilityOpts {
 }
 
 /** SQL predicate: owned, shared-with, or (admin + anonymous). Params: $userIdx = userId. */
-function visibilitySql(userParam: string, isAdmin: boolean, anonLiteral = "'anonymous'"): string {
+export function visibilitySql(userParam: string, isAdmin: boolean, anonLiteral = "'anonymous'"): string {
   const adminClause = isAdmin ? ` OR e.owner_user = ${anonLiteral}` : '';
   return `(
     e.owner_user = ${userParam}

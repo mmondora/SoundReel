@@ -1,16 +1,14 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { listEntrySummaries } from '../services/api';
+import { addEntryToCollection, fetchCollection, listEntrySummaries, removeEntryFromCollection } from '../services/api';
 import { useLanguage } from '../i18n';
-import { EntryInspector } from '../components/EntryInspector';
-import { DetailPanel } from '../components/views/DetailPanel';
+import { CollectionFacets, type FacetKey } from '../components/CollectionFacets';
+import { CollectionRail } from '../components/CollectionRail';
+import { EntriesView } from '../components/EntriesView';
 import { ViewSwitch } from '../components/views/ViewSwitch';
-import { Wall } from '../components/views/Wall';
-import { postFromSummary } from '../components/views/postCard';
-import { useEntryById } from '../hooks/useEntryById';
+import { useCollections } from '../hooks/useCollections';
 import { usePageView } from '../hooks/useUiPrefs';
-import { platformLabel } from '../utils/platformLabel';
-import type { EntrySummary } from '../types';
+import type { CollectionChip, CollectionFacets as FacetsAnswer, CollectionListItem, EntrySummary } from '../types';
 
 // The Link page: every post, newest first. Two views chosen by the user and kept on the server (look and feel P3): Studio (the list on the left,
 // the post on the right: the default) and Bacheca (a wall of cards and a panel that closes). It lists summaries, so the post that is opened is
@@ -18,86 +16,19 @@ import type { EntrySummary } from '../types';
 
 const PAGE_SIZE = 40;
 
-function parseDate(timestamp: unknown): Date | null {
-  if (!timestamp) return null;
-  if (typeof timestamp === 'string') {
-    const date = new Date(timestamp);
-    if (!isNaN(date.getTime())) return date;
-  }
-  return null;
-}
-
-function formatDayLabel(date: Date, lang: string, today: string, yesterday: string): string {
-  const now = new Date();
-  if (date.toDateString() === now.toDateString()) return today;
-  const y = new Date(now);
-  y.setDate(y.getDate() - 1);
-  if (date.toDateString() === y.toDateString()) return yesterday;
-  return date.toLocaleDateString(lang === 'it' ? 'it-IT' : 'en-US', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
-  });
-}
-
-interface RowProps {
-  entry: EntrySummary;
-  selected: boolean;
-  onSelect: (id: string) => void;
-}
-
-/** One post of the list. The whole row opens the post (a button laid over it, named by the summary); «Apri» still goes to the Inbox. */
-function LibraryRow({ entry, selected, onSelect }: RowProps) {
-  const { t, language } = useLanguage();
-  const summaryId = useId();
-  const date = parseDate(entry.createdAt);
-  const summary = entry.summary || entry.caption?.substring(0, 140) || entry.sourceUrl;
-  return (
-    <li className={`library-row${selected ? ' selected' : ''}`}>
-      <button
-        type="button"
-        className="library-row-hit"
-        aria-pressed={selected}
-        aria-labelledby={summaryId}
-        onClick={() => onSelect(entry.id)}
-      />
-      {entry.thumbnailUrl ? (
-        <img src={entry.thumbnailUrl} alt="" className="library-thumb" loading="lazy" />
-      ) : (
-        <div className="library-thumb-placeholder">{platformLabel(entry.sourcePlatform)}</div>
-      )}
-      <div className="library-row-body">
-        <div className="library-row-meta">
-          <span className="library-platform">{platformLabel(entry.sourcePlatform)}</span>
-          {date && (
-            <span className="library-time">
-              {date.toLocaleTimeString(language === 'it' ? 'it-IT' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          )}
-        </div>
-        <p className="library-summary" id={summaryId}>{summary}</p>
-        <div className="library-counts">
-          {entry.songCount > 0 && <span>🎵 {entry.songCount}</span>}
-          {entry.filmCount > 0 && <span>🎬 {entry.filmCount}</span>}
-          {entry.noteCount > 0 && <span>📝 {entry.noteCount}</span>}
-          {(entry.tags ?? []).slice(0, 4).map((tag) => (
-            <span key={tag} className="library-tag">{tag}</span>
-          ))}
-        </div>
-      </div>
-      <Link to={`/?entry=${entry.id}`} className="library-open">
-        {t.openEntry}
-      </Link>
-    </li>
-  );
-}
-
 export function EntriesPage() {
-  const { t, language } = useLanguage();
-  const [searchParams] = useSearchParams();
+  const { t } = useLanguage();
+  const [searchParams, setSearchParams] = useSearchParams();
   const q = (searchParams.get('q') ?? '').trim().toLowerCase();
+  const raccolta = searchParams.get('raccolta');
+  const dove = searchParams.get('dove') ?? undefined;
+  const fonte = searchParams.get('fonte') ?? undefined;
+  const quando = searchParams.get('quando') ?? undefined;
   const { view, ready: viewReady } = usePageView('links');
+  // the collections the server found: a failure is an empty list, and then there is no rail and the page is as it always was
+  const { collections, reload: reloadCollections } = useCollections();
+  // what can be put by hand: the themes (a type and a place are computed)
+  const themes = useMemo(() => collections.filter((c) => c.kind === 'theme'), [collections]);
 
   const [items, setItems] = useState<EntrySummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -105,24 +36,53 @@ export function EntriesPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { entry: selectedEntry, loading: selectedLoading } = useEntryById(selectedId);
+  const [facets, setFacets] = useState<FacetsAnswer | null>(null);
+  /** The collection of the address does not exist (any more): a message and a way back, not a blank page. */
+  const [gone, setGone] = useState(false);
+  /** The server refused a correction on a chip (the row is as it was): which one, to say it. */
+  const [chipError, setChipError] = useState<'remove' | 'add' | null>(null);
+  /** Every load has a number; an answer that is not the last one asked for is dropped (a late answer of the collection chosen before). */
+  const requestRef = useRef(0);
 
   const loadPage = useCallback(async (offset: number, append: boolean) => {
+    const mine = ++requestRef.current;
     if (append) setLoadingMore(true);
     else setLoading(true);
     setError(null);
     try {
-      const page = await listEntrySummaries(PAGE_SIZE, offset);
-      setTotal(page.total);
-      setItems((prev) => (append ? [...prev, ...page.entries] : page.entries));
+      if (raccolta) {
+        const page = await fetchCollection(raccolta, { dove, fonte, quando, offset, limit: PAGE_SIZE });
+        if (mine !== requestRef.current) return;
+        setGone(false);
+        setFacets(page.facets);
+        setTotal(page.total);
+        setItems((prev) => (append ? [...prev, ...page.entries] : page.entries));
+      } else {
+        const page = await listEntrySummaries(PAGE_SIZE, offset);
+        if (mine !== requestRef.current) return;
+        setGone(false);
+        setFacets(null);
+        setTotal(page.total);
+        setItems((prev) => (append ? [...prev, ...page.entries] : page.entries));
+      }
     } catch (e) {
-      console.error('[EntriesPage]', e);
-      setError(t.error);
+      if (mine !== requestRef.current) return;
+      if (raccolta && e instanceof Error && /collection_not_found/.test(e.message)) {
+        setGone(true);
+        setFacets(null);
+        setItems([]);
+        setTotal(0);
+      } else {
+        console.error('[EntriesPage]', e);
+        setError(t.error);
+      }
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (mine === requestRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
-  }, [t.error]);
+  }, [raccolta, dove, fonte, quando, t.error]);
 
   useEffect(() => {
     void loadPage(0, false);
@@ -137,30 +97,30 @@ export function EntriesPage() {
     });
   }, [items, q]);
 
-  const groups = useMemo(() => {
-    const out: { key: string; label: string; items: EntrySummary[] }[] = [];
-    let lastKey = '';
-    for (const entry of filtered) {
-      const date = parseDate(entry.createdAt);
-      const key = date ? date.toDateString() : 'unknown';
-      if (key !== lastKey) {
-        out.push({
-          key,
-          label: date
-            ? formatDayLabel(date, language, t.today, t.yesterday)
-            : '',
-          items: [],
-        });
-        lastKey = key;
-      }
-      out[out.length - 1].items.push(entry);
-    }
-    return out;
-  }, [filtered, language, t.today, t.yesterday]);
+  // a post that was open in one collection is not open in the next
+  useEffect(() => { setSelectedId(null); }, [raccolta]);
 
-  const posts = useMemo(() => filtered.map(postFromSummary), [filtered]);
+  /** A chip of the rail: it goes in the address, and the facets of the collection before are dropped (a place of one is not a place of another). */
+  const chooseCollection = useCallback((id: string | null) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (id) next.set('raccolta', id);
+      else next.delete('raccolta');
+      next.delete('dove');
+      next.delete('fonte');
+      next.delete('quando');
+      return next;
+    });
+  }, [setSearchParams]);
 
-  const closeDetail = useCallback(() => setSelectedId(null), []);
+  const toggleFacet = useCallback((key: FacetKey, value: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (next.get(key) === value) next.delete(key);
+      else next.set(key, value);
+      return next;
+    });
+  }, [setSearchParams]);
 
   /** The open post was deleted: out of the list, one less in the count, nothing open. */
   const onDeleted = useCallback(() => {
@@ -168,6 +128,40 @@ export function EntriesPage() {
     setTotal((n) => Math.max(0, n - 1));
     setSelectedId(null);
   }, [selectedId]);
+
+  /** «Non è questo» on a chip: the server forgets the post in that collection for good. The chip goes from the row; inside that very collection the post goes too. */
+  const removeFromCollection = useCallback(async (entryId: string, chip: CollectionChip) => {
+    try {
+      await removeEntryFromCollection(chip.id, entryId);
+    } catch (e) {
+      console.error('[EntriesPage]', e);
+      setChipError('remove');
+      return;
+    }
+    setChipError(null);
+    if (chip.id === raccolta) {
+      setItems((prev) => prev.filter((e) => e.id !== entryId));
+      setTotal((n) => Math.max(0, n - 1));
+      setSelectedId((current) => (current === entryId ? null : current));
+    } else {
+      setItems((prev) => prev.map((e) => (e.id === entryId ? { ...e, collections: (e.collections ?? []).filter((c) => c.id !== chip.id) } : e)));
+    }
+    reloadCollections();   // the number of the collection changed
+  }, [raccolta, reloadCollections]);
+
+  /** «+»: the post enters the collection by hand and never leaves it. The chip appears on the row. */
+  const addToCollection = useCallback(async (entryId: string, target: CollectionListItem) => {
+    try {
+      await addEntryToCollection(target.id, entryId);
+    } catch (e) {
+      console.error('[EntriesPage]', e);
+      setChipError('add');
+      return;
+    }
+    setChipError(null);
+    setItems((prev) => prev.map((e) => (e.id === entryId ? { ...e, collections: [...(e.collections ?? []).filter((c) => c.id !== target.id), { id: target.id, name: target.name }] } : e)));
+    reloadCollections();
+  }, [reloadCollections]);
 
   const hasMore = items.length < total && !q;
   const countLabel = t.entriesCountLabel
@@ -203,65 +197,37 @@ export function EntriesPage() {
           <ViewSwitch page="links" />
         </div>
 
+        <CollectionRail collections={collections} selectedId={raccolta} onSelect={chooseCollection} allCount={raccolta || loading ? null : total} />
+        {raccolta && facets && <CollectionFacets facets={facets} current={{ dove, fonte, quando }} onToggle={toggleFacet} />}
+
+        {chipError && <p className="collection-action-error" role="alert">{chipError === 'add' ? t.collectionChipAddFailed : t.collectionChipRemoveFailed}</p>}
+
         {waiting ? (
           <div className="journal-loading">
             <span className="spinner" />
             <p>{t.loading}</p>
           </div>
+        ) : gone ? (
+          <div className="list-page-empty collection-gone">
+            <p>{t.collectionGone}</p>
+            <button type="button" className="library-load-btn" onClick={() => chooseCollection(null)}>{t.collectionGoneBack}</button>
+          </div>
         ) : error ? (
           <div className="list-page-empty">{error}</div>
         ) : filtered.length === 0 ? (
           <div className="list-page-empty">{t.noEntries}</div>
-        ) : view === 'wall' ? (
-          <div className="wall-layout links-wall">
-            <div className="wall-scroll">
-              <Wall posts={posts} selectedId={selectedId} onSelect={setSelectedId} />
-              {loadMore}
-            </div>
-            {selectedEntry && (
-              <DetailPanel onClose={closeDetail}>
-                <EntryInspector entry={selectedEntry} onDeleted={onDeleted} />
-              </DetailPanel>
-            )}
-          </div>
         ) : (
-          <div className={`links-split${selectedId ? ' has-selection' : ''}`}>
-            <div className="links-list">
-              <div className="library-list">
-                {groups.map((group) => (
-                  <section key={group.key} className="library-day">
-                    {group.label && (
-                      <h2 className="library-day-label">{group.label}</h2>
-                    )}
-                    <ul className="library-rows">
-                      {group.items.map((entry) => (
-                        <LibraryRow key={entry.id} entry={entry} selected={entry.id === selectedId} onSelect={setSelectedId} />
-                      ))}
-                    </ul>
-                  </section>
-                ))}
-              </div>
-              {loadMore}
-            </div>
-            <section className="links-detail">
-              {selectedEntry ? (
-                <EntryInspector
-                  entry={selectedEntry}
-                  onBack={window.innerWidth < 768 ? closeDetail : undefined}
-                  onDeleted={onDeleted}
-                />
-              ) : selectedLoading ? (
-                <div className="journal-loading">
-                  <span className="spinner" />
-                </div>
-              ) : (
-                <div className="inspector-placeholder">
-                  <div className="inspector-placeholder-icon">📋</div>
-                  <p>{t.selectEntry}</p>
-                </div>
-              )}
-            </section>
-          </div>
+          <EntriesView
+            entries={filtered}
+            mode={view === 'wall' ? 'wall' : 'studio'}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onDeleted={onDeleted}
+            onRemoveChip={(id, chip) => void removeFromCollection(id, chip)}
+            addTargets={themes}
+            onAddChip={(id, target) => void addToCollection(id, target)}
+            footer={loadMore}
+          />
         )}
       </div>
     </div>

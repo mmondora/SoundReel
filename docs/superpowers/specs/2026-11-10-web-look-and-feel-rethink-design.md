@@ -80,6 +80,15 @@ Dopo il suo «Fase 4» (risposta a «Dopo il deploy, quale lavoro faccio per pri
 - **Aperti (miei, piccoli):** (1) la riga del Player nascosto, sul telefono, sta in fondo alla fila del menu (poco in vista); (2) la pillola sta sopra la **pagina** (non sopra il menu o la barra in alto) e può coprire qualcosa: si sposta; (3) con la finestra stretta (≤ 1180 px) il pannello a destra scende a 300 px; (4) «Torna ai valori di partenza» cancella anche le viste di ogni pagina, non solo il Player.
 - **Prova:** sito **1380** test circa (erano 1303), ~90 rotture provate sul codice nuovo, tutte scoperte (una difesa in profondità non raggiungibile dall'interfaccia, documentata); screenshot a 1440 e 390 px con un server finto.
 
+### 3.6 Elenchi lunghi: la scelta della playlist e l'Inbox a pagine (richiesta di Michele del 10 novembre, durante la costruzione delle raccolte)
+
+> «in playlist, la scelta della playlist non può essere un box - quando sono 100 che facciamo ? inoltre in inbox sulla lista non voglio avere "apri tutta la libreria" ma la paginazione con 30 o 40 per pagina»
+
+**Regola di interfaccia (vale per ogni elenco del sito che può diventare lungo):** un elenco che può avere cento voci **non è mai un menu a tendina né un riquadro con tutto dentro**: si **cerca**, si **ordina**, si **sfoglia a pagine**, e il server decide pagina e totale (regola P). Un collegamento «apri tutto» al posto delle pagine non va bene.
+
+- **La scelta della playlist** (i due riquadri A e B del gestore di playlist): dal menu a tendina nativo, che elenca tutte le playlist, a un **selettore che si apre**: campo di ricerca, «mostra» (tutte · automatiche · mie · condivise · dinamiche), ordine (data di creazione, aggiornamento, nome, brani) e **pagine da 30** con «pagina X di Y»; «Tutti i brani» resta sempre in cima. Usa la **stessa rotta e gli stessi controlli** dell'elenco delle playlist della pagina Canzoni (`GET /api/playlists?q&filter&sort&order&limit&offset`, ADR-0023): nessuna logica nuova sul server. Dalla tastiera: frecce per muoversi, Invio sceglie, Esc chiude.
+- **L'Inbox a pagine:** al posto delle ultime cinque voci e del collegamento «Apri tutta la libreria →», **tutta la libreria a pagine da 40** (Michele: «30 o 40»; 40 come la pagina Link), con i numeri di pagina in fondo (e l'indirizzo, `?pagina=N`, così indietro e i link funzionano). Le voci nuove arrivano in cima alla pagina 1. **I filtri della barra «Filtra» (piattaforma, canale, utente, categoria, verdetto, tag) restano** e diventano **del server**: filtrano tutta la libreria, non le sole ultime cinquanta, e le pagine seguono il filtro.
+
 ## 4. Domande aperte per Michele (per quando si comincia)
 
 - Quali pagine contano di più per lui, oggi? (l'ordine d'uso decide dove lavorare per prima.)

@@ -5,6 +5,7 @@ vi.mock('../utils/logger', () => ({ logWarning: vi.fn(), logError: vi.fn(), logI
 import { buildWebHome, WEB_HOME_LIMITS, type WebHomeDeps, type WebHomeViewer } from './webHome';
 import { logWarning } from '../utils/logger';
 import type { AggregatedFilm, AggregatedSong, EntrySummaryRow, PlaylistSummary } from '../types';
+import type { CollectionListItem } from './collectionsView';
 
 const viewer: WebHomeViewer = { userId: 'mike', isAdmin: false };
 
@@ -41,6 +42,12 @@ function playlist(id: string, name: string, createdAt: string, extra: Partial<St
   return { id, name, songCount: 3, createdAt, updatedAt: createdAt, kind: 'static', ownerUser: 'mike', ...extra };
 }
 
+function collection(id: string, name: string, kind: CollectionListItem['kind'] = 'theme', extra: Partial<CollectionListItem> = {}): CollectionListItem {
+  return {
+    id, name, kind, group: kind === 'type' ? 'Tipi' : null, parentId: null, count: 9, isNew: false, thumbs: [], views: ['list'], defaultView: 'list', ...extra,
+  };
+}
+
 function deps(over: Partial<WebHomeDeps> = {}): WebHomeDeps {
   return {
     posts: vi.fn(async () => ({ items: [], total: 0 })),
@@ -48,12 +55,13 @@ function deps(over: Partial<WebHomeDeps> = {}): WebHomeDeps {
     films: vi.fn(async () => []),
     playlists: vi.fn(async () => []),
     resolvePlaylists: vi.fn(async (list: Stored[]) => list),
+    collections: vi.fn(async () => []),
     ...over,
   };
 }
 
 const idsOf = (home: Awaited<ReturnType<typeof buildWebHome>>) => home.sections.map((s) => s.id);
-const sectionOf = <T extends 'resume' | 'songs' | 'playlists' | 'films'>(home: Awaited<ReturnType<typeof buildWebHome>>, id: T) => {
+const sectionOf = <T extends 'resume' | 'songs' | 'playlists' | 'collections' | 'films'>(home: Awaited<ReturnType<typeof buildWebHome>>, id: T) => {
   const found = home.sections.find((s) => s.id === id);
   if (!found) throw new Error(`no section ${id}`);
   return found as Extract<(typeof home.sections)[number], { id: T }>;
@@ -68,15 +76,16 @@ beforeEach(() => {
 });
 
 describe('buildWebHome: the sections and their order (spec 2026-11-10-web-look-and-feel-rethink-design.md §3.2 L1, plan Task 8)', () => {
-  it('answers the latest posts, the new songs, the playlists and the films, in that order, each with its total and its items', async () => {
+  it('answers the latest posts, the new songs, the playlists, the collections and the films, in that order, each with its total and its items', async () => {
     const home = await buildWebHome(viewer, deps({
       posts: async () => ({ items: [post('e1', '2026-03-01T10:00:00.000Z')], total: 1 }),
       songs: async () => [song('A', 'One', [['e1', '2026-03-01T10:00:00.000Z']])],
       playlists: async () => [playlist('p1', 'Road trip', '2026-01-01T00:00:00.000Z')],
+      collections: async () => [collection('t1', 'Vino')],
       films: async () => [film('Dune', '2021', [['e2', '2026-03-02T10:00:00.000Z']])],
     }));
-    expect(idsOf(home)).toEqual(['resume', 'songs', 'playlists', 'films']);
-    expect(home.sections.map((s) => [s.total, s.items.length])).toEqual([[1, 1], [1, 1], [1, 1], [1, 1]]);
+    expect(idsOf(home)).toEqual(['resume', 'songs', 'playlists', 'collections', 'films']);
+    expect(home.sections.map((s) => [s.total, s.items.length])).toEqual([[1, 1], [1, 1], [1, 1], [1, 1], [1, 1]]);
   });
 
   it('keeps that order whichever source answers first', async () => {
@@ -85,9 +94,10 @@ describe('buildWebHome: the sections and their order (spec 2026-11-10-web-look-a
       posts: () => slow({ items: [post('e1', '2026-03-01T10:00:00.000Z')], total: 1 }, 30),
       songs: () => slow([song('A', 'One', [['e1', '2026-03-01T10:00:00.000Z']])], 20),
       playlists: () => slow([playlist('p1', 'Road trip', '2026-01-01T00:00:00.000Z')], 10),
+      collections: () => slow([collection('t1', 'Vino')], 5),
       films: () => slow([film('Dune', '2021', [['e2', '2026-03-02T10:00:00.000Z']])], 0),
     }));
-    expect(idsOf(home)).toEqual(['resume', 'songs', 'playlists', 'films']);
+    expect(idsOf(home)).toEqual(['resume', 'songs', 'playlists', 'collections', 'films']);
   });
 
   it('an empty library answers no section at all', async () => {
@@ -102,24 +112,14 @@ describe('buildWebHome: the sections and their order (spec 2026-11-10-web-look-a
     expect(idsOf(home)).toEqual(['songs', 'films']);
   });
 
-  it('never names the collections: they are not built yet (ADR-0022), so the section is simply absent', async () => {
-    const home = await buildWebHome(viewer, deps({
-      posts: async () => ({ items: [post('e1', '2026-03-01T10:00:00.000Z')], total: 1 }),
-      songs: async () => manySongs(3),
-      playlists: async () => [playlist('p1', 'Road trip', '2026-01-01T00:00:00.000Z')],
-      films: async () => [film('Dune', '2021', [['e2', '2026-03-02T10:00:00.000Z']])],
-    }));
-    expect(idsOf(home)).not.toContain('collections');
-  });
-
   it('carries only what the contract names: the sections and nothing else (no user, no title, no store)', async () => {
     const home = await buildWebHome(viewer, deps({ songs: async () => manySongs(1) }));
     expect(Object.keys(home)).toEqual(['sections']);
     expect(Object.keys(home.sections[0]).sort()).toEqual(['id', 'items', 'total']);
   });
 
-  it('the limits are six posts and twelve songs, playlists and films', () => {
-    expect(WEB_HOME_LIMITS).toEqual({ resume: 6, songs: 12, playlists: 12, films: 12 });
+  it('the limits are six posts and twelve songs, playlists, collections and films', () => {
+    expect(WEB_HOME_LIMITS).toEqual({ resume: 6, songs: 12, playlists: 12, collections: 12, films: 12 });
   });
 });
 
@@ -132,6 +132,7 @@ describe('the sources are asked for the viewer, whoever that is (own and shared,
     expect(d.songs).toHaveBeenCalledWith(admin);
     expect(d.films).toHaveBeenCalledWith(admin);
     expect(d.playlists).toHaveBeenCalledWith(admin);
+    expect(d.collections).toHaveBeenCalledWith(admin);
   });
 
   it('what one user sees is not what another sees: the answer follows the viewer given', async () => {
@@ -464,21 +465,67 @@ describe('films: the new films of the posts, one card per film', () => {
   });
 });
 
+describe('collections: the themes and the places of the viewer, as tiles', () => {
+  it('shows the themes and the places and never the types (the Home has the tiles of what was discovered; the types are on the page of the collections)', async () => {
+    const home = await buildWebHome(viewer, deps({
+      collections: async () => [collection('type:music', 'Musica', 'type'), collection('t1', 'Vino'), collection('place:milano', 'Milano', 'place'), collection('type:films', 'Film e serie', 'type')],
+    }));
+    const section = sectionOf(home, 'collections');
+    expect(section.items.map((c) => c.id)).toEqual(['t1', 'place:milano']);
+    expect(section.total).toBe(2);
+  });
+
+  it('keeps the order the list has (the server decided it: new first, then the lively ones, then by size)', async () => {
+    const home = await buildWebHome(viewer, deps({ collections: async () => [collection('b', 'B'), collection('a', 'A'), collection('c', 'C')] }));
+    expect(sectionOf(home, 'collections').items.map((c) => c.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('carries exactly the fields of the contract: id, name, count, isNew and the pictures', async () => {
+    const home = await buildWebHome(viewer, deps({
+      collections: async () => [collection('t1', 'Vino', 'theme', { count: 15, isNew: true, thumbs: ['https://img/a.jpg', 'https://img/b.jpg'], group: 'Cibo e bevande', parentId: 'p', views: ['grid', 'list'], defaultView: 'grid' })],
+    }));
+    const [tile] = sectionOf(home, 'collections').items;
+    expect(tile).toEqual({ id: 't1', name: 'Vino', count: 15, isNew: true, thumbs: ['https://img/a.jpg', 'https://img/b.jpg'] });
+  });
+
+  it('shows twelve and counts all of them in the total', async () => {
+    const many = Array.from({ length: 15 }, (_, i) => collection(`t${i}`, `Tema ${i}`));
+    const section = sectionOf(await buildWebHome(viewer, deps({ collections: async () => many })), 'collections');
+    expect(section.items).toHaveLength(12);
+    expect(section.items[11].id).toBe('t11');
+    expect(section.total).toBe(15);
+  });
+
+  it('is left out when there is nothing but types (nothing was discovered yet), and when there is nothing at all', async () => {
+    expect(idsOf(await buildWebHome(viewer, deps({ collections: async () => [collection('type:music', 'Musica', 'type')] })))).toEqual([]);
+    expect(idsOf(await buildWebHome(viewer, deps({ collections: async () => [] })))).toEqual([]);
+  });
+
+  it('is asked for the viewer, once', async () => {
+    const d = deps();
+    await buildWebHome({ userId: 'sara', isAdmin: false }, d);
+    expect(d.collections).toHaveBeenCalledTimes(1);
+    expect(d.collections).toHaveBeenCalledWith({ userId: 'sara', isAdmin: false });
+  });
+});
+
 describe('one section failing costs only itself', () => {
   it.each([
     ['resume', { posts: async () => { throw new Error('db down'); } }],
     ['songs', { songs: async () => { throw new Error('db down'); } }],
     ['playlists', { playlists: async () => { throw new Error('db down'); } }],
+    ['collections', { collections: async () => { throw new Error('db down'); } }],
     ['films', { films: async () => { throw new Error('db down'); } }],
-  ] as const)('%s fails: the other three are answered and the failure is logged', async (failing, broken) => {
+  ] as const)('%s fails: the other four are answered and the failure is logged', async (failing, broken) => {
     const home = await buildWebHome(viewer, deps({
       posts: async () => ({ items: [post('e1', '2026-03-01T10:00:00.000Z')], total: 1 }),
       songs: async () => manySongs(2),
       playlists: async () => [playlist('p1', 'Road trip', '2026-01-01T00:00:00.000Z')],
+      collections: async () => [collection('t1', 'Vino')],
       films: async () => [film('Dune', '2021', [['e2', '2026-03-02T10:00:00.000Z']])],
       ...broken,
     }));
-    expect(idsOf(home)).toEqual(['resume', 'songs', 'playlists', 'films'].filter((id) => id !== failing));
+    expect(idsOf(home)).toEqual(['resume', 'songs', 'playlists', 'collections', 'films'].filter((id) => id !== failing));
     expect(logWarning).toHaveBeenCalledTimes(1);
     const [message, data] = vi.mocked(logWarning).mock.calls[0];
     expect(message).toContain(failing);
@@ -497,9 +544,9 @@ describe('one section failing costs only itself', () => {
 
   it('every section failing still answers: no section, and no error', async () => {
     const boom = async () => { throw new Error('boom'); };
-    const home = await buildWebHome(viewer, deps({ posts: boom, songs: boom, playlists: boom, films: boom }));
+    const home = await buildWebHome(viewer, deps({ posts: boom, songs: boom, playlists: boom, collections: boom, films: boom }));
     expect(home).toEqual({ sections: [] });
-    expect(logWarning).toHaveBeenCalledTimes(4);
+    expect(logWarning).toHaveBeenCalledTimes(5);
   });
 
   it('a failure that is not an Error (a rejected string) is logged as text, never thrown', async () => {

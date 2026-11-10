@@ -7,6 +7,7 @@ import { pool, query } from './utils/db';
 import { registerAnalyzeRoute } from './routes/analyze';
 import { registerTelegramRoute } from './routes/telegram';
 import { registerEntriesRoutes } from './routes/entries';
+import { registerEntriesIndexRoutes } from './routes/entriesIndex';
 import { registerConfigRoutes } from './routes/config';
 import { registerSpotifyRoutes } from './routes/spotify';
 import { registerHubStatusRoute, registerHubAboutRoute } from './routes/hubStatus';
@@ -35,9 +36,11 @@ import { registerMondropInboxRoutes } from './routes/mondropInbox';
 import { registerMeRoute } from './routes/me';
 import { registerUiPrefsRoutes } from './routes/uiPrefs';
 import { registerWebHomeRoute } from './routes/webHome';
+import { registerCollectionsRoutes } from './routes/collections';
 import { registerMondropConnectRoutes } from './routes/mondropConnect';
 import { requeueStuckJobs } from './utils/jobQueue';
 import { startGenrePlaylistSweep } from './services/genrePlaylistSweepWiring';
+import { startNightlyConsolidation } from './services/collectionsNightly';
 import { startJobQueueWorker } from './services/jobQueueWorker';
 import { startSpootyWatcher } from './services/spootyWatcher';
 import { startSongDownloader } from './services/songDownloader';
@@ -64,6 +67,7 @@ async function bootstrap(): Promise<void> {
   registerAnalyzeRoute(app);
   registerTelegramRoute(app);
   registerEntriesRoutes(app);
+  registerEntriesIndexRoutes(app); // the facets of the Inbox filters (docs/entries-index.md): behind Authelia like /api/entries, never under /api/mondrop or /api/share
   registerConfigRoutes(app);
   registerSpotifyRoutes(app);
   registerHubStatusRoute(app);
@@ -89,6 +93,7 @@ async function bootstrap(): Promise<void> {
   registerMeRoute(app);
   registerUiPrefsRoutes(app); // the configuration of the site, per user: behind Authelia like /api/me (ADR-0026)
   registerWebHomeRoute(app); // the front page of the site in sections: behind Authelia like /api/me, never under /api/mondrop or /api/share
+  registerCollectionsRoutes(app); // the collections of the site (themes, places, types) and their corrections: behind Authelia like /api/me, never under /api/mondrop or /api/share
   registerMondropConnectRoutes(app); // behind Authelia: keep OFF /api/share and /api/mondrop (bypass routers)
 
   // Serve static frontend (after routes so /api/* wins)
@@ -175,6 +180,11 @@ async function bootstrap(): Promise<void> {
   const stopGenrePlaylistSweep = startGenrePlaylistSweep();
   app.log.info('Genre playlist sweep started (first run in about 2 minutes, then every 24 hours)');
 
+  // The collections of the library (ADR-0022): once a day the groups are made again on every vector, with the ids and the names that last and the
+  // corrections of the user applied last. The first pass is ten minutes after the boot, never at it. COLLECTIONS_AUTO=0 starts nothing.
+  const nightlyCollections = startNightlyConsolidation();
+  app.log.info('Collections nightly pass scheduled (first run in about 10 minutes, then every 24 hours)');
+
   // Startup cleanup + daily schedule (orphan + retention purge)
   const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
   const kickCleanup = async (): Promise<void> => {
@@ -199,6 +209,7 @@ async function bootstrap(): Promise<void> {
       stopReleaseYearBackfill();
       stopInboxSweeper();
       stopGenrePlaylistSweep();
+      nightlyCollections.stop();
       stopUsageCounters();
       await app.close();
       await pool.end();

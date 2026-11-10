@@ -13,7 +13,7 @@ const t = translations.en;
 
 const post = (id: string, over: Partial<PostCardModel> = {}): PostCardModel => ({
   id, platform: 'instagram', createdAt: new Date(Date.now() - 2 * 3600_000).toISOString(), thumbnailUrl: `https://img/${id}.jpg`,
-  summary: `Summary of ${id}`, status: 'completed', songs: [], films: [], songCount: 0, filmCount: 0, noteCount: 0, tags: [], ...over,
+  summary: `Summary of ${id}`, status: 'completed', songs: [], films: [], songCount: 0, filmCount: 0, noteCount: 0, tags: [], collections: [], ...over,
 });
 
 function wall(posts: PostCardModel[], selectedId: string | null = null, onSelect: (id: string) => void = () => undefined) {
@@ -83,6 +83,14 @@ describe('the wall of posts', () => {
     const card = screen.getByRole('button', { name: /Summary of a/ });
     expect(card).toHaveTextContent('jazz');
     expect(card).toHaveTextContent('vinyl');
+  });
+
+  it('shows the collections the post is in first, then its tags, four at most, as plain text (the card is a button: no link or button inside it)', () => {
+    wall([post('a', { collections: [{ id: 'abc', name: 'Vino' }, { id: 'place:milano', name: 'Milano' }], tags: ['#barolo', '#cantina', '#extra'] })]);
+    const card = screen.getByRole('button', { name: /Summary of a/ });
+    expect(card.textContent).toContain('VinoMilano#barolo#cantina');
+    expect(card.textContent).not.toContain('#extra');
+    expect(card.querySelector('a, button')).toBeNull();
   });
 
   it('shows how long ago the post was added', () => {

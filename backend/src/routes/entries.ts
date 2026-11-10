@@ -2,7 +2,6 @@ import type { FastifyInstance } from 'fastify';
 import { pool } from '../utils/db';
 import {
   listEntries,
-  listEntrySummaries,
   getJournalStats,
   getEntry,
   getEntryForUser,
@@ -18,23 +17,48 @@ import {
 import { addToPlaylist } from '../services/spotify';
 import { enrichWithOpenAI } from '../services/openaiEnrich';
 import { listEntryMediaUrls, preferLocalMediaUrls } from '../services/localMedia';
+import { placesAndVenuesOfEntry, withCollectionChips } from '../services/collectionsViewData';
+import { entriesIndexFor } from './entriesIndex';
 import { logError } from '../utils/logger';
-import type { Entry } from '../types';
+import type { Entry, EntrySummaryRow } from '../types';
 import { resolveUser, isFamilyUser, FAMILY_USERS } from '../utils/requestUser';
 
+/**
+ * The summary rows with the chips of the collections each post is in (docs/collections.md), for the user who reads. The collections NEVER break the
+ * list: when they cannot be read the rows come back with no chips, and the failure goes to the log.
+ */
+async function withChips<T extends EntrySummaryRow>(items: T[], userId: string): Promise<T[]> {
+  try {
+    return await withCollectionChips(items, userId);
+  } catch (err) {
+    logError('GET /api/entries: the collection chips could not be read (the list is answered without them)', err);
+    return items.map((item) => ({ ...item, collections: [] }));
+  }
+}
+
 export function registerEntriesRoutes(app: FastifyInstance): void {
-  app.get<{ Querystring: { limit?: string; offset?: string; view?: string } }>('/api/entries', async (req) => {
+  app.get<{ Querystring: { limit?: string; offset?: string; view?: string; [filter: string]: unknown } }>('/api/entries', async (req, reply) => {
     const user = resolveUser(req);
     const visibility = { userId: user.id, isAdmin: user.isAdmin };
-    const limit = Math.min(1000, Math.max(1, Number(req.query.limit ?? 200)));
-    const offset = Math.max(0, Number(req.query.offset ?? 0));
     const view = req.query.view === 'summary' ? 'summary' : 'full';
 
     if (view === 'summary') {
-      const { items, total } = await listEntrySummaries(limit, offset, visibility);
-      return { entries: items, total, limit, offset };
+      // never cached, whatever the answer: the pages and the total change when a post arrives (docs/entries-index.md)
+      reply.header('Cache-Control', 'no-store');
+      try {
+        // a page of the whole library, narrowed by the filters of the Inbox (platform, channel, user, category, verdict, tag), with `total` that of
+        // the filtered set; each row also carries who sent it, its category and its verdict (docs/entries-index.md)
+        const page = await entriesIndexFor(req.query, visibility);
+        if (page.status !== 200) return reply.code(page.status).send(page.body);
+        // the chips are of the user's own collections (an administrator who reads the posts of anonymous gets their own chips, not anonymous's)
+        return { ...page.body, entries: await withChips(page.body.entries, user.id) };
+      } catch (err) {
+        logError('GET /api/entries?view=summary failed', err);
+        return reply.code(500).send({ error: 'entries_failed' });
+      }
     }
 
+    const limit = Math.min(1000, Math.max(1, Number(req.query.limit ?? 200)));
     const entries = await listEntries(limit, visibility);
     return Promise.all(entries.map((e) => preferLocalMediaUrls(e)));
   });
@@ -52,7 +76,15 @@ export function registerEntriesRoutes(app: FastifyInstance): void {
       reply.code(404).send({ error: 'Not found' });
       return;
     }
-    return preferLocalMediaUrls(entry);
+    const local = await preferLocalMediaUrls(entry);
+    // where the post is (the places the server found in its text) and the venues it names, with the address of Maps built by the server;
+    // the post is answered without them when they cannot be read
+    const where = await placesAndVenuesOfEntry({ id: entry.id, sourceUrl: entry.sourceUrl, sourcePlatform: entry.sourcePlatform, createdAt: entry.createdAt })
+      .catch((err: unknown) => {
+        logError('GET /api/entries/:id: the places of the post could not be read (the post is answered without them)', err);
+        return null;
+      });
+    return where ? { ...local, places: where.places, venues: where.venues } : local;
   });
 
   app.get<{ Params: { id: string } }>('/api/entries/:id/media', async (req, reply) => {

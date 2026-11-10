@@ -7,6 +7,7 @@ import { LanguageProvider } from '../i18n';
 import { setStoredLanguage } from '../i18n/translations';
 import { resetEntryThumbnailCache } from '../hooks/useEntryThumbnail';
 import * as api from '../services/api';
+import { choosePlaylist, servePlaylistPages } from '../testing/managerPicker';
 import type { AggregatedSong, PlaylistDetail, PlaylistSummary } from '../types';
 
 // Michele, 8 November: «anche la creazione delle playlist, la ricerca deve prendere da tutto e non solo dalla libreria», and «Sì,
@@ -21,6 +22,7 @@ vi.mock('../services/api', () => ({
   fetchSongs: vi.fn(),
   getEntry: vi.fn(),
   fetchPlaylists: vi.fn(),
+  fetchPlaylistsPage: vi.fn(),
   fetchPlaylist: vi.fn(),
   createPlaylist: vi.fn(),
   deletePlaylist: vi.fn(),
@@ -209,14 +211,12 @@ describe('a playlist can hold songs that are only files', () => {
   };
 
   it('picked from the panel it lists the file-only song too, in ITS order', async () => {
-    vi.mocked(api.fetchPlaylists).mockResolvedValue(PLAYLISTS);
+    servePlaylistPages(() => PLAYLISTS);
     vi.mocked(api.fetchPlaylist).mockResolvedValue(DETAIL);
     renderPage();
     await waitFor(() => expect(listTitles()).toHaveLength(2));
     await openPanel();
-    const select = within(panel()).getByRole('combobox', { name: 'Playlist' });
-    await waitFor(() => expect(within(select).getByRole('option', { name: 'Mix (2)' })).toBeInTheDocument());
-    fireEvent.change(select, { target: { value: 'p1' } });
+    await choosePlaylist(panel(), 'Mix');
     await waitFor(() => expect(listTitles()).toEqual(['Capirai', 'Like a Prayer']));
   });
 });

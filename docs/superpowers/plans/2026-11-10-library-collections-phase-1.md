@@ -1,8 +1,12 @@
 # Raccolte (collections): phase 0 and phase 1 — Implementation Plan
 
+> **Update 10 November, after the look and feel (2.21.0–2.23.0) and with Michele's «procedi con raccolte e poi look nuovo»:** the plan was written before the new shell, so read it with these changes. (1) **Migration is `024_collections.sql`** (022 is `auto_playlist_waiting`, 023 is `user_prefs`) and the release is **SoundReel 2.24.0**. (2) **`Header.tsx` no longer exists**: the «Raccolte» item goes in `components/shell/Rail.tsx` (between Inbox and Link, with a count), routes `/collections` and `/collections/:id` live inside `AppShell`; every page already lives in the shell and has no header of its own. (3) **The Link page (`EntriesPage`) already has two views** (Studio: list + post on the right; Bacheca: wall of cards + panel); the chip rail sits above both and `?raccolta=&dove=` changes the SOURCE of the posts (`fetchCollection`) for both views; the existing text filter and `?q=` keep working. (4) **The Home view already reserves the `collections` section** (the user's configuration lists it; `docs/web-home.md` says «absent until built»; the panel «Personalizza» marks it «arriva con le raccolte»): this release adds it to `GET /api/home` (the most alive collections as tiles, «Vedi tutto» → `/collections`), draws it in `HomeSections`, and removes the «coming» note from `PersonalizePanel`. The per-collection shelves with the 6 latest posts and «Salvato in…» in the Telegram answer stay phase 2. (5) Colours and forms only from the tokens (`tokens.css`, Mondrop); the mockup in `specs/assets/` shows the idea, not the colours. (6) The names of the files of the frontend that the plan gives for the shell are replaced by the ones above; everything else (rules, numbers, contracts) is unchanged.
+
+> **Status (10 November, end of the day):** tasks 1–13 were built in this order (T1+T5 vectors/grouping/calibration, T2+T3 store/places, T6 names, T4 wiring and backfill, T8 view layer and routes, T7 engine and rebuild script, T9–T12 the site) and verified with tests and the mutation harness; the per-task commits of the plan became **one release commit** (SoundReel 2.24.0). Values changed by the calibration (T1, spec §3.1): merge cosine **0.64** (group + 0.22, not + 0.12), absorption 0.80 plus the 70 % rule on members, same-name merge 0.45. Michele's two requests of the same day (the choice of a playlist as a dialog, the Inbox in pages of 40 with the server's filters) are in the same release (spec `2026-11-10-web-look-and-feel-rethink-design.md` §3.6, contract `docs/entries-index.md`). Not built (phase 2 of the spec): the search that puts the collection first, «Salvato in: …» in the outcome of a share.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The library sorts itself into collections (types, discovered themes, places) and the site shows them with a chip rail on «Link», a «Raccolte» page, a collection page with the venues a post names and «Apri in Maps» links (SoundReel **2.21.0**, site only).
+**Goal:** The library sorts itself into collections (types, discovered themes, places) and the site shows them with a chip rail on «Link», a «Raccolte» page, a collection page with the venues a post names and «Apri in Maps» links (SoundReel **2.24.0**, site only).
 
 **Architecture:** After each analysis, a queued best-effort step gives the entry a vector (`nomic-embed-text`), its places and venues (one dedicated `glm-4.7-flash` call, literal check in the text). A nightly pass regroups ALL vectors (centred on the library mean, centroid grouping), matches groups to existing collections by member overlap (ids and names inherited), names new ones from a seed list with hygiene, and applies the user's corrections last. The server answers the already-decided list (types and places are computed, themes are rows); the site only draws.
 
@@ -39,7 +43,7 @@
 
 ## File structure
 
-Backend (`backend/src/`): `db/migrations/022_collections.sql` (+ `db/init.sql`), `services/embeddings.ts`, `services/collectionsParams.ts`, `services/collectionsStore.ts`, `services/entryPlaces.ts`, `data/places.ts`, `services/collectionsCluster.ts`, `services/collectionsNaming.ts`, `services/collectionsEngine.ts`, `services/collectionsView.ts`, `services/collectionsWiring.ts`, `routes/collections.ts`, `scripts/calibrateCollections.ts`, `scripts/backfillCollectionInputs.ts`, `scripts/rebuildCollections.ts`; each with its `*.test.ts`. Modify: `routes/entries.ts` (chips, places, venues), `services/jobQueueWorker.ts` (hook), `server.ts` (register routes, timer), `types/index.ts`.
+Backend (`backend/src/`): `db/migrations/024_collections.sql` (+ `db/init.sql`), `services/embeddings.ts`, `services/collectionsParams.ts`, `services/collectionsStore.ts`, `services/entryPlaces.ts`, `data/places.ts`, `services/collectionsCluster.ts`, `services/collectionsNaming.ts`, `services/collectionsEngine.ts`, `services/collectionsView.ts`, `services/collectionsWiring.ts`, `routes/collections.ts`, `scripts/calibrateCollections.ts`, `scripts/backfillCollectionInputs.ts`, `scripts/rebuildCollections.ts`; each with its `*.test.ts`. Modify: `routes/entries.ts` (chips, places, venues), `services/jobQueueWorker.ts` (hook), `server.ts` (register routes, timer), `types/index.ts`.
 Frontend (`frontend/src/`): `types/index.ts`, `services/api.ts`, `hooks/useCollections.ts`, `components/CollectionRail.tsx`, `components/CollectionChips.tsx`, `components/VenueList.tsx`, `pages/CollectionsPage.tsx`, `pages/CollectionPage.tsx`, `styles/collections.css`, `collections/ruleP.test.ts`; modify `pages/EntriesPage.tsx`, `components/Header.tsx`, `App.tsx`, `components/EntryCard.tsx`, `components/CompactCard.tsx`, `i18n/translations.ts`.
 
 ---
@@ -63,7 +67,7 @@ Frontend (`frontend/src/`): `types/index.ts`, `services/api.ts`, `hooks/useColle
 ### Task 2: Migration 022 and the store
 
 **Files:**
-- Create: `backend/src/db/migrations/022_collections.sql`, `backend/src/services/collectionsStore.ts`, `backend/src/services/collectionsStore.int.test.ts`; Modify: `backend/src/db/init.sql` (append the same SQL)
+- Create: `backend/src/db/migrations/024_collections.sql`, `backend/src/services/collectionsStore.ts`, `backend/src/services/collectionsStore.int.test.ts`; Modify: `backend/src/db/init.sql` (append the same SQL)
 
 **Interfaces:**
 - Produces (spec §8 tables, exactly): `entry_vectors(entry_id PK → entries ON DELETE CASCADE, model, vector REAL[], text_hash, embedded_at)`, `entry_places(entry_id, place, kind, PK(entry_id, place))`, `entry_venues(entry_id, venue_key, name, kind, place, PK(entry_id, venue_key))`, `collections(id, owner_user, name, name_by, group_label, parent_id, state, origin, centroid REAL[], size, coherence, created_at, updated_at)`, `collection_entries(collection_id, entry_id, score, source, PK(collection_id, entry_id))`, all idempotent (`IF NOT EXISTS`). `interface CollectionsStore` with: `saveVector(entryId, model, vector: number[], textHash)`, `vectorsOf(userId): Promise<Array<{ entryId; createdAt; vector: Float32Array; textHash }>>`, `savePlacesAndVenues(entryId, places, venues)`, `placesOf(entryIds)`, `venuesOf(entryIds)`, `listCollections(userId)`, `saveCollections(userId, rows)` (transaction: replaces the auto rows, keeps corrections), `membersOf(collectionId)`, `corrections(userId)`, and the correction writers `rename`, `merge`, `hide`, `unhide`, `addEntry`, `removeEntry`.
@@ -150,7 +154,7 @@ Frontend (`frontend/src/`): `types/index.ts`, `services/api.ts`, `hooks/useColle
 ### Task 9: The binario (A) on «Link»
 
 **Files:**
-- Modify: `frontend/src/types/index.ts`, `frontend/src/services/api.ts`, `frontend/src/pages/EntriesPage.tsx`, `frontend/src/i18n/translations.ts`; Create: `frontend/src/hooks/useCollections.ts`, `frontend/src/components/CollectionRail.tsx`, `frontend/src/components/CollectionRail.test.tsx`, `frontend/src/styles/collections.css`
+- Modify: `frontend/src/types/index.ts`, `frontend/src/services/api.ts`, `frontend/src/pages/EntriesPage.tsx` (both views), `frontend/src/i18n/translations.ts`; Create: `frontend/src/hooks/useCollections.ts`, `frontend/src/components/CollectionRail.tsx`, `frontend/src/components/CollectionRail.test.tsx`, `frontend/src/styles/collections.css`
 
 **Interfaces:**
 - Produces: `fetchCollections(): Promise<CollectionListItem[]>`, `fetchCollection(id, query): Promise<CollectionPage>`, the correction calls; `useCollections(): { collections; loading; failed }`; `<CollectionRail collections selected onSelect />` (chips with name and count, «Nuova» pill, «Altre ▾» opens the page, ≤ 12 shown); `EntriesPage` reads `?raccolta=<id>&dove=<place>` and shows the entries of that collection via `fetchCollection` (otherwise the page as today), with the facet row «Dove / Fonte / Quando» when a theme is selected.
@@ -161,12 +165,12 @@ Frontend (`frontend/src/`): `types/index.ts`, `services/api.ts`, `hooks/useColle
 ### Task 10: The «Raccolte» page (B) and the menu
 
 **Files:**
-- Create: `frontend/src/pages/CollectionsPage.tsx` (+ `.test.tsx`); Modify: `frontend/src/App.tsx` (`/collections`), `frontend/src/components/Header.tsx` (item «Raccolte» between Inbox and Link), `frontend/src/i18n/translations.ts`
+- Create: `frontend/src/pages/CollectionsPage.tsx` (+ `.test.tsx`); Modify: `frontend/src/App.tsx` (`/collections`, inside `AppShell`), `frontend/src/components/shell/Rail.tsx` (item «Raccolte» between Inbox and Link), `frontend/src/i18n/translations.ts`
 
 **Interfaces:**
 - Consumes: `useCollections` (task 9). Produces: cards with a 2×2 mosaic of `thumbs`, name, count, «Nuova»; grouped by `group` (the heading; no group → «Altre»); a strip «Nuove» (7 days); a field that filters the cards; «Nascoste» (to unhide) at the bottom.
 
-- [ ] **Step 1: Tests:** headings come from `group`; a collection without `group` lands under «Altre»; the «Nuove» strip shows only `isNew`; the field filters by name without accents/case; fewer than 4 thumbs fill the mosaic with neutral tiles; an empty list shows «Nessuna raccolta ancora» and how they appear (5 posts on the same subject); the nav item is present and active on `/collections`.
+- [ ] **Step 1: Tests:** headings come from `group`; a collection without `group` lands under «Altre»; the «Nuove» strip shows only `isNew`; the field filters by name without accents/case; fewer than 4 thumbs fill the mosaic with neutral tiles; an empty list shows «Nessuna raccolta ancora» and how they appear (5 posts on the same subject); the nav item (Rail) is present and active on `/collections`.
 - [ ] **Step 2–4:** run (FAIL), implement, run (PASS). **Step 5: Commit** (`feat(site): the «Raccolte» page`).
 
 ### Task 11: A collection (grid, list, play, venues, «why», corrections)
@@ -191,14 +195,14 @@ Frontend (`frontend/src/`): `types/index.ts`, `services/api.ts`, `hooks/useColle
 - [ ] **Step 1: Tests:** placeholders hidden, real tags kept; the order (collection chips first); `×` removes only that chip; the tag filter of «Link» still matches a real tag. `ruleP.test.ts` reads every file under `frontend/src` (like `player/ruleP.test.ts`) and fails if one contains `google.com/maps`, builds a `maps/search` URL, or imports a clustering/embedding module.
 - [ ] **Step 2–4:** run (FAIL), implement, run (PASS). **Step 5:** whole frontend suite + `tsc`. **Step 6: Commit** (`feat(site): collection chips on the cards, and a test that the site computes nothing`).
 
-### Task 13: Release 2.21.0
+### Task 13: Release 2.24.0
 
 **Files:**
-- Modify: `CHANGELOG.md`, `ROADMAP.md`, `CLAUDE.md`, spec status lines, `adr/0022-…md`, `adr/README.md`, `backend/package*.json`, `frontend/package*.json`, `README.md` badge (via `./scripts/bump-version.sh 2.21.0`, never piped into `head`); `scratchpad/postdeploy_check.py` (read-only checks)
+- Modify: `CHANGELOG.md`, `ROADMAP.md`, `CLAUDE.md`, spec status lines, `adr/0022-…md`, `adr/README.md`, `backend/package*.json`, `frontend/package*.json`, `README.md` badge (via `./scripts/bump-version.sh 2.24.0`, never piped into `head`); `scratchpad/postdeploy_check.py` (read-only checks)
 
 - [ ] **Step 1:** full suites (backend, site) + `tsc` + `npx vite build`; mutation specs of tasks 5 and 7 all KILLED; `/verify` (UNMAPPED is expected, say so).
 - [ ] **Step 2:** `scratchpad/secret_scan.py`, commit with explicit paths (code, then docs), no push yet.
-- [ ] **Step 3: Ask Michele for the deploy OK** (`AskUserQuestion`). On yes: warm build (`docker compose build soundreel`), rollback image of the deployed commit, `touch .rebuild`, `scratchpad/postdeploy_check.py` (new read-only checks: migration 022 objects, `GET /api/collections` shape, `?sort` style 400s, a corrections round trip is NOT done in production), `history_scan.py` then push.
+- [ ] **Step 3: Ask Michele for the deploy OK** (say that the one-off backfill of about 30 minutes and the first publication come after, each with his OK) (`AskUserQuestion`). On yes: warm build (`docker compose build soundreel`), rollback image of the deployed commit, `touch .rebuild`, `scratchpad/postdeploy_check.py` (new read-only checks: migration 022 objects, `GET /api/collections` shape, `?sort` style 400s, a corrections round trip is NOT done in production), `history_scan.py` then push.
 - [ ] **Step 4:** in the container: `node dist/scripts/backfillCollectionInputs.js --apply` (≈ 30 min), then `node dist/scripts/rebuildCollections.js` (preview: the golden-set lines must PASS), then `--apply` with Michele's OK for the first publication («Ho trovato N raccolte»); post-deploy docs commit and push.
 
 ---

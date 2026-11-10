@@ -202,6 +202,12 @@ export interface Entry {
   createdAt: string;
 }
 
+/** A chip on a post: a collection it is in (`place:milano` for the place), already chosen by the server (docs/collections.md). */
+export interface CollectionChip {
+  id: string;
+  name: string;
+}
+
 /** Lean list row for Entries page — no full results/actionLog payload. */
 export interface EntrySummaryRow {
   id: string;
@@ -216,6 +222,8 @@ export interface EntrySummaryRow {
   filmCount: number;
   noteCount: number;
   tags: string[];
+  /** The collections the post is in (at most two themes and the place), chosen by the server; absent when the collections cannot be read. */
+  collections?: CollectionChip[];
 }
 
 export interface JournalStats {

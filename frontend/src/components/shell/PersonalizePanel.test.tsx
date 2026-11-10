@@ -159,11 +159,12 @@ describe('the sections of the Home', () => {
     expect(screen.getByRole('button', { name: t.personalizeMoveDown.replace('{name}', t.homeSectionResume) })).toBeEnabled();
   });
 
-  it('the collections are listed and marked as coming (they are not built yet)', async () => {
+  it('the collections are a section like the others (they are built): a switch and the arrows, no note that they are coming', async () => {
     await openPanel();
     const row = screen.getByRole('switch', { name: t.homeSectionCollections }).closest('li') as HTMLElement;
-    expect(row).toHaveTextContent(t.personalizeSoon);
-    expect(screen.getByRole('switch', { name: t.homeSectionSongs }).closest('li')).not.toHaveTextContent(t.personalizeSoon);
+    expect(row.textContent).toBe(`${t.homeSectionCollections}↑↓`);
+    expect(screen.getByRole('button', { name: t.personalizeMoveUp.replace('{name}', t.homeSectionCollections) })).toBeEnabled();
+    expect(screen.getByRole('button', { name: t.personalizeMoveDown.replace('{name}', t.homeSectionCollections) })).toBeEnabled();
   });
 });
 

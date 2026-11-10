@@ -54,7 +54,6 @@ export interface Translations {
   playerDockHidden: string;
   personalizeHome: string;
   personalizeHomeHint: string;
-  personalizeSoon: string;
   /** «Sposta «{name}» più in alto» (the arrow of a Home section). */
   personalizeMoveUp: string;
   personalizeMoveDown: string;
@@ -68,6 +67,70 @@ export interface Translations {
   personalizeResetYes: string;
   personalizeResetNo: string;
   personalizeUnavailable: string;
+  // the collections of the library (docs/collections.md): the rail on «Link», the page «Raccolte», one collection, the chips
+  collectionsNav: string;
+  collectionsAll: string;
+  collectionsMore: string;
+  collectionNew: string;
+  collectionsRailLabel: string;
+  collectionsFacetWhere: string;
+  collectionsFacetSource: string;
+  collectionsFacetWhen: string;
+  collectionGone: string;
+  collectionGoneBack: string;
+  collectionsLoadFailed: string;
+  collectionsTitle: string;
+  collectionsNewStrip: string;
+  collectionsFilter: string;
+  collectionsOther: string;
+  collectionsHidden: string;
+  collectionsWatching: string;
+  collectionsEmpty: string;
+  collectionsEmptyHint: string;
+  /** «{count} post» under the name of a collection. */
+  collectionPosts: string;
+  collectionUnhide: string;
+  collectionWhy: string;
+  collectionMenu: string;
+  collectionRename: string;
+  collectionRenameLabel: string;
+  collectionRenameSave: string;
+  collectionMerge: string;
+  collectionMergeInto: string;
+  collectionHide: string;
+  collectionViewGrid: string;
+  collectionViewList: string;
+  collectionViewPlay: string;
+  collectionViewLabel: string;
+  collectionVenues: string;
+  entryPlaces: string;
+  collectionOpenInMaps: string;
+  collectionVenueCitedIn: string;
+  collectionPlayAll: string;
+  collectionPlayLoading: string;
+  /** The × of a chip: «Non è «{name}»» (the post leaves the collection and does not come back). */
+  collectionChipRemove: string;
+  collectionChipsLabel: string;
+  collectionChipRemoveFailed: string;
+  collectionChipAdd: string;
+  collectionChipAddFailed: string;
+  collectionNoPosts: string;
+  collectionsNoMatch: string;
+  collectionLoadMore: string;
+  collectionLoadFailed: string;
+  collectionActionFailed: string;
+  collectionMergeNone: string;
+  collectionCancel: string;
+  collectionVenuesShowAll: string;
+  venueKindRestaurant: string;
+  venueKindPizzeria: string;
+  venueKindBar: string;
+  venueKindCafe: string;
+  venueKindHotel: string;
+  venueKindRefuge: string;
+  venueKindWinery: string;
+  venueKindShop: string;
+  collectionWhyPosts: string;
   // the places of the Player (look and feel P4)
   floatMove: string;
   sideQueue: string;
@@ -358,11 +421,9 @@ export interface Translations {
   deleted: string;
 
   // Recent section
-  recentEntries: string;
   /** Inbox First: ghost control that reveals the chip filter bar. */
   filterToggle: string;
   /** Inbox First: link under the recent slice to the full journal. */
-  seeAllJournal: string;
   /** Inbox First: empty inspector prompt under the main hint. */
   inboxEmptyHint: string;
 
@@ -370,6 +431,15 @@ export interface Translations {
   previousPage: string;
   nextPage: string;
   pageOf: string;
+  pageNavLabel: string;
+  statusProcessing: string;
+  inboxCount: string;
+  inboxLoadError: string;
+  inboxNoMatch: string;
+  inboxClearFilters: string;
+  pageGoTo: string;
+  pagePrev: string;
+  pageNext: string;
   allEntries: string;
   allSongs: string;
   allFilms: string;
@@ -550,6 +620,9 @@ export interface Translations {
   playlistPanelShow: string;
   playlistPanelHide: string;
   playlistNoMatch: string;
+  playlistPickerTitle: string;
+  playlistPickerFailed: string;
+  playlistPickerTotal: string;
   playlistPlay: string;
   playlistActiveChip: string;
 
@@ -940,7 +1013,6 @@ export const translations: Record<Language, Translations> = {
     playerDockHidden: 'Nascosto',
     personalizeHome: 'La Home',
     personalizeHomeHint: 'Quali sezioni vedi e in che ordine.',
-    personalizeSoon: 'arriva con le raccolte',
     personalizeMoveUp: 'Sposta «{name}» più in alto',
     personalizeMoveDown: 'Sposta «{name}» più in basso',
     personalizeViews: 'Le viste',
@@ -953,6 +1025,67 @@ export const translations: Record<Language, Translations> = {
     personalizeResetYes: 'Sì, cancella',
     personalizeResetNo: 'No',
     personalizeUnavailable: 'Non riesco a raggiungere la configurazione: riprova tra poco.',
+    collectionsNav: 'Raccolte',
+    collectionsAll: 'Tutte',
+    collectionsMore: 'Altre',
+    collectionNew: 'Nuova',
+    collectionsRailLabel: 'Raccolte',
+    collectionsFacetWhere: 'Dove',
+    collectionsFacetSource: 'Fonte',
+    collectionsFacetWhen: 'Quando',
+    collectionGone: 'Questa raccolta non c\'è più',
+    collectionGoneBack: 'Torna a tutte',
+    collectionsLoadFailed: 'Non riesco a caricare le raccolte.',
+    collectionsTitle: 'Raccolte',
+    collectionsNewStrip: 'Nuove',
+    collectionsFilter: 'Cerca una raccolta…',
+    collectionsOther: 'Altre',
+    collectionsHidden: 'Nascoste',
+    collectionsWatching: 'In osservazione',
+    collectionsEmpty: 'Nessuna raccolta ancora',
+    collectionsEmptyHint: 'Una raccolta nasce da sola quando 5 post parlano della stessa cosa.',
+    collectionPosts: '{count} post',
+    collectionUnhide: 'Rimetti',
+    collectionWhy: 'Perché è qui?',
+    collectionMenu: 'Azioni sulla raccolta',
+    collectionRename: 'Rinomina',
+    collectionRenameLabel: 'Nuovo nome',
+    collectionRenameSave: 'Salva',
+    collectionMerge: 'Unisci a…',
+    collectionMergeInto: 'Unisci a',
+    collectionHide: 'Nascondi',
+    collectionViewGrid: 'Griglia',
+    collectionViewList: 'Lista',
+    collectionViewPlay: 'Suona',
+    collectionViewLabel: 'Vista della raccolta',
+    collectionVenues: 'Locali',
+    entryPlaces: 'Luoghi',
+    collectionOpenInMaps: 'Apri in Maps',
+    collectionVenueCitedIn: 'Citato in',
+    collectionPlayAll: 'Suona tutto',
+    collectionPlayLoading: 'Preparo la coda…',
+    collectionChipRemove: 'Non è «{name}»: togli questo post dalla raccolta',
+    collectionChipsLabel: 'Raccolte del post',
+    collectionChipRemoveFailed: 'Non sono riuscito a togliere il post dalla raccolta',
+    collectionChipAdd: 'Aggiungi il post a una raccolta',
+    collectionChipAddFailed: 'Non sono riuscito ad aggiungere il post alla raccolta',
+    collectionNoPosts: 'Nessun post con questi filtri.',
+    collectionsNoMatch: 'Nessuna raccolta con questo nome.',
+    collectionLoadMore: 'Carica altri post',
+    collectionLoadFailed: 'Non riesco a caricare questa raccolta.',
+    collectionActionFailed: 'Non è andata a buon fine: riprova tra poco.',
+    collectionMergeNone: 'Non c\'è un\'altra raccolta a cui unirla.',
+    collectionCancel: 'Annulla',
+    collectionVenuesShowAll: 'Mostra tutti ({count})',
+    venueKindRestaurant: 'ristorante',
+    venueKindPizzeria: 'pizzeria',
+    venueKindBar: 'bar',
+    venueKindCafe: 'caffè',
+    venueKindHotel: 'hotel',
+    venueKindRefuge: 'rifugio',
+    venueKindWinery: 'cantina',
+    venueKindShop: 'negozio',
+    collectionWhyPosts: 'I post più tipici',
     floatMove: 'Sposta il Player: trascinalo o usa le frecce (Maiusc per fare di più)',
     sideQueue: 'In coda',
     sideQueueEmpty: 'La coda è vuota.',
@@ -1241,15 +1374,22 @@ export const translations: Record<Language, Translations> = {
     deleted: 'Eliminate {count} entry',
 
     // Recent section
-    recentEntries: 'Oggi',
     filterToggle: 'Filtra',
-    seeAllJournal: 'Apri tutta la libreria →',
     inboxEmptyHint: 'Incolla un link sopra, oppure apri una card recente.',
 
     // Pagination & List Pages
     previousPage: '← Precedente',
     nextPage: 'Successiva →',
     pageOf: 'Pagina {page} di {total}',
+    pageNavLabel: 'Pagine',
+    statusProcessing: 'In analisi',
+    inboxCount: '{total} post',
+    inboxLoadError: 'Non riesco a caricare i post.',
+    inboxNoMatch: 'Nessun post con questi filtri.',
+    inboxClearFilters: 'Togli i filtri',
+    pageGoTo: 'Vai alla pagina {page}',
+    pagePrev: 'Pagina precedente',
+    pageNext: 'Pagina successiva',
     allEntries: 'Libreria link',
     allSongs: 'Tutte le canzoni',
     allFilms: 'Tutti i film',
@@ -1425,6 +1565,9 @@ export const translations: Record<Language, Translations> = {
     playlistPanelShow: 'Mostra l’elenco delle playlist',
     playlistPanelHide: 'Nascondi l’elenco delle playlist',
     playlistNoMatch: 'Nessuna playlist corrisponde',
+    playlistPickerTitle: 'Scegli una playlist',
+    playlistPickerFailed: 'Non riesco a caricare le playlist.',
+    playlistPickerTotal: '{count} playlist',
     playlistPlay: '▶ Riproduci',
     playlistActiveChip: 'Playlist',
 
@@ -1837,7 +1980,6 @@ export const translations: Record<Language, Translations> = {
     playerDockHidden: 'Hidden',
     personalizeHome: 'The Home',
     personalizeHomeHint: 'Which sections you see and in what order.',
-    personalizeSoon: 'comes with the collections',
     personalizeMoveUp: 'Move «{name}» up',
     personalizeMoveDown: 'Move «{name}» down',
     personalizeViews: 'The views',
@@ -1850,6 +1992,67 @@ export const translations: Record<Language, Translations> = {
     personalizeResetYes: 'Yes, erase',
     personalizeResetNo: 'No',
     personalizeUnavailable: 'Could not reach the configuration: try again in a moment.',
+    collectionsNav: 'Collections',
+    collectionsAll: 'All',
+    collectionsMore: 'More',
+    collectionNew: 'New',
+    collectionsRailLabel: 'Collections',
+    collectionsFacetWhere: 'Where',
+    collectionsFacetSource: 'Source',
+    collectionsFacetWhen: 'When',
+    collectionGone: 'This collection is gone',
+    collectionGoneBack: 'Back to all',
+    collectionsLoadFailed: 'Could not load the collections.',
+    collectionsTitle: 'Collections',
+    collectionsNewStrip: 'New',
+    collectionsFilter: 'Search a collection…',
+    collectionsOther: 'Other',
+    collectionsHidden: 'Hidden',
+    collectionsWatching: 'Under observation',
+    collectionsEmpty: 'No collections yet',
+    collectionsEmptyHint: 'A collection appears by itself when 5 posts talk about the same thing.',
+    collectionPosts: '{count} posts',
+    collectionUnhide: 'Bring back',
+    collectionWhy: 'Why is it here?',
+    collectionMenu: 'Collection actions',
+    collectionRename: 'Rename',
+    collectionRenameLabel: 'New name',
+    collectionRenameSave: 'Save',
+    collectionMerge: 'Merge into…',
+    collectionMergeInto: 'Merge into',
+    collectionHide: 'Hide',
+    collectionViewGrid: 'Grid',
+    collectionViewList: 'List',
+    collectionViewPlay: 'Play',
+    collectionViewLabel: 'View of the collection',
+    collectionVenues: 'Venues',
+    entryPlaces: 'Locations',
+    collectionOpenInMaps: 'Open in Maps',
+    collectionVenueCitedIn: 'Cited in',
+    collectionPlayAll: 'Play all',
+    collectionPlayLoading: 'Preparing the queue…',
+    collectionChipRemove: 'Not «{name}»: take this post out of the collection',
+    collectionChipsLabel: 'Collections of the post',
+    collectionChipRemoveFailed: 'Could not take the post out of the collection',
+    collectionChipAdd: 'Add this post to a collection',
+    collectionChipAddFailed: 'Could not add the post to the collection',
+    collectionNoPosts: 'No posts with these filters.',
+    collectionsNoMatch: 'No collection with this name.',
+    collectionLoadMore: 'Load more posts',
+    collectionLoadFailed: 'I cannot load this collection.',
+    collectionActionFailed: 'That did not work: try again in a moment.',
+    collectionMergeNone: 'There is no other collection to merge it into.',
+    collectionCancel: 'Cancel',
+    collectionVenuesShowAll: 'Show all ({count})',
+    venueKindRestaurant: 'restaurant',
+    venueKindPizzeria: 'pizzeria',
+    venueKindBar: 'bar',
+    venueKindCafe: 'café',
+    venueKindHotel: 'hotel',
+    venueKindRefuge: 'mountain hut',
+    venueKindWinery: 'winery',
+    venueKindShop: 'shop',
+    collectionWhyPosts: 'The most typical posts',
     floatMove: 'Move the Player: drag it or use the arrow keys (Shift for more)',
     sideQueue: 'Up next',
     sideQueueEmpty: 'The queue is empty.',
@@ -2138,15 +2341,22 @@ export const translations: Record<Language, Translations> = {
     deleted: 'Deleted {count} entries',
 
     // Recent section
-    recentEntries: 'Today',
     filterToggle: 'Filter',
-    seeAllJournal: 'Open full library →',
     inboxEmptyHint: 'Paste a link above, or open a recent card.',
 
     // Pagination & List Pages
     previousPage: '← Previous',
     nextPage: 'Next →',
     pageOf: 'Page {page} of {total}',
+    pageNavLabel: 'Pages',
+    statusProcessing: 'Analyzing',
+    inboxCount: '{total} posts',
+    inboxLoadError: 'I cannot load the posts.',
+    inboxNoMatch: 'No post with these filters.',
+    inboxClearFilters: 'Clear the filters',
+    pageGoTo: 'Go to page {page}',
+    pagePrev: 'Previous page',
+    pageNext: 'Next page',
     allEntries: 'Link library',
     allSongs: 'All songs',
     allFilms: 'All films',
@@ -2322,6 +2532,9 @@ export const translations: Record<Language, Translations> = {
     playlistPanelShow: 'Show the list of playlists',
     playlistPanelHide: 'Hide the list of playlists',
     playlistNoMatch: 'No playlist matches',
+    playlistPickerTitle: 'Choose a playlist',
+    playlistPickerFailed: 'I cannot load the playlists.',
+    playlistPickerTotal: '{count} playlists',
     playlistPlay: '▶ Play',
     playlistActiveChip: 'Playlist',
 

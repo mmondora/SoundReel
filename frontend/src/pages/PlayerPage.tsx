@@ -9,7 +9,7 @@ import { PictureBox } from '../components/player/PictureBox';
 import { PlayingFrom } from '../components/player/PlayingFrom';
 import { SourceSwitch } from '../components/player/SourceSwitch';
 import { useEntryThumbnail } from '../hooks/useEntryThumbnail';
-import { fetchPlaylist, fetchPlaylists, fetchSongs } from '../services/api';
+import { fetchPlaylist, fetchSongs } from '../services/api';
 import { filterSongs } from '../utils/songFilters';
 import {
   EMPTY_FILTERS,
@@ -29,7 +29,7 @@ import { usePlayer } from '../player/PlayerContext';
 import { coverCandidates } from '../player/mediaBox';
 import { computeQueueWindow, windowItems } from '../player/queueWindow';
 import { songLocationIn } from '../utils/songLocation';
-import type { AggregatedSong, PlaylistDetail, PlaylistSummary } from '../types';
+import type { AggregatedSong, PlaylistDetail } from '../types';
 import '../styles/player.css';
 import '../styles/choose.css';
 
@@ -62,8 +62,6 @@ export function PlayerPage() {
   const [chooseOpen, setChooseOpen] = useState(false);
   const chooseToggle = useRef<HTMLButtonElement>(null);
   const chooseWasOpen = useRef(false);
-  const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
-  const playlistsAsked = useRef(false);
   /**
    * EVERYTHING SoundReel knows: the journal and the songs that are only files (geekom, the NAS). Asked for once, only when it is
    * needed (the panel «Scegli cosa suonare» is open, a filter is on, a playlist is chosen: a playlist can hold such songs), not at
@@ -100,12 +98,6 @@ export function PlayerPage() {
   useEffect(() => {
     if (!chooseOpen && chooseWasOpen.current) chooseToggle.current?.focus();
     chooseWasOpen.current = chooseOpen;
-  }, [chooseOpen]);
-
-  useEffect(() => {
-    if (!chooseOpen || playlistsAsked.current) return;
-    playlistsAsked.current = true;
-    fetchPlaylists().then(setPlaylists).catch(() => setPlaylists([]));
   }, [chooseOpen]);
 
   const filtersActive = activeFilterCount(filters) + (filters.text.trim() ? 1 : 0);
@@ -359,8 +351,7 @@ export function PlayerPage() {
             dataset={dataset}
             count={browseList.length}
             poolSize={pool.length}
-            playlists={playlists}
-            playlistId={activePlaylist?.id ?? null}
+            playlist={activePlaylist}
             onPlaylist={(id) => void choosePlaylist(id)}
             onPlay={() => playSelection(false)}
             onShuffle={() => playSelection(true)}

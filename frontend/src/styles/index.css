@@ -3592,22 +3592,6 @@ body {
   letter-spacing: 0.04em;
 }
 
-.home--inbox .inbox-see-all {
-  display: block;
-  margin: 1.25rem 1.25rem 0;
-  padding: 0.85rem 0;
-  text-align: center;
-  color: var(--accent);
-  text-decoration: none;
-  font-size: 0.9rem;
-  font-weight: 500;
-  border-top: 1px solid var(--border);
-}
-
-.home--inbox .inbox-see-all:hover {
-  text-decoration: underline;
-}
-
 .home--inbox .inspector-panel {
   background: var(--bg-secondary);
 }
@@ -4083,7 +4067,7 @@ body {
 .genre-chip.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .filter-segment {

@@ -1,12 +1,14 @@
 import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { PlaylistManagerPage } from './PlaylistManagerPage';
 import { LanguageProvider } from '../i18n';
 import { setStoredLanguage } from '../i18n/translations';
 import { resetEntryFactsCache } from '../hooks/usePlaylistManager';
 import * as api from '../services/api';
+import { locationButton, pickerDialog, servePlaylistPages } from '../testing/managerPicker';
 import type { AggregatedSong, MeResponse, PlaylistDetail } from '../types';
 
 // Michele, 8 November: «anche la creazione delle playlist, la ricerca deve prendere da tutto e non solo dalla libreria»
@@ -20,6 +22,7 @@ vi.mock('../player/PlayerContext', () => ({
 vi.mock('../services/api', () => ({
   fetchSongs: vi.fn(),
   fetchPlaylists: vi.fn(),
+  fetchPlaylistsPage: vi.fn(),
   fetchPlaylist: vi.fn(),
   fetchMe: vi.fn(),
   fetchJournalStats: vi.fn().mockResolvedValue({ totalEntries: 0, totalSongs: 0, totalFilms: 0, totalNotes: 0, totalSoftware: 0 }),
@@ -80,6 +83,11 @@ function fakeBackend(keys: string[]) {
     void _keys;
     return [summary];
   });
+  servePlaylistPages(() => {
+    const { songKeys: _keys, ...summary } = detail();
+    void _keys;
+    return [summary];
+  });
   vi.mocked(api.fetchPlaylist).mockImplementation(async () => detail());
   vi.mocked(api.addSongToPlaylist).mockImplementation(async (_id, key) => {
     if (!list.keys.includes(key)) list.keys.push(key);
@@ -103,7 +111,7 @@ async function setup(songs: AggregatedSong[] = SONGS, playlistKeys: string[] = [
   );
   const listA = await screen.findByRole('listbox', { name: /Pane A/ });
   const listB = screen.getByRole('listbox', { name: /Pane B/ });
-  await waitFor(() => expect(screen.getByRole('combobox', { name: /Pane content \(Pane B\)/ })).toHaveValue('playlist:p1'));
+  await waitFor(() => expect(locationButton('B')).toHaveTextContent('Mine'));
   await waitFor(() => expect(within(listB).queryByText('Loading...')).not.toBeInTheDocument());
   return { backend, listA, listB };
 }
@@ -131,8 +139,10 @@ describe('the manager lists EVERYTHING, not only the journal', () => {
     const { listA } = await setup();
     expect(api.fetchSongs).toHaveBeenCalledWith('everything');
     expect(rowsOf(listA)).toHaveLength(5);
-    // both panes offer it in their place selector
-    expect(screen.getAllByRole('option', { name: 'All songs (5)' })).toHaveLength(2);
+    // the left pane is on it, and the right pane offers it first in its choice of a place
+    expect(locationButton('A')).toHaveTextContent('All songs (5)');
+    await userEvent.click(locationButton('B'));
+    expect(within(pickerDialog()).getByRole('button', { name: 'All songs (5)' })).toBeInTheDocument();
   });
 
   it('a song that exists only as a file is a row like the others, and says so with a badge', async () => {

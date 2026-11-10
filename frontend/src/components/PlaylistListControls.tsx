@@ -13,10 +13,12 @@ export interface PlaylistListControlsProps {
   onToggleOrder: () => void;
   /** The pickers (a sheet to add a song) only need the search. */
   searchOnly?: boolean;
+  /** The dialog that holds the controls puts the focus on the search when it opens. */
+  autoFocusSearch?: boolean;
 }
 
 /** Search, «show», sort by date (or name, or size) and its direction: the controls of a long list of playlists (ADR-0023). */
-export function PlaylistListControls({ controls, onQ, onFilter, onSort, onToggleOrder, searchOnly = false }: PlaylistListControlsProps) {
+export function PlaylistListControls({ controls, onQ, onFilter, onSort, onToggleOrder, searchOnly = false, autoFocusSearch = false }: PlaylistListControlsProps) {
   const { t } = useLanguage();
   const filterLabel: Record<PlaylistFilter, string> = {
     all: t.playlistFilterAll,
@@ -39,6 +41,7 @@ export function PlaylistListControls({ controls, onQ, onFilter, onSort, onToggle
         placeholder={t.playlistSearchPlaceholder}
         aria-label={t.playlistSearchPlaceholder}
         value={controls.q}
+        data-autofocus={autoFocusSearch ? '' : undefined}
         onChange={(e) => onQ(e.target.value)}
       />
       {!searchOnly && (

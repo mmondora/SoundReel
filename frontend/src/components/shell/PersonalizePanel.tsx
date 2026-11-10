@@ -68,7 +68,6 @@ export function PersonalizePanel({ onClose }: PersonalizePanelProps) {
                     <input type="checkbox" role="switch" checked={section.visible} onChange={() => toggle(i)} />
                     <span>{name}</span>
                   </label>
-                  {section.id === 'collections' && <span className="personalize-soon">{t.personalizeSoon}</span>}
                   <span className="personalize-arrows">
                     <button type="button" aria-label={interpolate(t.personalizeMoveUp, { name })} disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
                     <button type="button" aria-label={interpolate(t.personalizeMoveDown, { name })} disabled={i === list.length - 1} onClick={() => move(i, 1)}>↓</button>

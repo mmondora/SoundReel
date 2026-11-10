@@ -1,12 +1,14 @@
 import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { PlaylistManagerPage } from './PlaylistManagerPage';
 import { LanguageProvider } from '../i18n';
 import { setStoredLanguage } from '../i18n/translations';
 import { resetEntryFactsCache } from '../hooks/usePlaylistManager';
 import * as api from '../services/api';
+import { chooseLocation, locationButton, pickerDialog, servePlaylistPages } from '../testing/managerPicker';
 import type { AggregatedSong, DynamicRule, EntrySummary, MeResponse, PlaylistDetail } from '../types';
 
 const { playSong } = vi.hoisted(() => ({ playSong: vi.fn() }));
@@ -18,6 +20,7 @@ vi.mock('../player/PlayerContext', () => ({
 vi.mock('../services/api', () => ({
   fetchSongs: vi.fn(),
   fetchPlaylists: vi.fn(),
+  fetchPlaylistsPage: vi.fn(),
   fetchPlaylist: vi.fn(),
   fetchMe: vi.fn(),
   fetchJournalStats: vi.fn().mockResolvedValue({ totalEntries: 0, totalSongs: 0, totalFilms: 0, totalNotes: 0, totalSoftware: 0 }),
@@ -102,6 +105,11 @@ function fakeBackend(initial: Record<string, FakeList>) {
     void _keys;
     return summary;
   }));
+  servePlaylistPages(() => Object.keys(lists).map((id) => {
+    const { songKeys: _keys, ...summary } = detail(id);
+    void _keys;
+    return summary;
+  }));
   vi.mocked(api.fetchPlaylist).mockImplementation(async (id) => detail(id));
   vi.mocked(api.addSongToPlaylist).mockImplementation(async (id, key) => {
     if (!lists[id].keys.includes(key)) lists[id].keys.push(key);
@@ -152,7 +160,7 @@ async function setup(lists: Record<string, FakeList>) {
   const listA = await screen.findByRole('listbox', { name: /Pane A/ });
   const listB = screen.getByRole('listbox', { name: /Pane B/ });
   // First visit: the right pane switches to the first playlist the user owns, then loads its songs.
-  await waitFor(() => expect(screen.getByRole('combobox', { name: /Pane content \(Pane B\)/ })).toHaveValue('playlist:p1'));
+  await waitFor(() => expect(locationButton('B')).toHaveTextContent('Mine'));
   await waitFor(() => expect(within(listB).queryByText('Loading...')).not.toBeInTheDocument());
   return { backend, listA, listB };
 }
@@ -189,7 +197,7 @@ describe('PlaylistManagerPage layout', () => {
       expect.stringContaining('white flag'),
       expect.stringContaining('roxanne'),
     ]);
-    expect(screen.getByRole('combobox', { name: /Pane content \(Pane B\)/ })).toHaveValue('playlist:p1');
+    expect(locationButton('B')).toHaveTextContent('Mine');
     expect(screen.getByRole('toolbar', { name: 'Commands' })).toBeInTheDocument();
   });
 
@@ -206,8 +214,55 @@ describe('PlaylistManagerPage layout', () => {
 
   it('remembers the pane locations between visits', async () => {
     await setup(BASE);
-    fireEvent.change(screen.getByRole('combobox', { name: /Pane content \(Pane A\)/ }), { target: { value: 'playlist:p3' } });
+    await chooseLocation('A', 'Empty');
     await waitFor(() => expect(JSON.parse(localStorage.getItem('soundreel.manager.v1') ?? '{}')).toMatchObject({ a: { kind: 'playlist', id: 'p3' } }));
+  });
+});
+
+describe('the choice of a playlist, over the manager', () => {
+  it('while the dialog is open the keys of the page are not for the page: F5 does not copy behind it, and works again when it is closed', async () => {
+    const { listA } = await setup(BASE);
+    focus(listA);
+    await userEvent.click(locationButton('B'));
+    key(pickerDialog(), 'F5');
+    expect(api.addSongToPlaylist).not.toHaveBeenCalled();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    focus(listA);
+    key(listA, 'F5');
+    await waitFor(() => expect(api.addSongToPlaylist).toHaveBeenCalled());
+  });
+
+  it('the pane says the playlist it holds, with its number of songs and whose it is when it is not mine', async () => {
+    await setup(BASE);
+    expect(locationButton('B')).toHaveTextContent(/^Mine \(2\)/);
+    await chooseLocation('A', 'Sara mix');
+    await waitFor(() => expect(locationButton('A')).toHaveTextContent(/^Sara mix \(2\)/));
+    expect(locationButton('A')).toHaveTextContent('Sara');
+  });
+
+  it('the dialog marks what the pane holds, and says whose a shared playlist is (and nothing for mine)', async () => {
+    await setup(BASE);
+    await userEvent.click(locationButton('B'));
+    const dialog = pickerDialog();
+    const mine = await within(dialog).findByRole('button', { name: /^Mine \d+ songs/ });
+    expect(mine).toHaveAttribute('aria-current', 'true');
+    expect(within(dialog).getByRole('button', { name: /^All songs/ })).not.toHaveAttribute('aria-current');
+    expect(within(dialog).getByRole('button', { name: /^Sara mix \d+ songs/ })).toHaveTextContent('by Sara');
+    expect(mine).not.toHaveTextContent('by ');
+  });
+
+  it('a person with a hundred playlists does not scroll them: the dialog shows a page of them and asks the server for the rest', async () => {
+    const many = Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`m${i}`, { name: `Mix ${String(i + 1).padStart(3, '0')}`, owner: 'mike', keys: [] as string[] }]));
+    await setup({ ...BASE, ...many });
+    await userEvent.click(locationButton('A'));
+    const dialog = pickerDialog();
+    await waitFor(() => expect(within(dialog).getAllByRole('button').filter((b) => b.hasAttribute('data-pl-option'))).toHaveLength(30));
+    expect(within(dialog).getByText('Page 1 of 4')).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByRole('searchbox', { name: 'Search playlists' }), 'Mix 077');
+    await waitFor(() => expect(within(dialog).getAllByRole('button').filter((b) => b.hasAttribute('data-pl-option'))).toHaveLength(1));
+    await userEvent.click(within(dialog).getByRole('button', { name: /Mix 077/ }));
+    await waitFor(() => expect(locationButton('A')).toHaveTextContent('Mix 077'));
   });
 });
 
@@ -349,8 +404,8 @@ describe('F5 copy / F6 move', () => {
   it('F6 moves between my playlists: add to the target first, then remove from the source', async () => {
     const { backend } = await setup({ ...BASE, p3: { name: 'Empty', owner: 'mike', keys: [] } });
     // Left pane = Mine (p1), right pane = Empty (p3)
-    fireEvent.change(screen.getByRole('combobox', { name: /Pane content \(Pane A\)/ }), { target: { value: 'playlist:p1' } });
-    fireEvent.change(screen.getByRole('combobox', { name: /Pane content \(Pane B\)/ }), { target: { value: 'playlist:p3' } });
+    await chooseLocation('A', 'Mine');
+    await chooseLocation('B', 'Empty');
     const listA = screen.getByRole('listbox', { name: /Pane A/ });
     await waitFor(() => expect(rowsOf(listA)).toHaveLength(2));
     await screen.findByText(/Empty playlist/); // the target playlist has loaded
@@ -387,7 +442,7 @@ describe('F5 copy / F6 move', () => {
 
   it('is refused with a reason when the other pane is the library, and nothing is called', async () => {
     const { listA } = await setup(BASE);
-    fireEvent.change(screen.getByRole('combobox', { name: /Pane content \(Pane B\)/ }), { target: { value: 'library' } });
+    await chooseLocation('B', 'library');
     focus(listA);
     key(listA, 'F5');
     await waitFor(() => expect(statusText()).toMatch(/Needs an editable playlist in the other pane/));
@@ -396,7 +451,7 @@ describe('F5 copy / F6 move', () => {
 
   it('cannot copy into a playlist shared with me (read-only)', async () => {
     const { listA } = await setup(BASE);
-    fireEvent.change(screen.getByRole('combobox', { name: /Pane content \(Pane B\)/ }), { target: { value: 'playlist:p2' } });
+    await chooseLocation('B', 'Sara mix');
     await waitFor(() => expect(rowsOf(screen.getByRole('listbox', { name: /Pane B/ })).length).toBeGreaterThan(0));
     focus(listA);
     key(listA, 'F5');
@@ -441,7 +496,7 @@ describe('F8 remove / permissions', () => {
 
   it('a playlist shared with me is read-only: owner and lock are shown, edits are refused with the reason', async () => {
     const { listA } = await setup(BASE);
-    fireEvent.change(screen.getByRole('combobox', { name: /Pane content \(Pane A\)/ }), { target: { value: 'playlist:p2' } });
+    await chooseLocation('A', 'Sara mix');
     await waitFor(() => expect(rowsOf(screen.getByRole('listbox', { name: /Pane A/ })).length).toBe(2));
     expect(screen.getByTestId('owner-a')).toHaveTextContent('by Sara');
     expect(screen.getByTestId('owner-a')).toHaveTextContent('read-only');
@@ -460,7 +515,7 @@ describe('F8 remove / permissions', () => {
 
   it('songs of a shared playlist that are not in my journal are shown as such and cannot be played', async () => {
     const { listA } = await setup(BASE);
-    fireEvent.change(screen.getByRole('combobox', { name: /Pane content \(Pane A\)/ }), { target: { value: 'playlist:p2' } });
+    await chooseLocation('A', 'Sara mix');
     const list = screen.getByRole('listbox', { name: /Pane A/ });
     await waitFor(() => expect(rowsOf(list).length).toBe(2));
     expect(within(rowsOf(list)[1]).getByRole('img', { name: 'not in your journal' })).toBeInTheDocument();
@@ -482,8 +537,8 @@ describe('F7 new / F4 rename / reorder', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
     await waitFor(() => expect(api.createPlaylist).toHaveBeenCalledTimes(1));
     expect(api.createPlaylist).toHaveBeenCalledWith('Road trip');
-    await waitFor(() => expect(screen.getByRole('combobox', { name: /Pane content \(Pane B\)/ })).toHaveValue('playlist:new-3'));
-    expect(screen.getByRole('combobox', { name: /Pane content \(Pane A\)/ })).toHaveValue('library');
+    await waitFor(() => expect(locationButton('B')).toHaveTextContent('Road trip'));
+    expect(locationButton('A')).toHaveTextContent('All songs');
     expect(statusText()).toMatch(/“Road trip” created \(empty\)/);
   });
 
@@ -497,7 +552,7 @@ describe('F7 new / F4 rename / reorder', () => {
     fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Renamed' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(api.renamePlaylist).toHaveBeenCalledWith('p1', 'Renamed'));
-    await waitFor(() => expect(screen.getByRole('combobox', { name: /Pane content \(Pane B\)/ })).toHaveTextContent('Renamed'));
+    await waitFor(() => expect(locationButton('B')).toHaveTextContent('Renamed'));
   });
 
   it('Ctrl+↓ moves the cursor song down inside the playlist', async () => {
@@ -635,7 +690,7 @@ const DYN = {
 /** Left = the dynamic playlist, right = Mine (p1): the usual setup for the next tests. */
 async function setupDynamic() {
   const ctx = await setup(DYN);
-  fireEvent.change(screen.getByRole('combobox', { name: /Pane content \(Pane A\)/ }), { target: { value: 'playlist:night' } });
+  await chooseLocation('A', 'Night owls');
   await waitFor(() => expect(rowsOf(screen.getByRole('listbox', { name: /Pane A/ }))).toHaveLength(2));
   return ctx;
 }
@@ -643,7 +698,7 @@ async function setupDynamic() {
 describe('dynamic playlists', () => {
   it('shows as a read-only pane with an icon, the rule summary, the computed count and when it was evaluated', async () => {
     await setupDynamic();
-    expect(screen.getByRole('combobox', { name: /Pane content \(Pane A\)/ })).toHaveTextContent('◷ Night owls');
+    expect(locationButton('A')).toHaveTextContent('◷ Night owls');
     const pane = screen.getByTestId('dynamic-a');
     expect(pane).toHaveTextContent('Most played · 22:00–06:00 · last 30 days');
     expect(pane).toHaveTextContent('2 songs');
@@ -670,8 +725,8 @@ describe('dynamic playlists', () => {
   it('nothing can be copied INTO a dynamic playlist', async () => {
     await setupDynamic();
     const listB = screen.getByRole('listbox', { name: /Pane B/ });
-    fireEvent.change(screen.getByRole('combobox', { name: /Pane content \(Pane B\)/ }), { target: { value: 'playlist:night' } });
-    fireEvent.change(screen.getByRole('combobox', { name: /Pane content \(Pane A\)/ }), { target: { value: 'library' } });
+    await chooseLocation('B', 'Night owls');
+    await chooseLocation('A', 'library');
     focus(screen.getByRole('listbox', { name: /Pane A/ }));
     key(screen.getByRole('listbox', { name: /Pane A/ }), 'F5');
     await waitFor(() => expect(statusText()).toMatch(/Dynamic playlist/));
@@ -732,8 +787,8 @@ describe('dynamic playlists', () => {
       order: 'most_played', limit: 50, minPlays: 1, downloadedOnly: false,
     });
     expect(api.createPlaylist).not.toHaveBeenCalled(); // not the static creation path
-    await waitFor(() => expect(screen.getByRole('combobox', { name: /Pane content \(Pane B\)/ })).toHaveValue('playlist:dyn-4'));
-    expect(screen.getByRole('combobox', { name: /Pane content \(Pane A\)/ })).toHaveValue('library');
+    await waitFor(() => expect(locationButton('B')).toHaveTextContent('◷ Mornings'));
+    expect(locationButton('A')).toHaveTextContent('All songs');
     expect(statusText()).toMatch(/Dynamic playlist “Mornings” created: 2 songs/);
     expect(screen.getByTestId('dynamic-b')).toBeInTheDocument();
   });
@@ -752,8 +807,8 @@ describe('dynamic playlists', () => {
     await waitFor(() => expect(vi.mocked(api.fetchPlaylist).mock.calls.filter(([id]) => id === 'night').length).toBe(before + 1));
 
     // switching away and back re-evaluates: "true right now"
-    fireEvent.change(screen.getByRole('combobox', { name: /Pane content \(Pane A\)/ }), { target: { value: 'library' } });
-    fireEvent.change(screen.getByRole('combobox', { name: /Pane content \(Pane A\)/ }), { target: { value: 'playlist:night' } });
+    await chooseLocation('A', 'library');
+    await chooseLocation('A', 'Night owls');
     await waitFor(() => expect(vi.mocked(api.fetchPlaylist).mock.calls.filter(([id]) => id === 'night').length).toBe(before + 2));
   });
 
@@ -771,7 +826,7 @@ describe('dynamic playlists', () => {
 
   it('a dynamic playlist of somebody else: read-only, rule not editable, but it can be copied from', async () => {
     const { listA } = await setup({ ...DYN, saradyn: { name: 'Sara night', owner: 'sara', keys: [AIR], kind: 'dynamic', rule: NIGHT_RULE, ruleSummary: 'Most played' } });
-    fireEvent.change(screen.getByRole('combobox', { name: /Pane content \(Pane A\)/ }), { target: { value: 'playlist:saradyn' } });
+    await chooseLocation('A', 'Sara night');
     await waitFor(() => expect(rowsOf(screen.getByRole('listbox', { name: /Pane A/ }))).toHaveLength(1));
     focus(listA);
     key(listA, 'F4');

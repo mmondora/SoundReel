@@ -103,6 +103,55 @@ describe('the Home view — which sections, in which order', () => {
   });
 });
 
+const WITH_COLLECTIONS: WebHomeResponse = {
+  sections: [
+    HOME.sections[0], HOME.sections[1], HOME.sections[2],
+    { id: 'collections', total: 14, items: [
+      { id: '5f0c-wine', name: 'Vino', count: 15, isNew: true, thumbs: ['https://img/w1.jpg', 'https://img/w2.jpg'] },
+      { id: 'place:milano', name: 'Milano', count: 9, isNew: false, thumbs: [] },
+    ] },
+    HOME.sections[3],
+  ],
+};
+
+describe('the Home view — the collections', () => {
+  beforeEach(() => {
+    vi.mocked(api.fetchWebHome).mockResolvedValue(WITH_COLLECTIONS);
+  });
+
+  it('is drawn where the configuration of the user puts it, between the playlists and the films', async () => {
+    renderHome();
+    await screen.findByRole('heading', { level: 2, name: t.homeSectionResume });
+    expect(headings()).toEqual([t.homeSectionResume, t.homeSectionSongs, t.homeSectionPlaylists, t.homeSectionCollections, t.homeSectionFilms]);
+  });
+
+  it('has a tile for each collection the server sent: the name, how many posts, «New»; it opens the collection (the id goes in the address encoded)', async () => {
+    renderHome();
+    const section = (await screen.findByRole('heading', { level: 2, name: t.homeSectionCollections })).closest('section') as HTMLElement;
+    const tiles = within(section).getAllByRole('link').filter((a) => a.classList.contains('collection-card'));
+    expect(tiles.map((a) => a.querySelector('.collection-card-name')?.textContent)).toEqual(['Vino', 'Milano']);
+    expect(tiles.map((a) => a.querySelector('.collection-card-sub')?.textContent)).toEqual([
+      `${t.collectionPosts.replace('{count}', '15')}${t.collectionNew}`,
+      t.collectionPosts.replace('{count}', '9'),
+    ]);
+    expect(tiles[0]).toHaveAttribute('href', '/collections/5f0c-wine');
+    expect(tiles[1]).toHaveAttribute('href', '/collections/place%3Amilano');
+  });
+
+  it('«see all (N)» goes to the page of the collections', async () => {
+    renderHome();
+    const section = (await screen.findByRole('heading', { level: 2, name: t.homeSectionCollections })).closest('section') as HTMLElement;
+    expect(within(section).getByRole('link', { name: t.homeSeeAll.replace('{count}', '14') })).toHaveAttribute('href', '/collections');
+  });
+
+  it('switched off by the user, it is not drawn', async () => {
+    vi.mocked(api.fetchUiPrefs).mockResolvedValue(config(['resume', true], ['songs', true], ['playlists', true], ['collections', false], ['films', true]));
+    renderHome();
+    await screen.findByRole('heading', { level: 2, name: t.homeSectionResume });
+    expect(headings()).not.toContain(t.homeSectionCollections);
+  });
+});
+
 describe('the Home view — the sections', () => {
   it('«pick up»: the latest posts as cards; a card opens the post (the page decides where) and the open one is pressed', async () => {
     const onOpen = vi.fn();

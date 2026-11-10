@@ -12,14 +12,15 @@ La **vista Home** delle pagine Inbox e Link: le sezioni della direzione C, già 
 | `resume` | Gli **ultimi post** (la riga è esattamente quella di `GET /api/entries?view=summary`, così il sito usa la scheda che ha già) | 6 |
 | `songs` | Le **canzoni nuove dei post**, quella del post più recente per prima | 12 |
 | `playlists` | Le **playlist** dell'utente, le ultime create per prime | 12 |
+| `collections` | Le **raccolte scoperte** (ADR-0022): i **temi** e i **luoghi** dell'utente come tessere, **mai i tipi** (sempre presenti: hanno la loro pagina), nell'ordine dell'elenco delle raccolte (le nuove, poi le vive, poi per grandezza) | 12 |
 | `films` | I **film nuovi dei post**, una scheda per film | 12 |
 
-**`collections` non c'è**: le raccolte (ADR-0022) non sono ancora costruite, quindi la sezione è **assente**, non vuota. Quando esisteranno comparirà qui, come quinto `id`, e il sito non cambierà (salta ciò che non conosce).
+**`collections` è la quarta sezione**, tra `playlists` e `films`. Finché il motore notturno non ha scoperto niente (e per chi ha solo tipi) la sezione è **assente**, non vuota; il sito salta ciò che non c'è.
 
 ## Chi è l'utente — e la sicurezza
 
 Come tutte le liste del sito, l'utente è **solo** l'utente Authelia della richiesta (`Remote-User`: `mike`, `archi`, `sara`, in qualunque maiuscola), **mai** la query, il corpo o un altro header: nessun parametro nomina un altro utente (`?user=sara` è ignorato). Un `Remote-User` assente o sconosciuto è l'utente `anonymous` (**non** un `401`, come le altre liste del sito: la rotta risponde con ciò che `anonymous` può leggere, di solito niente); il gruppo `admins` senza utente non fa un amministratore.
-La Home mostra **ciò che quella persona può leggere** attraverso le liste esistenti, né più né meno: i **suoi** post, brani, film e playlist **e quelli condivisi con lei**; un **amministratore** vede anche quelli di `anonymous`, come nelle liste. Niente di un altro utente arriva nella risposta (provato su un Postgres vero, vedi i test). Nessun campo nomina un negozio (regola P) e non c'è nessun segreto.
+La Home mostra **ciò che quella persona può leggere** attraverso le liste esistenti, né più né meno: i **suoi** post, brani, film e playlist **e quelli condivisi con lei**; un **amministratore** vede anche quelli di `anonymous`, come nelle liste. **Le raccolte sono più strette**: strettamente della persona (le sue voci e quelle condivise con lei), anche per l'amministratore. Niente di un altro utente arriva nella risposta (provato su un Postgres vero, vedi i test). Nessun campo nomina un negozio (regola P) e non c'è nessun segreto.
 La rotta **deve restare dietro il middleware `auth-family` di Traefik**, con le altre rotte del sito: mai sotto `/api/mondrop` né `/api/share` (quei router saltano Authelia, `Remote-User` diventerebbe controllato dal client e chiunque potrebbe leggere la Home di chiunque; vedi `routes/mondropConnect.ts`).
 
 ## La risposta
@@ -27,30 +28,33 @@ La rotta **deve restare dietro il middleware `auth-family` di Traefik**, con le 
 `GET /api/home` → `200 { "sections": WebHomeSection[] }`, sempre `Cache-Control: no-store` (la stessa scheda si rilegge dopo l'arrivo di un post).
 
 ```ts
-type WebHomeSectionId = 'resume' | 'songs' | 'playlists' | 'films';   // 'collections' non c'è ancora (ADR-0022)
+type WebHomeSectionId = 'resume' | 'songs' | 'playlists' | 'collections' | 'films';
 
 interface WebHomeSong { songKey: string; title: string; artist: string; coverUrl: string | null; entryId: string; sourceUrl: string | null; createdAt: string }
 interface WebHomePlaylist { id: string; name: string; songCount: number; createdAt: string; kind: 'static' | 'dynamic'; origin: 'user' | 'auto'; ruleSummary: string | null; ownerUser: string }
+interface WebHomeCollection { id: string; name: string; count: number; isNew: boolean; thumbs: string[] }   // la riga dell'elenco delle raccolte, senza ciò che serve solo alla pagina della raccolta (viste, intestazione, padre)
 interface WebHomeFilm { filmKey: string; title: string; year: string | null; posterUrl: string | null; imdbUrl: string | null; entryId: string; sourceUrl: string | null; createdAt: string }
 
 type WebHomeSection =
   | { id: 'resume'; total: number; items: EntrySummaryRow[] }
   | { id: 'songs'; total: number; items: WebHomeSong[] }
   | { id: 'playlists'; total: number; items: WebHomePlaylist[] }
+  | { id: 'collections'; total: number; items: WebHomeCollection[] }
   | { id: 'films'; total: number; items: WebHomeFilm[] };
 
 interface WebHomeResponse { sections: WebHomeSection[] }
 ```
 
-`EntrySummaryRow` è la riga di `GET /api/entries?view=summary` (`id`, `sourceUrl`, `sourcePlatform`, `caption`, `thumbnailUrl`, `status`, `createdAt`, `summary`, `songCount`, `filmCount`, `noteCount`, `tags`): passa **così com'è**.
+`EntrySummaryRow` è la riga di `GET /api/entries?view=summary` (`id`, `sourceUrl`, `sourcePlatform`, `caption`, `thumbnailUrl`, `status`, `createdAt`, `summary`, `songCount`, `filmCount`, `noteCount`, `tags`, e `collections`: i chip delle raccolte, vedi `docs/collections.md`): passa **così com'è**.
 
 ## Le regole
 
-- **Le sezioni**: nell'ordine `resume`, `songs`, `playlists`, `films`. Una sezione **senza elementi non si manda**; una sezione che **fallisce non si manda** e il guasto va nel log (`web home: section <id> failed`), mentre le altre rispondono lo stesso (un guasto costa solo la sua sezione). **Un diario vuoto risponde `{ "sections": [] }`**, `200`.
+- **Le sezioni**: nell'ordine `resume`, `songs`, `playlists`, `collections`, `films`. Una sezione **senza elementi non si manda**; una sezione che **fallisce non si manda** e il guasto va nel log (`web home: section <id> failed`), mentre le altre rispondono lo stesso (un guasto costa solo la sua sezione). **Un diario vuoto risponde `{ "sections": [] }`**, `200`.
 - **`total`** è **quanti ce ne sono in tutto** per quella persona (per «vedi tutti (N)»); `items` sono i primi del massimo sopra. Per i post è il totale delle voci che la persona legge; per le canzoni e i film le schede distinte; per le playlist tutte quelle che legge.
 - **`resume`**: gli ultimi 6 post, i più recenti per primi, qualunque stato (anche uno ancora in analisi: lo dice `status`).
 - **`songs`**: le canzoni **dei post** (mai un brano che esiste solo come file: `libraryOnly`), **una per `songKey`**; le **versioni** (Instrumental, Slowed + Reverb, Live…) restano una scheda a sé, accanto all'originale. Ordine: il post **più recente che nomina** il brano per primo (un brano nominato ieri e un anno fa conta ieri); a pari momento (i brani di uno stesso post) per titolo (come lo legge una persona: «Track 9» prima di «Track 10», senza maiuscole né accenti) e poi per chiave, così l'ordine non cambia tra due richieste. `entryId`, `sourceUrl` e `createdAt` sono quelli di **quel** post più recente (`sourceUrl` è `null` se non è noto); senza nessuna data leggibile parla la prima menzione e il brano va in fondo; un brano senza nessun post non è un brano dei post. `coverUrl` è la copertina che i metadati conoscono, altrimenti `null`.
 - **`playlists`**: quelle che `GET /api/playlists` elenca per quella persona (le sue e quelle condivise con lei; un amministratore anche quelle di `anonymous`), **le ultime create per prime** (non le ultime toccate), a pari data per nome. `kind` è `static` o `dynamic` (una regola, ADR-0008) e `origin` è `auto` (fatta dal server da un post di musica, ADR-0023) o `user` (fatta a mano); `ruleSummary` è il riepilogo della regola o `null`; `ownerUser` dice di chi è (una playlist condivisa dice di chi). Per una regola `songCount` è quanti brani sceglie **adesso**: si valuta **solo per le 12 mostrate**, mai per le altre.
+- **`collections`**: i temi e i luoghi che `GET /api/collections` elenca (stesso ordine: le nuove ✦, poi quelle con una voce degli ultimi 14 giorni, poi per grandezza, poi per nome), **senza i tipi**; i primi 12 (`total` = quanti temi e luoghi ci sono). Strettamente della persona. Ogni tessera: `id` (da codificare nell'indirizzo della pagina), `name`, `count`, `isNew` (un tema nato da meno di 7 giorni) e fino a 4 `thumbs` per il mosaico (può essere vuoto).
 - **`films`**: come la pagina Film, **una scheda per film** (`collapseFilms`: «Dune» e «Dune» senza anno sono uno; due anni diversi restano due film), il film del post più recente per primo, a pari momento per titolo. `year` è sempre testo (anche se salvato come numero) o `null`; `entryId`, `sourceUrl` e `createdAt` sono quelli del post più recente che nomina il film.
 
 ## Errori
@@ -80,15 +84,15 @@ curl -s -H 'Remote-User: mike' "$SOUNDREEL_URL"/api/home?user=sara
 
 ## Costo
 
-Le canzoni e i film leggono lo **stesso diario**: si legge **una volta sola per richiesta** (e una per persona: un set di fonti non risponde mai a un utente con il diario di un altro), e niente si tiene da una richiesta alla successiva. A freddo la lettura del diario è la parte cara (circa mezzo secondo per un diario di qualche centinaio di voci, come `GET /api/songs`); i post e le playlist sono letture leggere. Le playlist-regola si valutano solo per le dodici mostrate.
+Le raccolte aggiungono tre letture leggere (i tipi, i luoghi e i temi dell'utente, con le loro voci: dati piccoli, nessun testo) e una per i chip delle righe di `resume`; un guasto di una delle due costa solo la sezione (o i chip). Le canzoni e i film leggono lo **stesso diario**: si legge **una volta sola per richiesta** (e una per persona: un set di fonti non risponde mai a un utente con il diario di un altro), e niente si tiene da una richiesta alla successiva. A freddo la lettura del diario è la parte cara (circa mezzo secondo per un diario di qualche centinaio di voci, come `GET /api/songs`); i post e le playlist sono letture leggere. Le playlist-regola si valutano solo per le dodici mostrate.
 
 ## Dati
 
-Nessuna tabella nuova e nessuna scrittura: legge `entries` e `entry_shares` (post, canzoni e film), `song_meta` e `film_meta` (le copertine e i dati dei film), `playlists`, `playlist_shares` e `playlist_songs` (le playlist), con la stessa visibilità delle liste del sito.
+Nessuna tabella nuova e nessuna scrittura: legge `entries` e `entry_shares` (post, canzoni e film), `song_meta` e `film_meta` (le copertine e i dati dei film), `playlists`, `playlist_shares` e `playlist_songs` (le playlist), `collections`, `collection_entries` ed `entry_places` (le raccolte e i loro chip), con la stessa visibilità delle liste del sito (le raccolte, quella stretta di cui sopra).
 
 ## Test
 
-Unitari: `services/webHome.test.ts` (le regole con fonti finte: ordine, limiti, una per `songKey`, `libraryOnly`, versioni, film raccolti, `total`, diario vuoto, una sezione che fallisce, utente), `services/webHomeData.test.ts` (il cablaggio: per chi si legge e una sola lettura del diario) e `routes/webHome.test.ts` (utente solo da `Remote-User`, `no-store`, un set di fonti per richiesta, `500`, registrazione in `server.ts` dietro Authelia). D'integrazione su un Postgres vero (`services/webHome.int.test.ts`, solo con `WEBHOME_INT=1` e un database usa-e-getta, mai la produzione; **`--no-file-parallelism`**, i file d'integrazione condividono il database, e **cancella** post, playlist e metadati di quel database): visibilità per utente, amministratore e anonimo, una regola contata davvero, la rotta con le fonti vere.
+Unitari: `services/webHome.test.ts` (le regole con fonti finte: ordine, limiti, una per `songKey`, `libraryOnly`, versioni, film raccolti, `total`, diario vuoto, una sezione che fallisce, utente), `services/webHomeData.test.ts` (il cablaggio: per chi si legge e una sola lettura del diario) e `routes/webHome.test.ts` (utente solo da `Remote-User`, `no-store`, un set di fonti per richiesta, `500`, registrazione in `server.ts` dietro Authelia). La sezione delle raccolte ha le sue prove: le regole in `services/webHome.test.ts`, il cablaggio in `webHomeData.test.ts` e, su un Postgres vero, in `services/collectionsViewData.int.test.ts` (`COLLECTIONS_INT=1`, vedi `docs/collections.md`). D'integrazione su un Postgres vero (`services/webHome.int.test.ts`, solo con `WEBHOME_INT=1` e un database usa-e-getta, mai la produzione; **`--no-file-parallelism`**, i file d'integrazione condividono il database, e **cancella** post, playlist e metadati di quel database): visibilità per utente, amministratore e anonimo, una regola contata davvero, la rotta con le fonti vere.
 
 ```bash
 WEBHOME_INT=1 DB_HOST=127.0.0.1 DB_PORT=55432 DB_NAME=webhome_check DB_USER=postgres DB_PASSWORD=… \
