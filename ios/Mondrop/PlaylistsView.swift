@@ -1,69 +1,113 @@
 import SwiftUI
 
 struct PlaylistsView: View {
-    @State private var playlists: [MondropPlaylist] = []
-    @State private var status = ""
-    @State private var busy = false
-    @State private var error: String?
+    // The list is asked to the server a page at a time, with search, filter and sort by date (ADR-0023, rule P).
+    @StateObject private var model = PlaylistListModel(transport: MondropAPI())
 
     var body: some View {
         List {
-            if let error {
-                Text(error).foregroundStyle(.red)
+            if let failure = model.failure {
+                Text(failure).foregroundStyle(.red)
             }
-            ForEach(playlists) { p in
+            ForEach(model.items) { p in
                 NavigationLink {
                     PlaylistOfflineView(playlist: p)
                 } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
-                            Text(p.name).font(.headline)
-                            if p.isDynamic { DynamicBadge() }
-                        }
-                        if p.isDynamic, let summary = p.ruleSummary, !summary.isEmpty {
-                            Text(summary).font(.footnote).foregroundStyle(.secondary)
-                        }
-                        Text(p.isDynamic && p.songCount == 0 ? "si calcola al Sync" : "\(p.songCount) brani")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                    PlaylistRow(playlist: p)
+                }
+            }
+            if model.items.isEmpty && !model.loading && model.failure == nil {
+                Text(model.narrowed ? "Nessuna playlist corrisponde" : "Nessuna playlist: creane una")
+                    .foregroundStyle(.secondary)
+            }
+            if model.hasMore {
+                Button {
+                    Task { await model.loadMore() }
+                } label: {
+                    HStack {
+                        Text("Carica altre")
+                        Spacer()
+                        Text("\(model.items.count) di \(model.total)").foregroundStyle(.secondary)
                     }
                 }
+                .disabled(model.loadingMore)
+                .onAppear { Task { await model.loadMore() } }
             }
         }
         .navigationTitle("Playlist")
+        .searchable(text: Binding(get: { model.text }, set: { model.setText($0) }), prompt: "Cerca nelle playlist")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Aggiorna") { Task { await reload() } }
-                    .disabled(busy)
+                Menu {
+                    Picker("Mostra", selection: Binding(get: { model.filter }, set: { model.setFilter($0) })) {
+                        ForEach(PlaylistFilter.allCases) { Text($0.title).tag($0) }
+                    }
+                    Picker("Ordina per", selection: Binding(get: { model.sort }, set: { model.setSort($0) })) {
+                        ForEach(PlaylistSort.allCases) { Text($0.title).tag($0) }
+                    }
+                    Button {
+                        model.toggleOrder()
+                    } label: {
+                        Label(model.sort.orderTitle(model.order), systemImage: model.order == .desc ? "arrow.down" : "arrow.up")
+                    }
+                    Divider()
+                    Button("Aggiorna") { Task { await refreshAll() } }
+                } label: {
+                    Label("Elenco", systemImage: "line.3.horizontal.decrease.circle")
+                }
             }
         }
         .overlay {
-            if busy { ProgressView() }
+            if model.loading && model.items.isEmpty { ProgressView() }
         }
         .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
         .safeAreaInset(edge: .bottom) {
-            if !status.isEmpty {
-                Text(status)
+            if model.total > 0 {
+                Text(model.hasMore ? "\(model.items.count) di \(model.total) playlist" : "\(model.total) playlist")
                     .font(.footnote)
                     .padding(8)
                     .frame(maxWidth: .infinity)
                     .background(.ultraThinMaterial)
             }
         }
-        .task { await reload() }
+        .task { await refreshAll() }
     }
 
-    private func reload() async {
-        busy = true
-        error = nil
-        defer { busy = false }
-        do {
-            playlists = try await MondropAPI().listPlaylists()
-            // A playlist deleted on the server no longer protects its songs from "Libera spazio".
-            OfflineStore.shared.pruneMemberships(keeping: Set(playlists.map(\.id)))
-            status = "\(playlists.count) playlist"
-        } catch {
-            self.error = (error as? MondropAPIError)?.description ?? error.localizedDescription
+    private func refreshAll() async {
+        await model.reload()
+        // A playlist deleted on the server no longer protects its songs from "Libera spazio": that needs EVERY playlist, not a page.
+        if let all = try? await MondropAPI().listPlaylists() {
+            OfflineStore.shared.pruneMemberships(keeping: Set(all.map(\.id)))
+        }
+    }
+}
+
+/// One row of the list: the name, the labels (dynamic, automatic), the DATE OF CREATION beside the name, and how many songs.
+private struct PlaylistRow: View {
+    let playlist: MondropPlaylist
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(playlist.name).font(.headline)
+                if playlist.isDynamic { DynamicBadge() }
+                if playlist.isAuto { AutoBadge() }
+                Spacer(minLength: 8)
+                let created = PlaylistDateText.text(playlist.createdAt)
+                if !created.isEmpty {
+                    Text(created)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .accessibilityLabel("Creata \(created)")
+                }
+            }
+            if playlist.isDynamic, let summary = playlist.ruleSummary, !summary.isEmpty {
+                Text(summary).font(.footnote).foregroundStyle(.secondary)
+            }
+            Text(playlist.isDynamic && playlist.songCount == 0 ? "si calcola al Sync" : "\(playlist.songCount) brani")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -263,5 +307,18 @@ struct DynamicBadge: View {
             .background(Color.accentColor.opacity(0.18), in: Capsule())
             .foregroundStyle(Color.accentColor)
             .accessibilityLabel("Playlist dinamica")
+    }
+}
+
+/// A playlist the server made from a post that talks about music (ADR-0023).
+struct AutoBadge: View {
+    var body: some View {
+        Text("AUTOMATICA")
+            .font(.system(size: 9, weight: .heavy, design: .monospaced))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.accentColor.opacity(0.18), in: Capsule())
+            .foregroundStyle(Color.accentColor)
+            .accessibilityLabel("Playlist automatica")
     }
 }

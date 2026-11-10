@@ -274,7 +274,11 @@ private struct NotificationRow: View {
 
     private var icon: String {
         if item.isError { return "exclamationmark.triangle.fill" }
-        return item.kind == "share_received" ? "person.crop.circle.badge.plus" : "checkmark.circle.fill"
+        switch item.kind {
+        case "share_received": return "person.crop.circle.badge.plus"
+        case "auto_playlist": return "music.note.list"        // a playlist the server made from a post (ADR-0023)
+        default: return "checkmark.circle.fill"
+        }
     }
 
     private var footer: String {

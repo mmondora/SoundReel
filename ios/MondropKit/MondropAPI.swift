@@ -15,17 +15,23 @@ public struct MondropPlaylist: Codable, Identifiable, Sendable, Equatable {
     /// 2.10.0 (docs/mondrop-inbox.md): true only for the user's OWN STATIC playlists — the ones the share sheet may
     /// add songs to. nil on an older backend: then none is offered (better no choice than a rejected one).
     public let canEdit: Bool?
+    /// ADR-0023: `auto` = made by the server from a post that talks about music; nil on an older backend = made by hand.
+    public let origin: String?
+    /// How an automatic playlist was made: `one_off` (one post) or `theme` (one for a generic theme, fed by every post of it).
+    public let autoKind: String?
 
     /// Dynamic playlists are read-only on the phone: the rule decides which songs are in.
     public var isDynamic: Bool { kind?.lowercased() == "dynamic" }
+    /// Made by the server from a post (a label on the row).
+    public var isAuto: Bool { origin?.lowercased() == "auto" }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, songCount, createdAt, updatedAt, kind, ruleSummary, canEdit
+        case id, name, songCount, createdAt, updatedAt, kind, ruleSummary, canEdit, origin, autoKind
     }
 
     public init(
         id: String, name: String, songCount: Int, createdAt: String? = nil, updatedAt: String? = nil,
-        kind: String? = nil, ruleSummary: String? = nil, canEdit: Bool? = nil
+        kind: String? = nil, ruleSummary: String? = nil, canEdit: Bool? = nil, origin: String? = nil, autoKind: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -35,6 +41,8 @@ public struct MondropPlaylist: Codable, Identifiable, Sendable, Equatable {
         self.kind = kind
         self.ruleSummary = ruleSummary
         self.canEdit = canEdit
+        self.origin = origin
+        self.autoKind = autoKind
     }
 
     public init(from decoder: Decoder) throws {
@@ -47,6 +55,8 @@ public struct MondropPlaylist: Codable, Identifiable, Sendable, Equatable {
         kind = try? c.decodeIfPresent(String.self, forKey: .kind)
         ruleSummary = try? c.decodeIfPresent(String.self, forKey: .ruleSummary)
         canEdit = (try? c.decodeIfPresent(Bool.self, forKey: .canEdit)) ?? nil
+        origin = try? c.decodeIfPresent(String.self, forKey: .origin)
+        autoKind = try? c.decodeIfPresent(String.self, forKey: .autoKind)
     }
 }
 

@@ -197,6 +197,22 @@ Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/home») · ADR-0020 · spe
   uguale alla tavolozza, app scura, nessun pulsante giallo con le parole bianche), `HomeStructureTests` (le schede, un solo mini player, niente «Cerca musica», il campo della
   Home, nessuna lettura della rete). Provati anche rompendo il codice di proposito.
 
+## L'elenco delle playlist: ricerca, ordine per data, pagine (1.7.0 build 12 · SoundReel 2.20.0)
+
+Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/playlists») · ADR-0023 · spec `docs/superpowers/specs/2026-11-10-auto-playlists-and-playlist-list-design.md`
+(Michele, 10 novembre: «Se le play list diventano molte devo poterle selezionare/paginare/cercare, e di fianco al nome la data di creazione e un ordine di data. questo anche su mondrop.»).
+
+- La scheda **Playlist** (`PlaylistsView`) chiede **una pagina alla volta** al server (`PlaylistListModel`, `MondropAPI.playlistsPage`): la **ricerca** (barra nativa, aspetta 250 ms di pausa), il menu **Mostra**
+  (Tutte, Automatiche, Mie, Condivise, Dinamiche) e **Ordina per** (data di creazione, ultima modifica, nome, numero di brani, con il verso; scegliere un ordine mette il suo verso naturale) sono domande al server
+  (regola P: l'app non scarica tutte le playlist per cercarne una). Predefinito: **per data di creazione, le più nuove per prime**.
+- Ogni riga ha la **data di creazione accanto al nome** (`PlaylistDateText`: «oggi», «ieri», «10 nov», «24 dic 2025»; una data illeggibile non scrive niente) e l'etichetta **AUTOMATICA** per le playlist fatte dal server
+  da un post che parla di musica. «Carica altre» (e «30 di 112 playlist» in fondo): si allunga scorrendo. Una risposta fuori tempo (si è scritto ancora mentre era in viaggio) si ignora; un guasto lascia la lista
+  della stessa domanda, mai quella di un'altra.
+- **«Libera spazio»** deve sapere **tutte** le playlist (`OfflineStore.pruneMemberships`): resta una chiamata a parte, senza parametri (`listPlaylists()`), mai una pagina. Le altre schermate (Cerca, Home, Posta, la
+  scelta della playlist) chiamano `listPlaylists()` senza parametri e ricevono tutto come prima.
+- Un messaggio di Posta di tipo `auto_playlist` («Nuova playlist: …») ha l'icona di una playlist.
+- **Test** nuovi (+18, 1022): `PlaylistListTests` (la query nell'ordine documentato, la risposta di un server vecchio senza `total`, la data, il modello); 16 rotture provate, tutte scoperte.
+
 ## I testi delle canzoni (1.7.0 build 10 e 11 · SoundReel 2.19.0 e 2.19.1)
 
 Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/songs/:songKey/lyrics») · ADR-0021 · spec `docs/superpowers/specs/2026-11-08-lyrics-from-the-internet-design.md`
