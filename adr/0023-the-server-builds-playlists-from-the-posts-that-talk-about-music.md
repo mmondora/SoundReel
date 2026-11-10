@@ -1,7 +1,7 @@
 # ADR-0023: The server builds playlists from the posts that talk about music: one per specific title, one rolling playlist per generic theme; the list of playlists is searched, filtered, sorted and paged by the server
 
 ## Status
-**Proposed** (10 November 2026): Michele's request, designed with defaults he can correct (spec §5). **Built and tested** as SoundReel 2.20.0 and Mondrop build 12 (before the collections, ADR-0022); it waits for his OK to deploy and to upload the build, one by one. A preview on the real library (10 November, nothing written) gave 36 new playlists, 5 posts joining a theme and 1 post skipped as not about music, from the 42 posts that name at least two songs.
+**Accepted** (10 November 2026): Michele's request, designed with defaults he can correct (spec §5); **in production since 10 November, 01:06** (SoundReel 2.20.0, his OK: «Sì, deploy ora») and on TestFlight as Mondrop build 12. **Built and tested** as SoundReel 2.20.0 and Mondrop build 12 (before the collections, ADR-0022); it waits for his OK to deploy and to upload the build, one by one. A preview on the real library (10 November, nothing written) gave 36 new playlists, 5 posts joining a theme and 1 post skipped as not about music, from the 42 posts that name at least two songs.
 
 ## Date
 2026-11-10
