@@ -15,6 +15,7 @@ import {
   updatePlaylistRule,
 } from '../services/playlists';
 import { parseRule, PRESETS, ruleSummary } from '../services/dynamicRules';
+import { applyPlaylistList, parsePlaylistListQuery } from '../services/playlistList';
 import { invalidateDynamicPlaylists, resolveDetail, resolveSummaries } from '../services/playlistResolver';
 import { getUserSongs } from '../services/userSongs';
 import { logActivity, songLabel, type Actor } from '../services/activityLog';
@@ -46,11 +47,17 @@ function isDynamicRefusal(err: unknown, reply: FastifyReply): FastifyReply | nul
 }
 
 export function registerPlaylistsRoutes(app: FastifyInstance): void {
+  // The list as the person asks for it (ADR-0023): `q`, `filter`, `sort`, `order`, `limit`, `offset`. With none of them: every playlist,
+  // as before, plus `total`.
   app.get('/api/playlists', async (req, reply) => {
+    const parsed = parsePlaylistListQuery(req.query as Record<string, unknown>);
+    if (!parsed.ok) return reply.code(400).send({ error: parsed.error });
     try {
       const user = resolveUser(req);
       const playlists = await listPlaylists({ userId: user.id, isAdmin: user.isAdmin });
-      return reply.send({ playlists: await resolveSummaries(playlists, { userId: user.id, isAdmin: user.isAdmin }) });
+      const resolved = await resolveSummaries(playlists, { userId: user.id, isAdmin: user.isAdmin });
+      const { items, total } = applyPlaylistList(resolved, parsed.query, user.id);
+      return reply.send({ playlists: items, total, limit: parsed.query.limit, offset: parsed.query.offset });
     } catch (err) {
       logError('GET /api/playlists failed', { err: String(err) });
       return reply.code(500).send({ error: 'playlists list failed' });

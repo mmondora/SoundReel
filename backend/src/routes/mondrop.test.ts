@@ -112,6 +112,53 @@ describe('mondrop routes', () => {
     expect(byId).toEqual({ own: true, legacy: true, dyn: false, shared: false });
   });
 
+  describe('the list as asked for (ADR-0023, rule P: the server searches, filters, sorts and pages)', () => {
+    const lib = [
+      { id: 'a', name: 'Jazz da ascoltare', kind: 'static', ownerUser: 'mike', origin: 'auto', autoKind: 'theme', songCount: 12, createdAt: '2026-11-09T10:00:00.000Z', updatedAt: '2026-11-09T10:00:00.000Z' },
+      { id: 'b', name: 'Le 5 musiche di Natale', kind: 'static', ownerUser: 'mike', origin: 'auto', autoKind: 'one_off', songCount: 5, createdAt: '2026-11-05T10:00:00.000Z', updatedAt: '2026-11-05T10:00:00.000Z' },
+      { id: 'c', name: 'Road trip', kind: 'static', ownerUser: 'mike', songCount: 40, createdAt: '2026-10-01T10:00:00.000Z', updatedAt: '2026-11-10T10:00:00.000Z' },
+      { id: 'd', name: 'Di Sara', kind: 'static', ownerUser: 'sara', songCount: 7, createdAt: '2026-08-01T10:00:00.000Z', updatedAt: '2026-08-01T10:00:00.000Z' },
+    ];
+    const keyed = { 'x-soundreel-key': 'sr_test' };
+    const ask = (qs: string) => buildApp().inject({ method: 'GET', url: `/api/mondrop/playlists${qs}`, headers: keyed });
+    const ids = (r: { json: () => { playlists: { id: string }[] } }) => r.json().playlists.map((p) => p.id);
+    beforeEach(() => {
+      vi.mocked(authenticateApiKey).mockResolvedValue({ owner: { user: 'mike', device: 'iPhone di Michele' } });
+      vi.mocked(listPlaylists).mockResolvedValue(lib as never);
+      vi.mocked(resolveSummaries).mockImplementation((async (list: unknown) => list) as never);
+    });
+
+    it('with no parameter it is the answer of before (every playlist, in the order given) plus the total: the installed apps do not change', async () => {
+      const r = await ask('');
+      expect(ids(r)).toEqual(['a', 'b', 'c', 'd']);
+      expect(r.json()).toMatchObject({ user: 'mike', total: 4, limit: null, offset: 0 });
+    });
+
+    it('searches, sorts by creation date and pages; `canEdit` and the origin are on every row of the page', async () => {
+      const r = await ask('?q=ascoltare&sort=created&order=desc&limit=30&offset=0');
+      expect(ids(r)).toEqual(['a']);
+      expect(r.json().playlists[0]).toMatchObject({ origin: 'auto', autoKind: 'theme', canEdit: true });
+      const page = await ask('?sort=created&limit=2&offset=2');
+      expect(ids(page)).toEqual(['c', 'd']);
+      expect(page.json()).toMatchObject({ total: 4, limit: 2, offset: 2 });
+    });
+
+    it('the filters are those of the person the KEY belongs to', async () => {
+      expect(ids(await ask('?filter=auto&sort=created'))).toEqual(['a', 'b']);
+      expect(ids(await ask('?filter=shared'))).toEqual(['d']);
+      vi.mocked(authenticateApiKey).mockResolvedValue({ owner: { user: 'sara', device: 'iPhone di Sara' } });
+      expect(ids(await ask('?filter=mine'))).toEqual(['d']);
+    });
+
+    it('a parameter that makes no sense is a 400 that names it; a missing key is still a 401 first', async () => {
+      const bad = await ask('?sort=banana');
+      expect(bad.statusCode).toBe(400);
+      expect(bad.json().error).toContain('sort');
+      vi.mocked(authenticateApiKey).mockResolvedValue(null);
+      expect((await buildApp().inject({ method: 'GET', url: '/api/mondrop/playlists?sort=banana' })).statusCode).toBe(401);
+    });
+  });
+
   it('a playlist\'s detail is the live one: a dynamic playlist lists its songs now, not the stored ones', async () => {
     vi.mocked(authenticateApiKey).mockResolvedValue({ owner: { user: 'mike', device: 'iPhone di Michele' } });
     vi.mocked(getPlaylist).mockResolvedValue({ id: 'd1', name: 'Notte', kind: 'dynamic', songKeys: [] } as never);

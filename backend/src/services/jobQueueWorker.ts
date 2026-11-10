@@ -21,6 +21,7 @@ import { releaseModel } from './ollamaClient';
 import { updateEntry, appendActionLog } from '../utils/db';
 import { createActionLog } from '../utils/logger';
 import { onAnalysisFinished, onAnalysisRetrying } from './shareFlow';
+import { onEntryAnalyzed } from './autoPlaylistWiring';
 
 const OTHER_CONCURRENCY_CAP = 3;
 const IG_BACKOFF_MS = [60_000, 180_000, 420_000];
@@ -443,6 +444,9 @@ async function dispatch(job: JobQueueRow, onSettle: () => void): Promise<void> {
         ),
       log,
     );
+    // A post that lists songs becomes a playlist (ADR-0023). NOT awaited: the title comes from the local model and the answer to Telegram
+    // does not wait for it; it never throws (a failure only means no playlist yet) and `AUTO_PLAYLISTS=0` turns it off.
+    if (result.success) void onEntryAnalyzed(job.entryId);
     // Isolated from the try/catch above it: a Telegram delivery failure here
     // must not re-trigger handleFailure and undo an already-successful job.
     try {

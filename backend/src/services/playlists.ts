@@ -12,6 +12,8 @@ interface PlaylistRow {
   song_count?: string | number;
   kind?: string | null;
   rule?: unknown;
+  origin?: string | null;
+  auto_kind?: string | null;
 }
 
 interface PlaylistSongRow {
@@ -40,6 +42,7 @@ function mapSummary(row: PlaylistRow): PlaylistSummary & { ownerUser?: string } 
     kind: dynamic ? 'dynamic' : 'static',
     ...(parsed?.ok ? { rule: parsed.rule, ruleSummary: ruleSummary(parsed.rule) } : {}),
     ...(row.owner_user ? { ownerUser: row.owner_user } : {}),
+    ...(row.origin === 'auto' ? { origin: 'auto' as const, autoKind: row.auto_kind === 'theme' ? ('theme' as const) : ('one_off' as const) } : {}),
   };
 }
 
@@ -58,7 +61,7 @@ function visibilityClause(isAdmin: boolean): string {
 export async function listPlaylists(visibility?: PlaylistVisibility): Promise<PlaylistSummary[]> {
   if (visibility?.userId) {
     const result = await pool.query<PlaylistRow>(
-      `SELECT p.id, p.name, p.owner_user, p.created_at, p.updated_at, p.kind, p.rule,
+      `SELECT p.id, p.name, p.owner_user, p.created_at, p.updated_at, p.kind, p.rule, p.origin, p.auto_kind,
               COUNT(ps.song_key)::int AS song_count
          FROM playlists p
          LEFT JOIN playlist_songs ps ON ps.playlist_id = p.id
@@ -70,7 +73,7 @@ export async function listPlaylists(visibility?: PlaylistVisibility): Promise<Pl
     return result.rows.map(mapSummary);
   }
   const result = await pool.query<PlaylistRow>(
-    `SELECT p.id, p.name, p.owner_user, p.created_at, p.updated_at, p.kind, p.rule,
+    `SELECT p.id, p.name, p.owner_user, p.created_at, p.updated_at, p.kind, p.rule, p.origin, p.auto_kind,
             COUNT(ps.song_key)::int AS song_count
        FROM playlists p
        LEFT JOIN playlist_songs ps ON ps.playlist_id = p.id
@@ -117,7 +120,7 @@ export async function getPlaylist(
   const params: unknown[] = visibility?.userId ? [visibility.userId, id] : [id];
   const idParam = visibility?.userId ? '$2' : '$1';
   const summary = await pool.query<PlaylistRow>(
-    `SELECT p.id, p.name, p.owner_user, p.created_at, p.updated_at, p.kind, p.rule,
+    `SELECT p.id, p.name, p.owner_user, p.created_at, p.updated_at, p.kind, p.rule, p.origin, p.auto_kind,
             COUNT(ps.song_key)::int AS song_count
        FROM playlists p
        LEFT JOIN playlist_songs ps ON ps.playlist_id = p.id

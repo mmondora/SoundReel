@@ -465,6 +465,10 @@ export interface PlaylistSummary {
   ruleSummary?: string;
   /** When a dynamic playlist's songs were last computed. */
   generatedAt?: string;
+  /** `auto` = made by the server from a post that talks about music (ADR-0023); absent / `user` = made by hand. */
+  origin?: 'user' | 'auto';
+  /** How an automatic playlist was made: one for a post (`one_off`) or one for a generic theme (`theme`). */
+  autoKind?: 'one_off' | 'theme' | null;
 }
 
 export interface PlaylistDetail extends PlaylistSummary {

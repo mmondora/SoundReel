@@ -10,6 +10,7 @@ import { normalizeFamilyUser, ANONYMOUS_USER } from '../utils/requestUser';
 import { classifyNetwork } from '../utils/network';
 import { addSongToPlaylist, listPlaylists, getPlaylist } from '../services/playlists';
 import { resolveDetail, resolveSummaries } from '../services/playlistResolver';
+import { applyPlaylistList, parsePlaylistListQuery } from '../services/playlistList';
 import { computeFacets, filterSongs, parseLibraryQuery, sortByArtistTitle } from '../services/libraryFacets';
 import { getUserSongs } from '../services/userSongs';
 import { parseSearchQuery, searchEverything } from '../services/mondropSearch';
@@ -125,18 +126,27 @@ export function registerMondropRoutes(app: FastifyInstance): void {
   app.get('/api/mondrop/playlists', async (req, reply) => {
     const auth = await requireMondrop(req, reply);
     if (!auth) return;
+    // The list as the person asks for it (ADR-0023, rule P: the server searches, filters, sorts and pages): `q`, `filter`, `sort`,
+    // `order`, `limit`, `offset`. With none of them the answer is the one of before (every playlist, by last change) plus `total`,
+    // so the apps already installed do not change.
+    const parsed = parsePlaylistListQuery(req.query as Record<string, unknown>);
+    if (!parsed.ok) return reply.code(400).send({ error: parsed.error });
     try {
       const viewer = { userId: auth.userId, isAdmin: false };
       // dynamic playlists come with their rule summary and the count of what the rule selects now (docs/mondrop-stats.md §4)
       const playlists = await resolveSummaries(await listPlaylists(viewer), viewer);
+      const { items, total } = applyPlaylistList(playlists, parsed.query, auth.userId);
       // `canEdit`: only the STATIC playlists of this user take songs by hand (the share sheet offers only those);
       // dynamic ones are rules and the ones shared with him are read-only.
       return {
-        playlists: playlists.map((p) => ({
+        playlists: items.map((p) => ({
           ...p,
           canEdit: (p.kind ?? 'static') === 'static' && (p as { ownerUser?: string }).ownerUser === auth.userId,
         })),
         user: auth.userId,
+        total,
+        limit: parsed.query.limit,
+        offset: parsed.query.offset,
       };
     } catch (err) {
       logError('GET /api/mondrop/playlists failed', { err: String(err) });

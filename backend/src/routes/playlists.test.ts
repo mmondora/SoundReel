@@ -65,6 +65,54 @@ describe('reading', () => {
   });
 });
 
+describe('the list as asked for (ADR-0023)', () => {
+  const lib = [
+    pl({ id: 'a', name: 'Jazz da ascoltare', origin: 'auto', autoKind: 'theme', createdAt: '2026-11-09T10:00:00.000Z', updatedAt: '2026-11-09T10:00:00.000Z', songCount: 12 }),
+    pl({ id: 'b', name: 'Le 5 musiche di Natale', origin: 'auto', autoKind: 'one_off', createdAt: '2026-11-05T10:00:00.000Z', updatedAt: '2026-11-05T10:00:00.000Z', songCount: 5 }),
+    pl({ id: 'c', name: 'Road trip', createdAt: '2026-10-01T10:00:00.000Z', updatedAt: '2026-11-10T10:00:00.000Z', songCount: 40 }),
+    pl({ id: 'd', name: 'Di Sara', ownerUser: 'sara', createdAt: '2026-08-01T10:00:00.000Z', updatedAt: '2026-08-01T10:00:00.000Z', songCount: 7 }),
+  ];
+  const ask = (qs: string) => app().inject({ method: 'GET', url: `/api/playlists${qs}`, headers: H });
+  const ids = (r: { json: () => { playlists: { id: string }[] } }) => r.json().playlists.map((p) => p.id);
+  beforeEach(() => svc.listPlaylists.mockResolvedValue(lib));
+
+  it('with no parameter it is the list of before (every playlist, in the order given) plus the total', async () => {
+    const r = await ask('');
+    expect(ids(r)).toEqual(['a', 'b', 'c', 'd']);
+    expect(r.json()).toMatchObject({ total: 4, limit: null, offset: 0 });
+  });
+
+  it('searches, sorts by creation date (newest first) and pages; the total is the one before the page is cut', async () => {
+    const first = await ask('?sort=created&order=desc&limit=3&offset=0');
+    expect(ids(first)).toEqual(['a', 'b', 'c']);
+    expect(first.json()).toMatchObject({ total: 4, limit: 3, offset: 0 });
+    const second = await ask('?sort=created&limit=3&offset=3');
+    expect(ids(second)).toEqual(['d']);
+    expect((await ask('?q=jazz%20ascoltare')).json()).toMatchObject({ total: 1 });
+    expect(ids(await ask('?q=jazz%20ascoltare'))).toEqual(['a']);
+  });
+
+  it('the filters know who owns what: the automatic ones, mine, shared with me', async () => {
+    expect(ids(await ask('?filter=auto&sort=created'))).toEqual(['a', 'b']);
+    expect(ids(await ask('?filter=shared'))).toEqual(['d']);
+    expect(ids(await ask('?filter=mine&sort=created'))).toEqual(['a', 'b', 'c']);
+  });
+
+  it('the live counts of the dynamic playlists are resolved BEFORE the list is cut: a sort by size sees them', async () => {
+    res.resolveSummaries.mockImplementation(async (l: { id: string }[]) => l.map((p) => (p.id === 'd' ? { ...p, songCount: 99 } : p)));
+    expect(ids(await ask('?sort=size&limit=1'))).toEqual(['d']);
+  });
+
+  it('a parameter that makes no sense is a 400 that names it, and nothing is read', async () => {
+    for (const [qs, word] of [['?sort=banana', 'sort'], ['?limit=0', 'limit'], ['?filter=x', 'filter'], ['?offset=-1', 'offset'], ['?order=up', 'order']] as const) {
+      const r = await ask(qs);
+      expect(r.statusCode).toBe(400);
+      expect(r.json().error).toContain(word);
+    }
+    expect(svc.listPlaylists).not.toHaveBeenCalled();
+  });
+});
+
 describe('creating — who, when, what', () => {
   it('a static playlist is logged with its name and how many songs it started with', async () => {
     svc.createPlaylist.mockResolvedValue(pl({ songKeys: ['a::b'] }));

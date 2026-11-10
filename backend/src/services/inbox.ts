@@ -16,7 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { query } from '../utils/db';
 import { entryTitle, entryUrl } from '../utils/entryLinks';
 
-export type InboxKind = 'share_result' | 'share_received';
+export type InboxKind = 'share_result' | 'share_received' | 'auto_playlist';
 export type InboxLevel = 'info' | 'error';
 
 export const INFO_TTL_MS = 3 * 24 * 60 * 60 * 1000;
