@@ -172,7 +172,7 @@
   color: var(--text-secondary);
 }
 
-.lib-badge-songs { color: var(--accent); border-color: rgba(61, 220, 151, 0.45); }
+.lib-badge-songs { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .lib-badge-media { color: #6cb6ff; border-color: rgba(108, 182, 255, 0.45); }
 .lib-badge-local { color: #ffcf6b; border-color: rgba(255, 207, 107, 0.45); }
 
@@ -331,7 +331,7 @@
   white-space: nowrap;
 }
 
-.mf-chip-ok { color: var(--accent); border-color: rgba(61, 220, 151, 0.45); }
+.mf-chip-ok { color: var(--success); border-color: color-mix(in srgb, var(--success) 45%, transparent); }
 .mf-chip-scanning,
 .mf-chip-pending { color: var(--warning); border-color: rgba(255, 159, 10, 0.45); }
 .mf-chip-missing { color: var(--error); border-color: rgba(255, 69, 58, 0.5); }

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Header } from '../components/Header';
 import { useLanguage } from '../i18n';
 import {
   getAdminStorage,
@@ -139,14 +138,8 @@ export function Admin() {
     }
   };
 
-  const journalStats = {
-    totalEntries: stats?.totals.entries ?? 0,
-    totalSongs: 0, totalFilms: 0, totalNotes: 0,
-  };
-
   return (
     <div className="page">
-      <Header stats={journalStats} />
       <main className="main-content" style={{ maxWidth: 1100, margin: '0 auto', padding: '24px 16px' }}>
         <h1 style={{ marginTop: 0 }}>Admin / Storage</h1>
         {err && <div style={{ color: '#f87171', padding: 12, border: '1px solid #7f1d1d', borderRadius: 8, marginBottom: 16 }}>Errore: {err}</div>}

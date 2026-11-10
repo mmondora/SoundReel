@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Header } from '../components/Header';
 import { UrlInput } from '../components/UrlInput';
 import { CompactCard } from '../components/CompactCard';
 import { EntryInspector } from '../components/EntryInspector';
@@ -264,7 +263,6 @@ export function Home() {
 
   return (
     <div className="home home--inbox">
-      <Header />
 
       <div className="url-input-bar inbox-input-bar">
         <UrlInput
@@ -272,7 +270,6 @@ export function Home() {
           loading={analyzeLoading}
           error={error}
           successStatus={successStatus}
-          hero
         />
       </div>
 

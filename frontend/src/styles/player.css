@@ -1,4 +1,4 @@
-/* Tesla / car-mode full-screen player + floating mini-player. */
+/* Tesla / car-mode full-screen player. */
 
 .player-car {
   min-height: 100dvh;
@@ -70,9 +70,9 @@
 }
 
 .player-car-chip.active {
-  background: #3ddc97;
+  background: var(--accent);
   color: #04140c;
-  border-color: #3ddc97;
+  border-color: var(--accent);
   font-weight: 700;
 }
 
@@ -218,7 +218,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Hidden host used when leaving /player so YouTube keeps playing for the mini-player. */
+/* Hidden host used when leaving /player so YouTube keeps playing for the player bar. */
 .sr-yt-fallback {
   position: fixed;
   width: 1px;
@@ -259,7 +259,7 @@
 .player-car-context {
   margin-top: 0.4rem;
   font-size: 0.95rem;
-  color: #3ddc97;
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -291,7 +291,7 @@
 .player-car-seek-range {
   flex: 1;
   min-height: 52px;
-  accent-color: #3ddc97;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -323,9 +323,9 @@
   min-width: 104px;
   min-height: 104px;
   font-size: 2.2rem;
-  background: #3ddc97;
+  background: var(--accent);
   color: #04140c;
-  border-color: #3ddc97;
+  border-color: var(--accent);
   font-weight: 700;
 }
 
@@ -335,8 +335,8 @@
 }
 
 .player-car-ctrl.active {
-  border-color: #3ddc97;
-  color: #3ddc97;
+  border-color: var(--accent);
+  color: var(--accent);
   background: #0f1f18;
 }
 
@@ -358,9 +358,9 @@
 }
 
 .player-car-action.active {
-  border-color: #3ddc97;
+  border-color: var(--accent);
   background: #12261c;
-  color: #3ddc97;
+  color: var(--accent);
 }
 
 .player-car-error {
@@ -439,7 +439,7 @@
   margin-left: auto;
   border-radius: 999px;
   border: none;
-  background: #3ddc97;
+  background: var(--accent);
   color: #04140c;
   font-size: 1.25rem;
   font-weight: 700;
@@ -492,7 +492,7 @@
 }
 
 .player-car-track.active {
-  border-color: #3ddc97;
+  border-color: var(--accent);
   background: #0d1c15;
 }
 
@@ -547,7 +547,7 @@
 }
 
 .player-car-track-eq {
-  color: #3ddc97;
+  color: var(--accent);
 }
 
 /* Narrow / portrait: stack media above controls */
@@ -639,94 +639,7 @@
   }
 }
 
-/* Mini player — fixed bottom bar on other routes */
-.mini-player {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.45rem 0.6rem;
-  background: #121212ee;
-  border-top: 1px solid #2a2a2a;
-  backdrop-filter: blur(8px);
-  min-height: 64px;
-}
-
-.mini-player-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  text-decoration: none;
-  color: inherit;
-}
-
-.mini-player-art {
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
-  background: #222;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.mini-player-art img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.mini-player-text {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.mini-player-title {
-  font-weight: 600;
-  color: #f2f2f2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mini-player-artist {
-  font-size: 0.85rem;
-  color: #888;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mini-player-toggle,
-.mini-player-next {
-  min-width: 48px;
-  min-height: 48px;
-  border: none;
-  border-radius: 999px;
-  background: #1f1f1f;
-  color: #eee;
-  font-size: 1.2rem;
-  cursor: pointer;
-}
-
-.mini-player-toggle {
-  background: #3ddc97;
-  color: #0b0b0b;
-}
-
-body:has(.mini-player) .list-page-content,
-body:has(.mini-player) .home--inbox {
-  padding-bottom: 5.5rem;
-}
+/* The mini player is the player bar of the shell now (styles/shell.css). */
 
 /* --- Add-to-playlist picker sheet --- */
 .playlist-picker-backdrop {
@@ -819,7 +732,7 @@ body:has(.mini-player) .home--inbox {
 
 .playlist-picker-item:hover,
 .playlist-picker-item:focus-visible {
-  border-color: #3ddc97;
+  border-color: var(--accent);
   background: #13261e;
 }
 
@@ -827,9 +740,9 @@ body:has(.mini-player) .home--inbox {
   width: 100%;
   min-height: 64px;
   border-radius: 14px;
-  border: 1px dashed #3ddc97;
+  border: 1px dashed var(--accent);
   background: #0f1f18;
-  color: #3ddc97;
+  color: var(--accent);
   font-size: 1.15rem;
   font-weight: 650;
   cursor: pointer;
@@ -903,7 +816,7 @@ body:has(.mini-player) .home--inbox {
 .playlist-add-hint {
   margin: 0 0 0.55rem;
   font-size: 0.85rem;
-  color: #3ddc97;
+  color: var(--accent);
 }
 
 .playlist-create-row {
@@ -922,7 +835,7 @@ body:has(.mini-player) .home--inbox {
   padding: 0.35rem 0.85rem;
   border-radius: 999px;
   border: none;
-  background: #3ddc97;
+  background: var(--accent);
   color: #0b0b0b;
   font-weight: 650;
   cursor: pointer;
@@ -1047,7 +960,7 @@ body:has(.mini-player) .home--inbox {
   padding: 0.4rem 0.9rem;
   border-radius: 999px;
   border: none;
-  background: #3ddc97;
+  background: var(--accent);
   color: #0b0b0b;
   font-weight: 600;
   cursor: pointer;
@@ -1089,7 +1002,7 @@ body:has(.mini-player) .home--inbox {
 }
 
 .source-switch-compact select:focus-visible {
-  outline: 2px solid #3ddc97;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -1114,10 +1027,10 @@ body:has(.mini-player) .home--inbox {
 }
 
 .from-chip-media-server { border-color: rgba(108, 182, 255, 0.45); }
-.from-chip-disk { border-color: rgba(61, 220, 151, 0.45); }
+.from-chip-disk { border-color: color-mix(in srgb, var(--success) 45%, transparent); }
 .from-chip-youtube { border-color: rgba(255, 99, 99, 0.45); }
 
-.mini-player-artist .from-chip {
+.shell-np-sub .from-chip {
   margin-left: 0.4rem;
 }
 
@@ -1133,14 +1046,14 @@ body:has(.mini-player) .home--inbox {
   align-items: center;
   gap: 0.35rem;
   font-size: 0.8rem;
-  color: #3ddc97;
+  color: var(--accent);
 }
 
 .player-car-loading-dot {
   width: 0.6rem;
   height: 0.6rem;
-  border: 2px solid #3ddc9755;
-  border-top-color: #3ddc97;
+  border: 2px solid color-mix(in srgb, var(--accent) 33%, transparent);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: player-car-spin 0.8s linear infinite;
 }
@@ -1152,7 +1065,7 @@ body:has(.mini-player) .home--inbox {
 @media (prefers-reduced-motion: reduce) {
   .player-car-loading-dot {
     animation: none;
-    border-top-color: #3ddc97;
+    border-top-color: var(--accent);
   }
 }
 
@@ -1214,8 +1127,8 @@ body:has(.mini-player) .home--inbox {
   font-size: 0.65rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #3ddc97;
-  border: 1px solid rgba(61, 220, 151, 0.45);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   border-radius: 999px;
   padding: 0 0.4rem;
 }
@@ -1271,7 +1184,7 @@ body:has(.mini-player) .home--inbox {
 }
 
 .playlist-toggle:focus-visible {
-  outline: 2px solid #3ddc97;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 8px;
 }

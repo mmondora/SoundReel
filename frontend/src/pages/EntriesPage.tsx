@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Header } from '../components/Header';
 import { listEntrySummaries } from '../services/api';
 import { useLanguage } from '../i18n';
 import type { EntrySummary } from '../types';
@@ -109,7 +108,6 @@ export function EntriesPage() {
 
   return (
     <div className="list-page list-page--library">
-      <Header />
       <div className="list-page-content">
         <div className="list-page-header library-header">
           <div className="library-header-text">

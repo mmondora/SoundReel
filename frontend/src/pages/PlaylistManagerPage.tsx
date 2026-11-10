@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Header } from '../components/Header';
 import { FnBar } from '../components/manager/FnBar';
 import { HelpDialog } from '../components/manager/HelpDialog';
 import { ConfirmDialog, PromptDialog } from '../components/manager/DialogFrame';
@@ -342,7 +341,6 @@ export function PlaylistManagerPage() {
 
   return (
     <div className="mgr-page">
-      <Header />
       <main className="mgr-content">
         <div className="mgr-head">
           <div>

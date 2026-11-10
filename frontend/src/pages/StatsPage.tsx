@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Header } from '../components/Header';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { Heatmap } from '../components/stats/Heatmap';
 import { PlaysPerDayChart } from '../components/stats/PlaysPerDayChart';
@@ -94,7 +93,6 @@ export function StatsPage() {
 
   return (
     <div className="list-page stats-page">
-      <Header />
       <main className="stats-content" aria-busy={loading}>
         <div className="list-page-header">
           <Link to="/" className="list-page-back">{t.back}</Link>

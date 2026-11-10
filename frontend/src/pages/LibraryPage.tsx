@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Header } from '../components/Header';
 import { fetchLibrary } from '../services/api';
 import type { LibraryItem } from '../services/api';
 import { useLanguage } from '../i18n';
@@ -21,7 +20,6 @@ export function LibraryPage() {
 
   return (
     <div className="list-page">
-      <Header />
       <div className="list-page-content">
         <div className="list-page-header">
           <Link to="/" className="list-page-back">{t.back}</Link>

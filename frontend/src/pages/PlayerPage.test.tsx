@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { PlayerPage } from './PlayerPage';
-import { MiniPlayer } from '../components/MiniPlayer';
+import { PlayerBar } from '../components/shell/PlayerBar';
 import { LanguageProvider } from '../i18n';
 import { setStoredLanguage } from '../i18n/translations';
 import { resetEntryThumbnailCache } from '../hooks/useEntryThumbnail';
@@ -293,12 +293,12 @@ describe('the "Sorgente" switch on the player page (rule W5)', () => {
   });
 });
 
-describe('the "Sorgente" switch and the badge in the mini player', () => {
+describe('the "Sorgente" switch and the badge in the player bar', () => {
   function renderMini(path = '/') {
     return render(
       <LanguageProvider>
         <MemoryRouter initialEntries={[path]}>
-          <MiniPlayer />
+          <PlayerBar />
         </MemoryRouter>
       </LanguageProvider>,
     );
@@ -332,14 +332,12 @@ describe('the "Sorgente" switch and the badge in the mini player', () => {
     expect(chip).toHaveAttribute('title', 'Playing from: Media server');
   });
 
-  it('is not shown on the player page itself (the page has the full switch), nor with nothing in play', () => {
-    playerMock.current = makePlayer(songs(3), 0);
-    const first = renderMini('/player');
-    expect(screen.queryByRole('combobox', { name: 'Source' })).toBeNull();
-    first.unmount();
+  // «on the player page itself the page has the full switch»: the shell does not draw the bar there (AppShell.test.tsx)
+  it('with nothing in play the bar says so, and the switch is still there (it is a preference of the user)', () => {
     playerMock.current = makePlayer([], 0, { current: null });
     renderMini('/');
-    expect(screen.queryByRole('combobox', { name: 'Source' })).toBeNull();
+    expect(screen.getByText('Nothing playing')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Source' })).toBeInTheDocument();
   });
 });
 
@@ -393,12 +391,12 @@ describe('speed of the first play (spec 2026-11-08, X6)', () => {
     expect(document.querySelector('.player-car-loading')).toHaveTextContent('Sto caricando…');
   });
 
-  it('the mini player shows it too (a dotted button and a status for screen readers)', () => {
+  it('the player bar shows it too (a dotted button and a status for screen readers)', () => {
     playerMock.current = makePlayer(songs(3), 0, { loading: true });
     render(
       <LanguageProvider>
         <MemoryRouter initialEntries={['/']}>
-          <MiniPlayer />
+          <PlayerBar />
         </MemoryRouter>
       </LanguageProvider>,
     );

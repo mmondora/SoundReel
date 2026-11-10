@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Header } from '../components/Header';
 import { FilmCard } from '../components/FilmCard';
 import { DateGroupedList } from '../components/DateGroupedList';
 import { FilterPanel } from '../components/FilterPanel';
@@ -225,7 +224,6 @@ export function FilmsPage() {
 
   return (
     <div className="list-page">
-      <Header />
       <div className="list-page-content">
         <div className="list-page-header">
           <Link to="/" className="list-page-back">{t.back}</Link>

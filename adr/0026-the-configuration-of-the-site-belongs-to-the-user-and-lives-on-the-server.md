@@ -1,7 +1,7 @@
 # ADR-0026: The configuration of the site belongs to the user and lives on the server
 
 ## Status
-**Accepted** (10 November 2026): Michele's answer «configurazione per utente - di default vista A». Built in phase P2 of the look and feel of the site (plan `2026-11-10-web-look-and-feel.md`); nothing deployed yet.
+**Accepted** (10 November 2026): Michele's answer «configurazione per utente - di default vista A». **Built and tested in phase P2** (backend: SoundReel 2.21.0, contract `docs/ui-prefs.md`); the site reads it from phase P3; it waits for Michele's OK to deploy.
 
 ## Date
 2026-11-10

@@ -10,6 +10,21 @@ export interface Translations {
   navInbox: string;
   navLinks: string;
   navKbLabel: string;
+  // the shell: top bar, left menu, player bar (look and feel, spec 2026-11-10-web-look-and-feel-rethink-design.md)
+  shellNavLabel: string;
+  shellGroupArchive: string;
+  shellGroupListen: string;
+  shellPaste: string;
+  shellClearSearch: string;
+  shellMore: string;
+  shellPlayerLabel: string;
+  shellPlay: string;
+  shellPause: string;
+  shellNext: string;
+  shellPrevious: string;
+  shellSeek: string;
+  shellNothingPlaying: string;
+  shellOpenPlayer: string;
   navSearchPlaceholder: string;
   libraryNav: string;
   libraryTitle: string;
@@ -832,6 +847,20 @@ export const translations: Record<Language, Translations> = {
     navInbox: 'Inbox',
     navLinks: 'Link',
     navKbLabel: 'KB',
+    shellNavLabel: 'Sezioni',
+    shellGroupArchive: 'Archivio',
+    shellGroupListen: 'Ascolto',
+    shellPaste: 'Incolla un link',
+    shellClearSearch: 'Cancella la ricerca',
+    shellMore: 'Altro',
+    shellPlayerLabel: 'Player',
+    shellPlay: 'Riproduci',
+    shellPause: 'Pausa',
+    shellNext: 'Brano successivo',
+    shellPrevious: 'Brano precedente',
+    shellSeek: 'Posizione nel brano',
+    shellNothingPlaying: 'Niente in riproduzione',
+    shellOpenPlayer: 'Apri il Player',
     navSearchPlaceholder: 'Cerca nella libreria…',
     libraryNav: 'Libreria',
     libraryTitle: 'Libreria media',
@@ -1668,6 +1697,20 @@ export const translations: Record<Language, Translations> = {
     navInbox: 'Inbox',
     navLinks: 'Links',
     navKbLabel: 'KB',
+    shellNavLabel: 'Sections',
+    shellGroupArchive: 'Library',
+    shellGroupListen: 'Listen',
+    shellPaste: 'Paste a link',
+    shellClearSearch: 'Clear the search',
+    shellMore: 'More',
+    shellPlayerLabel: 'Player',
+    shellPlay: 'Play',
+    shellPause: 'Pause',
+    shellNext: 'Next song',
+    shellPrevious: 'Previous song',
+    shellSeek: 'Position in the song',
+    shellNothingPlaying: 'Nothing playing',
+    shellOpenPlayer: 'Open the Player',
     navSearchPlaceholder: 'Search the library…',
     libraryNav: 'Library',
     libraryTitle: 'Media library',

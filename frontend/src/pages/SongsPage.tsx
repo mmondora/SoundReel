@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Header } from '../components/Header';
 import { SongCard } from '../components/SongCard';
 import { DateGroupedList } from '../components/DateGroupedList';
 import { FilterPanel } from '../components/FilterPanel';
@@ -207,7 +206,6 @@ export function SongsPage() {
 
   return (
     <div className="list-page">
-      <Header />
       <div className="list-page-content">
         <div className="list-page-header">
           <Link to="/" className="list-page-back">{t.back}</Link>

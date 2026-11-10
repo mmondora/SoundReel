@@ -8,7 +8,7 @@
 .stats-content {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 1.5rem 1.5rem 6rem; /* room for the floating mini-player */
+  padding: 1.5rem 1.5rem 2rem;
 }
 
 .stats-subtitle {

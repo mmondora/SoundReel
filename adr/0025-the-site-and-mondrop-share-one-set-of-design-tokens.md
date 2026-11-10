@@ -1,7 +1,7 @@
 # ADR-0025: The site and Mondrop share one set of design tokens, and a test keeps them aligned
 
 ## Status
-**Accepted** (10 November 2026): Michele's requirement «giallo e nero - Mondrop like (e devon andare insieme gli stili)». Built in phase P1 of the look and feel of the site (plan `2026-11-10-web-look-and-feel.md`); nothing deployed yet.
+**Accepted** (10 November 2026): Michele's requirement «giallo e nero - Mondrop like (e devon andare insieme gli stili)». **Built and tested in phase P1** of the look and feel of the site (SoundReel 2.21.0, plan `2026-11-10-web-look-and-feel.md`); it waits for Michele's OK to deploy.
 
 ## Date
 2026-11-10

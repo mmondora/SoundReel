@@ -1,0 +1,37 @@
+/* Design tokens of the site = the palette of Mondrop (ADR-0025).
+ *
+ * The values come from ios/MondropKit/MondropPalette.swift (the colours of the app as plain numbers, with their contrast tests).
+ * Keep them in step: tokens.consistency.test.ts reads the Swift file, turns every RGB(r, g, b) into hex and compares it with the
+ * token of the same role; it fails, and names the other side, when they differ. Every other colour of the site is made from these.
+ *
+ * Michele, 10 November: «giallo e nero - Mondrop like ( e devon andare insieme gli stili )».
+ */
+:root {
+  /* the one accent: Mondrop's yellow (the drop of the icon, the play button, the selection, the links) */
+  --mp-accent: #FFD60A;
+  /* what is drawn ON the yellow: black (white on this yellow is 1.4:1) */
+  --mp-on-accent: #000000;
+  --mp-accent-hover: color-mix(in srgb, var(--mp-accent) 80%, white);
+  --mp-text: #FFFFFF;
+  --mp-error: #FF8C80;
+
+  /* midnight blue to near black: the Home and the Player (the app paints them with this gradient) */
+  --mp-bg-top: #242945;
+  --mp-bg-bottom: #080911;
+
+  /* the system backgrounds of iOS in dark mode: the page, the rows, what is raised */
+  --mp-system-bg: #000000;
+  --mp-system-bg-2: #1C1C1E;
+  --mp-system-bg-3: #2C2C2E;
+
+  /* white at these opacities: the secondary text, the fill of a pill button, the fill of a card over the gradient */
+  --mp-secondary-opacity: 0.72;
+  --mp-pill-fill-opacity: 0.12;
+  --mp-card-fill-opacity: 0.08;
+
+  /* the forms: cards with rounded corners, pill buttons */
+  --mp-radius-small: 10px;
+  --mp-radius-card: 14px;
+  --mp-radius-large: 16px;
+  --mp-radius-pill: 999px;
+}

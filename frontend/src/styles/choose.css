@@ -53,7 +53,7 @@ body:has(.ch-panel) {
 .ch-count {
   flex: none;
   font-size: 0.9rem;
-  color: #3ddc97;
+  color: var(--accent);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -136,7 +136,7 @@ body:has(.ch-panel) {
 .ch-more summary:focus-visible,
 .ch-radio:focus-within,
 .ch-check:focus-within {
-  outline: 2px solid #3ddc97;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -185,8 +185,8 @@ body:has(.ch-panel) {
 }
 
 .ch-chip.on {
-  border-color: #3ddc97;
-  background: #3ddc97;
+  border-color: var(--accent);
+  background: var(--accent);
   color: #04140c;
   font-weight: 700;
 }
@@ -228,7 +228,7 @@ body:has(.ch-panel) {
   content: '▸';
   display: inline-block;
   width: 1em;
-  color: #3ddc97;
+  color: var(--accent);
 }
 
 .ch-more[open] summary::before {
@@ -261,7 +261,7 @@ body:has(.ch-panel) {
   width: 22px;
   height: 22px;
   margin: 0;
-  accent-color: #3ddc97;
+  accent-color: var(--accent);
 }
 
 /* The actions stay at the bottom of the sheet, above the home bar. */
@@ -307,8 +307,8 @@ body:has(.ch-panel) {
 
 .ch-btn-primary {
   flex: 1 1 100%;
-  border-color: #3ddc97;
-  background: #3ddc97;
+  border-color: var(--accent);
+  background: var(--accent);
   color: #04140c;
 }
 
@@ -350,12 +350,12 @@ body:has(.ch-panel) {
 
 .player-car-choose-toggle[aria-expanded='true'],
 .player-car-choose-toggle.has-filters {
-  border-color: #3ddc97;
-  color: #3ddc97;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .player-car-choose-toggle:focus-visible {
-  outline: 2px solid #3ddc97;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 

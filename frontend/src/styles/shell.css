@@ -1,0 +1,519 @@
+/*
+ * The shell of the site: the top bar, the menu on the left, the page, the player at the bottom (the A direction of the look and feel,
+ * spec 2026-11-10-web-look-and-feel-rethink-design.md §3.2). Colours and forms only from the tokens (tokens.css = Mondrop, ADR-0025):
+ * never write a hex here.
+ */
+.shell {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  grid-template-rows: 64px minmax(0, 1fr) auto;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.shell :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.shell-ic {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.shell-ic-solid {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* ---------- the top bar ---------- */
+.shell-top {
+  grid-row: 1;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.shell-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 200px;
+  flex: none;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.shell-brand b {
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+/* Mondrop's icon is a drop: the yellow drop is the mark */
+.shell-drop {
+  width: 15px;
+  height: 15px;
+  border-radius: 50% 0 50% 50%;
+  transform: rotate(-45deg);
+  background: var(--accent);
+  flex: none;
+}
+
+.shell-version {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.shell-search {
+  flex: 1;
+  max-width: 620px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: var(--mp-radius-pill);
+  background: rgba(255, 255, 255, var(--mp-pill-fill-opacity));
+  color: var(--text-secondary);
+}
+
+.shell-search:focus-within {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.shell-search-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  color: var(--text-primary);
+  font: inherit;
+  outline: none;
+}
+
+.shell-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.shell-search-clear {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(255, 255, 255, var(--mp-pill-fill-opacity));
+  color: var(--text-primary);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.shell-cta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: var(--mp-radius-pill);
+  font-weight: 600;
+  color: var(--on-accent);
+  background: var(--accent);
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.shell-cta:hover {
+  background: var(--accent-hover);
+  color: var(--on-accent);
+}
+
+.shell-who {
+  margin-left: auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.shell-user {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.shell-more-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, var(--mp-pill-fill-opacity));
+  cursor: pointer;
+}
+
+.shell-more-btn.open,
+.shell-more-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.shell-more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 200px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--mp-radius-card);
+  background: var(--mp-system-bg-3);
+  box-shadow: var(--shadow-lg);
+  z-index: 50;
+}
+
+.shell-more-menu a {
+  padding: 10px 12px;
+  border-radius: var(--mp-radius-small);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.shell-more-menu a:hover {
+  background: rgba(255, 255, 255, var(--mp-pill-fill-opacity));
+}
+
+/* ---------- the menu on the left ---------- */
+.shell-rail {
+  grid-row: 2;
+  grid-column: 1;
+  overflow: auto;
+  padding: 10px 12px 20px;
+  border-right: 1px solid var(--border);
+}
+
+.shell-group {
+  padding: 18px 12px 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+.shell-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.shell-nav .shell-ic {
+  color: var(--text-secondary);
+}
+
+.shell-nav:hover {
+  background: rgba(255, 255, 255, var(--mp-card-fill-opacity));
+}
+
+/* the current page is the yellow one, like the selected tab of the app */
+.shell-nav.active {
+  background: rgba(255, 255, 255, var(--mp-pill-fill-opacity));
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.shell-nav.active .shell-ic {
+  color: var(--accent);
+}
+
+.shell-nav-label {
+  text-transform: capitalize;
+}
+
+.shell-nav-count {
+  margin-left: auto;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* ---------- the page ---------- */
+.shell-main {
+  grid-row: 2;
+  grid-column: 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+/* The pages were made to fill a window of their own: inside the shell they fill the area they are given, and the widths that left
+   a column in the middle of the screen (800, 820, 900 px) go (a readable cap stays for the lists). */
+.shell .shell-main > * {
+  min-height: 0;
+}
+
+.shell .shell-main > .home {
+  height: 100%;
+  min-height: 0;
+}
+
+.shell .shell-main .list-page-content,
+.shell .shell-main .list-page--library .list-page-content {
+  max-width: 1180px;
+}
+
+.shell .shell-main .main-content {
+  max-width: 1100px;
+}
+
+/* ---------- the player at the bottom ---------- */
+.shell-bar {
+  grid-row: 3;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  min-height: 76px;
+  padding: 8px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+.shell-np {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 320px;
+  flex: none;
+  min-width: 0;
+}
+
+.shell-art {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  flex: none;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--mp-bg-top), var(--mp-bg-bottom));
+}
+
+.shell-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shell-np-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.shell-np-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shell-np-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shell-ctl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shell-ib {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 0;
+  color: var(--text-primary);
+  background: none;
+  text-decoration: none;
+  cursor: pointer;
+  flex: none;
+}
+
+.shell-ib:hover:not(:disabled) {
+  background: rgba(255, 255, 255, var(--mp-pill-fill-opacity));
+}
+
+.shell-play {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 0;
+  color: var(--on-accent);
+  background: var(--accent);
+  cursor: pointer;
+  flex: none;
+}
+
+.shell-ib:disabled,
+.shell-play:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.shell-prog {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.shell-seek {
+  flex: 1;
+  min-width: 80px;
+  accent-color: var(--accent);
+}
+
+.shell-time {
+  min-width: 2.6em;
+  font-variant-numeric: tabular-nums;
+}
+
+.shell-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+/* ---------- a narrower window: the menu keeps only its icons ---------- */
+@media (max-width: 1180px) {
+  .shell {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .shell-rail {
+    padding: 10px 8px;
+  }
+
+  .shell-nav-label,
+  .shell-nav-count,
+  .shell-group {
+    display: none;
+  }
+
+  .shell-nav {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .shell-brand b,
+  .shell-version,
+  .shell-user {
+    display: none;
+  }
+
+  .shell-brand {
+    width: auto;
+  }
+
+  .shell-np {
+    width: 220px;
+  }
+}
+
+/* ---------- the phone: the menu is a row at the top, the bar is a title and a button ---------- */
+@media (max-width: 760px) {
+  .shell {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .shell-top {
+    flex-wrap: wrap;
+    flex: none;
+    height: auto;
+    padding: 10px 16px;
+    gap: 10px;
+  }
+
+  .shell-search {
+    order: 3;
+    flex-basis: 100%;
+    max-width: none;
+  }
+
+  .shell-cta {
+    margin-left: auto;
+  }
+
+  .shell-rail {
+    display: flex;
+    flex: none;
+    overflow-x: auto;
+    gap: 4px;
+    padding: 6px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .shell-nav {
+    flex: none;
+    padding: 0 14px;
+  }
+
+  .shell-nav-label {
+    display: inline;
+  }
+
+  .shell-main {
+    flex: 1;
+  }
+
+  .shell-bar {
+    flex: none;
+    padding: 8px 16px;
+    gap: 12px;
+  }
+
+  .shell-np {
+    width: auto;
+    flex: 1;
+  }
+
+  .shell-prog,
+  .shell-right {
+    display: none;
+  }
+}

@@ -1,4 +1,5 @@
-import { useState, FormEvent } from 'react';
+import { useEffect, useRef, useState, FormEvent } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useLanguage } from '../i18n';
 import type { SuccessStatus } from '../hooks/useAnalyze';
 
@@ -14,6 +15,13 @@ interface UrlInputProps {
 export function UrlInput({ onSubmit, loading, error, successStatus, hero = false }: UrlInputProps) {
   const [url, setUrl] = useState('');
   const { t } = useLanguage();
+  const { hash } = useLocation();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // «Incolla un link» of the top bar opens the Inbox with #paste: the field is ready to be typed in
+  useEffect(() => {
+    if (hash === '#paste') inputRef.current?.focus();
+  }, [hash]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -43,6 +51,7 @@ export function UrlInput({ onSubmit, loading, error, successStatus, hero = false
       )}
       <div className={`input-wrapper${hero ? ' input-wrapper--hero' : ''}`}>
         <input
+          ref={inputRef}
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}

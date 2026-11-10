@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PostLinks } from '../components/PostLinks';
 import { Link } from 'react-router-dom';
-import { Header } from '../components/Header';
 import { FilterPanel } from '../components/FilterPanel';
 import type { FilterSection } from '../components/FilterPanel';
 import { fetchNotes } from '../services/api';
@@ -180,7 +179,6 @@ export function NotesPage() {
 
   return (
     <div className="list-page">
-      <Header />
       <div className="list-page-content">
         <div className="list-page-header">
           <Link to="/" className="list-page-back">{t.back}</Link>

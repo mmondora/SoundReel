@@ -601,3 +601,11 @@ CREATE TABLE IF NOT EXISTS auto_playlist_themes (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (owner_user, theme_key)
 );
+
+-- The configuration of the site, one small document per user (ADR-0026): the view of each page, the sections of the Home, the place of the
+-- Player. `user_id` is the Authelia user (`Remote-User`); `prefs` keeps only what the user chose, the server fills in the defaults.
+CREATE TABLE IF NOT EXISTS user_prefs (
+  user_id TEXT PRIMARY KEY,
+  prefs JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
