@@ -47,6 +47,18 @@ Lette così (letture mie, da correggere):
 
 **Domanda ancora aperta (mia):** la configurazione (vista di ogni pagina, sezioni della Home, posto del Player) si ricorda **per browser** o **per utente, su tutti i dispositivi**? Consiglio per utente sul server (una famiglia con più dispositivi: stesso aspetto ovunque; una tabella e una rotta).
 
+### 3.3 La risposta di Michele alla domanda aperta (10 novembre, testuale)
+
+> «si, configurazione per utente - di default vista A»
+
+Letta così:
+
+- **L4. La configurazione è dell'utente e sta sul server** (l'utente di Authelia: Michele, Sara, Archimede): lo stesso aspetto su PC, telefono e tablet. Che cosa si ricorda: la **vista di ogni pagina** (Home · Studio · Bacheca), **quali sezioni ha la Home e in che ordine**, **dove sta il Player** (in basso, fluttuante con la sua posizione, a destra, nascosto). Il server **decide i valori di partenza** (regola P: i client mostrano, non decidono) e **valida** quello che riceve. ADR-0026.
+- **L5. Di default la vista è la A (Studio) su ogni pagina**: elenco a sinistra e dettaglio a destra. La Home a sezioni e la Bacheca sono scelte dell'utente, non il punto di partenza. Il Player parte in basso.
+- **L6. I valori di stile sono uno solo per sito e app** (ADR-0025): `frontend/src/styles/tokens.css` con gli stessi numeri di `MondropKit/MondropPalette.swift` e un test che li confronta.
+
+**Fasi** (piano `docs/superpowers/plans/2026-11-10-web-look-and-feel.md`; ognuna con i suoi test e il suo deploy, **solo con l'OK di Michele**): **P1** valori di stile e telaio (barra in alto, menu a sinistra, Player in basso) con tutte le pagine dentro il telaio; **P2** la configurazione per utente sul server (tabella, rotte, convalida); **P3** le viste (Studio di partenza, Bacheca, Home a sezioni con la sua rotta del server) e l'interruttore; **P4** «Personalizza» e il Player spostabile.
+
 ## 4. Domande aperte per Michele (per quando si comincia)
 
 - Quali pagine contano di più per lui, oggi? (l'ordine d'uso decide dove lavorare per prima.)

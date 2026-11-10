@@ -26,3 +26,5 @@
 | 0022 | The server discovers the collections of the library by itself, names and keeps them; the clients only draw them | Accepted (Michele's choices of 10 November; built in phases after ADR-0023, nothing built yet) | 2026-11-09 |
 | 0023 | The server builds playlists from the posts that talk about music (one per specific title, one rolling playlist per generic theme); the list of playlists is searched, filtered, sorted and paged by the server | Accepted (2.20.0 in production; Mondrop build 12 on TestFlight) | 2026-11-10 |
 | 0024 | An automatic playlist has at least two songs, and a theme that names a genre is a rule on the genre, not a list of songs | Accepted (2.20.2 in production; the 56 playlists already made repaired) | 2026-11-10 |
+| 0025 | The site and Mondrop share one set of design tokens, and a test keeps them aligned | Accepted (built in P1 of the look and feel; nothing deployed) | 2026-11-10 |
+| 0026 | The configuration of the site belongs to the user and lives on the server | Accepted (built in P2 of the look and feel; nothing deployed) | 2026-11-10 |
