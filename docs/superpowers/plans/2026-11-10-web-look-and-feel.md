@@ -115,4 +115,4 @@
 ### Task 11: The Player docks — **done 10 Nov (2.23.0)** (bottom, floating pill with grip + keyboard, right panel with the queue, hidden = a line in the menu; none on `/player`; bar on a phone for the pill and the panel)
 - `PlayerBar` variants: bottom (done), side panel (cover, queue), floating pill dragged by its grip (pointer events, keyboard arrows move it, clamped to the window, saves `float` on release), hidden (one line in the rail). Tests: each dock renders in its place, drag saves a position within 0..1, the keyboard moves it, a window resize keeps it on screen.
 
-### Task 12: Release P4 (2.23.0) — as Task 4. Built and tested 10 Nov; goes to production only with Michele's OK.
+### Task 12: Release P4 (2.23.0) — as Task 4. **Done 10 Nov, 15:55** (Michele's OK; rollback image `soundreel:2.22.0-rollback`; 260 read-only checks).
