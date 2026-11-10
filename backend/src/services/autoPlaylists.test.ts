@@ -7,6 +7,7 @@ import {
   allSongs,
   contentSongs,
   findTheme,
+  makeGenrePlaylist,
   processEntry,
   songsFor,
   talksAboutMusic,
@@ -718,5 +719,60 @@ describe('a theme that names a genre is a RULE on the genre, not a list of songs
     genreCount = 5;
     await run(entry([song('A', 'x', 'audio_fingerprint')], { ownerUser: 'sara' }));
     expect(genreAsked).toEqual([['sara', ['R&B/Soul']]]);
+  });
+});
+
+describe('makeGenrePlaylist: the ONE place where the playlist of a genre is made (a post of the theme and the daily sweep both come here)', () => {
+  const at = new Date('2026-11-05T10:00:00.000Z');
+  const input = { owner: 'mike', title: 'Soul da ascoltare', genres: ['R&B/Soul'], key: 'genre:R&B/Soul', sourceEntryId: 'e1' as string | null, createdAt: at };
+
+  it('makes the DYNAMIC playlist: the rule of the genre, the key of the genre, no songs, the date and the source it was given, registered as a theme', async () => {
+    const made = await makeGenrePlaylist(store, input);
+    expect(made).toEqual({ id: expect.any(String), created: true, closed: [] });
+    expect(store.playlists.get(made.id)).toMatchObject({
+      owner: 'mike', name: 'Soul da ascoltare', kind: 'theme', themeKey: 'genre:R&B/Soul', sourceEntryId: 'e1', createdAt: at, rule: genreRule(['R&B/Soul']), songs: [],
+    });
+    expect(await store.listThemes('mike')).toEqual([{ themeKey: 'genre:R&B/Soul', title: 'Soul da ascoltare', playlistId: made.id }]);
+  });
+
+  it('with no post (the sweep) there is no source: it is null, and everything else is the same', async () => {
+    const made = await makeGenrePlaylist(store, { ...input, sourceEntryId: null });
+    expect(store.playlists.get(made.id)).toMatchObject({ sourceEntryId: null, rule: genreRule(['R&B/Soul']), themeKey: 'genre:R&B/Soul' });
+  });
+
+  it('the posts that WAITED for the theme are done with the new playlist, in the name of the owner; the post named as «except» is left to the caller', async () => {
+    await store.saveRun('w1', 'mike', { status: 'waiting', playlistId: null, reason: 'needs_two_songs', themeKey: 'genre:R&B/Soul' });
+    await store.saveRun('w2', 'mike', { status: 'waiting', playlistId: null, reason: 'needs_two_songs', themeKey: 'genre:R&B/Soul' });
+    await store.saveRun('w3', 'sara', { status: 'waiting', playlistId: null, reason: 'needs_two_songs', themeKey: 'genre:R&B/Soul' });
+    await store.saveRun('w4', 'mike', { status: 'waiting', playlistId: null, reason: 'needs_two_songs', themeKey: 'genre:Folk' });
+    const made = await makeGenrePlaylist(store, { ...input, exceptEntryId: 'w2' });
+    expect(made.closed).toEqual(['w1']);
+    expect(await store.getRun('w1', 'mike')).toEqual({ status: 'done', playlistId: made.id, reason: null });
+    expect(await store.getRun('w2', 'mike')).toMatchObject({ status: 'waiting' });
+    expect(await store.getRun('w3', 'sara')).toMatchObject({ status: 'waiting' });
+    expect(await store.getRun('w4', 'mike')).toMatchObject({ status: 'waiting', themeKey: 'genre:Folk' });
+  });
+
+  it('asked twice it is ONE playlist: the second gets the first back and says it was already there', async () => {
+    const first = await makeGenrePlaylist(store, input);
+    const again = await makeGenrePlaylist(store, { ...input, sourceEntryId: null });
+    expect(again).toMatchObject({ id: first.id, created: false });
+    expect(store.playlists.size).toBe(1);
+  });
+
+  it('closes only the waiting posts of ITS owner, even when another owner waits for the same genre', async () => {
+    await store.saveRun('m1', 'mike', { status: 'waiting', playlistId: null, reason: 'needs_two_songs', themeKey: 'genre:R&B/Soul' });
+    await store.saveRun('s1', 'sara', { status: 'waiting', playlistId: null, reason: 'needs_two_songs', themeKey: 'genre:R&B/Soul' });
+    const made = await makeGenrePlaylist(store, { ...input, owner: 'sara' });
+    expect(made.closed).toEqual(['s1']);
+    expect(await store.getRun('s1', 'sara')).toEqual({ status: 'done', playlistId: made.id, reason: null });
+    expect(await store.getRun('m1', 'mike')).toMatchObject({ status: 'waiting' });
+  });
+
+  it('each owner has his own', async () => {
+    const a = await makeGenrePlaylist(store, input);
+    const b = await makeGenrePlaylist(store, { ...input, owner: 'sara' });
+    expect(b.created).toBe(true);
+    expect(b.id).not.toBe(a.id);
   });
 });

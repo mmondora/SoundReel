@@ -37,6 +37,7 @@ import { registerUiPrefsRoutes } from './routes/uiPrefs';
 import { registerWebHomeRoute } from './routes/webHome';
 import { registerMondropConnectRoutes } from './routes/mondropConnect';
 import { requeueStuckJobs } from './utils/jobQueue';
+import { startGenrePlaylistSweep } from './services/genrePlaylistSweepWiring';
 import { startJobQueueWorker } from './services/jobQueueWorker';
 import { startSpootyWatcher } from './services/spootyWatcher';
 import { startSongDownloader } from './services/songDownloader';
@@ -169,6 +170,11 @@ async function bootstrap(): Promise<void> {
   // The Mondrop inbox housekeeping: information expires after 3 days, errors never do (ADR-0015).
   const stopInboxSweeper = startInboxSweeper();
 
+  // The playlists of a genre that has the songs and no playlist yet (Latina, Techno…): once a day, the same dynamic playlist a post of the theme would
+  // have made; one the user deleted is never made again (ADR-0024). AUTO_PLAYLISTS=0 switches it off with the rest of the automatic playlists.
+  const stopGenrePlaylistSweep = startGenrePlaylistSweep();
+  app.log.info('Genre playlist sweep started (first run in about 2 minutes, then every 24 hours)');
+
   // Startup cleanup + daily schedule (orphan + retention purge)
   const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
   const kickCleanup = async (): Promise<void> => {
@@ -192,6 +198,7 @@ async function bootstrap(): Promise<void> {
       stopMusicFoldersSync();
       stopReleaseYearBackfill();
       stopInboxSweeper();
+      stopGenrePlaylistSweep();
       stopUsageCounters();
       await app.close();
       await pool.end();

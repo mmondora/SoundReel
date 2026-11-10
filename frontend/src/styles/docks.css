@@ -1,0 +1,561 @@
+/*
+ * Where the Player is, and the panel where the user chooses it (look and feel P4, spec 2026-11-10-web-look-and-feel-rethink-design.md L3 and L4):
+ * at the bottom (shell.css), a floating pill, a panel on the right, or hidden (a line in the menu); and «Personalizza». Colours and forms only from
+ * the tokens (tokens.css = Mondrop, ADR-0025): never write a hex here.
+ */
+
+/* ---------- the grid for each place ---------- */
+/* without a bar there is no bottom row: the page takes the room */
+.shell--dock-float,
+.shell--dock-hidden {
+  grid-template-rows: 64px minmax(0, 1fr);
+}
+
+/* the panel on the right is a third column, from under the top bar to the bottom */
+.shell--dock-side {
+  grid-template-columns: 232px minmax(0, 1fr) 340px;
+  grid-template-rows: 64px minmax(0, 1fr);
+}
+
+.shell--dock-side .shell-side {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+/* the menu keeps only its icons: the panel keeps its room */
+@media (max-width: 1180px) {
+  .shell--dock-side {
+    grid-template-columns: 76px minmax(0, 1fr) 300px;
+  }
+}
+
+/* ---------- the panel on the right ---------- */
+.shell-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+/* the bar lets its pieces grow along a row; in a column each keeps its own height */
+.shell-side > * {
+  flex: none;
+}
+
+.shell-side .shell-np {
+  flex-direction: column;
+  align-items: stretch;
+  width: auto;
+  gap: 12px;
+}
+
+.shell-side .shell-art {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: var(--radius);
+}
+
+.shell-side .shell-np-title {
+  font-size: 1.1rem;
+  white-space: normal;
+}
+
+.shell-side .shell-np-sub {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+
+.shell-side .shell-ctl {
+  justify-content: center;
+}
+
+.shell-side .shell-right {
+  justify-content: space-between;
+}
+
+.shell-side-title {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.shell-side-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shell-side-song {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shell-side-song:hover {
+  background: var(--bg-hover);
+}
+
+.shell-side-song[aria-current='true'] {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.shell-side-song-title,
+.shell-side-song-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-side-song-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.shell-side-song-artist {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.shell-side-empty,
+.shell-side-more {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* ---------- the floating pill ---------- */
+.shell-float {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 380px;
+  max-width: calc(100vw - 24px);
+  padding: 8px 10px 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--mp-system-bg-2) 94%, transparent);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(14px);
+}
+
+.shell-float .shell-np {
+  flex: 1;
+  width: auto;
+  gap: 10px;
+}
+
+.shell-float .shell-art {
+  width: 40px;
+  height: 40px;
+}
+
+.shell-float .shell-ib {
+  width: 36px;
+  height: 36px;
+}
+
+.shell-float .shell-play {
+  width: 40px;
+  height: 40px;
+}
+
+.shell-float-grip {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.shell-float-grip:hover {
+  color: var(--text-primary);
+}
+
+.shell-float-grip:active {
+  cursor: grabbing;
+}
+
+.shell-float-grip .shell-ic {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  stroke: none;
+}
+
+/* ---------- the Player hidden: one line in the menu ---------- */
+/* (on a phone the menu is a row at the top, shell.css: the line is one more item of it) */
+@media (min-width: 761px) {
+  .shell--dock-hidden .shell-rail {
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+.shell-rail-player {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+}
+
+.shell-rail-player .shell-art {
+  width: 36px;
+  height: 36px;
+}
+
+.shell-rail-player .shell-np-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.shell-rail-player-btns {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-basis: 100%;
+}
+
+.shell-rail-player-btns .shell-ib {
+  width: 34px;
+  height: 34px;
+}
+
+.shell-rail-player-btns .shell-play {
+  width: 36px;
+  height: 36px;
+}
+
+@media (max-width: 1180px) {
+  .shell-rail-player {
+    justify-content: center;
+    padding: 8px 4px;
+  }
+
+  .shell-rail-player .shell-np-text {
+    display: none;
+  }
+
+  .shell-rail-player-btns {
+    flex-direction: column;
+  }
+}
+
+/* the phone: the menu is a row at the top, the line is one more item of it */
+@media (max-width: 760px) {
+  .shell-rail-player {
+    flex: none;
+    flex-wrap: nowrap;
+    margin-top: 0;
+    margin-left: 8px;
+  }
+
+  .shell-rail-player .shell-np-text {
+    display: flex;
+    max-width: 140px;
+  }
+
+  .shell-rail-player-btns {
+    flex-basis: auto;
+    flex-direction: row;
+  }
+}
+
+/* ---------- «Personalizza» ---------- */
+.personalize-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  background: color-mix(in srgb, var(--mp-system-bg) 62%, transparent);
+}
+
+.personalize {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: min(430px, 100%);
+  height: 100%;
+  padding: 1.25rem 1.4rem 1.75rem;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-lg);
+  outline: none;
+}
+
+.personalize-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.personalize-head h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.personalize-close {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text-primary);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.personalize-close:hover {
+  background: var(--bg-hover);
+}
+
+.personalize-section h3 {
+  margin: 0 0 0.6rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.personalize-hint {
+  margin: 0 0 0.6rem;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.personalize-sections,
+.personalize-views {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0 0 0.6rem;
+  padding: 0;
+  list-style: none;
+}
+
+.personalize-row,
+.personalize-views li {
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+
+/* the name and its switch on the left, the arrows on the right; a hint («coming») goes under the name, however narrow the window */
+.personalize-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 0.65rem;
+  align-items: center;
+}
+
+.personalize-row-name {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.personalize-soon {
+  grid-column: 1;
+  grid-row: 2;
+  padding-left: calc(38px + 0.65rem);
+}
+
+.personalize-arrows {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.personalize-views li {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.personalize-views li {
+  justify-content: space-between;
+  font-size: 0.9rem;
+}
+
+.personalize-views b {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.personalize-row-name {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+/* the switch: a checkbox drawn as a pill that slides */
+.personalize-row-name input[role='switch'] {
+  position: relative;
+  appearance: none;
+  flex: none;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  border-radius: var(--mp-radius-pill);
+  background: var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.personalize-row-name input[role='switch']::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  transition: transform 0.15s;
+}
+
+.personalize-row-name input[role='switch']:checked {
+  background: var(--accent);
+}
+
+.personalize-row-name input[role='switch']:checked::after {
+  background: var(--on-accent);
+  transform: translateX(16px);
+}
+
+.personalize-row-name input[role='switch']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.personalize-soon {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.personalize-arrows {
+  display: flex;
+  gap: 4px;
+}
+
+.personalize-arrows button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.personalize-arrows button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.personalize-arrows button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.personalize-locked {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.personalize-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.personalize-footer p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.personalize-footer button,
+.personalize-ask button {
+  padding: 0.5rem 1.1rem;
+  border: 0;
+  border-radius: var(--mp-radius-pill);
+  background: var(--border);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.personalize-footer button:hover,
+.personalize-ask button:hover {
+  background: var(--bg-hover);
+}
+
+.personalize-ask {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.personalize-footer .personalize-danger {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.personalize .save-error {
+  margin: 0;
+}

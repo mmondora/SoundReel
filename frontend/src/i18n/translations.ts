@@ -43,6 +43,38 @@ export interface Translations {
   homeSeeAll: string;
   homeLoadError: string;
   homeEmpty: string;
+  // «Personalizza»: the panel where the user chooses where the Player is and which sections the Home has, and in what order (look and feel P4)
+  personalizeOpen: string;
+  personalizeTitle: string;
+  personalizePlayer: string;
+  personalizePlayerWhere: string;
+  playerDockBottom: string;
+  playerDockFloat: string;
+  playerDockSide: string;
+  playerDockHidden: string;
+  personalizeHome: string;
+  personalizeHomeHint: string;
+  personalizeSoon: string;
+  /** «Sposta «{name}» più in alto» (the arrow of a Home section). */
+  personalizeMoveUp: string;
+  personalizeMoveDown: string;
+  personalizeViews: string;
+  personalizeViewsHint: string;
+  personalizePageLinks: string;
+  personalizeColours: string;
+  personalizeColoursLocked: string;
+  personalizeReset: string;
+  personalizeResetAsk: string;
+  personalizeResetYes: string;
+  personalizeResetNo: string;
+  personalizeUnavailable: string;
+  // the places of the Player (look and feel P4)
+  floatMove: string;
+  sideQueue: string;
+  sideQueueEmpty: string;
+  /** «+{count} in coda» under the part of the queue that is shown. */
+  sideQueueMore: string;
+  dockShowBar: string;
   shellPlay: string;
   shellPause: string;
   shellNext: string;
@@ -898,6 +930,34 @@ export const translations: Record<Language, Translations> = {
     homeSeeAll: 'Vedi tutto ({count})',
     homeLoadError: 'Non riesco a caricare la Home.',
     homeEmpty: 'Niente da mostrare qui: incolla un link per cominciare.',
+    personalizeOpen: 'Personalizza',
+    personalizeTitle: 'Personalizza il sito',
+    personalizePlayer: 'Il Player',
+    personalizePlayerWhere: 'Dove sta il Player',
+    playerDockBottom: 'In basso',
+    playerDockFloat: 'Fluttuante',
+    playerDockSide: 'A destra',
+    playerDockHidden: 'Nascosto',
+    personalizeHome: 'La Home',
+    personalizeHomeHint: 'Quali sezioni vedi e in che ordine.',
+    personalizeSoon: 'arriva con le raccolte',
+    personalizeMoveUp: 'Sposta «{name}» più in alto',
+    personalizeMoveDown: 'Sposta «{name}» più in basso',
+    personalizeViews: 'Le viste',
+    personalizeViewsHint: 'Ogni pagina ricorda la sua vista: si cambia con l\'interruttore in testa alla pagina.',
+    personalizePageLinks: 'Link',
+    personalizeColours: 'I colori',
+    personalizeColoursLocked: 'Giallo e nero, come Mondrop: uguali per tutti e per tutte le pagine, non si cambiano.',
+    personalizeReset: 'Torna ai valori di partenza',
+    personalizeResetAsk: 'Le tue scelte (viste, sezioni della Home, Player) si cancellano.',
+    personalizeResetYes: 'Sì, cancella',
+    personalizeResetNo: 'No',
+    personalizeUnavailable: 'Non riesco a raggiungere la configurazione: riprova tra poco.',
+    floatMove: 'Sposta il Player: trascinalo o usa le frecce (Maiusc per fare di più)',
+    sideQueue: 'In coda',
+    sideQueueEmpty: 'La coda è vuota.',
+    sideQueueMore: '+{count} in coda',
+    dockShowBar: 'Mostra la barra del Player',
     shellPlay: 'Riproduci',
     shellPause: 'Pausa',
     shellNext: 'Brano successivo',
@@ -1767,6 +1827,34 @@ export const translations: Record<Language, Translations> = {
     homeSeeAll: 'See all ({count})',
     homeLoadError: 'Could not load the Home.',
     homeEmpty: 'Nothing to show here: paste a link to start.',
+    personalizeOpen: 'Customize',
+    personalizeTitle: 'Customize the site',
+    personalizePlayer: 'The Player',
+    personalizePlayerWhere: 'Where the Player is',
+    playerDockBottom: 'Bottom',
+    playerDockFloat: 'Floating',
+    playerDockSide: 'Right side',
+    playerDockHidden: 'Hidden',
+    personalizeHome: 'The Home',
+    personalizeHomeHint: 'Which sections you see and in what order.',
+    personalizeSoon: 'comes with the collections',
+    personalizeMoveUp: 'Move «{name}» up',
+    personalizeMoveDown: 'Move «{name}» down',
+    personalizeViews: 'The views',
+    personalizeViewsHint: 'Every page remembers its view: change it with the switch at the top of the page.',
+    personalizePageLinks: 'Links',
+    personalizeColours: 'The colours',
+    personalizeColoursLocked: 'Yellow and black, like Mondrop: the same for everyone and every page, they do not change.',
+    personalizeReset: 'Back to the starting values',
+    personalizeResetAsk: 'Your choices (views, Home sections, Player) are erased.',
+    personalizeResetYes: 'Yes, erase',
+    personalizeResetNo: 'No',
+    personalizeUnavailable: 'Could not reach the configuration: try again in a moment.',
+    floatMove: 'Move the Player: drag it or use the arrow keys (Shift for more)',
+    sideQueue: 'Up next',
+    sideQueueEmpty: 'The queue is empty.',
+    sideQueueMore: '+{count} up next',
+    dockShowBar: 'Show the Player bar',
     shellPlay: 'Play',
     shellPause: 'Pause',
     shellNext: 'Next song',

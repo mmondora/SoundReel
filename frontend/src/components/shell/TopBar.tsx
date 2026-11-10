@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../../i18n';
 import { fetchMe } from '../../services/api';
 import type { MeResponse } from '../../types';
+import { PersonalizePanel } from './PersonalizePanel';
 
 const APP_VERSION = __APP_VERSION__;
 const GIT_REVISION = __GIT_REVISION__;
@@ -14,7 +15,9 @@ export function TopBar() {
   const q = searchParams.get('q') ?? '';
   const [me, setMe] = useState<MeResponse | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [personalizeOpen, setPersonalizeOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +104,7 @@ export function TopBar() {
           </span>
         )}
         <button
+          ref={moreRef}
           type="button"
           className={`shell-more-btn${menuOpen ? ' open' : ''}`}
           aria-label={t.shellMore}
@@ -112,6 +116,9 @@ export function TopBar() {
         </button>
         {menuOpen && (
           <div className="shell-more-menu" role="menu">
+            <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setPersonalizeOpen(true); }}>
+              {t.personalizeOpen}
+            </button>
             {items.map((item) => (
               <Link key={item.to} to={item.to} role="menuitem" onClick={() => setMenuOpen(false)}>
                 {item.label}
@@ -120,6 +127,15 @@ export function TopBar() {
           </div>
         )}
       </div>
+
+      {personalizeOpen && (
+        <PersonalizePanel
+          onClose={() => {
+            setPersonalizeOpen(false);
+            moreRef.current?.focus();   // the menu item that opened it is gone: the focus goes back to the «⋯» button
+          }}
+        />
+      )}
     </header>
   );
 }

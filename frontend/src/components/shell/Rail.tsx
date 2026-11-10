@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLanguage } from '../../i18n';
 import type { JournalStats } from '../../types';
+import { RailPlayerLine } from './RailPlayerLine';
 
 /** 943 → «943», 1721 → «1,7k», 6143 → «6,1k»: the way the old header wrote the counts. */
 export function formatCount(n: number | undefined | null): string {
@@ -25,10 +26,12 @@ const ICONS: Record<string, ReactNode> = {
 
 interface RailProps {
   stats: JournalStats | null;
+  /** The Player is hidden: its line goes at the bottom of the menu (look and feel P4). */
+  hiddenPlayer?: boolean;
 }
 
 /** The left menu of the shell: the sections of the site, in two groups, the current one marked. */
-export function Rail({ stats }: RailProps) {
+export function Rail({ stats, hiddenPlayer = false }: RailProps) {
   const { t } = useLanguage();
 
   const archive = [
@@ -67,6 +70,7 @@ export function Rail({ stats }: RailProps) {
     <nav className="shell-rail" aria-label={t.shellNavLabel}>
       {group(t.shellGroupArchive, archive)}
       {group(t.shellGroupListen, listen)}
+      {hiddenPlayer && <RailPlayerLine />}
     </nav>
   );
 }

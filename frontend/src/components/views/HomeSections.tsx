@@ -1,10 +1,10 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { interpolate, useLanguage } from '../../i18n';
-import type { Translations } from '../../i18n/translations';
 import { useUiPrefs } from '../../hooks/useUiPrefs';
 import { useWebHome } from '../../hooks/useWebHome';
 import { orderHomeSections } from '../../utils/homeSections';
+import { HOME_SECTION_TITLE } from '../../utils/homeSectionTitles';
 import type { HomeSectionId, WebHomeFilm, WebHomePlaylist, WebHomeSection, WebHomeSong } from '../../types';
 import { Wall } from './Wall';
 import { postFromSummary } from './postCard';
@@ -12,17 +12,6 @@ import { postFromSummary } from './postCard';
 // The Home view (look and feel P3, board C of the mockups): the sections the server prepared, in the order and with the switches the user
 // chose. The page computes nothing (rule P): the server decides what is in a section and in which order its items are; this draws them, links
 // them to their pages, and skips what it does not know.
-
-/** The keys of the translations that are one text (some are lists). */
-type TextKey = { [K in keyof Translations]: Translations[K] extends string ? K : never }[keyof Translations];
-
-const TITLE: Record<HomeSectionId, TextKey> = {
-  resume: 'homeSectionResume',
-  songs: 'homeSectionSongs',
-  playlists: 'homeSectionPlaylists',
-  collections: 'homeSectionCollections',
-  films: 'homeSectionFilms',
-};
 
 /** Where «see all» goes. */
 const SEE_ALL: Record<HomeSectionId, string> = {
@@ -88,7 +77,7 @@ interface HomeSectionProps {
 
 function HomeSection({ section, selectedId, onOpenEntry }: HomeSectionProps) {
   const { t } = useLanguage();
-  const title = t[TITLE[section.id]];
+  const title = t[HOME_SECTION_TITLE[section.id]];
   const headingId = `home-section-${section.id}`;
   let body: ReactNode;
   switch (section.id) {

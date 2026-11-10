@@ -3,6 +3,8 @@
 ## Status
 **Accepted** (10 November 2026): Michele's three corrections after the first application of the automatic playlists (ADR-0023, SoundReel 2.20.1), designed with defaults he can correct (spec §5, P15–P18). **Built and tested** as SoundReel 2.20.2 and **in production since 10 November, 08:24** (his OK: «Sì, deploy e ripara»); the 56 playlists already made were **repaired at 08:27**: 15 became rules, 3 were taken apart, 38 stayed (53 automatic playlists now, none with fewer than two songs).
 
+**Amended 10 November (evening): decision 9, the daily sweep of the genre playlists** (Michele: «Sì, controllo giornaliero (Recommended)», spec §3.A.14, P19).
+
 ## Date
 2026-11-10
 
@@ -13,6 +15,7 @@ Michele Mondora
 - spec `2026-11-10-auto-playlists-and-playlist-list-design.md` (§1.2, §3.A.11–13, P15–P18)
 - ADR-0023 (the automatic playlists: **amended** by this one), ADR-0008 (dynamic playlists are rules evaluated at read time: the playlist of a genre is one), ADR-0018 (rule P: the server decides; the clients draw), ADR-0022 (the collections, still to be built: the genres are the first thing they will group by)
 - `services/autoPlaylists.ts`, `services/genreThemes.ts`, `services/dynamicRules.ts` (the order `newest`), `scripts/repairAutoPlaylists.ts`, migration `022_auto_playlist_waiting.sql`
+- `services/genrePlaylistSweep.ts` (the daily sweep: pure rules + schedule), `services/genrePlaylistSweepWiring.ts`, `scripts/ensureGenrePlaylists.ts`, `makeGenrePlaylist` in `services/autoPlaylists.ts`
 
 ---
 
@@ -35,6 +38,8 @@ Measured on the real library: five of the 56 playlists had **one** song (themes 
 7. **The playlists already made are repaired by a script** (`repairAutoPlaylists.js`): **preview by default**, `--apply` only with Michele's OK, one transaction per playlist, the hand-made ones never touched. Genre themes with two tagged songs **become dynamic** (same playlist, same name; the songs of the posts are removed); doubles are **merged**; what has fewer than two songs is **taken apart**, **together with its theme in the registry** (a theme left without a playlist reads as «deleted by the user» and would never be made again), and its posts wait.
 8. **The web Songs page** (the second correction) is a UI rule, in the spec (§4): the list of playlists is one closed row «Playlist (N)», scrolls inside a bounded box when open, two lines per row.
 
+9. **A daily sweep makes the playlist of a genre that has the songs and no playlist** (10 November, after Michele answered «Sì, controllo giornaliero (Recommended)» to «Le playlist di genere Latina (8 brani), Techno (4), Blues (4) e Metal (2) non esistono ancora, perché nessun post con quel tema è passato. Un controllo una volta al giorno le fa nascere subito, senza aspettare il post. Lo faccio?»). Once a day (first run about two minutes after the boot, then every 24 hours; `AUTO_PLAYLISTS=0` switches it off with the rest) and for every user who has entries, each of the 21 genre themes (one per set of genres) that has at least two songs in the library (**the same `countGenreSongs` as the engine**) and no playlist gets **the same dynamic playlist a post of the theme would have made**: one function, `makeGenrePlaylist`, makes it for the post and for the sweep, so they cannot differ (`kind = 'dynamic'`, the rule of the genre, `theme_key = genre:…`, a row in `auto_playlist_themes`, the posts that waited are closed). The playlist has **no source post** (`source_entry_id` is `NULL`; the unique index per post only covers `one_off` playlists) and is dated at the sweep. Its title is the word of the theme and « da ascoltare» (the first word of the registry for a set of two: «Hip hop», «R&B»): **no model, no external call**. A playlist that is there, renamed or not, and one made by hand are never touched; **a theme the user deleted (a theme row with no playlist) is never made again**; one song waits for the second. Two runs, or a run and a post, make one playlist: the unique index `uq_playlists_theme` decides and whoever finds it there says «already there» (a `23505` counts as that too). One theme or one user failing never stops the others. The owner gets one `auto_playlist` message in the Posta per playlist born, with no post to open (like the backfill message). A script, `ensureGenrePlaylists.js`, does the same by hand (**preview by default**, `--apply` only with Michele's OK).
+
 ## 3. Alternatives considered
 | Option | Why not |
 |---|---|
@@ -45,16 +50,21 @@ Measured on the real library: five of the 56 playlists had **one** song (themes 
 | A new kind of playlist for the genres | The dynamic playlists already exist on the web and on Mondrop; one rule order is enough |
 | Use the hashtags of the post as the tag | Michele said «deve avere il tag soul la canzone»: the song's own genre (the one the filters of the Songs page show); a hashtag belongs to the post, not to the song. Open question P17 |
 | Decide the genre of a theme with the model | The metadata already says it; the model would make every playlist of a genre a sample again |
+| Run the sweep inside the engine's one-at-a-time chain | It would hold the analyses of new posts for the length of the sweep; the unique index already makes the two safe together |
+| One message for all the playlists a sweep makes | The engine says one message per born playlist and Michele asked for «the same way»; four messages on the first day (3 days of life each) is not noise |
+| Skip a genre when the user has a hand-made playlist with the same name | Would need the playlist names in the sweep's dependencies for a case nobody has today (none of the 59 playlists has one of the four names); a renamed automatic playlist is already covered by the theme key |
 
 ## 4. Consequences
 - ✅ «Soul da ascoltare» is **every** soul song of the library (39, growing with every new tagged song, newest first) and is never wrong about its own name.
 - ✅ No automatic playlist with fewer than two songs, ever (an invariant test runs mixes of posts through the engine).
 - ✅ Additive: one column and one index, one new rule order; the installed apps keep working.
 - ⚠️ A song enters a genre playlist **only when the metadata knows its genre** (the iTunes enrichment arrives after the analysis; 71 of the 816 songs with metadata have no genre): the song of a post may not be in the playlist its post created.
-- ⚠️ The playlist of a genre is born **at the next post** of the theme once the library has two tagged songs (there is no periodic check yet).
+- ✅ The playlist of a genre is born **at the next daily sweep** once the library has two tagged songs (decision 9), without waiting for a post: the first run on the real library makes Latina (8), Techno (4), Blues (4) and Metal (2); Punk (1) and Reggae (1) wait for their second song.
+- ⚠️ A playlist the sweep makes has **no source post**, so `buildAutoPlaylists --undo-since` does not take it; the user deletes it like any playlist (and it is not made again), or the theme row is removed to let it be born again.
+- ⚠️ The sweep does not look at the **names** of the user's playlists: a hand-made «Blues da ascoltare» gets an automatic twin.
 - ⚠️ «Colonne sonore da ascoltare» passes from 70 songs (chosen by the posts) to 42 (the ones that carry the genre): that is the rule, and it is visible in the preview of the repair.
 - ⚠️ A dynamic playlist cannot be edited by hand (add, remove, reorder answer `409`, ADR-0008): the user who wants a different content changes the rule or makes a playlist of his own.
 
 ## 5. Open questions
 - **P17:** is the «tag» the genre of the song (as built) or the hashtags of the post?
-- Should the playlists of a genre also appear for genres with no post at all (every genre with at least N songs), the way Spotify makes its genre mixes? That is the collections (ADR-0022), not this.
+- ~~Should the playlists of a genre also appear for genres with no post at all?~~ **Answered for the 21 genres of the closed list** by decision 9 (the daily sweep). A playlist for **every** genre of the metadata, the way Spotify makes its genre mixes, is still the collections (ADR-0022), not this.

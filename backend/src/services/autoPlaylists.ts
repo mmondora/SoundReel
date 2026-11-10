@@ -52,7 +52,8 @@ export interface NewAutoPlaylist {
   name: string;
   kind: PlaylistKind;
   themeKey: string | null;
-  sourceEntryId: string;
+  /** The post that made it; null for a playlist of a genre made by the daily sweep (no post is involved). */
+  sourceEntryId: string | null;
   createdAt: Date;
   /** Set for the playlist of a GENRE: it is DYNAMIC (this rule, evaluated at read time) and has no songs of its own. */
   rule?: DynamicRule;
@@ -79,7 +80,8 @@ export interface AutoPlaylistDeps {
   /** The title and the kind, from the local model; null when there is no good one. */
   title(source: TitleSource): Promise<TitlePlan | null>;
   language(): Promise<'it' | 'en'>;
-  announce(item: { userId: string; title: string; body: string; entryId: string }): Promise<void>;
+  /** `entryId` is the post that made the playlist; null for one the daily sweep made (the message is in the Posta without a post, like the one of the backfill). */
+  announce(item: { userId: string; title: string; body: string; entryId: string | null }): Promise<void>;
 }
 
 export type AutoOutcome =
@@ -203,17 +205,31 @@ async function closeWaiting(b: Birth, waitingIds: string[], playlistId: string):
 }
 
 /**
- * The playlist of a GENRE («Soul da ascoltare»): a RULE, with no songs of its own, born when the library has two songs that carry the tag.
+ * The playlist of a GENRE is made: DYNAMIC (the rule of the genre, no songs of its own), ONE per owner and set of genres (`theme_key`), registered as a
+ * theme so that a deletion by the user is remembered, and the posts that waited for it are done now. The ONE place where it is made: a post of the
+ * theme (`bornFromGenre`) and the daily sweep (`ensureGenrePlaylists`, ADR-0024) both come here, so they cannot differ.
+ * `sourceEntryId` is the post that made it, null for the sweep; `exceptEntryId` is a waiting post that the caller closes itself.
+ */
+export async function makeGenrePlaylist(
+  store: Pick<AutoPlaylistStore, 'createPlaylist' | 'listWaiting' | 'saveRun'>,
+  input: { owner: string; title: string; genres: string[]; key: string; sourceEntryId: string | null; createdAt: Date; exceptEntryId?: string },
+): Promise<{ id: string; created: boolean; closed: string[] }> {
+  const made = await store.createPlaylist({
+    owner: input.owner, name: input.title, kind: 'theme', themeKey: input.key, sourceEntryId: input.sourceEntryId, createdAt: input.createdAt, rule: genreRule(input.genres),
+  });
+  const closed = (await store.listWaiting(input.owner, input.key)).filter((id) => id !== input.exceptEntryId);
+  for (const id of closed) await store.saveRun(id, input.owner, { status: 'done', playlistId: made.id, reason: null });
+  return { id: made.id, created: made.created, closed };
+}
+
+/**
+ * The playlist of a GENRE («Soul da ascoltare») for a post: a RULE, with no songs of its own, born when the library has two songs that carry the tag.
  * Michele, 10 November: «mi aspetto che sia una dinamica deve avere il tag soul la canzone».
  */
 async function bornFromGenre(b: Birth, genres: string[], key: string): Promise<Born | null> {
   const matching = await b.deps.countGenreSongs(b.owner, genres);
   if (matching < MIN_PLAYLIST_SONGS) return null;
-  const made = await b.deps.store.createPlaylist({
-    owner: b.owner, name: b.plan.title, kind: 'theme', themeKey: key, sourceEntryId: b.entry.id, createdAt: b.at, rule: genreRule(genres),
-  });
-  const waiting = (await b.deps.store.listWaiting(b.owner, key)).filter((id) => id !== b.entry.id);
-  await closeWaiting(b, waiting, made.id);
+  const made = await makeGenrePlaylist(b.deps.store, { owner: b.owner, title: b.plan.title, genres, key, sourceEntryId: b.entry.id, createdAt: b.at, exceptEntryId: b.entry.id });
   return { playlistId: made.id, created: made.created, added: made.created ? Math.min(matching, GENRE_PLAYLIST_LIMIT) : 0, title: b.plan.title };
 }
 
@@ -345,7 +361,7 @@ export interface MemoryPlaylist {
   name: string;
   kind: PlaylistKind;
   themeKey: string | null;
-  sourceEntryId: string;
+  sourceEntryId: string | null;
   createdAt: Date;
   /** Set for the playlist of a genre: it is dynamic, so `songs` stays empty. */
   rule?: DynamicRule;

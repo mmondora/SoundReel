@@ -80,7 +80,7 @@ describe('TopBar', () => {
     renderBar();
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Altro' }));
-    const items = screen.getAllByRole('menuitem').map((a) => a.getAttribute('href'));
+    const items = screen.getAllByRole('menuitem').map((a) => a.getAttribute('href')).filter(Boolean);     // «Personalizza» is a button, not a link
     expect(items).toEqual(['/library', '/console', '/prompts', '/admin', '/settings']);
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
@@ -91,5 +91,37 @@ describe('TopBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Altro' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Impostazioni' }));
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('the menu has «Personalizza», a button (not a link) that closes the menu and opens the panel of the user', () => {
+    renderBar();
+    fireEvent.click(screen.getByRole('button', { name: 'Altro' }));
+    const item = screen.getByRole('menuitem', { name: 'Personalizza' });
+    expect(item.tagName).toBe('BUTTON');
+    expect(item).not.toHaveAttribute('href');
+    fireEvent.click(item);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Personalizza il sito' })).toBeInTheDocument();
+  });
+
+  it('Escape closes the panel and the focus goes back to the «⋯» button', async () => {
+    renderBar();
+    const more = screen.getByRole('button', { name: 'Altro' });
+    fireEvent.click(more);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Personalizza' }));
+    const dialog = screen.getByRole('dialog', { name: 'Personalizza il sito' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(more).toHaveFocus();
+  });
+
+  it('a click inside the panel does not close the menu logic or the panel (only the dark around it, the × and Escape close it)', () => {
+    renderBar();
+    fireEvent.click(screen.getByRole('button', { name: 'Altro' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Personalizza' }));
+    fireEvent.mouseDown(screen.getByRole('dialog', { name: 'Personalizza il sito' }));
+    expect(screen.getByRole('dialog', { name: 'Personalizza il sito' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Chiudi' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

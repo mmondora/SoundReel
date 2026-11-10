@@ -1,7 +1,8 @@
 import { SegmentedControl } from '../SegmentedControl';
-import { PAGE_VIEWS, usePageView, useUiPrefs, type PageWithViews } from '../../hooks/useUiPrefs';
+import { PAGE_VIEWS, usePageView, type PageWithViews } from '../../hooks/useUiPrefs';
 import { useLanguage } from '../../i18n';
 import type { UiPrefs } from '../../types';
+import { SaveError } from './SaveError';
 
 // Look and feel P3 (spec 2026-11-10-web-look-and-feel-rethink-design.md, L1): every page that has views shows the same switch at the top:
 // Home (the sections), Studio (list and detail, the default) and Bacheca (the wall of cards). The Link page has no Home. A choice is drawn at
@@ -10,7 +11,6 @@ import type { UiPrefs } from '../../types';
 export function ViewSwitch<P extends PageWithViews>({ page }: { page: P }) {
   const { t } = useLanguage();
   const { view, ready, setView } = usePageView(page);
-  const { saveError, clearSaveError } = useUiPrefs();
   // no first frame with the wrong view: the page waits for the first answer, so does the switch
   if (!ready) return null;
   const names: Record<UiPrefs['views'][PageWithViews], string> = { home: t.viewHome, studio: t.viewStudio, wall: t.viewWall };
@@ -24,12 +24,7 @@ export function ViewSwitch<P extends PageWithViews>({ page }: { page: P }) {
         onChange={setView}
         className="view-switch-seg"
       />
-      {saveError && (
-        <p className="view-switch-error" role="alert">
-          <span>{t.prefsSaveError}</span>
-          <button type="button" onClick={clearSaveError} aria-label={t.dismiss}>×</button>
-        </p>
-      )}
+      <SaveError />
     </div>
   );
 }

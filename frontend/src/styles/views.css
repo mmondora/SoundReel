@@ -17,7 +17,7 @@
   padding: 0.4rem 0.95rem;
 }
 
-.view-switch-error {
+.save-error {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -29,7 +29,7 @@
   font-size: 0.78rem;
 }
 
-.view-switch-error button {
+.save-error button {
   width: 22px;
   height: 22px;
   border: 0;
@@ -41,7 +41,7 @@
   cursor: pointer;
 }
 
-.view-switch-error button:hover {
+.save-error button:hover {
   background: var(--error-soft);
 }
 
