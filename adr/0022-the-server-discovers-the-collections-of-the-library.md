@@ -1,7 +1,7 @@
 # ADR-0022: The server discovers the collections of the library by itself, names and keeps them; the clients only draw them
 
 ## Status
-**Accepted** (10 November 2026): Michele chose the UX, the threshold and the seed names («1 si, - 2 no, - 3 5 voci - 4 ok.») and added two requests (places read from the text with the names of the venues and a Google Maps link; automatic playlists, ADR-0023). **Phase 1 built on 10 November for SoundReel 2.24.0** (spec §10; contract `docs/collections.md`): vectors, places and venues, the grouping with ids that survive, names from a seed list, corrections that last, the routes, and the site (chip rail, «Raccolte» page, a collection with its venues and «Apri in Maps», chips on the cards, the shelf on the Home). Not in production until Michele says so; the first publication is a separate step with its own OK (spec status line). Calibrated on the real library (spec §3.1): group cosine 0.42, merge 0.64 (not +0.12), absorption 0.80 plus a 70 % rule on the members. A read-only trial on the real library (9 November) shows the discovery works (spec §3).
+**Accepted** (10 November 2026): Michele chose the UX, the threshold and the seed names («1 si, - 2 no, - 3 5 voci - 4 ok.») and added two requests (places read from the text with the names of the venues and a Google Maps link; automatic playlists, ADR-0023). **Phase 1 built on 10 November for SoundReel 2.24.0** (spec §10; contract `docs/collections.md`): vectors, places and venues, the grouping with ids that survive, names from a seed list, corrections that last, the routes, and the site (chip rail, «Raccolte» page, a collection with its venues and «Apri in Maps», chips on the cards, the shelf on the Home). **In production since 10 November 2026 (SoundReel 2.24.0, deployed with Michele's OK); no collection is published yet:** the backfill of the existing entries and the first publication are separate steps, each with its own OK (spec status line). Calibrated on the real library (spec §3.1): group cosine 0.42, merge 0.64 (not +0.12), absorption 0.80 plus a 70 % rule on the members. A read-only trial on the real library (9 November) shows the discovery works (spec §3).
 
 ## Date
 2026-11-09 (accepted 2026-11-10)
@@ -55,7 +55,7 @@ The library has 1696 entries (347 saved in October alone) and is shown as a list
 - ⚠️ Groups can flicker as entries arrive: inherited ids and hysteresis (born at 5, dies below 3).
 - ⚠️ Half of the library is one theme (AI and development): the hierarchy is needed or the rail would be one chip.
 - ⚠️ The thresholds are calibrated on this library and this embedding model (vectors centered on the mean); a new model means recalibrating and recomputing (`model` is in the table). Phase 0 redoes the calibration inside the code.
-- ⚠️ A one-off of about 30 minutes of local work for the places and venues of the 1700 existing entries (queued, never together with analyses).
+- ⚠️ A one-off of about two and a half hours (5.5 s per entry on average, measured on 618 real calls) of local work for the places and venues of the 1700 existing entries (queued, never together with analyses).
 - ⚠️ The list rows lose the placeholder tags (`#tag`, `@utente`, `#hashtag`); the stored data keeps them and the real tags stay.
 
 ## 5. Open questions

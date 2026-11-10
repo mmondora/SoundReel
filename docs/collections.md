@@ -1,7 +1,7 @@
 # Le raccolte del sito — contratto API (`/api/collections`)
 
 Spec: `docs/superpowers/specs/2026-11-09-library-collections-auto-topics-design.md` (C1–C18, §4, §5, §6, §8). Architettura: `adr/0022-the-server-discovers-the-collections-of-the-library.md`. Piano: `docs/superpowers/plans/2026-11-10-library-collections-phase-1.md` (Task 8, 9–12; l'«Update» in testa dice che cosa è cambiato dopo il telaio nuovo). Richiesta di Michele (9 e 10 novembre): «vorrei che crei una serie di aggregazioni […] Vorrei sia tutto automagico, ad esempio "vino" viene scoperto da solo e proposto.» e «Voglio anche che il luogo venga identificato dal testo […] e abbia un link a googlemap (oppure apri in gmap ).»
-**Stato** (10 novembre, 2.24.0): il contratto è stato scritto prima del codice; **lo strato che risponde (vista e rotte, task 8) è costruito** (`services/collectionsView.ts` le regole, `collectionsViewData.ts` le fonti vere, `routes/collections.ts` le rotte) e dove il codice ha precisato il testo, il testo è stato corretto qui. Le raccolte **tema** le scrive il motore notturno (task 4 e 7): finché non gira l'elenco ha i tipi e i luoghi, e i temi compaiono dopo il primo giro.
+**Stato** (10 novembre, **2.24.0 in produzione**, nessuna raccolta pubblicata ancora): il contratto è stato scritto prima del codice; **lo strato che risponde (vista e rotte, task 8) è costruito** (`services/collectionsView.ts` le regole, `collectionsViewData.ts` le fonti vere, `routes/collections.ts` le rotte) e dove il codice ha precisato il testo, il testo è stato corretto qui. Le raccolte **tema** le scrive il motore notturno (task 4 e 7): finché non gira l'elenco ha i tipi e i luoghi, e i temi compaiono dopo il primo giro.
 
 ## Che cosa è
 

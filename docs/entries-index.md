@@ -1,7 +1,7 @@
 # L'elenco dei post, a pagine, con i filtri — contratto API (`GET /api/entries?view=summary`, `GET /api/entries/facets`)
 
 Spec: `docs/superpowers/specs/2026-11-10-web-look-and-feel-rethink-design.md` §3.6. Richiesta di Michele (10 novembre): «in inbox sulla lista non voglio avere "apri tutta la libreria" ma la paginazione con 30 o 40 per pagina».
-**Stato: contratto scritto prima del codice** (10 novembre), **poi realizzato dal server** (stesso giorno: `services/entriesIndex.ts`, `routes/entriesIndex.ts`, il ramo `view=summary` di `routes/entries.ts` e una riga in `server.ts`); il sito (Inbox a pagine, `pages/Home.tsx`) si costruisce su questo testo. Dove il codice precisa il contratto, è corretto qui (le righe «come fa il codice» sotto).
+**Stato: in produzione dal 10 novembre (2.24.0)**; contratto scritto prima del codice, **poi realizzato dal server** (stesso giorno: `services/entriesIndex.ts`, `routes/entriesIndex.ts`, il ramo `view=summary` di `routes/entries.ts` e una riga in `server.ts`); il sito (Inbox a pagine, `pages/Home.tsx`) si costruisce su questo testo. Dove il codice precisa il contratto, è corretto qui (le righe «come fa il codice» sotto).
 
 ## Che cosa è
 
