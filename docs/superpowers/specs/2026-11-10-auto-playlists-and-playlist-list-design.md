@@ -1,6 +1,6 @@
 # Playlist automatiche dai post che parlano di musica, e l'elenco delle playlist che si cerca, si ordina e si sfoglia (richiesta 2026-11-10)
 
-Stato: **richiesta di Michele del 10 novembre, disegnata con i default scelti (§5: da correggere se non vanno), costruita, provata e **in produzione** (SoundReel **2.20.0** dal 10 novembre alle 01:06 con il suo OK; Mondrop 1.7.0 **build 12** su TestFlight alle 01:08): backend, sito e app con i test, le rotture provate, la prova su un Postgres vero e l'anteprima su dati veri (§2b). Le playlist per le voci già presenti **non sono state fatte**: solo con `--apply` e il suo OK.
+Stato: **estesa a tutti i post con canzoni (2.20.1, §1.1 e §3.A.8)**. Richiesta di Michele del 10 novembre, disegnata con i default scelti (§5: da correggere se non vanno), costruita, provata e **in produzione** (SoundReel **2.20.0** dal 10 novembre alle 01:06 con il suo OK; Mondrop 1.7.0 **build 12** su TestFlight alle 01:08): backend, sito e app con i test, le rotture provate, la prova su un Postgres vero e l'anteprima su dati veri (§2b). Le playlist per le voci già presenti **non sono state fatte**: solo con `--apply` e il suo OK.
 ADR: ADR-0023 (**proposto**). Spec collegata: `2026-11-09-library-collections-auto-topics-design.md` (le raccolte; qui le playlist).
 Codice previsto: backend `services/autoPlaylists.ts` (+ `autoPlaylistTitle.ts`), `scripts/buildAutoPlaylists.ts`, migrazione `021_auto_playlists.sql`, `routes/playlists.ts` e `routes/mondrop.ts` (parametri dell'elenco); sito `components/PlaylistPanel.tsx`, `pages/PlaylistManagerPage.tsx`; app `ios/Mondrop/PlaylistsView.swift`, `ios/MondropKit/PlaylistListModel.swift`.
 
@@ -9,6 +9,14 @@ Codice previsto: backend `services/autoPlaylists.ts` (+ `autoPlaylistTitle.ts`),
 10 novembre, nello stesso messaggio che rispondeva alle quattro domande sulle raccolte (`1 si, - 2 no, - 3 5 voci - 4 ok.`):
 
 > «voglio anche che se il reeel/post parla di musiche ( ecco le 5 musiche di natale ) mi venga creata una "playlist con il titolo adeguato" e le 5 musiche dentro. se il titolo è generico ( ecco gli album jaaz da ascoltare ... ) la play list è "jazz da ascoltare" e deve essere una sola. in tal caso le musiche sono ordinate per data di inserimento, le ultime per prime per facilitare gli ascolti. mondrop deve permettere di vedere queste play list. Se le play list diventano molte devo poterle selezionare/paginare/cercare, e di fianco al nome la data di creazione e un ordine di data. questo anche su mondrop.»
+
+### 1.1 10 novembre, dopo la 2.20.0: le risposte alle domande sull'applicazione
+
+> «1 si applicali tutti - ma vorrei di tutti i post non solo di 42 già salvati.
+> 2 prova modello più grande su vulcano (via gpurouter/litellm?)
+> 3 continua»
+
+Lette così: **(1)** applicare le playlist alle voci già nella libreria e farlo per **tutti i post con canzoni**, non solo per i 42 che *elencano* musica (le altre 678 voci hanno **una** canzone: §3.A.8); **(2)** provare un modello **più grande** su vulcano per i titoli (§3.A.9); **(3)** proseguire con le raccolte (altra spec).
 
 In due parti: **(A)** i post che parlano di musica **diventano playlist**, una per post se il titolo è preciso, **una sola per tema** se è generico, con i brani nuovi in cima; **(B)** quando le playlist sono molte l'elenco si **cerca, si seleziona, si sfoglia**, mostra la **data di creazione** accanto al nome e si **ordina per data**, sul sito e su Mondrop.
 
@@ -27,6 +35,10 @@ Le **42** voci con almeno due canzoni dal contenuto, dalla più vecchia, ~1 seco
 - Con le regole nuove i temi si fondono di più («Album da ascoltare» raccoglie 5 post, 21 brani; «Capolavori anni 80 italiani» 2 post, 12 brani) ma **restano difetti di un modello piccolo**: qualche refuso nel titolo («Canzioni per guidare la notte», «Royksoop da Ascoltare»), temi a nome di un artista («Pet shop boys da ascoltare»), qualche tema quasi doppio («Canzoni per guidare la notte» e «Canzone da ascoltare»). Si correggono rinominando; **non si fondono per somiglianza di parole o di significato** (provato con i vettori sui titoli: «Jazz da ascoltare» e «Album da ascoltare» a 0,91, «Rock anni 80» e «Musica anni 80» a 0,90, quindi fonderebbero cose diverse): meglio una playlist in più che brani nella playlist sbagliata.
 - **Da decidere con l'anteprima davanti** (lo script `--apply`, solo con l'OK di Michele): applicarla a tutte le 42 voci, a quelle da una certa data, o per niente (valgono solo i post nuovi).
 
+## 2c. Prova su tutti i post con canzoni (anteprima del 10 novembre, dopo la risposta di Michele)
+
+Le **720** voci con almeno una canzone (42 ne elencano più di una, 678 ne hanno una sola), regole e modelli veri, in memoria, nessuna scrittura: **55 playlist nuove, 142 voci entrate in una playlist di un tema, 522 voci saltate perché non parlano di musica, 1 senza titolo, 350 brani** (~0,6 s a voce). I temi per una canzone sola vengono fuori puliti perché il modello **sceglie da un elenco chiuso**: «Colonne sonore da ascoltare» 66 brani, «Synthwave da ascoltare» 13, «Classica da ascoltare» 8, «Musica italiana da ascoltare» 7, «Musica per la notte» 7, «Musica per rilassarsi» 7, «Anni 80 da ascoltare» 6, «Elettronica da ascoltare» 6… (con titoli liberi la prova dava «Synthwave de Ascolare», «Jazz de Ascolare», «Synchpunk/BladeRunner vibe» e trenta quasi-doppioni). Il 72 % delle voci con una canzone non parla di musica (il sottofondo di una ricetta, di un video): giusto che restino fuori.
+
 ## 3. Cosa si costruisce
 
 ### A. Playlist automatiche
@@ -42,6 +54,10 @@ Le **42** voci con almeno due canzoni dal contenuto, dalla più vecchia, ~1 seco
 5. **Posta (l'avviso):** una playlist nuova manda un messaggio `info` («Nuova playlist: Le 5 musiche di Natale · 5 brani»); i brani aggiunti a un tema, un solo messaggio per post («Jazz da ascoltare · +3 brani»). Scade dopo 3 giorni come gli altri `info` (regola di Michele).
 6. **Le voci già nella libreria:** uno script, `node dist/scripts/buildAutoPlaylists.js`, **anteprima per default** (`--dry-run`: quali playlist nascerebbero, con titolo, tipo e brani), `--apply` **solo con l'OK di Michele**; le voci si prendono **dalla più vecchia**, con `added_at` = data del post, così i temi finiscono con i brani più nuovi in cima. Non gira al deploy.
 7. **Interruttore:** `AUTO_PLAYLISTS=0` ferma tutto (le playlist create restano).
+
+8. **Tutti i post con canzoni (2.20.1, Michele: «vorrei di tutti i post»).** Un post che **elenca** musica (2 o più canzoni dal contenuto) fa come sopra. Un post con **una sola** canzone (nominata nel testo, o riconosciuta dall'audio) entra **solo in un tema**, e solo se il modello dice che il post **parla davvero di musica** (`aboutMusic`: un brano o un clip musicale, un consiglio di ascolto, un DJ set, la colonna sonora di un film; non il sottofondo di una ricetta, del vino, di uno sport). Il tema lo **sceglie da un elenco chiuso** di 36 titoli esatti (31 generi «… da ascoltare» e 5 occasioni: «Musica per la notte», «… per allenarsi», «… per studiare», «… per rilassarsi», «… per la cena»), con uno schema che ammette solo quelli: **il modello non scrive mai un titolo per una canzone sola**. Se in un post ci sono una canzone nominata e una riconosciuta, vale quella nominata. Una canzone in più in un tema **non** manda un messaggio in Posta (un tema **nuovo** sì, e una lista che entra in un tema sì).
+9. **Il modello dei titoli (Michele: «prova modello più grande su vulcano»).** `AUTO_PLAYLIST_MODEL` (in `docker-compose.yml`, predefinito `qwen3.5:122b`, vuoto = solo il modello di default) fa i titoli dei post che **elencano** musica, via gpu-router (i grossi stanno su vulcano); se non risponde, è lento o non dà un titolo, **ripiega sul modello di default** (`glm-4.7-flash:q4_K_M`). Provati sulle 42 liste vere, ~1–2 s a voce salvo dove indicato: `glm-4.7-flash:q4_K_M` (default) refusi («Royksoop», «Canzioni…») e qualche titolo debole; `glm-4.7-flash:q8_0` uguale; **`gpt-oss:120b` ~35 s a voce e titoli più frammentati** («Le 25 album da valutare»), scartato; **`qwen3.5:122b`** titoli più naturali e meno refusi, ma scriveva in inglese: ora la regola «SEMPRE in italiano, anche se il post è in un'altra lingua» e un esempio lo correggono, e restano glitch rari («Cani per un buon impianto stereo»): si rinomina. Le canzoni singole usano sempre il modello di default (un elenco chiuso non ha refusi, e sono centinaia).
+10. **Annullare un'applicazione:** `node dist/scripts/buildAutoPlaylists.js --undo-since <ISO>` (**anteprima per default**, `--apply` toglie) toglie le playlist automatiche nate da corse da quel momento, le loro corse e i loro temi (le voci si possono rifare). Prende anche una playlist che l'utente ha nel frattempo rinominato: si guarda prima l'anteprima.
 
 ### B. L'elenco delle playlist (sito e Mondrop)
 
@@ -73,6 +89,9 @@ Le **42** voci con almeno due canzoni dal contenuto, dalla più vecchia, ~1 seco
 | P9 | **L'elenco** | Cerca (nome), filtri, ordine per data (predefinito: più nuove), pagine da 30, data di creazione accanto al nome, **tutto deciso dal server**; compatibile con le app vecchie |
 | P10 | **Numeri** | SoundReel **2.20.0** (server e sito) + Mondrop 1.7.0 **build 12**; nessun deploy né TestFlight senza OK |
 | P11 | **Tutto locale** | Titolo e tipo dal modello locale via gpu-router, mai Claude; niente esce |
+| P12 | **Tutti i post con canzoni** (2.20.1) | Una canzone sola → solo un **tema** da un **elenco chiuso di 36**, solo se `aboutMusic`; il modello non scrive il titolo; un tema nuovo si annuncia, una canzone in più no |
+| P13 | **Il modello dei titoli** (2.20.1) | `AUTO_PLAYLIST_MODEL=qwen3.5:122b` per le liste, ripiego sul default; le canzoni singole sempre col default; `gpt-oss:120b` scartato (lento e frammenta) |
+| P14 | **Annullare** (2.20.1) | `--undo-since <ISO>`, anteprima per default |
 
 ## 6. Dati e contratto (bozza; ADR-0023)
 

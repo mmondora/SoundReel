@@ -33,6 +33,12 @@ Today a playlist is only made by hand (or as a rule). Of 719 entries with songs 
 9. **The library already there** is handled by a script that is a **preview by default** (`--apply` only with Michele's OK), oldest entry first, `added_at` = the date of the post.
 10. **Everything local;** kill switch `AUTO_PLAYLISTS=0`.
 
+### Amendment 2026-11-10 (2.20.1): all the posts with songs, a bigger model for the titles
+Michele (10 November, after 2.20.0): «1 si applicali tutti - ma vorrei di tutti i post non solo di 42 già salvati. 2 prova modello più grande su vulcano (via gpurouter/litellm?) 3 continua».
+11. **A post with ONE song** (named in the text or recognised from the audio; 678 of the 720 posts with songs) feeds only a **theme**, and only when the local model says the post is really about music. The theme is **chosen from a closed list of 36 exact titles** (31 genres «… da ascoltare», 5 occasions) through a schema `enum`: the model never writes a title for one song. On 720 real posts: 55 new playlists, 142 posts joining a theme, 522 skipped as not about music. A song joining a theme is not announced; a new theme is.
+12. **`AUTO_PLAYLIST_MODEL`** (compose default `qwen3.5:122b`, on vulcano through the gpu-router) writes the titles of the posts that **list** music, with a **fallback to the default model**; the single songs always use the default one. `gpt-oss:120b` was tried and dropped (about 35 s a post, more fragmented titles).
+13. **`--undo-since <ISO>`** on the backfill script (a preview unless `--apply`) removes what the runs from that moment made.
+
 ## 3. Alternatives considered
 | Option | Why not |
 |---|---|
@@ -43,6 +49,9 @@ Today a playlist is only made by hand (or as a rule). Of 719 entries with songs 
 | Newest-first by sorting at read time | The read order is `position, added_at` for every playlist and the user can reorder; putting the new songs at lower positions keeps one rule |
 | Filtering and paging in the client | Against rule P, and the app would have to download every playlist first |
 | Creating them at once for the whole library on deploy | A flood of playlists nobody saw; a preview and Michele's OK first |
+| A free title for a post with one song | Tried on 483 real posts: «Synthwave de Ascolare», «Jazz de Ascolare» and thirty near-copies; a closed list gives few, clean, stable themes |
+| Merging themes by the similarity of their titles (vectors) | «Jazz da ascoltare» and «Album da ascoltare» are 0.91 apart: it would put songs in the wrong playlist |
+| `gpt-oss:120b` for the titles | About 35 s a post, more fragmented titles («Le 25 album da valutare») |
 
 ## 4. Consequences
 - ✅ Posts that list music become playlists by themselves, and a generic theme grows in one place with the newest songs first.
