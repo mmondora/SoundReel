@@ -456,6 +456,25 @@ export interface Translations {
   playlistSave: string;
   playlistCancel: string;
   playlistError: string;
+  // The list of playlists: search, show, sort by date, pages (ADR-0023)
+  playlistSearchPlaceholder: string;
+  playlistFilterLabel: string;
+  playlistFilterAll: string;
+  playlistFilterAuto: string;
+  playlistFilterMine: string;
+  playlistFilterShared: string;
+  playlistFilterDynamic: string;
+  playlistSortLabel: string;
+  playlistSortCreated: string;
+  playlistSortUpdated: string;
+  playlistSortName: string;
+  playlistSortSize: string;
+  playlistOrderDesc: string;
+  playlistOrderAsc: string;
+  playlistShowMore: string;
+  playlistShownOf: string;
+  playlistAutoBadge: string;
+  playlistNoMatch: string;
   playlistPlay: string;
   playlistActiveChip: string;
 
@@ -1248,6 +1267,24 @@ export const translations: Record<Language, Translations> = {
     playlistSave: 'Salva',
     playlistCancel: 'Annulla',
     playlistError: 'Operazione playlist non riuscita',
+    playlistSearchPlaceholder: 'Cerca nelle playlist',
+    playlistFilterLabel: 'Mostra',
+    playlistFilterAll: 'Tutte',
+    playlistFilterAuto: 'Automatiche',
+    playlistFilterMine: 'Mie',
+    playlistFilterShared: 'Condivise',
+    playlistFilterDynamic: 'Dinamiche',
+    playlistSortLabel: 'Ordina le playlist per',
+    playlistSortCreated: 'Data di creazione',
+    playlistSortUpdated: 'Ultima modifica',
+    playlistSortName: 'Nome',
+    playlistSortSize: 'Numero di brani',
+    playlistOrderDesc: 'Dal più alto o più recente: tocca per invertire',
+    playlistOrderAsc: 'Dal più basso o più vecchio: tocca per invertire',
+    playlistShowMore: 'Mostra altre',
+    playlistShownOf: '{shown} di {total}',
+    playlistAutoBadge: 'automatica',
+    playlistNoMatch: 'Nessuna playlist corrisponde',
     playlistPlay: '▶ Riproduci',
     playlistActiveChip: 'Playlist',
 
@@ -2062,6 +2099,24 @@ export const translations: Record<Language, Translations> = {
     playlistSave: 'Save',
     playlistCancel: 'Cancel',
     playlistError: 'Playlist operation failed',
+    playlistSearchPlaceholder: 'Search playlists',
+    playlistFilterLabel: 'Show',
+    playlistFilterAll: 'All',
+    playlistFilterAuto: 'Automatic',
+    playlistFilterMine: 'Mine',
+    playlistFilterShared: 'Shared',
+    playlistFilterDynamic: 'Dynamic',
+    playlistSortLabel: 'Sort playlists by',
+    playlistSortCreated: 'Date created',
+    playlistSortUpdated: 'Last changed',
+    playlistSortName: 'Name',
+    playlistSortSize: 'Number of songs',
+    playlistOrderDesc: 'Highest or newest first: tap to reverse',
+    playlistOrderAsc: 'Lowest or oldest first: tap to reverse',
+    playlistShowMore: 'Show more',
+    playlistShownOf: '{shown} of {total}',
+    playlistAutoBadge: 'automatic',
+    playlistNoMatch: 'No playlist matches',
     playlistPlay: '▶ Play',
     playlistActiveChip: 'Playlist',
 

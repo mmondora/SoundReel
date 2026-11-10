@@ -1,15 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   addSongToPlaylist,
   createPlaylist,
   deletePlaylist,
   fetchPlaylist,
-  fetchPlaylists,
   renamePlaylist,
   removeSongFromPlaylist,
 } from '../services/api';
-import type { PlaylistDetail, PlaylistSummary } from '../types';
+import type { PlaylistDetail } from '../types';
 import { useLanguage } from '../i18n';
+import { usePlaylistList } from '../hooks/usePlaylistList';
+import { PlaylistListControls } from './PlaylistListControls';
+import { formatPlaylistDate, fullPlaylistDate } from '../utils/playlistDate';
 import '../styles/player.css';
 
 export interface PlaylistPanelProps {
@@ -30,30 +32,18 @@ export function PlaylistPanel({
   onSongAdded,
   compact = false,
 }: PlaylistPanelProps) {
-  const { t } = useLanguage();
-  const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { t, language } = useLanguage();
+  // The list is asked to the server a page at a time, with search, filter and sort by date (ADR-0023).
+  const list = usePlaylistList();
+  const playlists = list.items;
+  const loading = list.loading;
   const [nameDraft, setNameDraft] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function reload() {
-    setLoading(true);
-    try {
-      const list = await fetchPlaylists();
-      setPlaylists(list);
-    } catch {
-      setPlaylists([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void reload();
-  }, []);
+  const reload = () => list.reload();
 
   async function handleCreate() {
     if (!nameDraft.trim() || busy) return;
@@ -168,6 +158,15 @@ export function PlaylistPanel({
       </div>
 
       {error && <p className="player-error" role="alert">{error}</p>}
+
+      <PlaylistListControls
+        controls={list.controls}
+        onQ={list.setQ}
+        onFilter={list.setFilter}
+        onSort={list.setSort}
+        onToggleOrder={list.toggleOrder}
+      />
+
       {loading && <p className="list-item-muted">{t.loading}</p>}
 
       <ul className="playlist-list">
@@ -197,6 +196,10 @@ export function PlaylistPanel({
                     onClick={() => void handleOpen(pl.id)}
                   >
                     <span className="playlist-name">{pl.name}</span>
+                    {pl.origin === 'auto' && <span className="playlist-auto">{t.playlistAutoBadge}</span>}
+                    <span className="playlist-date" title={fullPlaylistDate(pl.createdAt, language)}>
+                      {formatPlaylistDate(pl.createdAt, language, t)}
+                    </span>
                     <span className="playlist-count">{pl.songCount}</span>
                   </button>
                   <div className="playlist-actions">
@@ -237,7 +240,13 @@ export function PlaylistPanel({
       </ul>
 
       {!loading && playlists.length === 0 && (
-        <p className="list-item-muted">{t.playlistEmpty}</p>
+        <p className="list-item-muted">{list.narrowed ? t.playlistNoMatch : t.playlistEmpty}</p>
+      )}
+
+      {list.hasMore && (
+        <button type="button" className="playlist-more" disabled={list.loadingMore} onClick={list.more}>
+          {t.playlistShowMore} ({t.playlistShownOf.replace('{shown}', String(playlists.length)).replace('{total}', String(list.total))})
+        </button>
       )}
     </div>
   );

@@ -10,6 +10,7 @@ import { LocationBadge } from '../LocationBadge';
 import { useRuleLabels } from '../../hooks/useRuleLabels';
 import { describeRule } from '../../utils/dynamicRule';
 import { resolveSongLocation, resolveSongPlace } from '../../utils/songLocation';
+import { formatPlaylistDate } from '../../utils/playlistDate';
 import { ManagerFilterPanel } from './ManagerFilterPanel';
 import { SongWhere } from './SongWhere';
 
@@ -50,6 +51,11 @@ export function ManagerPane({ manager, paneId, paneLabel, live, listRef, onPlay,
 
   const mine = playlists.filter((p) => !viewer || (p.ownerUser ?? viewer.user) === viewer.user);
   const shared = playlists.filter((p) => !mine.includes(p));
+  // «di fianco al nome la data di creazione» (Michele, ADR-0023): the menu says when each playlist was made
+  const createdSuffix = (iso: string): string => {
+    const date = formatPlaylistDate(iso, language, t);
+    return date ? ` · ${date}` : '';
+  };
   const playlist = model.playlist;
   const heading = playlist ? playlist.name : t.mgrLibrary;
   const ownerId = playlist?.ownerUser ?? viewer?.user ?? '';
@@ -130,7 +136,7 @@ export function ManagerPane({ manager, paneId, paneLabel, live, listRef, onPlay,
             {mine.length > 0 && (
               <optgroup label={t.mgrMine}>
                 {mine.map((p) => (
-                  <option key={p.id} value={`playlist:${p.id}`}>{p.kind === 'dynamic' ? `${DYNAMIC_GLYPH} ` : ''}{p.name} ({p.songCount})</option>
+                  <option key={p.id} value={`playlist:${p.id}`}>{p.kind === 'dynamic' ? `${DYNAMIC_GLYPH} ` : ''}{p.name} ({p.songCount}){createdSuffix(p.createdAt)}</option>
                 ))}
               </optgroup>
             )}
@@ -138,7 +144,7 @@ export function ManagerPane({ manager, paneId, paneLabel, live, listRef, onPlay,
               <optgroup label={t.mgrSharedWithMe}>
                 {shared.map((p) => (
                   <option key={p.id} value={`playlist:${p.id}`}>
-                    {p.kind === 'dynamic' ? `${DYNAMIC_GLYPH} ` : ''}{p.name} ({p.songCount}) · {interpolate(t.mgrOwnerOf, { name: manager.familyName(p.ownerUser ?? '') })}
+                    {p.kind === 'dynamic' ? `${DYNAMIC_GLYPH} ` : ''}{p.name} ({p.songCount}){createdSuffix(p.createdAt)} · {interpolate(t.mgrOwnerOf, { name: manager.familyName(p.ownerUser ?? '') })}
                   </option>
                 ))}
               </optgroup>

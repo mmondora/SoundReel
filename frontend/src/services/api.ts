@@ -1,7 +1,7 @@
 import type {
   Entry, EntrySummary, SearchResponse, EnrichmentResult, AggregatedFilm, FilmMetaRecord, AvailabilityStatus,
   AggregatedSong, SongMetaRecord, SongRating, AggregatedNote, AggregatedSoftware,
-  PlaylistSummary, PlaylistDetail, JournalStats, MeResponse, SongStateResponse, SongDownloadResponse,
+  PlaylistSummary, PlaylistDetail, PlaylistFilter, PlaylistSort, PlaylistPage, JournalStats, MeResponse, SongStateResponse, SongDownloadResponse,
   DynamicPreset, DynamicRule, PlayEvent, PlayPlan,
   LibraryScope, LibrarySearchResponse, MusicFoldersPayload, MusicFolderInput, FolderBrowse,
 } from '../types';
@@ -658,6 +658,38 @@ export async function fetchPlaylists(): Promise<PlaylistSummary[]> {
   const res = await fetch(url('/api/playlists'));
   const data = await json<{ playlists: PlaylistSummary[] }>(res);
   return data.playlists;
+}
+
+export interface PlaylistPageQuery {
+  q?: string;
+  filter?: PlaylistFilter;
+  sort?: PlaylistSort;
+  order?: 'asc' | 'desc';
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * The list as the person asks for it (ADR-0023): the SERVER searches, filters, sorts and cuts it in pages, so a long list is never
+ * downloaded whole. An old backend that ignores the parameters answers with every playlist and no `total`: the page is then that list.
+ */
+export async function fetchPlaylistsPage(query: PlaylistPageQuery = {}): Promise<PlaylistPage> {
+  const params = new URLSearchParams();
+  if (query.q) params.set('q', query.q);
+  if (query.filter) params.set('filter', query.filter);
+  if (query.sort) params.set('sort', query.sort);
+  if (query.order) params.set('order', query.order);
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  if (query.offset !== undefined) params.set('offset', String(query.offset));
+  const qs = params.toString();
+  const res = await fetch(url(`/api/playlists${qs ? `?${qs}` : ''}`));
+  const data = await json<{ playlists: PlaylistSummary[]; total?: number; limit?: number | null; offset?: number }>(res);
+  return {
+    playlists: data.playlists,
+    total: data.total ?? data.playlists.length,
+    limit: data.limit ?? null,
+    offset: data.offset ?? 0,
+  };
 }
 
 export async function fetchPlaylist(id: string): Promise<PlaylistDetail> {

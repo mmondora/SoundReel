@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
-import {
-  addSongToPlaylist,
-  createPlaylist,
-  fetchPlaylists,
-} from '../services/api';
-import type { PlaylistDetail, PlaylistSummary } from '../types';
+import { useState } from 'react';
+import { addSongToPlaylist, createPlaylist } from '../services/api';
+import type { PlaylistDetail } from '../types';
 import { useLanguage } from '../i18n';
+import { usePlaylistList } from '../hooks/usePlaylistList';
+import { PlaylistListControls } from './PlaylistListControls';
+import { formatPlaylistDate, fullPlaylistDate } from '../utils/playlistDate';
 import '../styles/player.css';
 
 export interface AddToPlaylistModalProps {
@@ -26,23 +25,15 @@ export function AddToPlaylistModal({
   onClose,
   onDone,
 }: AddToPlaylistModalProps) {
-  const { t } = useLanguage();
-  const [playlists, setPlaylists] = useState<PlaylistSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { t, language } = useLanguage();
+  // The playlists come a page at a time, the newest first, with a search (ADR-0023): the sheet stays usable with many of them.
+  const list = usePlaylistList();
+  const playlists = list.items;
+  const loading = list.loading;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetchPlaylists()
-      .then((list) => { if (!cancelled) setPlaylists(list); })
-      .catch(() => { if (!cancelled) setPlaylists([]); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   async function pick(id: string) {
     if (busy) return;
@@ -104,6 +95,16 @@ export function AddToPlaylistModal({
         )}
 
         {error && <p className="player-error" role="alert">{error}</p>}
+
+        <PlaylistListControls
+          searchOnly
+          controls={list.controls}
+          onQ={list.setQ}
+          onFilter={list.setFilter}
+          onSort={list.setSort}
+          onToggleOrder={list.toggleOrder}
+        />
+
         {loading && <p className="list-item-muted">{t.loading}</p>}
 
         {!loading && (
@@ -117,6 +118,9 @@ export function AddToPlaylistModal({
                   onClick={() => void pick(pl.id)}
                 >
                   <span className="playlist-name">{pl.name}</span>
+                  <span className="playlist-date" title={fullPlaylistDate(pl.createdAt, language)}>
+                    {formatPlaylistDate(pl.createdAt, language, t)}
+                  </span>
                   <span className="playlist-count">{pl.songCount}</span>
                 </button>
               </li>
@@ -125,7 +129,13 @@ export function AddToPlaylistModal({
         )}
 
         {!loading && playlists.length === 0 && !creating && (
-          <p className="list-item-muted">{t.playlistEmpty}</p>
+          <p className="list-item-muted">{list.narrowed ? t.playlistNoMatch : t.playlistEmpty}</p>
+        )}
+
+        {list.hasMore && (
+          <button type="button" className="playlist-more" disabled={list.loadingMore} onClick={list.more}>
+            {t.playlistShowMore} ({t.playlistShownOf.replace('{shown}', String(playlists.length)).replace('{total}', String(list.total))})
+          </button>
         )}
 
         {creating ? (

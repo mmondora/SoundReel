@@ -281,6 +281,22 @@ export interface PlaylistSummary {
   ruleSummary?: string | null;
   /** When the backend last evaluated a dynamic playlist. */
   generatedAt?: string | null;
+  /** `auto` = made by the server from a post that talks about music (ADR-0023); absent = made by hand. */
+  origin?: 'user' | 'auto';
+  /** How an automatic playlist was made: one for a post, or one for a generic theme. */
+  autoKind?: 'one_off' | 'theme' | null;
+}
+
+/** What the list of playlists can be narrowed to, and sorted by (the server does it: ADR-0023). */
+export type PlaylistFilter = 'all' | 'auto' | 'mine' | 'shared' | 'dynamic';
+export type PlaylistSort = 'created' | 'updated' | 'name' | 'size';
+
+/** One page of the list, with how many playlists matched in all. */
+export interface PlaylistPage {
+  playlists: PlaylistSummary[];
+  total: number;
+  limit: number | null;
+  offset: number;
 }
 
 export interface PlaylistDetail extends PlaylistSummary {

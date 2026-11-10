@@ -1155,3 +1155,85 @@ body:has(.mini-player) .home--inbox {
     border-top-color: #3ddc97;
   }
 }
+
+/* The list of playlists: search, show, sort by date, pages (ADR-0023) */
+.playlist-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.35rem;
+}
+
+.playlist-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.playlist-sort {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.playlist-sort-select {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  background: #1a1d24;
+  color: inherit;
+  border: 1px solid #2a2e38;
+  border-radius: 8px;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.playlist-order-btn {
+  flex-shrink: 0;
+  min-width: 36px;
+  min-height: 36px;
+  background: #1a1d24;
+  color: inherit;
+  border: 1px solid #2a2e38;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.playlist-date {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: #8f96a3;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.playlist-auto {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #3ddc97;
+  border: 1px solid rgba(61, 220, 151, 0.45);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+}
+
+.playlist-more {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 0.5rem;
+  background: transparent;
+  color: inherit;
+  border: 1px dashed #2a2e38;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.playlist-more:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
