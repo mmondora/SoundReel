@@ -105,7 +105,7 @@
 - `GET /api/home` (Authelia user): ready-made sections `resume` (the latest posts), `songs` (new songs from the posts), `playlists` (the user's playlists, newest first, with `kind` and `origin`), `collections` (empty until ADR-0022 is built: the section is simply absent), `films`; the server decides what is in each and in which order of items; the client draws the sections in the order and visibility of the configuration (rule P). One failing section costs only itself.
 - [x] Tests: each section's rules, an empty library, one section that fails, the user sees only what he can see (own + shared), the client skips an unknown section and keeps the order of the configuration. **Done 10 Nov (2.22.0):** `docs/web-home.md` is the contract.
 
-### Task 9: Release P3 (2.22.0) — as Task 4.
+### Task 9: Release P3 (2.22.0) — as Task 4. **Done 10 Nov, 15:26** (Michele's OK; rollback image `soundreel:2.21.0-rollback`; 229 read-only checks).
 
 ## Phase P4 — «Personalizza» and the movable Player
 

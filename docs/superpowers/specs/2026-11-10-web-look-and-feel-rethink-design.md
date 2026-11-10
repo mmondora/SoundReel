@@ -1,6 +1,6 @@
 # Il look & feel del sito: ripensarlo, con meno spazio vuoto ai lati (richiesta 2026-11-10)
 
-Stato: **progettata (tre tornate di mockup, §3.1–3.3), decisa da Michele e in costruzione per fasi.** **P1 (valori di stile e telaio) e P2 (configurazione per utente sul server) costruite, provate e in produzione dal 10 novembre alle 10:50 (2.21.0)**; **P3 (le tre viste, l'interruttore, la Home a sezioni con `GET /api/home`) costruita e provata il 10 novembre (2.22.0, §3.4): in produzione solo con l'OK di Michele**; P4 («Personalizza», Player spostabile) da fare (piano `docs/superpowers/plans/2026-11-10-web-look-and-feel.md`). ADR-0025 (valori di stile) e ADR-0026 (configurazione).
+Stato: **progettata (tre tornate di mockup, §3.1–3.3), decisa da Michele e in costruzione per fasi.** **P1 (valori di stile e telaio) e P2 (configurazione per utente sul server) costruite, provate e in produzione dal 10 novembre alle 10:50 (2.21.0)**; **P3 (le tre viste, l'interruttore, la Home a sezioni con `GET /api/home`) costruita, provata e in produzione dal 10 novembre alle 15:26 (2.22.0, §3.4)**; P4 («Personalizza», Player spostabile) da fare (piano `docs/superpowers/plans/2026-11-10-web-look-and-feel.md`). ADR-0025 (valori di stile) e ADR-0026 (configurazione).
 
 ## 1. Richiesta di Michele (testuale)
 
