@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, verify } from 'node:crypto';
 import { test } from 'node:test';
-import { addTesters, assignBuild, createClient, createToken, describeErrors, ensureExternalGroup, findApp, findBuild, groupsNamed, inviteGroupTesters, loadConfig, parseEnvFile, statusReport, submitForReview } from './asc.mjs';
+import { addTesters, assignBuild, createClient, createToken, describeErrors, ensureExternalGroup, findApp, findBuild, groupsNamed, inviteGroupTesters, loadConfig, parseEnvFile, setTestInfo, statusReport, submitArgs, submitForReview, textArg } from './asc.mjs';
 
 const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 const PEM = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
@@ -322,4 +322,98 @@ test('submit-review: a failure other than «not found» on the lookup stops ever
   const client = createClient(cfg, { fetchImpl, readKey: () => PEM, now: () => 1_794_000_000 });
   await assert.rejects(submitForReview(client, 'A1', 9), /HTTP 500/);
   assert.ok(calls.every((c) => c.method === 'GET'), 'nothing was changed');
+});
+
+// ---- the test information Beta App Review reads (8 November, build 8 rejected: «il motivo lo devi aggiungere tu, mettendo
+// l'elenco delle macro funzionalità, i due o tre macro punti da attenzionare»)
+
+test('set-test-info: the Italian beta description and the notes for the review team are written', async () => {
+  const { client, calls } = fakeRw([
+    ['GET', /^\/v1\/apps\/A1\/betaAppLocalizations/, { data: [{ id: 'LA1', attributes: { locale: 'it', description: 'vecchia' } }] }],
+    ['PATCH', /^\/v1\/betaAppLocalizations\/LA1$/, { data: { id: 'LA1' } }],
+    ['GET', /^\/v1\/apps\/A1\/betaAppReviewDetail$/, { data: { id: 'A1', attributes: { notes: null } } }],
+    ['PATCH', /^\/v1\/betaAppReviewDetails\/A1$/, { data: { id: 'A1' } }],
+  ]);
+  assert.deepEqual(await setTestInfo(client, 'A1', { description: 'Nuova', notes: 'For the review team' }), { description: 'updated', notes: 'updated' });
+  const patches = calls.filter((c) => c.method === 'PATCH');
+  assert.deepEqual(patches[0].body.data, { type: 'betaAppLocalizations', id: 'LA1', attributes: { description: 'Nuova' } });
+  assert.deepEqual(patches[1].body.data, { type: 'betaAppReviewDetails', id: 'A1', attributes: { notes: 'For the review team' } });
+});
+
+test('set-test-info: a field already equal is left alone, and no text touches nothing', async () => {
+  const routes = [
+    ['GET', /^\/v1\/apps\/A1\/betaAppLocalizations/, { data: [{ id: 'LA1', attributes: { locale: 'it', description: 'Nuova' } }] }],
+    ['GET', /^\/v1\/apps\/A1\/betaAppReviewDetail$/, { data: { id: 'A1', attributes: { notes: 'Note' } } }],
+  ];
+  const same = fakeRw(routes);
+  assert.deepEqual(await setTestInfo(same.client, 'A1', { description: 'Nuova', notes: 'Note' }), { description: 'unchanged', notes: 'unchanged' });
+  assert.ok(same.calls.every((c) => c.method === 'GET'));
+
+  const bare = fakeRw(routes);
+  assert.deepEqual(await setTestInfo(bare.client, 'A1', {}), { description: 'unchanged', notes: 'unchanged' });
+  assert.equal(bare.calls.length, 0, 'without text not even a read');
+});
+
+test('set-test-info: an app with no Italian description gets one; the review notes alone leave the description alone', async () => {
+  const none = fakeRw([
+    ['GET', /^\/v1\/apps\/A1\/betaAppLocalizations/, { data: [{ id: 'LE', attributes: { locale: 'en-US', description: 'x' } }] }],
+    ['POST', /^\/v1\/betaAppLocalizations$/, { data: { id: 'LA2' } }, 201],
+  ]);
+  assert.equal((await setTestInfo(none.client, 'A1', { description: 'Nuova' })).description, 'created');
+  assert.deepEqual(none.calls.find((c) => c.method === 'POST').body.data, { type: 'betaAppLocalizations', attributes: { locale: 'it', description: 'Nuova' }, relationships: { app: { data: { type: 'apps', id: 'A1' } } } });
+
+  const notesOnly = fakeRw([
+    ['GET', /^\/v1\/apps\/A1\/betaAppReviewDetail$/, { data: { id: 'A1', attributes: { notes: 'vecchie' } } }],
+    ['PATCH', /^\/v1\/betaAppReviewDetails\/A1$/, { data: { id: 'A1' } }],
+  ]);
+  assert.deepEqual(await setTestInfo(notesOnly.client, 'A1', { notes: 'Nuove' }), { description: 'unchanged', notes: 'updated' });
+  assert.ok(notesOnly.calls.every((c) => !/betaAppLocalizations/.test(c.path)));
+});
+
+test('set-test-info: Apple takes 4000 characters at most, so a longer text is refused before any call', async () => {
+  const { client, calls } = fakeRw([]);
+  await assert.rejects(setTestInfo(client, 'A1', { description: 'x'.repeat(4001) }), /description is 4001 characters: Apple takes 4000 at most/);
+  await assert.rejects(setTestInfo(client, 'A1', { notes: 'y'.repeat(4001) }), /notes is 4001 characters/);
+  assert.equal(calls.length, 0);
+});
+
+test('the limit is inclusive: exactly 4000 characters goes through in all three texts', async () => {
+  const exact = 'x'.repeat(4000);
+  const info = fakeRw([
+    ['GET', /^\/v1\/apps\/A1\/betaAppLocalizations/, { data: [{ id: 'LA1', attributes: { locale: 'it', description: 'old' } }] }],
+    ['PATCH', /^\/v1\/betaAppLocalizations\/LA1$/, { data: { id: 'LA1' } }],
+    ['GET', /^\/v1\/apps\/A1\/betaAppReviewDetail$/, { data: { id: 'A1', attributes: { notes: null } } }],
+    ['PATCH', /^\/v1\/betaAppReviewDetails\/A1$/, { data: { id: 'A1' } }],
+  ]);
+  assert.deepEqual(await setTestInfo(info.client, 'A1', { description: exact, notes: exact }), { description: 'updated', notes: 'updated' });
+  const review = fakeRw([
+    ['GET', /^\/v1\/builds\?filter/, BUILDS],
+    ['GET', /^\/v1\/builds\/B9\/betaBuildLocalizations/, { data: [] }],
+    ['POST', /^\/v1\/betaBuildLocalizations$/, { data: { id: 'L1' } }, 201],
+    ['GET', /^\/v1\/builds\/B9\/betaAppReviewSubmission$/, { data: { id: 'S1', attributes: { betaReviewState: 'APPROVED' } } }],
+  ]);
+  assert.equal((await submitForReview(review.client, 'A1', 9, exact)).action, 'already-submitted');
+});
+
+test('submit-review arguments: the build number is found with or without --whats-new (without the flag it used to be skipped, and the newest build was submitted instead)', () => {
+  const never = () => assert.fail('no file read');
+  assert.deepEqual(submitArgs(['9'], never), { number: '9', whatsNew: undefined });
+  assert.deepEqual(submitArgs([], never), { number: undefined, whatsNew: undefined });
+  assert.deepEqual(submitArgs(['9', '--whats-new', 'La Home'], never), { number: '9', whatsNew: 'La Home' });
+  assert.deepEqual(submitArgs(['--whats-new', 'La Home', '9'], never), { number: '9', whatsNew: 'La Home' });
+  assert.deepEqual(submitArgs(['--whats-new', '@/t/it.txt'], () => 'Testo\n'), { number: undefined, whatsNew: 'Testo' });
+  assert.throws(() => submitArgs(['9', '--whats-new'], never), /usage: asc\.mjs submit-review/);
+});
+
+test('submit-review: «what to test» over Apple\'s 4000 characters is refused before any call', async () => {
+  const { client, calls } = fakeRw([]);
+  await assert.rejects(submitForReview(client, 'A1', 9, 'z'.repeat(4001)), /what to test is 4001 characters: Apple takes 4000 at most/);
+  assert.equal(calls.length, 0);
+});
+
+test('textArg: «@path» reads the file (a long text with line breaks), anything else is the text itself', () => {
+  assert.equal(textArg('Le macro funzionalità', () => assert.fail('no file read')), 'Le macro funzionalità');
+  assert.equal(textArg('@/t/it.txt', (p) => (p === '/t/it.txt' ? '\nRiga uno\nRiga due\n\n' : assert.fail(p))), 'Riga uno\nRiga due');
+  assert.throws(() => textArg('@/nope.txt', () => { throw new Error('ENOENT'); }), /cannot read \/nope\.txt/);
+  assert.throws(() => textArg('@/empty.txt', () => '  \n'), /\/empty\.txt is empty/);
 });

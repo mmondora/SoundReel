@@ -13,7 +13,9 @@
 //   node ios/scripts/asc.mjs setup-group Family a@x b@y   CHANGES App Store Connect: the external group and its testers (idempotent; give the group a build first: assign-build)
 //   node ios/scripts/asc.mjs invite-group Family [--all]  CHANGES App Store Connect: invites the testers never invited (--all: sends it again to those who never answered)
 //   node ios/scripts/asc.mjs assign-build Family [9]      CHANGES App Store Connect: puts the build (default: the newest processed one) in the EXTERNAL group (an internal group holds every build by itself)
-//   node ios/scripts/asc.mjs submit-review [9] [--whats-new "text"]   CHANGES App Store Connect: sends the build to Beta App Review (needed once per version for external testers; Apple then invites them)
+//   node ios/scripts/asc.mjs set-test-info [--description "text|@file"] [--notes "text|@file"]   CHANGES App Store Connect: the Italian beta description and the notes for the Beta App Review team
+//   node ios/scripts/asc.mjs submit-review [9] [--whats-new "text|@file"]   CHANGES App Store Connect: sends the build to Beta App Review (needed once per version for external testers; Apple then invites them)
+//   (a text given as `@path` is read from that file; Apple takes 4000 characters at most in each text)
 import { createPrivateKey, sign } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -292,6 +294,7 @@ export async function assignBuild(client, appId, groupName, number) {
  * its state is reported: running it twice never submits twice.
  */
 export async function submitForReview(client, appId, number, whatsNew) {
+  if (whatsNew && whatsNew.length > MAX_TEST_TEXT) throw new Error(`what to test is ${whatsNew.length} characters: Apple takes ${MAX_TEST_TEXT} at most`);
   const build = await findBuild(client, appId, number);
   if (whatsNew) {
     const found = await client.list(`/v1/builds/${build.id}/betaBuildLocalizations?limit=20&fields[betaBuildLocalizations]=locale,whatsNew`);
@@ -317,9 +320,86 @@ export async function submitForReview(client, appId, number, whatsNew) {
   return { build: build.number, action: 'submitted', state: json?.data?.attributes?.betaReviewState ?? null };
 }
 
+/** Apple takes at most this many characters in a beta description, in «what to test» and in the review notes. */
+export const MAX_TEST_TEXT = 4000;
+
+/**
+ * A text given on the command line: `@path` reads that file (a long text with line breaks: the macro features and the points to
+ * look at), anything else is the text itself. Surrounding blank lines are trimmed. The reader is injectable for the tests.
+ */
+export function textArg(value, read = (p) => readFileSync(p, 'utf8')) {
+  if (!value.startsWith('@')) return value;
+  const path = value.slice(1);
+  let text;
+  try {
+    text = read(path);
+  } catch {
+    throw new Error(`cannot read ${path}`);
+  }
+  text = text.trim();
+  if (!text) throw new Error(`${path} is empty`);
+  return text;
+}
+
+/**
+ * The test information Beta App Review reads. Apple turned build 8 down on 8 November with «il motivo lo devi aggiungere tu,
+ * mettendo l'elenco delle macro funzionalità, i due o tre macro punti da attenzionare», and the app had «Gestione delle playlist sul
+ * telefono» as its whole description and no notes at all (a private app that does nothing without its server). Two texts:
+ * `description`, the Italian beta description testers read in TestFlight, and `notes`, the notes for the review team (they never
+ * reach the testers). A field already equal is left alone, a missing text is not touched, and a text over Apple's limit is refused
+ * before anything is sent. «What to test» is per build: `submitForReview` writes it.
+ */
+export async function setTestInfo(client, appId, { description, notes } = {}) {
+  for (const [name, text] of [['description', description], ['notes', notes]]) {
+    if (text && text.length > MAX_TEST_TEXT) throw new Error(`${name} is ${text.length} characters: Apple takes ${MAX_TEST_TEXT} at most`);
+  }
+  const out = { description: 'unchanged', notes: 'unchanged' };
+  if (description) {
+    const found = await client.list(`/v1/apps/${appId}/betaAppLocalizations?limit=20&fields[betaAppLocalizations]=locale,description`);
+    const italian = found.data.find((l) => l.attributes?.locale === 'it');
+    if (!italian) {
+      await client.post('/v1/betaAppLocalizations', {
+        data: { type: 'betaAppLocalizations', attributes: { locale: 'it', description }, relationships: { app: { data: { type: 'apps', id: appId } } } },
+      });
+      out.description = 'created';
+    } else if (italian.attributes?.description !== description) {
+      await client.patch(`/v1/betaAppLocalizations/${italian.id}`, { data: { type: 'betaAppLocalizations', id: italian.id, attributes: { description } } });
+      out.description = 'updated';
+    }
+  }
+  if (notes) {
+    const detail = (await client.get(`/v1/apps/${appId}/betaAppReviewDetail`)).data;
+    if (detail.attributes?.notes !== notes) {
+      await client.patch(`/v1/betaAppReviewDetails/${detail.id}`, { data: { type: 'betaAppReviewDetails', id: detail.id, attributes: { notes } } });
+      out.notes = 'updated';
+    }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
+
+/** The value after `--flag` in the arguments, or undefined; a flag with no value is a usage error. */
+function flagValue(args, flag, usage, read) {
+  const at = args.indexOf(flag);
+  if (at < 0) return undefined;
+  if (!args[at + 1]) throw new Error(usage);
+  return textArg(args[at + 1], read);
+}
+
+/**
+ * `submit-review [build number] [--whats-new "text|@file"]` → `{ number, whatsNew }`. The number is the first word that is not the
+ * flag or its value: without the flag it is the first word (it used to be skipped, so `submit-review 9` sent the newest build).
+ */
+export function submitArgs(rest, read) {
+  const at = rest.indexOf('--whats-new');
+  const whatsNew = flagValue(rest, '--whats-new', 'usage: asc.mjs submit-review [build number] [--whats-new "text|@file"]', read);
+  const valueAt = at >= 0 ? at + 1 : -1;
+  const number = rest.find((a, i) => !a.startsWith('--') && i !== valueAt);
+  return { number, whatsNew };
+}
 
 async function main(argv) {
   const [command = 'status', ...rest] = argv;
@@ -344,11 +424,16 @@ async function main(argv) {
     const app = await findApp(client);
     if (!app) throw new Error(`no app record for ${BUNDLE_ID}`);
     console.log(JSON.stringify(await assignBuild(client, app.id, name, number), null, 2));
+  } else if (command === 'set-test-info') {
+    const usage = 'usage: asc.mjs set-test-info [--description "text|@file"] [--notes "text|@file"]';
+    const description = flagValue(rest, '--description', usage);
+    const notes = flagValue(rest, '--notes', usage);
+    if (description === undefined && notes === undefined) throw new Error(usage);
+    const app = await findApp(client);
+    if (!app) throw new Error(`no app record for ${BUNDLE_ID}`);
+    console.log(JSON.stringify(await setTestInfo(client, app.id, { description, notes }), null, 2));
   } else if (command === 'submit-review') {
-    const at = rest.indexOf('--whats-new');
-    const whatsNew = at >= 0 ? rest[at + 1] : undefined;
-    if (at >= 0 && !whatsNew) throw new Error('usage: asc.mjs submit-review [build number] [--whats-new "text"]');
-    const number = rest.find((a, i) => !a.startsWith('--') && i !== at + 1);
+    const { number, whatsNew } = submitArgs(rest);
     const app = await findApp(client);
     if (!app) throw new Error(`no app record for ${BUNDLE_ID}`);
     console.log(JSON.stringify(await submitForReview(client, app.id, number, whatsNew), null, 2));
@@ -360,7 +445,7 @@ async function main(argv) {
     if (!rest[0]?.startsWith('/v1/')) throw new Error('usage: asc.mjs get /v1/...');
     console.log(JSON.stringify(await client.get(rest[0]), null, 2).slice(0, 6000));
   } else {
-    throw new Error(`unknown command "${command}" (status | groups | get | setup-group | invite-group | assign-build | submit-review)`);
+    throw new Error(`unknown command "${command}" (status | groups | get | setup-group | invite-group | assign-build | set-test-info | submit-review)`);
   }
 }
 

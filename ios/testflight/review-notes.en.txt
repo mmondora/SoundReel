@@ -1,0 +1,16 @@
+Mondrop is the companion app of SoundReel, a private music journal that one family (three people) runs on its own server. The app talks only to that server. It is not open to the public: no public sign-up, no ads, no purchases. The app is in Italian.
+
+The server is private, so the app needs a personal key (entered in the Settings tab) issued by our server; without it there is no library to show. If the review team wants to see the app with data, write to the contact email of this review information and we will send a temporary key.
+
+Main features
+1. Share: the Share sheet extension "Mondrop" (and the Share tab) sends a link to the family server; the outcome comes back in the Inbox ("Posta") tab.
+2. Home and Search: search the family music library by song, artist or album; resume where you were; new songs and playlists.
+3. Player: queue, mini player, cover art and lyrics; the queue is kept between launches and never starts playing by itself.
+4. Playlists: the user's own and automatic ones, with search and sort by date; they can be downloaded to the phone to listen offline.
+
+Please look at
+a. Share a link from Safari to Mondrop and check that the outcome appears in the Inbox tab.
+b. Play a song from Search and open the full-screen player (cover, lyrics, queue).
+c. Download a playlist and play it with the phone in airplane mode.
+
+Version 1.7.0 (build 12).
