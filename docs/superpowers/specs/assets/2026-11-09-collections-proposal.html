@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Raccolte di SoundReel</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: una pagina lunga, un disegno per proposta, ognuno dentro la sua cornice di prodotto (finestra del sito, telefono). Stessi dati d'esempio ovunque. */
+:root{
+  color-scheme: dark;
+  --bg:#0b0d11; --fg:#e8eaed; --muted:#98a0ad; --line:#262b35; --soft:#12151b; --accent:#3ddc97; --accent-ink:#0a0f0c;
+  --sr-bg:#0f1115; --sr-card:#1a1d24; --sr-hover:#22262e; --sr-border:#2a2e38; --sr-text:#e8eaed; --sr-sec:#a8adb7; --sr-mut:#838a97; --sr-soft:rgba(61,220,151,.14);
+  --mo-top:#242945; --mo-bot:#080911; --mo-yel:#ffd60a;
+  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  /* segnaposto delle miniature, un colore per argomento */
+  --h-vino:#7a2f45; --h-vino2:#c4586f; --h-cibo:#8a5a24; --h-cibo2:#d99a45; --h-casa:#2d5a63; --h-casa2:#6db3b8; --h-viaggi:#27486f; --h-viaggi2:#6a9fd6;
+  --h-soldi:#6b5a1e; --h-soldi2:#d1b24a; --h-auto:#3b3f48; --h-auto2:#8e95a3; --h-anime:#4b2f70; --h-anime2:#a07ad6; --h-salute:#25583f; --h-salute2:#5fc08c;
+  --h-ai:#2c3552; --h-ai2:#6f84d6; --h-musica:#6e2a5a; --h-musica2:#d36fb4; --h-film:#2a2f52; --h-film2:#8a7fd0; --h-sw:#2e4a4a; --h-sw2:#7fbfae; --h-luoghi:#3f5a2a; --h-luoghi2:#9fcf6c; --h-libri:#5a3b2a; --h-libri2:#cf9a6c; --h-moda:#5a2a4a; --h-moda2:#d88ab8;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);line-height:1.5;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
+.page{max-width:1040px;margin:0 auto;padding-block:40px 72px}
+h1,h2,h3,p,ul,ol,figure{margin:0}
+h1{font-size:clamp(2.2rem,6vw,3.4rem);line-height:1.05;letter-spacing:-.02em;text-wrap:balance}
+h2{font-size:1.45rem;line-height:1.2;letter-spacing:-.01em;text-wrap:balance}
+h3{font-size:1rem}
+.eyebrow{font-family:var(--mono);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lead{font-size:1.08rem;max-width:62ch;color:#c9ced6;margin-top:14px}
+.facts{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:22px;padding:0;list-style:none;color:var(--muted);font-size:.92rem}
+.facts b{color:var(--fg);font-variant-numeric:tabular-nums}
+section{margin-top:64px}
+.sec-head{display:flex;flex-direction:column;gap:6px;margin-bottom:20px}
+.sec-head p{color:var(--muted);max-width:68ch}
+.tag{display:inline-block;font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);border:1px solid rgba(61,220,151,.4);border-radius:999px;padding:2px 9px;margin-right:8px;vertical-align:2px}
+.note{font-size:.86rem;color:var(--muted);margin-top:12px;max-width:72ch}
+
+/* come nasce */
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;padding:0;list-style:none;counter-reset:s}
+.flow li{counter-increment:s;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:14px;font-size:.92rem;min-width:0}
+.flow li::before{content:counter(s);display:block;font-family:var(--mono);font-size:.78rem;color:var(--accent);margin-bottom:6px}
+.flow b{display:block;margin-bottom:2px}
+.flow span{color:var(--muted)}
+.births{margin-top:18px;overflow-x:auto}
+.births table{border-collapse:collapse;min-width:520px;width:100%;font-size:.9rem}
+.births th,.births td{text-align:left;padding:7px 12px 7px 0;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.births th{font-weight:500;color:var(--muted);font-size:.78rem;letter-spacing:.05em;text-transform:uppercase}
+
+/* cornice finestra */
+.win{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--sr-bg);box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.win-bar{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#151821;border-bottom:1px solid var(--line)}
+.dots{display:flex;gap:6px}.dots i{width:10px;height:10px;border-radius:50%;background:#2d323d;display:block}
+.url{flex:1;min-width:0;font-family:var(--mono);font-size:.72rem;color:var(--sr-mut);background:#0f1115;border-radius:999px;padding:4px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sr{color:var(--sr-text);padding:0 0 22px}
+.sr-head{display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid var(--sr-border);overflow-x:auto}
+.brand{font-weight:700;letter-spacing:-.01em;white-space:nowrap}.brand small{font-weight:500;color:var(--sr-mut);margin-left:6px;font-size:.72rem}
+.nav{display:flex;gap:4px;padding:0;list-style:none}
+.nav a{display:inline-flex;gap:6px;align-items:center;padding:5px 11px;border-radius:999px;font-size:.82rem;font-weight:500;color:var(--sr-sec);text-decoration:none;white-space:nowrap}
+.nav a.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.nav a.new{box-shadow:inset 0 0 0 1px rgba(61,220,151,.55);color:var(--accent)}
+.nav em{font-style:normal;font-size:.7rem;opacity:.75;font-variant-numeric:tabular-nums}
+.sr-body{padding:16px}
+.sr-title{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}
+.sr-title h3{font-size:1.15rem}.sr-title span{font-size:.8rem;color:var(--sr-mut)}
+
+/* binario */
+.rail{display:flex;gap:7px;overflow-x:auto;padding:2px 2px 10px;margin:0 -2px;scrollbar-width:thin}
+.chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;border:1px solid var(--sr-border);background:var(--sr-card);color:var(--sr-sec);border-radius:999px;padding:6px 12px;font:inherit;font-size:.84rem;cursor:pointer}
+.chip:hover{background:var(--sr-hover);color:var(--sr-text)}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.chip em{font-style:normal;font-size:.74rem;opacity:.8;font-variant-numeric:tabular-nums}
+.chip:focus-visible,.seg button:focus-visible,.pill:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.nuova{font-size:.64rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:var(--sr-soft);color:var(--accent);border-radius:999px;padding:1px 7px}
+.chip[aria-pressed="true"] .nuova{background:rgba(10,15,12,.2);color:var(--accent-ink)}
+.facets{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;padding:10px 12px;margin:2px 0 14px;border:1px dashed var(--sr-border);border-radius:10px;font-size:.82rem;color:var(--sr-sec)}
+.facets[hidden]{display:none!important}
+.facets .grp{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.facets label{color:var(--sr-mut);font-size:.74rem;text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
+.pill{border:1px solid var(--sr-border);background:transparent;color:var(--sr-sec);border-radius:999px;padding:3px 10px;font:inherit;font-size:.8rem;cursor:pointer}
+.pill[aria-pressed="true"]{background:var(--sr-soft);border-color:rgba(61,220,151,.6);color:var(--accent)}
+.count-line{font-size:.8rem;color:var(--sr-mut);margin-bottom:10px;min-height:1.2em}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.card{display:grid;grid-template-columns:64px 1fr;gap:12px;background:var(--sr-card);border:1px solid var(--sr-border);border-radius:12px;padding:10px;min-width:0}
+.card[hidden]{display:none!important}
+.th{width:64px;height:64px;border-radius:9px;background:linear-gradient(140deg,var(--c1,#333),var(--c2,#666))}
+.card h4{margin:0 0 3px;font-size:.9rem;line-height:1.3;font-weight:600}
+.card .meta{font-size:.74rem;color:var(--sr-mut);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.card .meta a{color:var(--sr-sec)}
+.chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.cc{font-size:.7rem;border-radius:999px;padding:1px 8px;background:rgba(255,255,255,.06);color:var(--sr-sec);border:1px solid var(--sr-border)}
+.cc.x::after{content:" \00d7";opacity:.55}
+
+/* pagina raccolte */
+.grp-title{display:flex;align-items:baseline;gap:10px;margin:18px 0 10px;font-size:.78rem;letter-spacing:.07em;text-transform:uppercase;color:var(--sr-mut)}
+.grp-title:first-child{margin-top:0}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.tile{background:var(--sr-card);border:1px solid var(--sr-border);border-radius:12px;padding:8px;min-width:0}
+.mosaic{display:grid;grid-template-columns:1fr 1fr;gap:3px;border-radius:8px;overflow:hidden;aspect-ratio:1/1}
+.mosaic i{display:block;background:linear-gradient(140deg,var(--c1),var(--c2))}
+.mosaic i:nth-child(2){filter:brightness(.85) hue-rotate(8deg)}.mosaic i:nth-child(3){filter:brightness(1.1) hue-rotate(-8deg)}.mosaic i:nth-child(4){filter:brightness(.7)}
+.tile b{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:.9rem;line-height:1.2}
+.tile small{display:block;color:var(--sr-mut);font-size:.76rem;margin-top:2px}
+.sub{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.sub span{font-size:.68rem;color:var(--sr-sec);border:1px solid var(--sr-border);border-radius:999px;padding:0 7px}
+.watch{margin-top:18px;padding:10px 12px;border:1px dashed var(--sr-border);border-radius:10px;font-size:.82rem;color:var(--sr-mut)}
+.watch b{color:var(--sr-sec);font-weight:600}
+
+/* dentro una raccolta */
+.coll-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;margin-bottom:10px}
+.coll-head h3{font-size:1.25rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--sr-border);border-radius:999px;padding:2px;background:var(--sr-card)}
+.seg button{border:0;background:transparent;color:var(--sr-sec);padding:5px 14px;border-radius:999px;font:inherit;font-size:.82rem;cursor:pointer}
+.seg button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+details.why{margin:0 0 12px;font-size:.84rem;color:var(--sr-sec)}
+details.why summary{cursor:pointer;color:var(--accent);width:max-content}
+details.why p{margin-top:6px;max-width:70ch}
+.panel[hidden]{display:none!important}
+.grid3{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.gcard{border:1px solid var(--sr-border);border-radius:10px;overflow:hidden;background:var(--sr-card);min-width:0}
+.gcard .big{aspect-ratio:4/5;background:linear-gradient(150deg,var(--c1),var(--c2))}
+.gcard p{padding:7px 9px;font-size:.76rem;line-height:1.3;color:var(--sr-sec)}
+.rows{display:flex;flex-direction:column;border:1px solid var(--sr-border);border-radius:10px;overflow:hidden}
+.row{display:grid;grid-template-columns:1fr auto;gap:10px;padding:10px 12px;border-bottom:1px solid var(--sr-border);background:var(--sr-card);font-size:.84rem}
+.row:last-child{border-bottom:0}.row span{color:var(--sr-mut);font-size:.76rem}
+.map{border:1px solid var(--sr-border);border-radius:10px;overflow:hidden;background:#111a1d}
+.map svg{display:block;width:100%;height:auto}
+.map-note{font-size:.74rem;color:var(--sr-mut);padding:7px 10px;border-top:1px solid var(--sr-border);background:var(--sr-card)}
+
+/* telefoni */
+.phones{display:flex;flex-wrap:wrap;gap:28px;justify-content:center;align-items:flex-start}
+.phone{width:300px;max-width:100%;border:8px solid #1c1e25;border-radius:38px;background:linear-gradient(180deg,var(--mo-top),var(--mo-bot));color:#fff;padding:14px 14px 18px;box-shadow:0 18px 50px rgba(0,0,0,.5);min-height:560px}
+.phone .st{display:flex;justify-content:space-between;font-size:.72rem;opacity:.8;padding:0 6px 10px}
+.phone h3{font-size:1.2rem;margin:4px 2px 10px}
+.phone .field{background:rgba(255,255,255,.12);border-radius:12px;padding:9px 12px;font-size:.84rem;color:rgba(255,255,255,.72);margin-bottom:14px}
+.phone .sh{display:flex;justify-content:space-between;align-items:baseline;margin:14px 2px 8px;font-size:.95rem;font-weight:700}
+.phone .sh a{font-size:.74rem;font-weight:500;color:var(--mo-yel);text-decoration:none}
+.hrow{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.hcard{flex:0 0 118px;min-width:0}
+.hcard .mosaic{border-radius:10px}
+.hcard b{display:block;font-size:.8rem;margin-top:6px;line-height:1.2}
+.hcard small{font-size:.7rem;color:rgba(255,255,255,.66)}
+.ynew{font-size:.58rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;background:var(--mo-yel);color:#000;border-radius:999px;padding:1px 6px;margin-left:5px;vertical-align:1px}
+.mcard{flex:0 0 96px}.mcard .sq{aspect-ratio:1/1;border-radius:9px;background:linear-gradient(140deg,var(--c1),var(--c2))}
+.mcard span{display:block;font-size:.7rem;margin-top:5px;line-height:1.25;color:rgba(255,255,255,.86)}
+.inbox{display:flex;flex-direction:column;gap:9px}
+.msg{background:rgba(255,255,255,.08);border-radius:12px;padding:10px 12px;font-size:.8rem;line-height:1.35}
+.msg small{display:block;color:rgba(255,255,255,.6);margin-top:3px;font-size:.7rem}
+.msg b{color:var(--mo-yel)}
+.tabs{display:flex;justify-content:space-around;margin:18px -4px 0;padding-top:12px;border-top:1px solid rgba(255,255,255,.12);font-size:.66rem;color:rgba(255,255,255,.6)}
+.tabs .on{color:var(--mo-yel);font-weight:700}
+
+/* scelte */
+.ask{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.q{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0}
+.q h3{display:flex;gap:8px;align-items:baseline;font-size:.98rem;margin-bottom:6px}
+.q h3 span{font-family:var(--mono);font-size:.72rem;color:var(--accent)}
+.q p{font-size:.9rem;color:#c9ced6}
+.q p+p{margin-top:6px}
+.q .rec{color:var(--accent);font-size:.82rem}
+@media (max-width:560px){section{margin-top:48px}.sr-body{padding:12px}.phone{padding:12px}}
+@media (prefers-reduced-motion:no-preference){.chip,.pill{transition:background .15s,color .15s}}
+
+.mono{font-family:var(--mono);font-size:.78rem}
+.locali{margin-top:18px}
+.loc-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}
+.loc-head h4{margin:0;font-size:1rem}.loc-head span{font-size:.78rem;color:var(--sr-mut)}
+.kind{margin-left:6px;font-size:.72rem;color:var(--sr-mut);border:1px solid var(--sr-border);border-radius:999px;padding:0 7px;white-space:nowrap}
+.maps{align-self:center;white-space:nowrap;font-size:.8rem;font-weight:600;color:var(--accent);border:1px solid rgba(61,220,151,.55);border-radius:999px;padding:4px 12px;text-decoration:none}
+.maps:hover{background:var(--sr-soft)}
+.strip{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;margin-bottom:14px;border:1px solid rgba(61,220,151,.35);background:var(--sr-soft);border-radius:12px;font-size:.86rem}
+.strip b{color:var(--accent)}
+.shelf{margin-top:16px}
+.shelf-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.shelf-head h4{margin:0;font-size:1rem}.shelf-head a{font-size:.78rem;color:var(--accent);text-decoration:none}
+</style>
+
+<div lang="it" class="page">
+
+<header>
+  <p class="eyebrow">SoundReel · proposta del 9 novembre, scelte del 10</p>
+  <h1>Raccolte</h1>
+  <p class="lead">La libreria si ordina da sola per argomento, luogo e tipo. Nessuno dichiara gli argomenti: il server li trova e te li propone. In prova sui tuoi dati è già successo con «Vino».</p>
+  <ul class="facts">
+    <li><b>1696</b> voci</li>
+    <li><b>12 s</b> per leggere tutta la libreria</li>
+    <li><b>15</b> voci sul vino, trovate senza nominarlo</li>
+    <li><b>5</b> voci per far nascere una raccolta</li>
+  </ul>
+  <p class="note">I numeri sono quelli del tuo archivio del 9 novembre. Le voci che vedi nei disegni sono d'esempio, con testi inventati.</p>
+</header>
+
+<section id="nasce">
+  <div class="sec-head">
+    <h2>Come nasce «Vino»</h2>
+    <p>Non c'è una lista di argomenti da mantenere. Ogni voce nuova fa questo percorso, in locale, dopo l'analisi.</p>
+  </div>
+  <ol class="flow">
+    <li><b>Salvi un reel</b><span>come sempre, da Telegram o da Mondrop</span></li>
+    <li><b>Il server lo legge</b><span>un vettore dal riassunto, 7 millisecondi, senza uscire da casa</span></li>
+    <li><b>Arriva la quinta voce simile</b><span>sotto cinque non si vede niente</span></li>
+    <li><b>Prende un nome</b><span>da un elenco di circa 30; se non calza, lo propone e lo controlla</span></li>
+    <li><b>Te lo dice</b><span>«Nuova» per 7 giorni e una striscia nella Home del sito</span></li>
+  </ol>
+  <div class="births">
+    <table>
+      <caption class="note" style="text-align:left;caption-side:bottom;padding-top:8px">Rigiocando la storia con la regola «5 voci» sarebbero nate circa 34 raccolte da marzo a ottobre, cinque al mese. È un'approssimazione: il raggruppamento è stato fatto una volta sola su tutta la libreria.</caption>
+      <thead><tr><th>Raccolta</th><th>Sarebbe nata</th><th>Voci oggi</th></tr></thead>
+      <tbody>
+        <tr><td>Vino</td><td>20 maggio</td><td>15</td></tr>
+        <tr><td>Energia e domotica</td><td>7 agosto</td><td>21</td></tr>
+        <tr><td>Ristoranti (5 su 7 a Milano)</td><td>17 settembre</td><td>7</td></tr>
+        <tr><td>Viaggi</td><td>20 settembre</td><td>7</td></tr>
+        <tr><td>Casa e design</td><td>21 settembre</td><td>10</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="a">
+  <div class="sec-head">
+    <h2><span class="tag">A</span>Il binario in cima a «Link»</h2>
+    <p>La pagina che usi già guadagna una riga. Tocca un argomento e la lista si filtra lì; tocca un secondo chip e si combinano. «Ristoranti a Milano» non è una raccolta scritta apposta: è tema più luogo. Prova.</p>
+  </div>
+  <div class="win">
+    <div class="win-bar"><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div><div class="url" id="url">soundreel.casamon.dev/entries</div></div>
+    <div class="sr">
+      <div class="sr-head">
+        <span class="brand">SoundReel<small>KB</small></span>
+        <ul class="nav" aria-label="Menu del sito (disegno)">
+          <li><a href="#a" tabindex="-1">Inbox</a></li>
+          <li><a href="#b" tabindex="-1" class="new">Raccolte</a></li>
+          <li><a href="#a" tabindex="-1" class="on">Link <em>1696</em></a></li>
+          <li><a href="#a" tabindex="-1">canzoni <em>719</em></a></li>
+          <li><a href="#a" tabindex="-1">film <em>256</em></a></li>
+          <li><a href="#a" tabindex="-1">note</a></li>
+          <li><a href="#a" tabindex="-1">Player</a></li>
+        </ul>
+      </div>
+      <div class="sr-body">
+        <div class="sr-title"><h3>Link</h3><span id="total">1696 voci</span></div>
+        <div class="rail" id="rail" role="group" aria-label="Raccolte">
+          <button class="chip" type="button" data-topic="all" aria-pressed="true">Tutte <em>1696</em></button>
+          <button class="chip" type="button" data-topic="musica" aria-pressed="false">Musica <em>719</em></button>
+          <button class="chip" type="button" data-topic="film" aria-pressed="false">Film e serie <em>256</em></button>
+          <button class="chip" type="button" data-topic="vino" aria-pressed="false">Vino <em>15</em> <span class="nuova">Nuova</span></button>
+          <button class="chip" type="button" data-topic="ristoranti" data-places="milano:5" aria-pressed="false">Ristoranti <em>7</em></button>
+          <button class="chip" type="button" data-topic="casa" aria-pressed="false">Casa e design <em>10</em></button>
+          <button class="chip" type="button" data-topic="viaggi" aria-pressed="false">Viaggi <em>7</em></button>
+          <button class="chip" type="button" data-topic="soldi" aria-pressed="false">Finanza <em>38</em></button>
+          <button class="chip" type="button" data-topic="anime" aria-pressed="false">Anime <em>24</em></button>
+          <button class="chip" type="button" data-topic="altre" aria-pressed="false">Altre &#9662;</button>
+        </div>
+        <div class="facets" id="facets" hidden>
+          <div class="grp" id="f-dove" hidden><label>Dove</label><span id="f-dove-btns" class="grp"></span></div>
+          <div class="grp"><label>Fonte</label><button class="pill" type="button" aria-pressed="true">Tutte</button><button class="pill" type="button" aria-pressed="false">Instagram</button><button class="pill" type="button" aria-pressed="false">TikTok</button></div>
+          <div class="grp"><label>Quando</label><button class="pill" type="button" aria-pressed="true">Sempre</button><button class="pill" type="button" aria-pressed="false">Ultimi 30 giorni</button></div>
+        </div>
+        <p class="count-line" id="count" aria-live="polite"></p>
+        <div class="cards" id="cards">
+          <article class="card" data-topics="ristoranti" data-place="milano" style="--c1:var(--h-cibo);--c2:var(--h-cibo2)"><div class="th"></div><div><h4>Dove fare colazione a Milano: sei indirizzi</h4><div class="meta"><span>Instagram</span><span>3 giorni fa</span><a href="#a" tabindex="-1">Apri il post</a></div><div class="chips"><span class="cc x">Ristoranti</span><span class="cc x">Milano</span></div></div></article>
+          <article class="card" data-topics="ristoranti" data-place="milano" style="--c1:var(--h-cibo);--c2:var(--h-cibo2)"><div class="th"></div><div><h4>Posti da provare in zona Navigli</h4><div class="meta"><span>Instagram</span><span>1 settimana fa</span><a href="#a" tabindex="-1">Apri il post</a></div><div class="chips"><span class="cc x">Ristoranti</span><span class="cc x">Milano</span></div></div></article>
+          <article class="card" data-topics="ristoranti" data-place="" style="--c1:var(--h-cibo);--c2:var(--h-cibo2)"><div class="th"></div><div><h4>Quanto costa davvero un menu degustazione</h4><div class="meta"><span>TikTok</span><span>2 mesi fa</span><a href="#a" tabindex="-1">Apri il post</a></div><div class="chips"><span class="cc x">Ristoranti</span></div></div></article>
+          <article class="card" data-topics="vino" style="--c1:var(--h-vino);--c2:var(--h-vino2)"><div class="th"></div><div><h4>Tre vini italiani sotto i dieci euro</h4><div class="meta"><span>Instagram</span><span>ieri</span><a href="#a" tabindex="-1">Apri il post</a></div><div class="chips"><span class="cc x">Vino</span></div></div></article>
+          <article class="card" data-topics="vino" style="--c1:var(--h-vino);--c2:var(--h-vino2)"><div class="th"></div><div><h4>I vitigni autoctoni che non conosci</h4><div class="meta"><span>Instagram</span><span>2 settimane fa</span><a href="#a" tabindex="-1">Apri il post</a></div><div class="chips"><span class="cc x">Vino</span></div></div></article>
+          <article class="card" data-topics="casa" style="--c1:var(--h-casa);--c2:var(--h-casa2)"><div class="th"></div><div><h4>Progettare la casa online, gratis</h4><div class="meta"><span>Instagram</span><span>3 settimane fa</span><a href="#a" tabindex="-1">Apri il post</a></div><div class="chips"><span class="cc x">Casa e design</span></div></div></article>
+          <article class="card" data-topics="casa" style="--c1:var(--h-casa);--c2:var(--h-casa2)"><div class="th"></div><div><h4>Casa prefabbricata in bioedilizia, 85 m²</h4><div class="meta"><span>Instagram</span><span>1 mese fa</span><a href="#a" tabindex="-1">Apri il post</a></div><div class="chips"><span class="cc x">Casa e design</span><span class="cc x">Energia e domotica</span></div></div></article>
+          <article class="card" data-topics="viaggi" style="--c1:var(--h-viaggi);--c2:var(--h-viaggi2)"><div class="th"></div><div><h4>Trenta mete: quante ne hai già viste?</h4><div class="meta"><span>TikTok</span><span>1 mese fa</span><a href="#a" tabindex="-1">Apri il post</a></div><div class="chips"><span class="cc x">Viaggi</span></div></div></article>
+          <article class="card" data-topics="musica" style="--c1:var(--h-musica);--c2:var(--h-musica2)"><div class="th"></div><div><h4>Dieci canzoni da ascoltare questo mese</h4><div class="meta"><span>Instagram</span><span>4 giorni fa</span><a href="#a" tabindex="-1">Apri il post</a></div><div class="chips"><span class="cc x">Musica</span></div></div></article>
+          <article class="card" data-topics="film" style="--c1:var(--h-film);--c2:var(--h-film2)"><div class="th"></div><div><h4>Tre film da vedere su RaiPlay</h4><div class="meta"><span>Instagram</span><span>5 giorni fa</span><a href="#a" tabindex="-1">Apri il post</a></div><div class="chips"><span class="cc x">Film e serie</span></div></div></article>
+          <article class="card" data-topics="soldi" style="--c1:var(--h-soldi);--c2:var(--h-soldi2)"><div class="th"></div><div><h4>Fondi pensione: cosa cambia dal prossimo anno</h4><div class="meta"><span>Instagram</span><span>6 giorni fa</span><a href="#a" tabindex="-1">Apri il post</a></div><div class="chips"><span class="cc x">Finanza</span></div></div></article>
+          <article class="card" data-topics="anime" style="--c1:var(--h-anime);--c2:var(--h-anime2)"><div class="th"></div><div><h4>Una lista di anime poco conosciuti</h4><div class="meta"><span>TikTok</span><span>2 settimane fa</span><a href="#a" tabindex="-1">Apri il post</a></div><div class="chips"><span class="cc x">Anime</span></div></div></article>
+        </div>
+        <p class="note">Ordine dei chip: prima le nuove, poi quelle con voci aggiunte negli ultimi 14 giorni, poi per grandezza. Il filtro sta nell'indirizzo, quindi si condivide e «indietro» funziona. Sulle card i chip di raccolta prendono il posto dei tag grezzi; la × dice «non è questo» e la correzione resta.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="b">
+  <div class="sec-head">
+    <h2><span class="tag">B</span>La pagina «Raccolte»</h2>
+    <p>Per sfogliare e per vedere cosa ha scoperto il sistema. Voce nuova nel menu, tra Inbox e Link. Ogni carta ha un mosaico di quattro miniature (il 96 % delle voci ne ha una), il nome e quante voci contiene.</p>
+  </div>
+  <div class="win">
+    <div class="win-bar"><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div><div class="url">soundreel.casamon.dev/collections</div></div>
+    <div class="sr">
+      <div class="sr-head">
+        <span class="brand">SoundReel<small>KB</small></span>
+        <ul class="nav" aria-label="Menu del sito (disegno)">
+          <li><a href="#b" tabindex="-1">Inbox</a></li>
+          <li><a href="#b" tabindex="-1" class="on">Raccolte</a></li>
+          <li><a href="#b" tabindex="-1">Link <em>1696</em></a></li>
+          <li><a href="#b" tabindex="-1">canzoni <em>719</em></a></li>
+          <li><a href="#b" tabindex="-1">film <em>256</em></a></li>
+          <li><a href="#b" tabindex="-1">note</a></li>
+          <li><a href="#b" tabindex="-1">Player</a></li>
+        </ul>
+      </div>
+      <div class="sr-body">
+        <div class="sr-title"><h3>Raccolte</h3><span>15 raccolte · 5 tipi, 10 temi</span></div>
+
+        <div class="grp-title">Nuove, ultimi 7 giorni</div>
+        <div class="tiles">
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-vino);--c2:var(--h-vino2)"><i></i><i></i><i></i><i></i></div><b>Vino <span class="nuova">Nuova</span></b><small>15 voci</small></div>
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-cibo);--c2:var(--h-cibo2)"><i></i><i></i><i></i><i></i></div><b>Ristoranti <span class="nuova">Nuova</span></b><small>7 voci</small><div class="sub"><span>Milano 5</span></div></div>
+        </div>
+
+        <div class="grp-title">Tipi</div>
+        <div class="tiles">
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-musica);--c2:var(--h-musica2)"><i></i><i></i><i></i><i></i></div><b>Musica</b><small>719 voci · Suona</small></div>
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-film);--c2:var(--h-film2)"><i></i><i></i><i></i><i></i></div><b>Film e serie</b><small>256 voci</small></div>
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-sw);--c2:var(--h-sw2)"><i></i><i></i><i></i><i></i></div><b>Software e app</b><small>701 voci</small></div>
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-luoghi);--c2:var(--h-luoghi2)"><i></i><i></i><i></i><i></i></div><b>Luoghi</b><small>264 voci · Locali</small></div>
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-libri);--c2:var(--h-libri2)"><i></i><i></i><i></i><i></i></div><b>Libri</b><small>69 voci</small></div>
+        </div>
+
+        <div class="grp-title">Cibo e bevande</div>
+        <div class="tiles">
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-vino);--c2:var(--h-vino2)"><i></i><i></i><i></i><i></i></div><b>Vino</b><small>15 voci</small></div>
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-cibo);--c2:var(--h-cibo2)"><i></i><i></i><i></i><i></i></div><b>Ristoranti</b><small>7 voci</small><div class="sub"><span>Milano 5</span></div></div>
+        </div>
+
+        <div class="grp-title">Casa</div>
+        <div class="tiles">
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-casa);--c2:var(--h-casa2)"><i></i><i></i><i></i><i></i></div><b>Casa e design</b><small>10 voci</small></div>
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-sw);--c2:var(--h-casa2)"><i></i><i></i><i></i><i></i></div><b>Energia e domotica</b><small>21 voci</small></div>
+        </div>
+
+        <div class="grp-title">Tecnologia</div>
+        <div class="tiles">
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-ai);--c2:var(--h-ai2)"><i></i><i></i><i></i><i></i></div><b>Intelligenza artificiale</b><small>circa 800 voci</small><div class="sub"><span>AI locale e modelli</span><span>Agenti</span><span>Voce e audio</span><span>Video e immagini</span></div></div>
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-auto);--c2:var(--h-auto2)"><i></i><i></i><i></i><i></i></div><b>Auto e moto</b><small>12 voci</small></div>
+        </div>
+
+        <div class="grp-title">Altre</div>
+        <div class="tiles">
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-viaggi);--c2:var(--h-viaggi2)"><i></i><i></i><i></i><i></i></div><b>Viaggi</b><small>7 voci</small></div>
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-soldi);--c2:var(--h-soldi2)"><i></i><i></i><i></i><i></i></div><b>Finanza e investimenti</b><small>38 voci</small></div>
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-anime);--c2:var(--h-anime2)"><i></i><i></i><i></i><i></i></div><b>Anime</b><small>24 voci</small></div>
+          <div class="tile"><div class="mosaic" style="--c1:var(--h-moda);--c2:var(--h-moda2)"><i></i><i></i><i></i><i></i></div><b>Moda e stile</b><small>6 voci</small></div>
+        </div>
+
+        <p class="watch"><b>In osservazione</b> (le vedi solo da admin, compaiono da sole a 5 voci): Montagna e outdoor 4, Ricette 3, Sfondi 1. <b>Nascoste</b>: nessuna.</p>
+      </div>
+    </div>
+  </div>
+  <p class="note">La stessa pagina serve per rinominare, unire o nascondere una raccolta dal menu ⋯ della carta. Le correzioni restano per sempre: un ricalcolo notturno non le disfa.</p>
+</section>
+
+<section id="dentro">
+  <div class="sec-head">
+    <h2>Dentro una raccolta</h2>
+    <p>Le viste le sceglie il server per ogni raccolta e il sito disegna solo quelle: griglia dove contano le immagini, lista dove conta il testo, «Suona» dove ci sono canzoni. Dove i post citano dei locali c'è la sezione «Locali», con il link a Google Maps.</p>
+  </div>
+  <div class="win">
+    <div class="win-bar"><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div><div class="url">soundreel.casamon.dev/collections/ristoranti?dove=milano</div></div>
+    <div class="sr"><div class="sr-body">
+      <div class="coll-head">
+        <h3>Ristoranti <span class="cc">Milano ×</span> <span class="nuova">Nuova</span></h3>
+        <div class="seg" role="tablist" aria-label="Vista">
+          <button type="button" role="tab" aria-selected="true" data-view="griglia" id="t-griglia" aria-controls="v-griglia">Griglia</button>
+          <button type="button" role="tab" aria-selected="false" data-view="lista" id="t-lista" aria-controls="v-lista">Lista</button>
+        </div>
+      </div>
+      <details class="why"><summary>Perché è qui?</summary><p>Parole che la definiscono: ristoranti, milano, colazione, dove mangiare. Le due voci più centrali: «Dove fare colazione a Milano: sei indirizzi» e «Posti da provare in zona Navigli». Milano compare in 5 voci su 7.</p></details>
+      <div class="panel" id="v-griglia" role="tabpanel" aria-labelledby="t-griglia">
+        <div class="grid3">
+          <div class="gcard" style="--c1:var(--h-cibo);--c2:var(--h-cibo2)"><div class="big"></div><p>Dove fare colazione a Milano: sei indirizzi</p></div>
+          <div class="gcard" style="--c1:#6b3b1d;--c2:#d98a4a"><div class="big"></div><p>Posti da provare in zona Navigli</p></div>
+          <div class="gcard" style="--c1:#5d4a1c;--c2:#d9b85a"><div class="big"></div><p>Aperitivo con vista, tre locali</p></div>
+          <div class="gcard" style="--c1:#5a2a24;--c2:#d9735a"><div class="big"></div><p>Il menu a sorpresa del vegetariano</p></div>
+          <div class="gcard" style="--c1:#3d4a1f;--c2:#a8c45f"><div class="big"></div><p>Brunch della domenica, la classifica</p></div>
+        </div>
+      </div>
+      <div class="panel" id="v-lista" role="tabpanel" aria-labelledby="t-lista" hidden>
+        <div class="rows">
+          <div class="row"><div>Dove fare colazione a Milano: sei indirizzi<br><span>Il post presenta sei posti per la colazione, con zona e orari.</span></div><span>Instagram · 3 giorni fa</span></div>
+          <div class="row"><div>Posti da provare in zona Navigli<br><span>Una lista di locali con aperitivo, chiede di aggiungere i propri.</span></div><span>Instagram · 1 settimana fa</span></div>
+          <div class="row"><div>Il menu a sorpresa del vegetariano<br><span>Piatti interattivi e una sorpresa nel menu.</span></div><span>Instagram · 3 settimane fa</span></div>
+        </div>
+      </div>
+      <div class="locali">
+        <div class="loc-head"><h4>Locali citati</h4><span>5 nomi, da 3 post</span></div>
+        <div class="rows">
+          <div class="row"><div>Trattoria dei Navigli <span class="kind">ristorante · Milano</span><br><span>Citata in 2 post</span></div><a class="maps" href="#dentro" tabindex="-1">Apri in Maps</a></div>
+          <div class="row"><div>Caffè della Stazione <span class="kind">caffè · Milano</span><br><span>Citato in 1 post</span></div><a class="maps" href="#dentro" tabindex="-1">Apri in Maps</a></div>
+          <div class="row"><div>Pizzeria Ponte Nuovo <span class="kind">pizzeria · Milano</span><br><span>Citata in 1 post</span></div><a class="maps" href="#dentro" tabindex="-1">Apri in Maps</a></div>
+          <div class="row"><div>Osteria del Mercato <span class="kind">ristorante · Milano</span><br><span>Citata in 1 post</span></div><a class="maps" href="#dentro" tabindex="-1">Apri in Maps</a></div>
+          <div class="row"><div>Bistrot Corso Sempione <span class="kind">bistrot · Milano</span><br><span>Citato in 1 post</span></div><a class="maps" href="#dentro" tabindex="-1">Apri in Maps</a></div>
+        </div>
+        <p class="note">Nomi inventati, per il disegno. Il luogo si legge dal testo del post («su Milano») e i nomi sono quelli che il post elenca davvero: non se ne inventano. Lo stesso locale citato in più post è una riga sola, con i link ai post. Il link lo costruisce il server (<span class="mono">google.com/maps/search/?api=1&amp;query=Nome, Milano</span>): è un indirizzo da aprire, niente esce finché non lo tocchi.</p>
+      </div>
+      <p class="note">Sulla raccolta Musica c'è «Suona»: accoda tutto nel player che c'è già. Una mappa nostra non serve: c'è Google Maps.</p>
+    </div></div>
+  </div>
+</section>
+
+<section id="c">
+  <div class="sec-head">
+    <h2><span class="tag">C</span>Gli scaffali nella Home del sito</h2>
+    <p>Dopo A e B. Come la Home di Mondrop di oggi: il server manda sezioni già pronte e il sito le disegna. In cima la striscia «Nuove raccolte», poi qualche scaffale con le voci più recenti. Solo sul sito: Mondrop non mostra le raccolte, mostra le playlist.</p>
+  </div>
+  <div class="win">
+    <div class="win-bar"><div class="dots" aria-hidden="true"><i></i><i></i><i></i></div><div class="url">soundreel.casamon.dev/</div></div>
+    <div class="sr">
+      <div class="sr-head">
+        <span class="brand">SoundReel<small>KB</small></span>
+        <ul class="nav" aria-label="Menu del sito (disegno)">
+          <li><a href="#c" tabindex="-1" class="on">Inbox</a></li>
+          <li><a href="#c" tabindex="-1" class="new">Raccolte</a></li>
+          <li><a href="#c" tabindex="-1">Link <em>1696</em></a></li>
+          <li><a href="#c" tabindex="-1">canzoni <em>719</em></a></li>
+          <li><a href="#c" tabindex="-1">film <em>256</em></a></li>
+          <li><a href="#c" tabindex="-1">note</a></li>
+          <li><a href="#c" tabindex="-1">Player</a></li>
+        </ul>
+      </div>
+      <div class="sr-body">
+        <div class="strip"><b>Nuove raccolte</b><button class="chip" type="button" tabindex="-1">Vino <em>15</em></button><button class="chip" type="button" tabindex="-1">Ristoranti <em>7</em></button><span style="color:var(--sr-mut)">trovate nei tuoi reel, negli ultimi 7 giorni</span></div>
+        <div class="shelf">
+          <div class="shelf-head"><h4>Vino</h4><a href="#c" tabindex="-1">Vedi tutto</a></div>
+          <div class="cards">
+            <article class="card" style="--c1:var(--h-vino);--c2:var(--h-vino2)"><div class="th"></div><div><h4>Tre vini italiani sotto i dieci euro</h4><div class="meta"><span>Instagram</span><span>ieri</span></div></div></article>
+            <article class="card" style="--c1:var(--h-vino);--c2:var(--h-vino2)"><div class="th"></div><div><h4>I vitigni autoctoni che non conosci</h4><div class="meta"><span>Instagram</span><span>2 settimane fa</span></div></div></article>
+            <article class="card" style="--c1:var(--h-vino);--c2:var(--h-vino2)"><div class="th"></div><div><h4>Cantine da visitare in autunno</h4><div class="meta"><span>TikTok</span><span>3 settimane fa</span></div></div></article>
+          </div>
+        </div>
+        <div class="shelf">
+          <div class="shelf-head"><h4>Ristoranti · Milano</h4><a href="#c" tabindex="-1">Vedi tutto</a></div>
+          <div class="cards">
+            <article class="card" style="--c1:var(--h-cibo);--c2:var(--h-cibo2)"><div class="th"></div><div><h4>Dove fare colazione a Milano: sei indirizzi</h4><div class="meta"><span>Instagram</span><span>3 giorni fa</span></div></div></article>
+            <article class="card" style="--c1:var(--h-cibo);--c2:var(--h-cibo2)"><div class="th"></div><div><h4>Posti da provare in zona Navigli</h4><div class="meta"><span>Instagram</span><span>1 settimana fa</span></div></div></article>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Quando salvi un link, l'esito di ritorno che esiste già dice dove è finito: «Salvato in: Ristoranti · Milano». Anche nella risposta di Telegram.</p>
+</section>
+
+<section id="scegli">
+  <div class="sec-head">
+    <h2>Cosa hai deciso</h2>
+    <p>Le tue risposte del 10 novembre, e dove vanno. Le scelte che ho fatto io, da controllare, sono nella spec (sezione 12).</p>
+  </div>
+  <div class="ask">
+    <div class="q"><h3><span>1</span>La UX</h3><p>Sì: A (il binario) e B (la pagina Raccolte) subito, poi C (gli scaffali).</p><p class="rec">Deciso.</p></div>
+    <div class="q"><h3><span>2</span>Mondrop</h3><p>No: le raccolte restano sul sito. Mondrop mostra le playlist che nascono dai post di musica, con ricerca, data e ordine.</p><p class="rec">Deciso.</p></div>
+    <div class="q"><h3><span>3</span>La soglia</h3><p>5 voci. La raccolta nasce attiva, da sola, con «Nuova» per 7 giorni.</p><p class="rec">Deciso.</p></div>
+    <div class="q"><h3><span>4</span>I nomi di base</h3><p>L'elenco di circa 30 nomi va bene. Un argomento che non è in elenco si trova lo stesso.</p><p class="rec">Deciso.</p></div>
+    <div class="q"><h3><span>+</span>Il luogo dal testo</h3><p>Il luogo si legge dal testo del post. Dove il post elenca dei locali, una sezione con i nomi e «Apri in Maps».</p><p class="rec">Nella fase 1 delle raccolte.</p></div>
+    <div class="q"><h3><span>+</span>Playlist dai post di musica</h3><p>«Le 5 musiche di Natale» diventa una playlist; «jazz da ascoltare» è una sola, con i brani nuovi in cima. L'elenco delle playlist si cerca, si ordina per data, si sfoglia.</p><p class="rec">Spec a parte. Si costruisce per prima.</p></div>
+  </div>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var rail = document.getElementById('rail');
+  var chips = Array.prototype.slice.call(rail.querySelectorAll('.chip'));
+  var cards = Array.prototype.slice.call(document.querySelectorAll('#cards .card'));
+  var facets = document.getElementById('facets');
+  var doveBox = document.getElementById('f-dove');
+  var doveBtns = document.getElementById('f-dove-btns');
+  var count = document.getElementById('count');
+  var url = document.getElementById('url');
+  var totals = { all: 1696, musica: 719, film: 256, vino: 15, ristoranti: 7, casa: 10, viaggi: 7, soldi: 38, anime: 24, altre: 0 };
+  var state = { topic: 'all', place: 'all' };
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function drawPlaces(chip) {
+    doveBtns.innerHTML = '';
+    var spec = chip && chip.getAttribute('data-places');
+    if (!spec) { doveBox.hidden = true; return; }
+    doveBox.hidden = false;
+    var items = [['all', 'Tutti']].concat(spec.split(',').map(function (p) { var a = p.split(':'); return [a[0], cap(a[0]) + ' ' + a[1]]; }));
+    items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'pill'; b.textContent = it[1];
+      b.setAttribute('aria-pressed', it[0] === state.place ? 'true' : 'false');
+      b.addEventListener('click', function () { state.place = it[0]; render(); });
+      doveBtns.appendChild(b);
+    });
+  }
+  function render() {
+    var chip = chips.filter(function (c) { return c.getAttribute('data-topic') === state.topic; })[0];
+    chips.forEach(function (c) { c.setAttribute('aria-pressed', c === chip ? 'true' : 'false'); });
+    facets.hidden = state.topic === 'all' || state.topic === 'altre';
+    drawPlaces(chip);
+    var shown = 0;
+    cards.forEach(function (c) {
+      var topics = c.getAttribute('data-topics').split(' ');
+      var ok = state.topic === 'all' || state.topic === 'altre' || topics.indexOf(state.topic) >= 0;
+      if (ok && state.place !== 'all' && c.getAttribute('data-place') !== state.place) ok = false;
+      c.hidden = !ok;
+      if (ok) shown++;
+    });
+    var q = [];
+    if (state.topic !== 'all' && state.topic !== 'altre') q.push('raccolta=' + state.topic);
+    if (state.place !== 'all') q.push('dove=' + state.place);
+    url.textContent = 'soundreel.casamon.dev/entries' + (q.length ? '?' + q.join('&') : '');
+    var total = totals[state.topic] || 0;
+    document.getElementById('total').textContent = (state.topic === 'all' ? 1696 : total) + ' voci';
+    count.textContent = state.topic === 'all' ? 'Qui ne vedi alcune, d’esempio.' : state.topic === 'altre' ? '«Altre» apre la pagina Raccolte (proposta B, qui sotto).' : (state.place !== 'all' ? 'Ristoranti a ' + cap(state.place) + ': ' + shown + ' qui (d’esempio)' : total + ' voci in questa raccolta, ne vedi ' + shown + ' d’esempio.');
+  }
+  chips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      var t = c.getAttribute('data-topic');
+      state.topic = (state.topic === t) ? 'all' : t;
+      state.place = 'all';
+      render();
+    });
+  });
+  render();
+
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.seg [role="tab"]'));
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      tabs.forEach(function (o) {
+        var on = o === t;
+        o.setAttribute('aria-selected', on ? 'true' : 'false');
+        document.getElementById('v-' + o.getAttribute('data-view')).hidden = !on;
+      });
+    });
+  });
+})();
+</script>
+
+</html>

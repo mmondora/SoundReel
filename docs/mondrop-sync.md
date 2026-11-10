@@ -11,6 +11,33 @@ Tutte le rotte sono sotto `/api/mondrop/*` (Traefik senza Authelia, come `/api/s
 - Il manifest è **solo MP3**: niente più `audio.wav` / `video.mp4` delle entry.
 - **Regola P (ADR-0018):** l'app parla **sempre e solo con SoundReel**. Quanti elenchi o «negozi» ci siano (diario, libreria di geekom, NAS), dove stia un file e da dove si legga sono **del server**: nessuna risposta dice in quale negozio sta un brano e l'app non ha un percorso diretto verso il media server.
 
+## `GET /api/mondrop/playlists` — l'elenco, che si cerca, si ordina e si sfoglia (2.20.0, ADR-0023)
+
+Richiesta di Michele (10 novembre): «Se le play list diventano molte devo poterle selezionare/paginare/cercare, e di fianco al nome la data di creazione e un ordine di data. questo anche su mondrop.» **Regola P:** cercare, filtrare, ordinare e tagliare in pagine lo fa il **server**; l'app chiede una pagina e disegna.
+
+`GET /api/mondrop/playlists?q&filter&sort&order&limit&offset` (stessi parametri di `GET /api/playlists` del sito):
+
+| Parametro | Valori | Se manca |
+|---|---|---|
+| `q` | parole nel **nome**, in qualunque ordine, senza maiuscole né accenti (massimo 100 caratteri) | nessuna ricerca |
+| `filter` | `all`, `auto` (fatte dal server), `mine`, `shared` (condivise con l'utente della key), `dynamic` | `all` |
+| `sort` | `created` (data di creazione), `updated` (ultima modifica), `name`, `size` (numero di brani) | `updated` |
+| `order` | `asc`, `desc` | per `name` `asc`, per gli altri `desc` |
+| `limit` | intero ≥ 1, **massimo 100** (di più si taglia a 100) | **nessuna pagina**: tutte |
+| `offset` | intero ≥ 0 | 0 |
+
+```json
+{ "playlists": [ { "id": "…", "name": "Jazz da ascoltare", "songCount": 12, "createdAt": "2026-11-09T10:00:00.000Z", "updatedAt": "…",
+                   "kind": "static", "canEdit": true, "origin": "auto", "autoKind": "theme" } ],
+  "user": "mike", "total": 41, "limit": 30, "offset": 0 }
+```
+
+- `total` = quante playlist rispondono a `q` e `filter`, **prima** di tagliare la pagina; `limit` è `null` quando non si è chiesta una pagina.
+- `origin` è `auto` per le playlist fatte dal server da un post che parla di musica (nessun campo per quelle a mano) e `autoKind` dice come: `one_off` (una per post) o `theme` (una sola per tema generico, con i brani nuovi in cima). **Sono playlist statiche normali**: si scaricano, si ascoltano, si cambiano come le altre.
+- Un valore che non è tra quelli noti (`sort=banana`, `limit=0`, `offset=-1`…) è un **`400 { "error": "…" }`** che nomina il parametro, mai un elenco sbagliato. Con una key mancante resta `401` prima di tutto.
+- Ordine di pari merito: la più nuova per prima, poi per nome. Le playlist dinamiche portano il conteggio **di adesso** (si risolvono prima di tagliare, così `sort=size` le vede).
+- **Compatibile:** senza nessuno dei sei parametri la risposta è quella di prima (tutte, per ultima modifica) con in più `total`. Le app fino alla build 11 la chiamano così e non cambiano; la build 12 chiede le pagine.
+
 ## `GET /api/mondrop/playlists/:id/offline` — manifest
 
 ```json
