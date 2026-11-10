@@ -8,14 +8,17 @@ const song = (title: string, source = 'ai_analysis') => ({ title, artist: 'Vario
 const entry = (id: string, createdAt: string, titles: string[], over: Partial<Entry> = {}): Entry =>
   ({ id, sourceUrl: `https://x/${id}`, ownerUser: 'mike', caption: 'c', createdAt, status: 'completed', results: { songs: titles.map((t) => song(t)), films: [], notes: [], links: [], tags: [], summary: 's' }, actionLog: [], ...over }) as unknown as Entry;
 
-const jazzPlan: TitlePlan = { aboutMusic: true, title: 'Jazz da ascoltare', kind: 'theme', existingTheme: null };
-const jazzJoin: TitlePlan = { aboutMusic: true, title: 'Jazz da ascoltare', kind: 'theme', existingTheme: 'Jazz da ascoltare' };
+// a theme the metadata has no tag for: a list of the songs of the posts (a genre like Jazz is a rule: see the tests of the genre themes below)
+const jazzPlan: TitlePlan = { aboutMusic: true, title: 'Synthwave da ascoltare', kind: 'theme', existingTheme: null };
+const jazzJoin: TitlePlan = { aboutMusic: true, title: 'Synthwave da ascoltare', kind: 'theme', existingTheme: 'Synthwave da ascoltare' };
 const xmasPlan: TitlePlan = { aboutMusic: true, title: 'Le 5 musiche di Natale', kind: 'one_off', existingTheme: null };
 
 let lines: string[];
 let tellOwner: ReturnType<typeof vi.fn>;
 let store: MemoryAutoPlaylistStore;
 let storeAsked: boolean[];
+/** How many songs of the library carry the genre (what the playlist of a genre looks at). */
+let genreCount = 0;
 const base = (entries: Entry[], plans: Array<TitlePlan | null>): Deps => {
   let i = 0;
   return {
@@ -23,6 +26,7 @@ const base = (entries: Entry[], plans: Array<TitlePlan | null>): Deps => {
     store: async (apply) => { storeAsked.push(apply); return store; },
     title: async () => plans[i++] ?? null,
     language: async () => 'it',
+    countGenreSongs: async () => genreCount,
     tellOwner: tellOwner as unknown as Deps['tellOwner'],
     say: (l) => lines.push(l),
   };
@@ -33,6 +37,7 @@ beforeEach(() => {
   tellOwner = vi.fn().mockResolvedValue(undefined);
   store = new MemoryAutoPlaylistStore();
   storeAsked = [];
+  genreCount = 0;
 });
 
 describe('reading the command line', () => {
@@ -59,27 +64,27 @@ describe('the backfill of the posts already in the library', () => {
     entry('e4', '2026-07-03T10:00:00.000Z', ['Only One']),                    // ONE song: it can only feed a theme
     entry('e5', '2026-07-04T10:00:00.000Z', []),                              // no song at all: not a candidate
   ];
-  const single: TitlePlan = { aboutMusic: true, title: 'Elettronica da ascoltare', kind: 'theme', existingTheme: null };
+  const single: TitlePlan = { aboutMusic: true, title: 'Synthwave da ascoltare', kind: 'theme', existingTheme: 'Synthwave da ascoltare' };
   const plans = [jazzPlan, xmasPlan, jazzJoin, single];
 
   it('the preview asks for the memory store, writes nothing and tells nobody', async () => {
     const summary = await buildAutoPlaylists(base(entries, plans), { apply: false, owner: null, limit: null, undoSince: null });
     expect(storeAsked).toEqual([false]);
     expect(tellOwner).not.toHaveBeenCalled();
-    expect(summary).toEqual({ candidates: 4, singles: 1, lists: 3, created: 3, joined: 1, pending: 0, skipped: 0, songs: 8 });
+    expect(summary).toEqual({ candidates: 4, singles: 1, lists: 3, created: 2, joined: 2, pending: 0, waiting: 0, skipped: 0, already: 0, songs: 8 });
     expect(lines[0]).toContain('ANTEPRIMA');
     expect(lines[0]).toContain('voci con canzoni: 4 (3 ne elencano piu\' di una, 1 ne hanno una sola)');
-    expect(lines.some((l) => l.includes('«Jazz da ascoltare»') && l.includes('2 brani (nuova)'))).toBe(true);
+    expect(lines.some((l) => l.includes('«Synthwave da ascoltare»') && l.includes('2 brani (nuova)'))).toBe(true);
     expect(lines.some((l) => l.includes('+3 brani (nella stessa playlist)'))).toBe(true);
-    expect(lines.some((l) => l.includes('(1 canzone)') && l.includes('«Elettronica da ascoltare»'))).toBe(true);
+    expect(lines.some((l) => l.includes('(1 canzone)') && l.includes('«Synthwave da ascoltare»') && l.includes('+1 brani'))).toBe(true);
     expect(lines.join('\n')).toContain('«Le 5 musiche di Natale» (preciso): 2 brani');
-    expect(lines.join('\n')).toContain('«Jazz da ascoltare» (tema): 5 brani');
+    expect(lines.join('\n')).toContain('«Synthwave da ascoltare» (tema): 6 brani');
   });
 
   it('goes from the oldest post and the theme ends with the newest songs in front', async () => {
     await buildAutoPlaylists(base(entries, plans), { apply: false, owner: null, limit: null, undoSince: null });
-    const jazz = [...store.playlists.values()].find((p) => p.name === 'Jazz da ascoltare')!;
-    expect(store.songKeysOf(jazz.id)).toEqual(['various::naima', 'various::autumn leaves', 'various::moanin', 'various::so what', 'various::take five']);
+    const jazz = [...store.playlists.values()].find((p) => p.name === 'Synthwave da ascoltare')!;
+    expect(store.songKeysOf(jazz.id)).toEqual(['various::only one', 'various::naima', 'various::autumn leaves', 'various::moanin', 'various::so what', 'various::take five']);
     expect(jazz.createdAt.toISOString()).toBe('2026-05-03T10:00:00.000Z');
   });
 
@@ -98,7 +103,7 @@ describe('the backfill of the posts already in the library', () => {
 
   it('a post with no good title is said, and counted as pending (it will be tried again)', async () => {
     const summary = await buildAutoPlaylists(base(entries, [jazzPlan, null, jazzJoin, single]), { apply: false, owner: null, limit: null, undoSince: null });
-    expect(summary).toMatchObject({ pending: 1, created: 2, joined: 1 });
+    expect(summary).toMatchObject({ pending: 1, created: 1, joined: 2 });
     expect(lines.some((l) => l.includes('e2') && l.includes('nessun titolo buono'))).toBe(true);
   });
 
@@ -115,16 +120,61 @@ describe('the backfill of the posts already in the library', () => {
     expect(storeAsked).toEqual([true]);
     expect(lines[0]).toContain('SCRIVE');
     expect(tellOwner).toHaveBeenCalledTimes(2);
-    expect(tellOwner).toHaveBeenCalledWith('mike', { playlists: 3, songs: 8 });
+    expect(tellOwner).toHaveBeenCalledWith('mike', { playlists: 2, songs: 8 });
     expect(tellOwner).toHaveBeenCalledWith('sara', { playlists: 1, songs: 2 });
   });
 
   it('a user whose posts only joined existing playlists is not told «I made playlists»', async () => {
     store = new MemoryAutoPlaylistStore();
-    const first = await store.createPlaylist({ owner: 'mike', name: 'Jazz da ascoltare', kind: 'theme', themeKey: 'ascoltare jazz', sourceEntryId: 'old', createdAt: new Date() });
+    const first = await store.createPlaylist({ owner: 'mike', name: 'Synthwave da ascoltare', kind: 'theme', themeKey: 'ascoltare synthwave', sourceEntryId: 'old', createdAt: new Date() });
     expect(first.created).toBe(true);
     await buildAutoPlaylists(base([entries[0]], [jazzJoin]), { apply: true, owner: null, limit: null, undoSince: null });
     expect(tellOwner).not.toHaveBeenCalled();
+  });
+
+  it('a single song whose theme has no playlist yet WAITS: no playlist of one song, counted and said', async () => {
+    const lonely: TitlePlan = { aboutMusic: true, title: 'Musica per la notte', kind: 'theme', existingTheme: null };
+    const summary = await buildAutoPlaylists(base([entries[3]], [lonely]), { apply: false, owner: null, limit: null, undoSince: null });
+    expect(summary).toMatchObject({ waiting: 1, created: 0, joined: 0, songs: 0 });
+    expect(store.playlists.size).toBe(0);
+    expect(lines.some((l) => l.includes('e4') && l.includes('in attesa'))).toBe(true);
+    expect(lines.join('\n')).toContain('1 in attesa del secondo brano');
+  });
+
+  it('two singles of the same theme: the second one makes the playlist with both, the first is done', async () => {
+    const lonely: TitlePlan = { aboutMusic: true, title: 'Musica per la notte', kind: 'theme', existingTheme: null };
+    const two = [entry('s1', '2026-07-01T10:00:00.000Z', ['Nightcall']), entry('s2', '2026-07-02T10:00:00.000Z', ['Dynamite Girl'])];
+    const summary = await buildAutoPlaylists(base(two, [lonely, lonely]), { apply: false, owner: null, limit: null, undoSince: null });
+    expect(summary).toMatchObject({ waiting: 1, created: 1, songs: 2 });
+    expect(store.runs.get('s1|mike')?.status).toBe('done');
+  });
+
+  it('the posts already seen are counted, not printed again (a second run is not 700 lines of noise)', async () => {
+    await store.saveRun('e1', 'mike', { status: 'done', playlistId: 'p', reason: null });
+    await store.saveRun('e4', 'mike', { status: 'skipped', playlistId: null, reason: 'not_about_music' });
+    const summary = await buildAutoPlaylists(base(entries, [xmasPlan, jazzPlan]), { apply: false, owner: null, limit: null, undoSince: null });
+    expect(summary).toMatchObject({ already: 2, created: 2 });
+    expect(lines.some((l) => l.includes('e1'))).toBe(false);
+    expect(lines.join('\n')).toContain('2 gia\' viste');
+  });
+
+  it('a post that waited is read again, and finds the theme: the catch-up of a theme that was taken apart', async () => {
+    const lonely: TitlePlan = { aboutMusic: true, title: 'Musica per la notte', kind: 'theme', existingTheme: null };
+    const two = [entry('s1', '2026-07-01T10:00:00.000Z', ['Nightcall']), entry('s2', '2026-07-02T10:00:00.000Z', ['Dynamite Girl'])];
+    await store.saveRun('s1', 'mike', { status: 'waiting', playlistId: null, reason: 'needs_two_songs', themeKey: 'musica notte' });
+    await store.saveRun('s2', 'mike', { status: 'waiting', playlistId: null, reason: 'needs_two_songs', themeKey: 'musica notte' });
+    const summary = await buildAutoPlaylists(base(two, [lonely, lonely]), { apply: false, owner: null, limit: null, undoSince: null });
+    expect(summary).toMatchObject({ created: 1, waiting: 0, already: 1, songs: 2 });
+  });
+
+  it('the playlist of a GENRE is born when the library has two songs with the tag, and is a rule: no song of its own', async () => {
+    genreCount = 30;
+    const soul: TitlePlan = { aboutMusic: true, title: 'Soul da ascoltare', kind: 'theme', existingTheme: null };
+    const summary = await buildAutoPlaylists(base([entries[3]], [soul]), { apply: false, owner: null, limit: null, undoSince: null });
+    expect(summary).toMatchObject({ created: 1, waiting: 0 });
+    const made = [...store.playlists.values()][0];
+    expect(made.rule).toMatchObject({ order: 'newest', genres: ['R&B/Soul'] });
+    expect(made.songs).toEqual([]);
   });
 
   it('never prints the text of a post, only titles and counts', async () => {

@@ -14,7 +14,7 @@ import type { RuleForm, RuleLabels } from './dynamicRule';
 import type { DynamicRule } from '../types';
 
 const LABELS: RuleLabels = {
-  orders: { most_played: 'Più ascoltate', least_played: 'Meno ascoltate', recent: 'Recenti', never_played: 'Mai ascoltate' },
+  orders: { most_played: 'Più ascoltate', least_played: 'Meno ascoltate', recent: 'Recenti', never_played: 'Mai ascoltate', newest: 'Aggiunte di recente' },
   lastDays: (n) => `ultimi ${n} giorni`,
   allTime: 'sempre',
   daysShort: ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom'],
@@ -61,6 +61,19 @@ describe('formToRule', () => {
 
   it('"never played" has no time window (it does not apply)', () => {
     expect(formToRule(form({ order: 'never_played', windowEnabled: true })).window).toBeUndefined();
+  });
+
+  it('"newest" (the library, the last added first) has no time window either, and keeps its genres', () => {
+    const rule = formToRule(form({ order: 'newest', windowEnabled: true, genres: ['R&B/Soul'], limit: '200' }));
+    expect(rule.window).toBeUndefined();
+    expect(rule).toMatchObject({ order: 'newest', genres: ['R&B/Soul'], limit: 200 });
+  });
+
+  it('the rule the server made for a playlist of a genre comes back into the editor as it is (it must not turn into "most played")', () => {
+    const fromServer: DynamicRule = { v: 1, scope: 'me', period: 'all', order: 'newest', limit: 200, minPlays: 1, genres: ['R&B/Soul'], downloadedOnly: false };
+    const back = ruleToForm(fromServer, 'Soul da ascoltare');
+    expect(back.order).toBe('newest');
+    expect(formToRule(back)).toMatchObject({ order: 'newest', genres: ['R&B/Soul'], period: 'all', limit: 200 });
   });
 
   it('limit is clamped to 1–200, an empty or bad number falls back to the defaults', () => {
@@ -135,6 +148,9 @@ describe('validateForm', () => {
     expect(codes(form({ windowEnabled: false, from: 'x', to: 'y' }))).toEqual([]);
     // and "never played" ignores it
     expect(codes(form({ windowEnabled: true, from: 'x', order: 'never_played' }))).toEqual([]);
+    // "newest" does not look at the listening: no minimum of plays and no window to get wrong
+    expect(codes(form({ order: 'newest', minPlays: '', windowEnabled: true, from: 'x' }))).toEqual([]);
+    expect(codes(form({ order: 'most_played', minPlays: '' }))).toContain('minPlaysRange');
   });
 });
 
@@ -164,6 +180,12 @@ describe('describeRule', () => {
   it('mentions midnight crossing, days, genres, family and downloaded-only', () => {
     expect(describeRule({ v: 1, scope: 'family', period: 'all', window: { from: '22:00', to: '06:00', days: [5, 6] }, order: 'least_played', limit: 20, minPlays: 1, genres: ['Trap'], downloadedOnly: true }, LABELS))
       .toBe('Meno ascoltate · 22:00–06:00 (oltre la mezzanotte) · ven sab · sempre · Trap · famiglia · solo scaricate · max 20');
+  });
+
+  it('"newest" says only the genre and the maximum: no window, no period, no family', () => {
+    expect(describeRule({ v: 1, scope: 'family', period: { days: 7 }, window: { from: '07:00', to: '08:00' }, order: 'newest', limit: 200, minPlays: 1, genres: ['R&B/Soul'], downloadedOnly: false }, LABELS))
+      .toBe('Aggiunte di recente · R&B/Soul · max 200');
+    expect(describeRule({ v: 1, scope: 'me', period: 'all', order: 'newest', limit: 20, minPlays: 1, downloadedOnly: true }, LABELS)).toBe('Aggiunte di recente · solo scaricate · max 20');
   });
 
   it('"never played" does not mention a window', () => {

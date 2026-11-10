@@ -237,7 +237,8 @@ export interface SongDownloadResponse {
 }
 
 /** Dynamic playlists (docs/mondrop-stats.md §4): a rule re-evaluated on every request. */
-export type DynamicOrder = 'most_played' | 'least_played' | 'recent' | 'never_played';
+/** `newest` looks at the library, not at the listening: the songs that match (the genre), the last added first (ADR-0024). */
+export type DynamicOrder = 'most_played' | 'least_played' | 'recent' | 'never_played' | 'newest';
 
 export interface DynamicRuleWindow {
   /** "HH:MM", the listener's LOCAL time. `from > to` crosses midnight. */

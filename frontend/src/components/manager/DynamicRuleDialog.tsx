@@ -11,6 +11,7 @@ import {
   crossesMidnight,
   describeRule,
   formToRule,
+  ignoresWindow,
   periodOptions,
   ruleToForm,
   validateForm,
@@ -67,7 +68,10 @@ export function DynamicRuleDialog({ mode, initialName, initialRule, genres, onSu
     windowEmpty: t.dynIssueWindowEmpty,
   };
   const neverPlayed = form.order === 'never_played';
-  const midnight = form.windowEnabled && !neverPlayed && crossesMidnight(form.from, form.to);
+  // "newest" looks at the library, not at the listening: period, family, window and the minimum of plays do not count
+  const newest = form.order === 'newest';
+  const windowIgnored = ignoresWindow(form.order);
+  const midnight = form.windowEnabled && !windowIgnored && crossesMidnight(form.from, form.to);
   const summary = issues.length === 0 ? describeRule(formToRule(form), labels) : null;
 
   function applyPreset(id: string) {
@@ -94,6 +98,7 @@ export function DynamicRuleDialog({ mode, initialName, initialRule, genres, onSu
     least_played: t.dynOrderLeast,
     recent: t.dynOrderRecent,
     never_played: t.dynOrderNever,
+    newest: t.dynOrderNewest,
   };
 
   return (
@@ -139,7 +144,7 @@ export function DynamicRuleDialog({ mode, initialName, initialRule, genres, onSu
           <div className="mgr-radios">
             {(['me', 'family'] as const).map((scope) => (
               <label key={scope} className="mgr-radio">
-                <input type="radio" name={`${uid}-scope`} checked={form.scope === scope} onChange={() => set({ scope })} />
+                <input type="radio" name={`${uid}-scope`} checked={form.scope === scope} disabled={newest} onChange={() => set({ scope })} />
                 <span>{scope === 'me' ? t.dynScopeMe : t.dynScopeFamily}</span>
               </label>
             ))}
@@ -157,7 +162,7 @@ export function DynamicRuleDialog({ mode, initialName, initialRule, genres, onSu
           </label>
           <label className="mgr-field">
             <span>{t.dynPeriod}</span>
-            <select className="mgr-select" value={form.period} onChange={(e) => set({ period: e.target.value })}>
+            <select className="mgr-select" value={form.period} disabled={newest} onChange={(e) => set({ period: e.target.value })}>
               {periodOptions(form.period).map((p) => (
                 <option key={p} value={p}>{p === 'all' ? t.dynPeriodAll : interpolate(t.dynPeriodDays, { n: p })}</option>
               ))}
@@ -183,20 +188,22 @@ export function DynamicRuleDialog({ mode, initialName, initialRule, genres, onSu
               inputMode="numeric"
               min={0}
               value={form.minPlays}
-              disabled={neverPlayed}
+              disabled={neverPlayed || newest}
               onChange={(e) => set({ minPlays: e.target.value })}
             />
           </label>
         </div>
 
-        <fieldset className="mgr-facet" disabled={neverPlayed}>
+        {newest && <p className="mgr-help">{t.dynNewestNote}</p>}
+
+        <fieldset className="mgr-facet" disabled={windowIgnored}>
           <legend>{t.dynWindowEnable}</legend>
           <label className="mgr-check">
-            <input type="checkbox" checked={form.windowEnabled && !neverPlayed} onChange={(e) => set({ windowEnabled: e.target.checked })} />
+            <input type="checkbox" checked={form.windowEnabled && !windowIgnored} onChange={(e) => set({ windowEnabled: e.target.checked })} />
             <span>{t.dynWindowEnable}</span>
           </label>
           {neverPlayed && <p className="mgr-help">{t.dynWindowIgnored}</p>}
-          {form.windowEnabled && !neverPlayed && (
+          {form.windowEnabled && !windowIgnored && (
             <>
               <div className="mgr-filter-row">
                 <label className="mgr-field">

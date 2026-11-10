@@ -5,12 +5,14 @@ vi.mock('./inbox', () => ({ createInboxItem: vi.fn() }));
 vi.mock('./inboxAnnouncer', () => ({ announceInboxItem: vi.fn() }));
 vi.mock('./autoPlaylistStore', () => ({ PgAutoPlaylistStore: class {} }));
 vi.mock('../utils/logger', () => ({ logWarning: vi.fn(), logError: vi.fn(), logInfo: vi.fn() }));
+vi.mock('./userSongs', () => ({ getUserSongs: vi.fn() }));
 
 import { getFeaturesConfig } from '../utils/db';
 import { createInboxItem } from './inbox';
 import { announceInboxItem } from './inboxAnnouncer';
 import { logWarning } from '../utils/logger';
-import { autoPlaylistsEnabled, onEntryAnalyzed, realAutoPlaylistDeps } from './autoPlaylistWiring';
+import { getUserSongs } from './userSongs';
+import { autoPlaylistsEnabled, countGenreSongs, onEntryAnalyzed, realAutoPlaylistDeps } from './autoPlaylistWiring';
 import { MemoryAutoPlaylistStore, type AutoPlaylistDeps } from './autoPlaylists';
 import type { Entry } from '../types';
 
@@ -23,6 +25,7 @@ const deps = (over: Partial<AutoPlaylistDeps> = {}): AutoPlaylistDeps => ({
   getEntry: async (id) => entry(id),
   title: async () => ({ aboutMusic: true, title: 'Le 5 musiche di Natale', kind: 'one_off', existingTheme: null }),
   language: async () => 'it',
+  countGenreSongs: async () => 0,
   announce: async () => undefined,
   ...over,
 });
@@ -101,5 +104,37 @@ describe('the real wiring', () => {
     expect(await realAutoPlaylistDeps().language()).toBe('it');
     vi.mocked(getFeaturesConfig).mockRejectedValue(new Error('db'));
     expect(await realAutoPlaylistDeps().language()).toBe('it');
+  });
+});
+
+describe('countGenreSongs: how many songs of the library carry the genre (the playlist of a genre is born when there are two)', () => {
+  const library = (songs: Array<{ key: string; genres?: string[]; meta?: null }>) =>
+    new Map(songs.map((x) => [x.key, { songKey: x.key, meta: x.meta === null ? null : { genres: x.genres ?? [] } }])) as unknown as Awaited<ReturnType<typeof getUserSongs>>;
+
+  it('counts the songs whose CANONICAL genre is one of the asked ones: the raw «Soul», «R&B» and «R&B/Soul» are all R&B/Soul', async () => {
+    vi.mocked(getUserSongs).mockResolvedValue(library([
+      { key: 'a', genres: ['R&B/Soul'] }, { key: 'b', genres: ['Soul'] }, { key: 'c', genres: ['R&B'] }, { key: 'd', genres: ['Rock'] },
+    ]));
+    expect(await countGenreSongs('mike', ['R&B/Soul'])).toBe(3);
+  });
+
+  it('a song with no metadata, or with no genre, has no tag: it is not counted', async () => {
+    vi.mocked(getUserSongs).mockResolvedValue(library([{ key: 'a', meta: null }, { key: 'b', genres: [] }, { key: 'c', genres: ['Jazz'] }]));
+    expect(await countGenreSongs('mike', ['Jazz'])).toBe(1);
+  });
+
+  it('a song counts once even if it has two of the asked genres', async () => {
+    vi.mocked(getUserSongs).mockResolvedValue(library([{ key: 'a', genres: ['Rock', 'Hard Rock'] }, { key: 'b', genres: ['Hard rock'] }, { key: 'c', genres: ['Pop'] }]));
+    expect(await countGenreSongs('mike', ['Rock', 'Hard Rock'])).toBe(2);
+  });
+
+  it('looks at the library of THE OWNER, with no admin eyes (the rule will be read by the same eyes)', async () => {
+    vi.mocked(getUserSongs).mockResolvedValue(library([]));
+    expect(await countGenreSongs('sara', ['Jazz'])).toBe(0);
+    expect(getUserSongs).toHaveBeenCalledWith('sara', false);
+  });
+
+  it('the real deps hand the same function to the engine', () => {
+    expect(realAutoPlaylistDeps().countGenreSongs).toBe(countGenreSongs);
   });
 });

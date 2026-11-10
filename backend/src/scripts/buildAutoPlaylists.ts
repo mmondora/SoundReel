@@ -62,6 +62,8 @@ export interface Deps {
   store(apply: boolean): Promise<AutoPlaylistStore>;
   title(source: TitleSource): Promise<TitlePlan | null>;
   language(): Promise<'it' | 'en'>;
+  /** Quanti brani della libreria dell'utente hanno uno di questi generi (la playlist di un genere nasce con due). */
+  countGenreSongs(owner: string, genres: string[]): Promise<number>;
   /** Un solo messaggio per utente, dopo `--apply`. */
   tellOwner(owner: string, made: { playlists: number; songs: number }): Promise<void>;
   say(line: string): void;
@@ -75,7 +77,11 @@ export interface Summary {
   created: number;
   joined: number;
   pending: number;
+  /** In attesa del secondo brano del loro tema (una playlist ha almeno due brani). */
+  waiting: number;
   skipped: number;
+  /** Gia' viste in una corsa precedente (fatte o saltate): non si rivedono. */
+  already: number;
   songs: number;
 }
 
@@ -91,14 +97,25 @@ export async function buildAutoPlaylists(deps: Deps, opts: Options): Promise<Sum
   );
   const store = await deps.store(opts.apply);
   const language = await deps.language();
-  const summary: Summary = { candidates: entries.length, singles, lists: entries.length - singles, created: 0, joined: 0, pending: 0, skipped: 0, songs: 0 };
+  const summary: Summary = {
+    candidates: entries.length, singles, lists: entries.length - singles, created: 0, joined: 0, pending: 0, waiting: 0, skipped: 0, already: 0, songs: 0,
+  };
+  // the posts that wait for a theme are read again when the theme is born: the engine asks for them by id
+  const byId = new Map(entries.map((e) => [e.id, e]));
   const perOwner = new Map<string, { playlists: number; songs: number }>();
   const playlists = new Map<string, { title: string; kind: string; songs: number }>();
 
   for (const entry of entries) {
     const outcome: AutoOutcome = await processEntry(
       entry,
-      { store, getEntry: async () => entry, title: deps.title, language: async () => language, announce: async () => undefined },
+      {
+        store,
+        getEntry: async (id) => (id === entry.id ? entry : byId.get(id) ?? null),
+        title: deps.title,
+        language: async () => language,
+        countGenreSongs: deps.countGenreSongs,
+        announce: async () => undefined,
+      },
       { announce: false },
     );
     if (outcome.status === 'done') {
@@ -120,13 +137,21 @@ export async function buildAutoPlaylists(deps: Deps, opts: Options): Promise<Sum
     } else if (outcome.status === 'pending') {
       summary.pending++;
       deps.say(`  ${day(entry)}  ${entry.id}  nessun titolo buono (si riprova)`);
+    } else if (outcome.status === 'waiting') {
+      summary.waiting++;
+      deps.say(`  ${day(entry)}  ${entry.id}  in attesa (il suo tema ha meno di due brani)`);
+    } else if (outcome.reason === 'already_done') {
+      summary.already++;
     } else {
       summary.skipped++;
       deps.say(`  ${day(entry)}  ${entry.id}  saltata (${outcome.reason})`);
     }
   }
 
-  deps.say(`[auto-playlists] playlist: ${summary.created} nuove, ${summary.joined} voci in playlist di un tema, ${summary.pending} senza titolo, ${summary.skipped} saltate | brani messi dentro: ${summary.songs}`);
+  deps.say(
+    `[auto-playlists] playlist: ${summary.created} nuove, ${summary.joined} voci in playlist di un tema, ${summary.waiting} in attesa del secondo brano, ` +
+      `${summary.pending} senza titolo, ${summary.skipped} saltate, ${summary.already} gia' viste | brani messi dentro: ${summary.songs}`,
+  );
   for (const p of [...playlists.values()].sort((a, b) => b.songs - a.songs)) {
     deps.say(`    «${p.title}» (${p.kind === 'theme' ? 'tema' : 'preciso'}): ${p.songs} brani`);
   }
@@ -222,14 +247,19 @@ async function main(): Promise<void> {
           const themes: Array<{ owner: string; themeKey: string; title: string; playlistId: string | null }> = [];
           for (const { owner_user: owner } of owners) for (const t of await real.listThemes(owner)) themes.push({ owner, ...t });
           const memory = new MemoryAutoPlaylistStore({ themes });
-          const seen = await query<{ entry_id: string; owner_user: string; status: string; playlist_id: string | null; reason: string | null }>(
-            `SELECT entry_id, owner_user, status, playlist_id, reason FROM auto_playlist_runs WHERE status <> 'pending'`,
+          const seen = await query<{ entry_id: string; owner_user: string; status: string; playlist_id: string | null; reason: string | null; theme_key: string | null }>(
+            `SELECT entry_id, owner_user, status, playlist_id, reason, theme_key FROM auto_playlist_runs WHERE status <> 'pending'`,
           );
-          for (const r of seen) await memory.saveRun(r.entry_id, r.owner_user, { status: r.status === 'done' ? 'done' : 'skipped', playlistId: r.playlist_id, reason: r.reason });
+          for (const r of seen) {
+            // the posts that wait are looked at again (their theme may have more songs now), but the memory must know who waits for what
+            if (r.status === 'waiting') await memory.saveRun(r.entry_id, r.owner_user, { status: 'waiting', playlistId: null, reason: r.reason, themeKey: r.theme_key });
+            else await memory.saveRun(r.entry_id, r.owner_user, { status: r.status === 'done' ? 'done' : 'skipped', playlistId: r.playlist_id, reason: r.reason });
+          }
           return memory;
         },
         title: (source) => generatePlaylistTitle(source),
         language: realAutoPlaylistDeps().language,
+        countGenreSongs: realAutoPlaylistDeps().countGenreSongs,
         tellOwner: async (owner, made) => {
           await createInboxItem({
             userId: owner,

@@ -10,22 +10,23 @@ import type { AutoPlaylistStore, NewAutoPlaylist, RunRow, ThemeRow } from './aut
 
 export class PgAutoPlaylistStore implements AutoPlaylistStore {
   async getRun(entryId: string, owner: string): Promise<RunRow | null> {
-    const rows = await query<{ status: string; playlist_id: string | null; reason: string | null }>(
-      `SELECT status, playlist_id, reason FROM auto_playlist_runs WHERE entry_id = $1 AND owner_user = $2`,
+    const rows = await query<{ status: string; playlist_id: string | null; reason: string | null; theme_key: string | null }>(
+      `SELECT status, playlist_id, reason, theme_key FROM auto_playlist_runs WHERE entry_id = $1 AND owner_user = $2`,
       [entryId, owner],
     );
     if (!rows[0]) return null;
-    const status = rows[0].status === 'done' || rows[0].status === 'skipped' ? rows[0].status : 'pending';
-    return { status, playlistId: rows[0].playlist_id, reason: rows[0].reason };
+    const known = ['done', 'skipped', 'waiting'];
+    const status = known.includes(rows[0].status) ? (rows[0].status as RunRow['status']) : 'pending';
+    return { status, playlistId: rows[0].playlist_id, reason: rows[0].reason, ...(status === 'waiting' ? { themeKey: rows[0].theme_key } : {}) };
   }
 
   async saveRun(entryId: string, owner: string, run: RunRow): Promise<void> {
     await query(
-      `INSERT INTO auto_playlist_runs (entry_id, owner_user, status, playlist_id, reason, processed_at)
-       VALUES ($1, $2, $3, $4, $5, now())
+      `INSERT INTO auto_playlist_runs (entry_id, owner_user, status, playlist_id, reason, theme_key, processed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, now())
        ON CONFLICT (entry_id, owner_user)
-       DO UPDATE SET status = EXCLUDED.status, playlist_id = EXCLUDED.playlist_id, reason = EXCLUDED.reason, processed_at = now()`,
-      [entryId, owner, run.status, run.playlistId, run.reason],
+       DO UPDATE SET status = EXCLUDED.status, playlist_id = EXCLUDED.playlist_id, reason = EXCLUDED.reason, theme_key = EXCLUDED.theme_key, processed_at = now()`,
+      [entryId, owner, run.status, run.playlistId, run.reason, run.status === 'waiting' ? run.themeKey ?? null : null],
     );
   }
 
@@ -41,11 +42,12 @@ export class PgAutoPlaylistStore implements AutoPlaylistStore {
     const id = randomUUID();
     // `ON CONFLICT DO NOTHING` covers both partial unique indexes: a second theme, or a second playlist for the same post, inserts nothing
     const inserted = await query<{ id: string }>(
-      `INSERT INTO playlists (id, name, owner_user, created_at, updated_at, kind, origin, auto_kind, theme_key, source_entry_id)
-       VALUES ($1, $2, $3, $4, $4, 'static', 'auto', $5, $6, $7)
+      `INSERT INTO playlists (id, name, owner_user, created_at, updated_at, kind, rule, origin, auto_kind, theme_key, source_entry_id)
+       VALUES ($1, $2, $3, $4, $4, $8, $9::jsonb, 'auto', $5, $6, $7)
        ON CONFLICT DO NOTHING
        RETURNING id`,
-      [id, input.name, input.owner, input.createdAt, input.kind, input.themeKey, input.sourceEntryId],
+      // the playlist of a genre is DYNAMIC (its rule, evaluated at read time, ADR-0008); every other automatic one is a list of songs
+      [id, input.name, input.owner, input.createdAt, input.kind, input.themeKey, input.sourceEntryId, input.rule ? 'dynamic' : 'static', input.rule ? JSON.stringify(input.rule) : null],
     );
     let playlistId = inserted[0]?.id ?? null;
     const created = playlistId !== null;
@@ -68,6 +70,14 @@ export class PgAutoPlaylistStore implements AutoPlaylistStore {
       );
     }
     return { id: playlistId, created };
+  }
+
+  async listWaiting(owner: string, themeKey: string): Promise<string[]> {
+    const rows = await query<{ entry_id: string }>(
+      `SELECT entry_id FROM auto_playlist_runs WHERE owner_user = $1 AND status = 'waiting' AND theme_key = $2 ORDER BY processed_at ASC, entry_id ASC`,
+      [owner, themeKey],
+    );
+    return rows.map((r) => r.entry_id);
   }
 
   async addSongs(playlistId: string, songKeys: string[], opts: { front: boolean; addedAt: Date }): Promise<number> {

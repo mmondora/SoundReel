@@ -1,7 +1,7 @@
 # ADR-0023: The server builds playlists from the posts that talk about music: one per specific title, one rolling playlist per generic theme; the list of playlists is searched, filtered, sorted and paged by the server
 
 ## Status
-**Accepted** (10 November 2026): Michele's request, designed with defaults he can correct (spec §5); **in production since 10 November, 01:06** (SoundReel 2.20.0, his OK: «Sì, deploy ora») and on TestFlight as Mondrop build 12. **Built and tested** as SoundReel 2.20.0 and Mondrop build 12 (before the collections, ADR-0022); it waits for his OK to deploy and to upload the build, one by one. A preview on the real library (10 November, nothing written) gave 36 new playlists, 5 posts joining a theme and 1 post skipped as not about music, from the 42 posts that name at least two songs.
+**Accepted** (10 November 2026): Michele's request, designed with defaults he can correct (spec §5); **in production since 10 November, 01:06** (SoundReel 2.20.0, his OK: «Sì, deploy ora») and on TestFlight as Mondrop build 12. **Built and tested** as SoundReel 2.20.0 and Mondrop build 12 (before the collections, ADR-0022). **2.20.1 in production since 10 November, 07:26** (his OK: «Sì, deploy e applica») and **applied to the whole library by 07:43** (the script started at 06:27:41Z): of the 720 posts with songs, 56 new playlists (26 specific, 30 of a theme), 147 posts joined a theme, 517 skipped as not about music, 357 songs, one inbox message; `--undo-since 2026-11-10T06:27:41Z` takes it back. Before that, a preview on the real library (10 November, nothing written) gave 36 new playlists, 5 posts joining a theme and 1 post skipped as not about music, from the 42 posts that name at least two songs.
 
 ## Date
 2026-11-10
@@ -10,6 +10,7 @@
 Michele Mondora
 
 ## Related
+- **Amended by ADR-0024** (2.20.2): an automatic playlist has at least two songs, and a theme that names a genre is a rule on the genre
 - spec `2026-11-10-auto-playlists-and-playlist-list-design.md` (P1–P11)
 - ADR-0008 (dynamic playlists are rules evaluated at read time: these ones are **static**), ADR-0015 (the inbox announces; `info` messages expire after 3 days), ADR-0018 (rule P), ADR-0020 (the server decides what the Mondrop Home shows), ADR-0021 (the same shape: the server finds, keeps and serves), ADR-0022 (the collections)
 - `services/playlists.ts`, `services/jobQueueWorker.ts` (`onAnalysisFinished`), `services/softwareExtraction.ts` (a dedicated second call that never fails the analysis)

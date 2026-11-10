@@ -4,7 +4,12 @@
  */
 import { canonicalGenres } from '../utils/genres';
 
-export type DynamicOrder = 'most_played' | 'least_played' | 'recent' | 'never_played';
+/**
+ * `newest` is the odd one out: it does not look at what was HEARD, only at the library: the songs that match (the genre, if the rule has one),
+ * the last added first. It is what the automatic playlist of a genre is («Soul da ascoltare» = every song with the tag soul; Michele, 10
+ * November, ADR-0024); the other orders rank by listening.
+ */
+export type DynamicOrder = 'most_played' | 'least_played' | 'recent' | 'never_played' | 'newest';
 export type DynamicScope = 'me' | 'family';
 
 export interface DynamicWindow {
@@ -31,7 +36,7 @@ export interface DynamicRule {
 export type RuleResult = { ok: true; rule: DynamicRule } | { ok: false; error: string };
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
-const ORDERS: ReadonlySet<string> = new Set(['most_played', 'least_played', 'recent', 'never_played']);
+const ORDERS: ReadonlySet<string> = new Set(['most_played', 'least_played', 'recent', 'never_played', 'newest']);
 const isInt = (v: unknown, min: number, max: number): v is number =>
   typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
 
@@ -112,6 +117,7 @@ const ORDER_LABEL: Record<DynamicOrder, string> = {
   least_played: 'Meno ascoltate',
   recent: 'Ascoltate di recente',
   never_played: 'Mai ascoltate',
+  newest: 'Aggiunte di recente',
 };
 const DAY_SHORT = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom'];
 
@@ -124,6 +130,12 @@ function daysLabel(days: number[]): string {
 
 /** "Più ascoltate · 07:00–08:00 (lun–ven) · ultimi 30 giorni · Rock, Jazz · max 50" */
 export function ruleSummary(rule: DynamicRule): string {
+  if (rule.order === 'newest') {
+    // it does not look at what was heard: no window, no period, no family in the words
+    return [ORDER_LABEL.newest, rule.genres?.length ? rule.genres.join(', ') : '', rule.downloadedOnly ? 'solo scaricate' : '', `max ${rule.limit}`]
+      .filter(Boolean)
+      .join(' · ');
+  }
   const parts: string[] = [ORDER_LABEL[rule.order]];
   if (rule.order !== 'never_played' && rule.window) {
     const w = rule.window;

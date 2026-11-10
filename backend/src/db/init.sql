@@ -577,7 +577,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_playlists_theme ON playlists (owner_user, t
 CREATE UNIQUE INDEX IF NOT EXISTS uq_playlists_source_entry ON playlists (owner_user, source_entry_id) WHERE auto_kind = 'one_off';
 
 -- Every entry the server has looked at, once per user: `done` (a playlist was made or fed), `skipped` (not a post about music, or the
--- theme was deleted by the user), `pending` (no good title yet: tried again). A re-analysis never duplicates anything.
+-- theme was deleted by the user), `pending` (no good title yet: tried again), `waiting` (its theme has fewer than two songs). A re-analysis never duplicates anything.
 CREATE TABLE IF NOT EXISTS auto_playlist_runs (
   entry_id TEXT NOT NULL,
   owner_user TEXT NOT NULL,
@@ -587,6 +587,9 @@ CREATE TABLE IF NOT EXISTS auto_playlist_runs (
   processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (entry_id, owner_user)
 );
+-- `waiting` (ADR-0024): the post belongs to a theme that has fewer than two songs, so no playlist yet; `theme_key` says which theme.
+ALTER TABLE auto_playlist_runs ADD COLUMN IF NOT EXISTS theme_key TEXT;
+CREATE INDEX IF NOT EXISTS idx_auto_playlist_runs_waiting ON auto_playlist_runs (owner_user, theme_key) WHERE status = 'waiting';
 
 -- The themes the server made a playlist for. A theme whose playlist is gone (`playlist_id` NULL) was DELETED by the user: it is
 -- not made again.

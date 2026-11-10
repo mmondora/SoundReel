@@ -299,6 +299,7 @@ export function SongsPage() {
 
             {!showingFiles && (
               <PlaylistPanel
+                collapsible
                 activeId={activePlaylist?.id ?? null}
                 onSelect={handlePlaylistSelect}
               />

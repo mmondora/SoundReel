@@ -76,9 +76,9 @@ Una playlist dinamica è definita da una **regola** e ricalcolata a ogni richies
   "scope": "me",                       // me | family (gli ascolti di tutti gli utenti)
   "period": { "days": 30 },            // { "days": N } oppure "all"
   "window": { "from": "07:00", "to": "08:00", "days": [1,2,3,4,5] },   // ora LOCALE dell'ascolto; opzionale
-  "order": "most_played",              // most_played | least_played | recent | never_played
+  "order": "most_played",              // most_played | least_played | recent | never_played | newest
   "limit": 50,                         // 1–200, default 50
-  "minPlays": 1,                       // ascolti minimi (ignorato da never_played)
+  "minPlays": 1,                       // ascolti minimi (ignorato da never_played e da newest)
   "genres": ["Rock", "Jazz"],          // opzionale: «tipo» di musica
   "downloadedOnly": false }
 ```
@@ -86,6 +86,7 @@ Una playlist dinamica è definita da una **regola** e ricalcolata a ogni richies
 - `window.from > window.to` attraversa la mezzanotte (notte: `"22:00"` → `"06:00"`). `days` = giorni ISO (1 lunedì … 7 domenica), opzionale = tutti.
 - Un ascolto rientra nella finestra in base alla **sua** ora locale (`startedAt` + `tzOffsetMin`), non a quella del server.
 - `never_played` = brani dell'utente senza ascolti contati nel periodo (la finestra oraria non si applica).
+- `newest` (dalla 2.20.2, ADR-0024) **non guarda gli ascolti**: ogni brano della libreria dell'utente che ha uno dei `genres` (tutti, se non ce ne sono), **i più recenti del diario per primi**, al massimo `limit`; `scope`, `period`, `window` e `minPlays` non contano e `ruleSummary` non li nomina («Aggiunte di recente · R&B/Soul · max 200»). È la regola delle **playlist automatiche di un genere** («Soul da ascoltare»): le app che mostrano solo `kind` e `ruleSummary` (Mondrop fino alla build 12) non cambiano.
 - Sono visibili solo i brani che l'utente può già vedere (journal suo o condiviso). `genres` filtra sui generi di `song_meta` (nomi equivalenti come «Alternative»/«Alternativa» valgono uguale).
 - Creazione/modifica (web): `POST /api/playlists` con `{ "name", "kind": "dynamic", "rule" }`, `PATCH /api/playlists/:id` con `{ "rule" }`; sulle dinamiche add/remove/reorder rispondono `409 { "error": "playlist_is_dynamic" }`. Preset suggeriti: `GET /api/playlists/dynamic/presets` → `[{ id, label, rule }]`.
 

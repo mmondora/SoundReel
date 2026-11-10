@@ -3,20 +3,35 @@
  * ends (ADR-0023). Kept apart from `autoPlaylists.ts` so that the rules stay pure and testable.
  */
 import { getEntry, getFeaturesConfig } from '../utils/db';
+import { canonicalGenres } from '../utils/genres';
 import { logWarning } from '../utils/logger';
 import { createInboxItem } from './inbox';
 import { announceInboxItem } from './inboxAnnouncer';
 import { processEntry, type AutoOutcome, type AutoPlaylistDeps } from './autoPlaylists';
 import { PgAutoPlaylistStore } from './autoPlaylistStore';
 import { generatePlaylistTitle } from './autoPlaylistTitle';
+import { getUserSongs } from './userSongs';
 
 /** `AUTO_PLAYLISTS=0` stops the whole thing (the playlists already made stay). */
 export const autoPlaylistsEnabled = (): boolean => process.env.AUTO_PLAYLISTS !== '0';
+
+/**
+ * How many songs of the owner's library carry one of these (canonical) genres: what the rule of the playlist of a genre will select, so the
+ * playlist is born only when there are two (ADR-0024). The same eyes as the rule: the songs the owner can see, their genres canonicalised.
+ */
+export async function countGenreSongs(owner: string, genres: string[]): Promise<number> {
+  const wanted = new Set(genres);
+  const songs = await getUserSongs(owner, false);
+  let count = 0;
+  for (const song of songs.values()) if (canonicalGenres(song.meta?.genres).some((g) => wanted.has(g))) count++;
+  return count;
+}
 
 export function realAutoPlaylistDeps(): AutoPlaylistDeps {
   return {
     store: new PgAutoPlaylistStore(),
     getEntry,
+    countGenreSongs,
     title: (source) => generatePlaylistTitle(source),
     language: async () => {
       try {

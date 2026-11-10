@@ -73,6 +73,14 @@ export async function resolveDynamicSongKeys(rule: DynamicRule, ctx: ResolveCont
   const since = rule.period === 'all' ? null : new Date(now.getTime() - rule.period.days * 86_400_000);
   const byTitle = (a: string, b: string): number => a.localeCompare(b, 'it');
 
+  if (rule.order === 'newest') {
+    // not about what was heard: every song that matches (the tag decides, the plays do not), the last added first, no listening events read
+    return candidates
+      .sort((a, b) => (b.mentions[0]?.createdAt ?? '').localeCompare(a.mentions[0]?.createdAt ?? '') || byTitle(a.title, b.title))
+      .slice(0, rule.limit)
+      .map((s) => s.songKey);
+  }
+
   if (rule.order === 'never_played') {
     const stats = await loadStats(rule, ctx.userId, since, false);
     return candidates

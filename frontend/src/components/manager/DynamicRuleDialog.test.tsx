@@ -36,6 +36,37 @@ beforeEach(() => {
   vi.mocked(api.fetchDynamicPresets).mockResolvedValue(PRESETS);
 });
 
+describe('DynamicRuleDialog: the order "recently added" (a playlist of a genre)', () => {
+  const SOUL_RULE: DynamicRule = { v: 1, scope: 'me', period: 'all', order: 'newest', limit: 200, minPlays: 1, genres: ['Rock'], downloadedOnly: false };
+
+  it('opens on the order the server made, says what the rule looks at, and greys out what does not count', () => {
+    const { dialog } = renderDialog({ mode: 'edit', initialName: 'Soul da ascoltare', initialRule: SOUL_RULE });
+    expect(dialog.getByRole('combobox', { name: 'Order' })).toHaveValue('newest');
+    expect(dialog.getByText(/looks at the library, not at what was heard/)).toBeInTheDocument();
+    expect(dialog.getByRole('combobox', { name: 'Period' })).toBeDisabled();
+    expect(dialog.getByRole('spinbutton', { name: 'Minimum plays' })).toBeDisabled();
+    expect(dialog.getByRole('radio', { name: 'The whole family' })).toBeDisabled();
+    expect(dialog.getByRole('checkbox', { name: 'Only listening within a time window' })).toBeDisabled();
+  });
+
+  it('saving it keeps the order, the genre and the 200 (editing must not turn it into "most played")', async () => {
+    const { dialog, onSubmit } = renderDialog({ mode: 'edit', initialName: 'Soul da ascoltare', initialRule: SOUL_RULE });
+    fireEvent.click(dialog.getByRole('button', { name: /Save/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][1]).toMatchObject({ order: 'newest', genres: ['Rock'], limit: 200 });
+  });
+
+  it('choosing it in a new rule greys out the same fields; choosing another order gives them back', () => {
+    const { dialog } = renderDialog();
+    fireEvent.change(dialog.getByRole('combobox', { name: 'Order' }), { target: { value: 'newest' } });
+    expect(dialog.getByRole('combobox', { name: 'Period' })).toBeDisabled();
+    fireEvent.change(dialog.getByRole('combobox', { name: 'Order' }), { target: { value: 'most_played' } });
+    expect(dialog.getByRole('combobox', { name: 'Period' })).toBeEnabled();
+    expect(dialog.getByRole('spinbutton', { name: 'Minimum plays' })).toBeEnabled();
+    expect(dialog.queryByText(/looks at the library/)).not.toBeInTheDocument();
+  });
+});
+
 describe('DynamicRuleDialog: creating', () => {
   it('needs a name; the create button stays disabled until the form is valid', async () => {
     const { dialog } = renderDialog();

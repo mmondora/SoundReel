@@ -59,6 +59,11 @@ describe('parseRule', () => {
     expect(parseRule(raw)).toEqual({ ok: false, error: `invalid_rule:${field}` });
   });
 
+  it('accepts the order "newest" (the songs added last, first: no listening in it) and keeps the genres', () => {
+    const r = parseRule({ order: 'newest', genres: ['Soul', 'R&B'], period: 'all', limit: 200 });
+    expect(r).toEqual({ ok: true, rule: { v: 1, scope: 'me', period: 'all', order: 'newest', limit: 200, minPlays: 1, genres: ['R&B/Soul'], downloadedOnly: false } });
+  });
+
   it('refuses garbage that is not a rule at all', () => {
     for (const junk of [null, undefined, 7, 'x', []]) expect(parseRule(junk)).toEqual({ ok: false, error: 'rule_required' });
   });
@@ -72,6 +77,12 @@ describe('ruleSummary', () => {
       .toBe('Più ascoltate · weekend · da sempre · tutta la famiglia · Rock, Jazz · solo scaricate · max 20');
     expect(ruleSummary(rule({ order: 'never_played', period: 'all', window: { from: '07:00', to: '08:00' } }))).toBe('Mai ascoltate · da sempre · max 50');
     expect(ruleSummary(rule({ order: 'recent', period: { days: 1 }, window: { from: '09:00', to: '10:00', days: [1, 3] } }))).toBe('Ascoltate di recente · 09:00–10:00 (lun, mer) · ultime 24 ore · max 50');
+  });
+
+  it('"newest" does not look at what was heard: no window, no period, no family in the words', () => {
+    expect(ruleSummary(rule({ order: 'newest', period: 'all', genres: ['R&B/Soul'], limit: 200 }))).toBe('Aggiunte di recente · R&B/Soul · max 200');
+    expect(ruleSummary(rule({ order: 'newest', period: { days: 7 }, scope: 'family', window: { from: '07:00', to: '08:00' }, downloadedOnly: true, limit: 20 })))
+      .toBe('Aggiunte di recente · solo scaricate · max 20');
   });
 
   it('every preset is a valid rule that survives parsing unchanged, with a summary', () => {
@@ -130,6 +141,46 @@ describe('resolveDynamicSongKeys: ranking', () => {
     m.getUserSongs.mockResolvedValue(new Map());
     expect(await resolveDynamicSongKeys(rule(), { userId: 'mike' }, NOW)).toEqual([]);
     expect(m.query).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveDynamicSongKeys: newest (the playlist of a genre: every song with the tag, the last added first)', () => {
+  const at = (day: string) => [{ entryId: `e-${day}`, createdAt: `${day}T00:00:00Z` }];
+  beforeEach(() => {
+    m.getUserSongs.mockResolvedValue(new Map([
+      ['a::old-soul', song('a::old-soul', { mentions: at('2026-08-01'), meta: { genres: ['R&B/Soul'], downloaded: false } })],
+      ['b::new-soul', song('b::new-soul', { mentions: at('2026-11-05'), meta: { genres: ['Soul'], downloaded: false } })], // raw "Soul" = canonical R&B/Soul
+      ['c::mid-soul', song('c::mid-soul', { mentions: at('2026-10-01'), meta: { genres: ['R&B'], downloaded: false } })],
+      ['d::rocker', song('d::rocker', { mentions: at('2026-11-09') })],
+      ['e::untagged', song('e::untagged', { mentions: at('2026-11-09'), meta: null })],
+    ]));
+  });
+
+  it('every song that has the genre, the newest mention first, and nothing asked of the listening events', async () => {
+    const out = await resolveDynamicSongKeys(rule({ order: 'newest', genres: ['R&B/Soul'], period: 'all' }), { userId: 'mike' }, NOW);
+    expect(out).toEqual(['b::new-soul', 'c::mid-soul', 'a::old-soul']);
+    expect(m.query).not.toHaveBeenCalled(); // songs never played are in too: the tag decides, not the plays
+  });
+
+  it('a song without metadata has no tag: it is not in a playlist of a genre', async () => {
+    const out = await resolveDynamicSongKeys(rule({ order: 'newest', genres: ['Rock'], period: 'all' }), { userId: 'mike' }, NOW);
+    expect(out).toEqual(['d::rocker']);
+  });
+
+  it('respects the limit (the newest are kept) and the ties go by title', async () => {
+    expect(await resolveDynamicSongKeys(rule({ order: 'newest', genres: ['R&B/Soul'], limit: 2 }), { userId: 'mike' }, NOW)).toEqual(['b::new-soul', 'c::mid-soul']);
+    m.getUserSongs.mockResolvedValue(new Map([
+      ['z::zulu', song('z::zulu', { mentions: at('2026-11-05') })],
+      ['a::alpha', song('a::alpha', { mentions: at('2026-11-05') })],
+    ]));
+    expect(await resolveDynamicSongKeys(rule({ order: 'newest' }), { userId: 'mike' }, NOW)).toEqual(['a::alpha', 'z::zulu']);
+  });
+
+  it('with no genre it is the newest of the whole library', async () => {
+    const out = await resolveDynamicSongKeys(rule({ order: 'newest', limit: 3 }), { userId: 'mike' }, NOW);
+    expect(out).toHaveLength(3);
+    expect(out.slice(0, 2).sort()).toEqual(['d::rocker', 'e::untagged']);
+    expect(out[2]).toBe('b::new-soul');
   });
 });
 

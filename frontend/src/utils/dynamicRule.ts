@@ -6,7 +6,13 @@
 import type { DynamicOrder, DynamicRule } from '../types';
 
 export const PERIOD_CHOICES = ['7', '30', '90', '365', 'all'] as const;
-export const ORDERS: readonly DynamicOrder[] = ['most_played', 'least_played', 'recent', 'never_played'];
+export const ORDERS: readonly DynamicOrder[] = ['most_played', 'least_played', 'recent', 'never_played', 'newest'];
+
+/** `newest` (the library, the last added first) and `never_played` have no listening to place in a time window, or to count. */
+export const ignoresWindow = (order: DynamicOrder): boolean => order === 'never_played' || order === 'newest';
+
+/** `newest` does not look at what was heard at all: no period, no family, no minimum of plays. */
+export const ignoresListening = (order: DynamicOrder): boolean => order === 'newest';
 export const LIMIT_MIN = 1;
 export const LIMIT_MAX = 200;
 export const DEFAULT_LIMIT = 50;
@@ -94,8 +100,8 @@ export function formToRule(form: RuleForm): DynamicRule {
     minPlays: clampInt(form.minPlays, 0, 100000, 1),
     downloadedOnly: form.downloadedOnly,
   };
-  // "never played" ignores the time window (the songs have no listening to place in a window).
-  if (form.windowEnabled && form.order !== 'never_played') {
+  // "never played" and "newest" ignore the time window (the songs have no listening to place in a window).
+  if (form.windowEnabled && !ignoresWindow(form.order)) {
     const days = uniqueSortedDays(form.days);
     rule.window = { from: form.from, to: form.to, ...(days.length > 0 && days.length < 7 ? { days } : {}) };
   }
@@ -121,10 +127,10 @@ export function validateForm(form: RuleForm, opts: { needsName: boolean }): Rule
     issues.push({ code: 'limitRange' });
   }
   const minPlays = Number(form.minPlays);
-  if (form.order !== 'never_played' && (form.minPlays.trim() === '' || !Number.isInteger(minPlays) || minPlays < 0)) {
+  if (form.order !== 'never_played' && !ignoresListening(form.order) && (form.minPlays.trim() === '' || !Number.isInteger(minPlays) || minPlays < 0)) {
     issues.push({ code: 'minPlaysRange' });
   }
-  if (form.windowEnabled && form.order !== 'never_played') {
+  if (form.windowEnabled && !ignoresWindow(form.order)) {
     if (!isTime(form.from) || !isTime(form.to)) issues.push({ code: 'windowTime' });
     else if (form.from === form.to) issues.push({ code: 'windowEmpty' });
   }
@@ -147,8 +153,12 @@ export interface RuleLabels {
 
 /** One-line summary of a rule ("Più ascoltate · 07:00–08:00 · lun–ven · ultimi 30 giorni"), like the backend's. */
 export function describeRule(rule: DynamicRule, l: RuleLabels): string {
+  if (rule.order === 'newest') {
+    // it does not look at what was heard: no window, no period, no family in the words (the backend says it the same way)
+    return [l.orders.newest, rule.genres?.length ? rule.genres.join(', ') : '', rule.downloadedOnly ? l.downloadedOnly : '', l.max(rule.limit)].filter(Boolean).join(' · ');
+  }
   const parts: string[] = [l.orders[rule.order]];
-  if (rule.window && rule.order !== 'never_played') {
+  if (rule.window && !ignoresWindow(rule.order)) {
     const { from, to, days } = rule.window;
     parts.push(`${from}–${to}${crossesMidnight(from, to) ? ` (${l.midnight})` : ''}`);
     if (days && days.length > 0 && days.length < 7) parts.push(uniqueSortedDays(days).map((d) => l.daysShort[d - 1]).join(' '));

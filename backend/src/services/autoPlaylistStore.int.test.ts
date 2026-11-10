@@ -10,7 +10,8 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../utils/db';
 import { PgAutoPlaylistStore } from './autoPlaylistStore';
-import { MIN_SONGS, processEntry, type AutoPlaylistDeps } from './autoPlaylists';
+import { MIN_PLAYLIST_SONGS, MIN_SONGS, processEntry, type AutoPlaylistDeps } from './autoPlaylists';
+import { genreRule } from './genreThemes';
 import { deletePlaylist, getPlaylist, listPlaylists } from './playlists';
 import type { Entry } from '../types';
 
@@ -34,14 +35,14 @@ d('PgAutoPlaylistStore on a real database', () => {
   });
 
   it('one playlist per theme, even when asked twice: the second gets the first back', async () => {
-    const a = await store.createPlaylist({ owner: 'mike', name: 'Jazz da ascoltare', kind: 'theme', themeKey: 'ascoltare jazz', sourceEntryId: 'e1', createdAt: at('2026-11-01T10:00:00Z') });
-    const b = await store.createPlaylist({ owner: 'mike', name: 'Jazz da ascoltare', kind: 'theme', themeKey: 'ascoltare jazz', sourceEntryId: 'e2', createdAt: at('2026-11-02T10:00:00Z') });
+    const a = await store.createPlaylist({ owner: 'mike', name: 'Synthwave da ascoltare', kind: 'theme', themeKey: 'ascoltare synthwave', sourceEntryId: 'e1', createdAt: at('2026-11-01T10:00:00Z') });
+    const b = await store.createPlaylist({ owner: 'mike', name: 'Synthwave da ascoltare', kind: 'theme', themeKey: 'ascoltare synthwave', sourceEntryId: 'e2', createdAt: at('2026-11-02T10:00:00Z') });
     expect(a.created).toBe(true);
     expect(b).toEqual({ id: a.id, created: false });
     expect((await pool.query(`SELECT count(*)::int AS n FROM playlists`)).rows[0].n).toBe(1);
-    expect(await store.listThemes('mike')).toEqual([{ themeKey: 'ascoltare jazz', title: 'Jazz da ascoltare', playlistId: a.id }]);
+    expect(await store.listThemes('mike')).toEqual([{ themeKey: 'ascoltare synthwave', title: 'Synthwave da ascoltare', playlistId: a.id }]);
     // another user has his own
-    const c = await store.createPlaylist({ owner: 'sara', name: 'Jazz da ascoltare', kind: 'theme', themeKey: 'ascoltare jazz', sourceEntryId: 'e3', createdAt: at('2026-11-02T10:00:00Z') });
+    const c = await store.createPlaylist({ owner: 'sara', name: 'Synthwave da ascoltare', kind: 'theme', themeKey: 'ascoltare synthwave', sourceEntryId: 'e3', createdAt: at('2026-11-02T10:00:00Z') });
     expect(c.created).toBe(true);
     expect(c.id).not.toBe(a.id);
   });
@@ -56,21 +57,21 @@ d('PgAutoPlaylistStore on a real database', () => {
   });
 
   it('two runs at the same moment make ONE theme (the index decides)', async () => {
-    const input = (e: string) => ({ owner: 'mike', name: 'Jazz da ascoltare', kind: 'theme' as const, themeKey: 'ascoltare jazz', sourceEntryId: e, createdAt: at('2026-11-01T10:00:00Z') });
+    const input = (e: string) => ({ owner: 'mike', name: 'Synthwave da ascoltare', kind: 'theme' as const, themeKey: 'ascoltare synthwave', sourceEntryId: e, createdAt: at('2026-11-01T10:00:00Z') });
     const [x, y] = await Promise.all([store.createPlaylist(input('e1')), store.createPlaylist(input('e2'))]);
     expect(x.id).toBe(y.id);
     expect([x.created, y.created].filter(Boolean)).toHaveLength(1);
   });
 
   it('the playlist is a normal static one, of the user, marked automatic, with the date of the post', async () => {
-    const made = await store.createPlaylist({ owner: 'mike', name: 'Jazz da ascoltare', kind: 'theme', themeKey: 'ascoltare jazz', sourceEntryId: 'e1', createdAt: at('2026-11-01T10:00:00Z') });
+    const made = await store.createPlaylist({ owner: 'mike', name: 'Synthwave da ascoltare', kind: 'theme', themeKey: 'ascoltare synthwave', sourceEntryId: 'e1', createdAt: at('2026-11-01T10:00:00Z') });
     const list = await listPlaylists({ userId: 'mike' });
     expect(list).toHaveLength(1);
-    expect(list[0]).toMatchObject({ id: made.id, name: 'Jazz da ascoltare', kind: 'static', ownerUser: 'mike', origin: 'auto', autoKind: 'theme', songCount: 0, createdAt: '2026-11-01T10:00:00.000Z' });
+    expect(list[0]).toMatchObject({ id: made.id, name: 'Synthwave da ascoltare', kind: 'static', ownerUser: 'mike', origin: 'auto', autoKind: 'theme', songCount: 0, createdAt: '2026-11-01T10:00:00.000Z' });
   });
 
   it('songs go in front of the ones that are there, in the order given, and the playlist READS in that order; never twice', async () => {
-    const { id } = await store.createPlaylist({ owner: 'mike', name: 'Jazz da ascoltare', kind: 'theme', themeKey: 'ascoltare jazz', sourceEntryId: 'e1', createdAt: at('2026-11-01T10:00:00Z') });
+    const { id } = await store.createPlaylist({ owner: 'mike', name: 'Synthwave da ascoltare', kind: 'theme', themeKey: 'ascoltare synthwave', sourceEntryId: 'e1', createdAt: at('2026-11-01T10:00:00Z') });
     expect(await store.addSongs(id, ['a', 'b', 'c'], { front: false, addedAt: at('2026-11-01T10:00:00Z') })).toBe(3);
     expect(await store.addSongs(id, ['d', 'e', 'a'], { front: true, addedAt: at('2026-11-08T10:00:00Z') })).toBe(2);
     expect(await store.addSongs(id, ['d', 'e'], { front: true, addedAt: at('2026-11-09T10:00:00Z') })).toBe(0);
@@ -95,10 +96,10 @@ d('PgAutoPlaylistStore on a real database', () => {
   });
 
   it('a playlist the user deletes leaves its theme WITHOUT a playlist (so it is not made again) and its runs without one', async () => {
-    const { id } = await store.createPlaylist({ owner: 'mike', name: 'Jazz da ascoltare', kind: 'theme', themeKey: 'ascoltare jazz', sourceEntryId: 'e1', createdAt: at('2026-11-01T10:00:00Z') });
+    const { id } = await store.createPlaylist({ owner: 'mike', name: 'Synthwave da ascoltare', kind: 'theme', themeKey: 'ascoltare synthwave', sourceEntryId: 'e1', createdAt: at('2026-11-01T10:00:00Z') });
     await store.saveRun('e1', 'mike', { status: 'done', playlistId: id, reason: null });
     expect(await deletePlaylist(id)).toBe(true);
-    expect(await store.listThemes('mike')).toEqual([{ themeKey: 'ascoltare jazz', title: 'Jazz da ascoltare', playlistId: null }]);
+    expect(await store.listThemes('mike')).toEqual([{ themeKey: 'ascoltare synthwave', title: 'Synthwave da ascoltare', playlistId: null }]);
     expect(await store.getRun('e1', 'mike')).toEqual({ status: 'done', playlistId: null, reason: null });
   });
 
@@ -123,10 +124,10 @@ d('PgAutoPlaylistStore on a real database', () => {
       return { id, sourceUrl: `https://www.instagram.com/reel/${id}/`, ownerUser: 'mike', caption: 'x', results, createdAt } as unknown as Entry;
     };
     const plans = [
-      { aboutMusic: true, title: 'Jazz da ascoltare', kind: 'theme' as const, existingTheme: null },
-      { aboutMusic: true, title: 'Jazz da ascoltare', kind: 'theme' as const, existingTheme: 'Jazz da ascoltare' },
+      { aboutMusic: true, title: 'Synthwave da ascoltare', kind: 'theme' as const, existingTheme: null },
+      { aboutMusic: true, title: 'Synthwave da ascoltare', kind: 'theme' as const, existingTheme: 'Synthwave da ascoltare' },
       { aboutMusic: true, title: 'Le 5 musiche di Natale', kind: 'one_off' as const, existingTheme: null },
-      { aboutMusic: true, title: 'Jazz da ascoltare', kind: 'theme' as const, existingTheme: 'Jazz da ascoltare' },
+      { aboutMusic: true, title: 'Synthwave da ascoltare', kind: 'theme' as const, existingTheme: 'Synthwave da ascoltare' },
     ];
     let i = 0;
     const announced: string[] = [];
@@ -135,6 +136,7 @@ d('PgAutoPlaylistStore on a real database', () => {
       getEntry: async () => null,
       title: async () => plans[i++],
       language: async () => 'it',
+      countGenreSongs: async () => 0,
       announce: async (m) => { announced.push(`${m.title} | ${m.body}`); },
     };
     expect(MIN_SONGS).toBe(2);
@@ -145,22 +147,90 @@ d('PgAutoPlaylistStore on a real database', () => {
     for (const e of [e1, e2, e3, e4]) expect((await processEntry(e, deps)).status).toBe('done');
 
     const lists = await listPlaylists({ userId: 'mike' });
-    expect(lists.map((p) => p.name).sort()).toEqual(['Jazz da ascoltare', 'Le 5 musiche di Natale']);
-    const jazz = lists.find((p) => p.name === 'Jazz da ascoltare')!;
+    expect(lists.map((p) => p.name).sort()).toEqual(['Le 5 musiche di Natale', 'Synthwave da ascoltare']);
+    const jazz = lists.find((p) => p.name === 'Synthwave da ascoltare')!;
     expect(jazz).toMatchObject({ origin: 'auto', autoKind: 'theme', songCount: 5 });
     // the newest post first, each post in its own order, no song twice
     expect((await getPlaylist(jazz.id))?.songKeys).toEqual(['various::blue in green', 'various::naima', 'various::autumn leaves', 'various::so what', 'various::take five']);
     const xmas = lists.find((p) => p.name === 'Le 5 musiche di Natale')!;
     expect(xmas).toMatchObject({ autoKind: 'one_off', createdAt: '2026-11-06T10:00:00.000Z' });
     expect(announced).toEqual([
-      'Nuova playlist: Jazz da ascoltare | 2 brani',
-      'Jazz da ascoltare | +2 brani',
+      'Nuova playlist: Synthwave da ascoltare | 2 brani',
+      'Synthwave da ascoltare | +2 brani',
       'Nuova playlist: Le 5 musiche di Natale | 2 brani',
-      'Jazz da ascoltare | +1 brano',
+      'Synthwave da ascoltare | +1 brano',
     ]);
     // a second pass changes nothing
     i = 0;
     for (const e of [e1, e2, e3, e4]) expect(await processEntry(e, deps)).toEqual({ status: 'skipped', reason: 'already_done' });
     expect((await listPlaylists({ userId: 'mike' })).length).toBe(2);
+  });
+
+  it('the playlist of a GENRE is dynamic: the rule is stored, one per owner and genre, and the playlist service reads it as a rule (ADR-0024)', async () => {
+    const rule = genreRule(['R&B/Soul']);
+    const input = (e: string) => ({ owner: 'mike', name: 'Soul da ascoltare', kind: 'theme' as const, themeKey: 'genre:R&B/Soul', sourceEntryId: e, createdAt: at('2026-11-01T10:00:00Z'), rule });
+    const made = await store.createPlaylist(input('e1'));
+    expect(made.created).toBe(true);
+    const row = (await pool.query(`SELECT kind, rule, origin, auto_kind, theme_key FROM playlists WHERE id = $1`, [made.id])).rows[0];
+    expect(row).toMatchObject({ kind: 'dynamic', rule, origin: 'auto', auto_kind: 'theme', theme_key: 'genre:R&B/Soul' });
+    expect(await store.createPlaylist(input('e2'))).toEqual({ id: made.id, created: false });
+    const [read] = await listPlaylists({ userId: 'mike' });
+    expect(read).toMatchObject({ kind: 'dynamic', origin: 'auto', autoKind: 'theme', rule, ruleSummary: 'Aggiunte di recente · R&B/Soul · max 200' });
+    expect(await store.listThemes('mike')).toEqual([{ themeKey: 'genre:R&B/Soul', title: 'Soul da ascoltare', playlistId: made.id }]);
+    // a static playlist has no rule at all
+    const plain = await store.createPlaylist({ owner: 'mike', name: 'Synthwave da ascoltare', kind: 'theme', themeKey: 'ascoltare synthwave', sourceEntryId: 'e3', createdAt: at('2026-11-02T10:00:00Z') });
+    expect((await pool.query(`SELECT kind, rule FROM playlists WHERE id = $1`, [plain.id])).rows[0]).toEqual({ kind: 'static', rule: null });
+  });
+
+  it('waiting runs: the theme is stored only while the post waits, found by user and theme, oldest first', async () => {
+    const w = (themeKey: string) => ({ status: 'waiting' as const, playlistId: null, reason: 'needs_two_songs', themeKey });
+    await store.saveRun('e2', 'mike', w('ascoltare synthwave'));
+    await store.saveRun('e1', 'mike', w('ascoltare synthwave'));
+    await store.saveRun('e3', 'mike', w('musica notte'));
+    await store.saveRun('e4', 'sara', w('ascoltare synthwave'));
+    expect(await store.getRun('e1', 'mike')).toEqual({ status: 'waiting', playlistId: null, reason: 'needs_two_songs', themeKey: 'ascoltare synthwave' });
+    expect(await store.listWaiting('mike', 'ascoltare synthwave')).toEqual(['e2', 'e1']);
+    expect(await store.listWaiting('sara', 'ascoltare synthwave')).toEqual(['e4']);
+    expect(await store.listWaiting('mike', 'nothing')).toEqual([]);
+    // done: the theme leaves the run and the post is not waiting any more
+    await store.saveRun('e1', 'mike', { status: 'done', playlistId: null, reason: null });
+    expect(await store.getRun('e1', 'mike')).toEqual({ status: 'done', playlistId: null, reason: null });
+    expect(await store.listWaiting('mike', 'ascoltare synthwave')).toEqual(['e2']);
+  });
+
+  it('end to end: a lone song waits, the second makes the playlist with both, and at no moment is there a playlist of one song', async () => {
+    const song = (title: string) => ({ title, artist: 'Various', album: null, source: 'audio_fingerprint', spotifyUri: null, spotifyUrl: null, youtubeUrl: null, soundcloudUrl: null, addedToPlaylist: false });
+    const made = new Map<string, Entry>();
+    const entryRow = async (id: string, createdAt: string, title: string): Promise<Entry> => {
+      const results = { songs: [song(title)], films: [], notes: [], links: [], tags: [], summary: 's' };
+      await pool.query(
+        `INSERT INTO entries (id, source_url, source_platform, input_channel, status, results, action_log, owner_user, created_at) VALUES ($1, $2, 'instagram', 'telegram', 'completed', $3::jsonb, '[]'::jsonb, 'mike', $4)`,
+        [id, `https://www.instagram.com/reel/${id}/`, JSON.stringify(results), createdAt],
+      );
+      const e = { id, sourceUrl: `https://www.instagram.com/reel/${id}/`, ownerUser: 'mike', caption: 'x', results, createdAt } as unknown as Entry;
+      made.set(id, e);
+      return e;
+    };
+    const announced: string[] = [];
+    const deps: AutoPlaylistDeps = {
+      store,
+      getEntry: async (id) => made.get(id) ?? null,
+      title: async () => ({ aboutMusic: true, title: 'Synthwave da ascoltare', kind: 'theme' as const, existingTheme: null }),
+      language: async () => 'it',
+      countGenreSongs: async () => 0,
+      announce: async (m) => { announced.push(`${m.title} | ${m.body}`); },
+    };
+    const a = await entryRow('s1', '2026-11-01T10:00:00Z', 'Nightcall');
+    expect(await processEntry(a, deps)).toEqual({ status: 'waiting', reason: 'needs_two_songs' });
+    expect((await pool.query(`SELECT count(*)::int AS n FROM playlists`)).rows[0].n).toBe(0);
+    expect((await pool.query(`SELECT count(*)::int AS n FROM auto_playlist_themes`)).rows[0].n).toBe(0);
+    const b = await entryRow('s2', '2026-11-03T10:00:00Z', 'Dynamite Girl');
+    const out = await processEntry(b, deps);
+    expect(out).toMatchObject({ status: 'done', created: true, added: 2 });
+    if (out.status !== 'done') throw new Error('x');
+    expect((await getPlaylist(out.playlistId))?.songKeys).toEqual(['various::dynamite girl', 'various::nightcall']);
+    expect(await store.getRun('s1', 'mike')).toEqual({ status: 'done', playlistId: out.playlistId, reason: null });
+    expect(announced).toEqual(['Nuova playlist: Synthwave da ascoltare | 2 brani']);
+    for (const p of await listPlaylists({ userId: 'mike' })) expect(p.songCount).toBeGreaterThanOrEqual(MIN_PLAYLIST_SONGS);
   });
 });

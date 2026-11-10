@@ -6,7 +6,7 @@ import type { RuleLabels } from '../utils/dynamicRule';
 export function useRuleLabels(): RuleLabels {
   const { t } = useLanguage();
   return useMemo<RuleLabels>(() => ({
-    orders: { most_played: t.dynOrderMost, least_played: t.dynOrderLeast, recent: t.dynOrderRecent, never_played: t.dynOrderNever },
+    orders: { most_played: t.dynOrderMost, least_played: t.dynOrderLeast, recent: t.dynOrderRecent, never_played: t.dynOrderNever, newest: t.dynOrderNewest },
     lastDays: (n) => interpolate(t.dynPeriodDays, { n }),
     allTime: t.dynPeriodAll,
     daysShort: t.dynDaysShort,

@@ -1237,3 +1237,127 @@ body:has(.mini-player) .home--inbox {
   opacity: 0.6;
   cursor: default;
 }
+
+/* --- The panel as the Songs page shows it: one folded line, a list that scrolls in a box, names that can wrap ---
+   (Michele, 10 November: «la pagina canzoni ora con l'elenco delle play list è illeggibile»: 59 playlists were 30 rows
+   in front of the songs, and on a phone each name was squeezed to three letters by the badge, the date and the buttons.) */
+.playlist-panel.collapsed .playlist-panel-header {
+  margin-bottom: 0;
+}
+
+.playlist-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.playlist-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+
+.playlist-toggle:disabled {
+  cursor: default;
+}
+
+.playlist-toggle:focus-visible {
+  outline: 2px solid #3ddc97;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.playlist-toggle-count {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #999;
+  background: #222;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+
+/* a chevron drawn with borders: no glyph that a font may lack */
+.playlist-toggle-chevron {
+  margin-left: auto;
+  margin-right: 0.35rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid #999;
+  border-bottom: 2px solid #999;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.playlist-toggle[aria-expanded='true'] .playlist-toggle-chevron {
+  transform: rotate(45deg);
+}
+
+.playlist-list-scroll {
+  max-height: min(24rem, 60vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 -0.25rem;
+  padding: 0 0.25rem;
+}
+
+.playlist-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+/* the name has the whole width of the row and wraps (up to three lines) instead of being cut to a few letters */
+.playlist-open .playlist-name {
+  flex: none;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  white-space: normal;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.playlist-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.45rem;
+}
+
+.playlist-dynamic {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7cb7ff;
+  border: 1px solid rgba(124, 183, 255, 0.45);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+}
+
+.playlist-rule {
+  font-size: 0.75rem;
+  color: #8f96a3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .playlist-list-scroll {
+    max-height: min(20rem, 50vh);
+  }
+}

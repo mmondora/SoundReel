@@ -474,6 +474,9 @@ export interface Translations {
   playlistShowMore: string;
   playlistShownOf: string;
   playlistAutoBadge: string;
+  /** The Songs page folds the list of playlists into one line (tooltip of the toggle). */
+  playlistPanelShow: string;
+  playlistPanelHide: string;
   playlistNoMatch: string;
   playlistPlay: string;
   playlistActiveChip: string;
@@ -665,6 +668,8 @@ export interface Translations {
   dynOrderLeast: string;
   dynOrderRecent: string;
   dynOrderNever: string;
+  dynOrderNewest: string;
+  dynNewestNote: string;
   dynLimit: string;
   dynMinPlays: string;
   dynDownloadedOnly: string;
@@ -1284,6 +1289,8 @@ export const translations: Record<Language, Translations> = {
     playlistShowMore: 'Mostra altre',
     playlistShownOf: '{shown} di {total}',
     playlistAutoBadge: 'automatica',
+    playlistPanelShow: 'Mostra l’elenco delle playlist',
+    playlistPanelHide: 'Nascondi l’elenco delle playlist',
     playlistNoMatch: 'Nessuna playlist corrisponde',
     playlistPlay: '▶ Riproduci',
     playlistActiveChip: 'Playlist',
@@ -1490,6 +1497,8 @@ export const translations: Record<Language, Translations> = {
     dynOrderLeast: 'Meno ascoltate',
     dynOrderRecent: 'Ascoltate di recente',
     dynOrderNever: 'Mai ascoltate',
+    dynOrderNewest: 'Aggiunte di recente',
+    dynNewestNote: 'Questa regola guarda la libreria, non gli ascolti: periodo, fascia oraria, famiglia e numero minimo di ascolti non contano. Prende ogni brano col genere scelto, i più recenti per primi.',
     dynLimit: 'Numero massimo di brani (1–200)',
     dynMinPlays: 'Ascolti minimi',
     dynDownloadedOnly: 'Solo brani già scaricati',
@@ -2116,6 +2125,8 @@ export const translations: Record<Language, Translations> = {
     playlistShowMore: 'Show more',
     playlistShownOf: '{shown} of {total}',
     playlistAutoBadge: 'automatic',
+    playlistPanelShow: 'Show the list of playlists',
+    playlistPanelHide: 'Hide the list of playlists',
     playlistNoMatch: 'No playlist matches',
     playlistPlay: '▶ Play',
     playlistActiveChip: 'Playlist',
@@ -2322,6 +2333,8 @@ export const translations: Record<Language, Translations> = {
     dynOrderLeast: 'Least played',
     dynOrderRecent: 'Recently played',
     dynOrderNever: 'Never played',
+    dynOrderNewest: 'Recently added',
+    dynNewestNote: 'This rule looks at the library, not at what was heard: period, time window, family and the minimum of plays do not count. It takes every song with the chosen genre, the newest first.',
     dynLimit: 'Maximum songs (1–200)',
     dynMinPlays: 'Minimum plays',
     dynDownloadedOnly: 'Downloaded songs only',
