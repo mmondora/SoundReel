@@ -14,6 +14,8 @@ import { VERDICT_TONE, VERDICT_ICON } from '../utils/enrichmentVerdict';
 interface EntryInspectorProps {
   entry: Entry;
   onBack?: () => void;
+  /** Said after the post was deleted (a page that lists summaries takes it out of its list; the journal reloads by itself). */
+  onDeleted?: () => void;
 }
 
 function decodeHtmlEntities(text: string): string {
@@ -98,7 +100,7 @@ const NOTE_CATEGORY_LABELS: Record<Note['category'], { icon: string; key: keyof 
   other: { icon: '📝', key: 'noteOther' }
 };
 
-export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
+export function EntryInspector({ entry, onBack, onDeleted }: EntryInspectorProps) {
   const [deleting, setDeleting] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [enriching, setEnriching] = useState(false);
@@ -187,7 +189,7 @@ export function EntryInspector({ entry, onBack }: EntryInspectorProps) {
   const handleDelete = async () => {
     if (!confirm(t.confirmDelete)) return;
     setDeleting(true);
-    try { await deleteEntry(entry.id); } catch { alert(t.deleteError); }
+    try { await deleteEntry(entry.id); onDeleted?.(); } catch { alert(t.deleteError); }
     finally { setDeleting(false); }
   };
 

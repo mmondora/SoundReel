@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Entry } from '../types';
-import type { Translations } from '../i18n/translations';
-import { useLanguage, interpolate } from '../i18n';
+import { useLanguage } from '../i18n';
+import { relativeTime } from '../utils/relativeTime';
 import { VERDICT_TONE, VERDICT_ICON } from '../utils/enrichmentVerdict';
 
 interface CompactCardProps {
@@ -22,22 +22,6 @@ function parseFirestoreDate(timestamp: unknown): Date | null {
     if (!isNaN(date.getTime())) return date;
   }
   return null;
-}
-
-function getRelativeTime(date: Date, t: Translations): string {
-  const now = Date.now();
-  const diff = now - date.getTime();
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return t.justNow;
-  if (minutes < 60) return interpolate(t.minutesAgo, { count: minutes });
-  if (hours < 24) return interpolate(t.hoursAgo, { count: hours });
-  if (days === 1) return t.yesterday;
-  if (days < 30) return interpolate(t.daysAgo, { count: days });
-
-  return date.toLocaleDateString();
 }
 
 function getPlatformLabel(platform: string): string {
@@ -97,7 +81,7 @@ export function CompactCard({ entry, selected, onSelect }: CompactCardProps) {
         <div className="compact-top">
           <span className="compact-platform">{getPlatformLabel(entry.sourcePlatform)}</span>
           {parsedDate && (
-            <span className="compact-time">{getRelativeTime(parsedDate, t)}</span>
+            <span className="compact-time">{relativeTime(parsedDate, t)}</span>
           )}
         </div>
         <p className="compact-summary">{previewText}</p>

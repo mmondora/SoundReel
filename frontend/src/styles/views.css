@@ -1,0 +1,575 @@
+/*
+ * The views of a page (look and feel P3, spec 2026-11-10-web-look-and-feel-rethink-design.md §3.2): the switch (Home · Studio · Bacheca), the wall
+ * of cards with the detail panel that closes, the Studio of the Link page (list and post side by side) and the sections of the Home view.
+ * Colours and forms only from the tokens (tokens.css = Mondrop, ADR-0025): never write a hex here.
+ */
+
+/* ---------- the switch ---------- */
+.view-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.view-switch .seg-opt span {
+  padding: 0.4rem 0.95rem;
+}
+
+.view-switch-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.3rem 0.4rem 0.3rem 0.8rem;
+  border-radius: var(--mp-radius-pill);
+  background: var(--error-soft);
+  color: var(--error);
+  font-size: 0.78rem;
+}
+
+.view-switch-error button {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.view-switch-error button:hover {
+  background: var(--error-soft);
+}
+
+/* the bar of the Inbox: the filters on the left, the switch on the right */
+.inbox-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+/* ---------- the wall and its panel ---------- */
+.wall-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wall-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0.25rem 1.5rem 2rem;
+}
+
+.wall {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wall-cell {
+  display: flex;
+  min-width: 0;
+}
+
+.wall-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.wall-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.wall-card.selected,
+.wall-card[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.wall-media {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  background: var(--bg-hover);
+}
+
+.wall-thumb,
+.wall-thumb-placeholder {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.wall-thumb {
+  object-fit: cover;
+}
+
+.wall-thumb-placeholder {
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.wall-platform {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 2px 9px;
+  border-radius: var(--mp-radius-pill);
+  background: color-mix(in srgb, var(--mp-system-bg) 72%, transparent);
+  color: var(--text-primary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.wall-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.9rem 0.9rem;
+  min-width: 0;
+}
+
+.wall-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.wall-failed {
+  color: var(--error);
+}
+
+.wall-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: wall-spin 0.8s linear infinite;
+}
+
+@keyframes wall-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.wall-summary {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+
+.wall-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.wall-item {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.wall-more {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.wall-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.wall-chip {
+  padding: 2px 9px;
+  border-radius: var(--mp-radius-pill);
+  background: var(--border);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.wall-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* the detail of a post, next to the wall */
+.detail-panel {
+  position: relative;
+  flex: none;
+  width: min(46%, 640px);
+  min-width: 340px;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+.detail-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.detail-close:hover {
+  background: var(--bg-hover);
+}
+
+.detail-body {
+  min-height: 100%;
+}
+
+/* ---------- the Link page: the Studio view ---------- */
+.shell .shell-main .links-page {
+  min-height: 0;
+  height: 100%;
+}
+
+.shell .shell-main .links-page .list-page-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  padding-bottom: 0;
+}
+
+.links-page .library-header {
+  flex-wrap: wrap;
+  flex: none;
+}
+
+.links-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+}
+
+.links-list {
+  flex: none;
+  width: 42%;
+  min-width: 340px;
+  max-width: 580px;
+  overflow-y: auto;
+  padding: 1rem 0.75rem 1rem 0;
+  border-right: 1px solid var(--border);
+}
+
+.links-detail {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.links-detail > .inspector,
+.links-detail > .inspector-placeholder {
+  margin: auto;
+}
+
+.links-detail > .inspector {
+  margin: 0;
+  width: 100%;
+}
+
+/* the row is opened by a button laid over it; «Apri» stays above it */
+.library-row {
+  position: relative;
+}
+
+.library-row-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.library-row-hit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.library-row .library-open {
+  position: relative;
+  z-index: 2;
+}
+
+.library-row.selected {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.links-wall {
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+.links-wall .wall-scroll {
+  padding-left: 0;
+  padding-top: 1rem;
+}
+
+/* ---------- the Home view: the sections ---------- */
+.home-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  padding-top: 0.5rem;
+}
+
+.home-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.home-section-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.home-see-all {
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.home-see-all:hover {
+  text-decoration: underline;
+}
+
+.home-rail {
+  display: flex;
+  gap: 0.9rem;
+  overflow-x: auto;
+  list-style: none;
+  margin: 0;
+  padding: 2px 2px 0.6rem;
+  scroll-snap-type: x proximity;
+}
+
+.home-rail > li,
+.wall.home-rail > .wall-cell {
+  flex: none;
+  scroll-snap-align: start;
+}
+
+.wall.home-rail {
+  grid-template-columns: none;
+}
+
+.wall.home-rail > .wall-cell {
+  width: 250px;
+}
+
+.home-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 150px;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.home-tile-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 150px;
+  height: 150px;
+  border-radius: var(--radius);
+  object-fit: cover;
+  background: var(--bg-hover);
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.home-tile-art.poster {
+  height: 225px;
+}
+
+.home-tile-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.home-tile:hover .home-tile-title,
+.home-tile:focus-visible .home-tile-title {
+  color: var(--accent);
+}
+
+.home-tile-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.home-tile-badge {
+  margin-left: 0.4rem;
+  padding: 1px 7px;
+  border-radius: var(--mp-radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.home-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1.5rem 0;
+  color: var(--error);
+}
+
+.home-error p {
+  margin: 0;
+}
+
+.home-error button {
+  padding: 0.5rem 1.1rem;
+  border: 0;
+  border-radius: var(--mp-radius-pill);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---------- a narrower window ---------- */
+@media (max-width: 1100px) {
+  .detail-panel {
+    width: min(52%, 560px);
+    min-width: 300px;
+  }
+
+  .links-list {
+    width: 46%;
+    min-width: 300px;
+  }
+}
+
+/* the phone: one column; the post opens over the page and closes with ×, Escape or «back» */
+@media (max-width: 760px) {
+  .wall-scroll {
+    padding: 0.25rem 1rem 2rem;
+  }
+
+  .wall {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    width: auto;
+    min-width: 0;
+    border-left: 0;
+  }
+
+  .links-split {
+    flex-direction: column;
+  }
+
+  .links-list {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    padding-right: 0;
+    border-right: 0;
+  }
+
+  .links-split:not(.has-selection) .links-detail {
+    display: none;
+  }
+
+  .links-split.has-selection .links-detail {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: var(--bg-primary);
+  }
+
+  .view-switch {
+    margin-left: 0;
+  }
+
+  .inbox-toolbar {
+    flex-wrap: wrap;
+  }
+}

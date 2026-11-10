@@ -34,6 +34,7 @@ import { registerMondropRoutes } from './routes/mondrop';
 import { registerMondropInboxRoutes } from './routes/mondropInbox';
 import { registerMeRoute } from './routes/me';
 import { registerUiPrefsRoutes } from './routes/uiPrefs';
+import { registerWebHomeRoute } from './routes/webHome';
 import { registerMondropConnectRoutes } from './routes/mondropConnect';
 import { requeueStuckJobs } from './utils/jobQueue';
 import { startJobQueueWorker } from './services/jobQueueWorker';
@@ -86,6 +87,7 @@ async function bootstrap(): Promise<void> {
   registerMondropInboxRoutes(app);
   registerMeRoute(app);
   registerUiPrefsRoutes(app); // the configuration of the site, per user: behind Authelia like /api/me (ADR-0026)
+  registerWebHomeRoute(app); // the front page of the site in sections: behind Authelia like /api/me, never under /api/mondrop or /api/share
   registerMondropConnectRoutes(app); // behind Authelia: keep OFF /api/share and /api/mondrop (bypass routers)
 
   // Serve static frontend (after routes so /api/* wins)

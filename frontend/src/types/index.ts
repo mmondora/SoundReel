@@ -512,6 +512,30 @@ export interface JournalStats {
   totalSoftware?: number;
 }
 
+// --- The configuration of the site, per user, on the server (ADR-0026, docs/ui-prefs.md) ---
+
+export type HomeSectionId = 'resume' | 'songs' | 'playlists' | 'collections' | 'films';
+/** The three renderings of the Inbox: the sections (Home), list + detail (Studio, the default), the wall of cards (Bacheca). */
+export type InboxView = 'studio' | 'wall' | 'home';
+/** The Link page has no Home view. */
+export type LinksView = 'studio' | 'wall';
+export type PlayerDock = 'bottom' | 'float' | 'side' | 'hidden';
+
+/** The complete document the server answers (it decides every default). */
+export interface UiPrefs {
+  v: 1;
+  views: { inbox: InboxView; links: LinksView };
+  home: { sections: Array<{ id: HomeSectionId; visible: boolean }> };
+  player: { dock: PlayerDock; float: { x: number; y: number } };
+}
+
+/** What can be sent: only the parts to change (views page by page, the sections ALL together, the dock, the float axis by axis). */
+export interface UiPrefsPatch {
+  views?: Partial<UiPrefs['views']>;
+  home?: { sections: UiPrefs['home']['sections'] };
+  player?: { dock?: PlayerDock; float?: Partial<UiPrefs['player']['float']> };
+}
+
 /** Lean entry row for /entries list — no full results/actionLog. */
 export interface EntrySummary {
   id: string;
@@ -527,6 +551,21 @@ export interface EntrySummary {
   noteCount: number;
   tags: string[];
 }
+
+// --- The sections of the Home view, ready from the server (`GET /api/home`, docs/web-home.md) ---
+
+export interface WebHomeSong { songKey: string; title: string; artist: string; coverUrl: string | null; entryId: string; sourceUrl: string | null; createdAt: string }
+export interface WebHomePlaylist { id: string; name: string; songCount: number; createdAt: string; kind: 'static' | 'dynamic'; origin: 'user' | 'auto'; ruleSummary: string | null; ownerUser: string }
+export interface WebHomeFilm { filmKey: string; title: string; year: string | null; posterUrl: string | null; imdbUrl: string | null; entryId: string; sourceUrl: string | null; createdAt: string }
+
+/** `total` is how many there are in all (for «see all (N)»); `items` are the first ones. `collections` is not built yet: that section is simply absent. */
+export type WebHomeSection =
+  | { id: 'resume'; total: number; items: EntrySummary[] }
+  | { id: 'songs'; total: number; items: WebHomeSong[] }
+  | { id: 'playlists'; total: number; items: WebHomePlaylist[] }
+  | { id: 'films'; total: number; items: WebHomeFilm[] };
+
+export interface WebHomeResponse { sections: WebHomeSection[] }
 
 export interface SpotifyConfig {
   accessToken: string | null;

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { LanguageProvider } from './i18n';
 import { PlayerProvider } from './player/PlayerContext';
+import { UiPrefsProvider } from './hooks/useUiPrefs';
 import { AppShell } from './components/shell/AppShell';
 import { Home } from './pages/Home';
 import { Settings } from './pages/Settings';
@@ -18,11 +19,13 @@ import { PlayerPage } from './pages/PlayerPage';
 import { PlaylistManagerPage } from './pages/PlaylistManagerPage';
 import { StatsPage } from './pages/StatsPage';
 import './styles/index.css';
+import './styles/views.css';
 
 export function App() {
   return (
     <LanguageProvider>
       <BrowserRouter>
+        <UiPrefsProvider>
         <PlayerProvider>
           <Routes>
             <Route element={<AppShell />}>
@@ -44,6 +47,7 @@ export function App() {
             </Route>
           </Routes>
         </PlayerProvider>
+        </UiPrefsProvider>
       </BrowserRouter>
     </LanguageProvider>
   );

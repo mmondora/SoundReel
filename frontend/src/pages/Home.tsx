@@ -3,6 +3,12 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { UrlInput } from '../components/UrlInput';
 import { CompactCard } from '../components/CompactCard';
 import { EntryInspector } from '../components/EntryInspector';
+import { ViewSwitch } from '../components/views/ViewSwitch';
+import { Wall } from '../components/views/Wall';
+import { HomeSections } from '../components/views/HomeSections';
+import { DetailPanel } from '../components/views/DetailPanel';
+import { postFromEntry, postFromSearch } from '../components/views/postCard';
+import { usePageView } from '../hooks/useUiPrefs';
 import { useJournal } from '../hooks/useJournal';
 import { useSearch } from '../hooks/useSearch';
 import { useAnalyze } from '../hooks/useAnalyze';
@@ -130,7 +136,8 @@ export function Home() {
   });
   const { analyze, loading: analyzeLoading, error, successStatus, clearError } = useAnalyze();
   const { t } = useLanguage();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { view, ready: viewReady } = usePageView('inbox');
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [mobileInspector, setMobileInspector] = useState(false);
   /** Inbox First A: chip bar stays collapsed until the user opens Filtra. */
@@ -138,6 +145,8 @@ export function Home() {
 
   const q = searchParams.get('q') ?? '';
   const isSearchMode = q.trim().length >= 2;
+  /** A search shows its results as cards in the Home view too: the sections have nothing to filter. */
+  const effectiveView = view === 'home' && isSearchMode ? 'wall' : view;
 
   const { results: searchResults, expandedTerms, loading: searchLoading } = useSearch(q);
 
@@ -249,10 +258,22 @@ export function Home() {
     setMobileInspector(false);
   }, []);
 
+  /** The detail panel of the wall closes: no selection, and a `?entry=` link does not bring it back. */
+  const closeDetail = useCallback(() => {
+    setSelectedEntryId(null);
+    setMobileInspector(false);
+    if (searchParams.get('entry')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('entry');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
   const recentEntries = useMemo(() => entries.slice(0, RECENT_COUNT), [entries]);
   const listEntries = hasFilter ? entries : recentEntries;
   const showFilterBar =
     !isSearchMode &&
+    effectiveView !== 'home' &&
     (availablePlatforms.length > 1 ||
       availableChannels.length > 1 ||
       availableCategories.length > 0 ||
@@ -260,6 +281,22 @@ export function Home() {
       availableUsers.length > 1 ||
       availableTags.length > 0);
   const filtersVisible = filtersOpen || hasFilter;
+
+  /** «N risultati per …» (and the terms the search added): the same line over the list of the Studio and over the wall. */
+  const searchStatus = (
+    <div className="search-status">
+      {searchLoading ? (
+        <span>Ricerca in corso…</span>
+      ) : (
+        <span>{searchResults.length} risultati per &ldquo;{q}&rdquo;</span>
+      )}
+      {expandedTerms.length > 0 && (
+        <span className="search-expanded-terms">
+          Cercato anche: {expandedTerms.join(', ')}
+        </span>
+      )}
+    </div>
+  );
 
   return (
     <div className="home home--inbox">
@@ -273,18 +310,22 @@ export function Home() {
         />
       </div>
 
-      {showFilterBar && (
-        <div className="inbox-filter-row">
-          <button
-            type="button"
-            className={`inbox-filter-toggle ${filtersVisible ? 'open' : ''} ${hasFilter ? 'active' : ''}`}
-            onClick={() => setFiltersOpen((v) => !v)}
-            aria-expanded={filtersVisible}
-          >
-            {t.filterToggle}
-            {hasFilter ? ` · ${filteredCount}` : ''}
-          </button>
-          {filtersVisible && (
+      <div className="inbox-filter-row">
+        <div className="inbox-toolbar">
+          {showFilterBar && (
+            <button
+              type="button"
+              className={`inbox-filter-toggle ${filtersVisible ? 'open' : ''} ${hasFilter ? 'active' : ''}`}
+              onClick={() => setFiltersOpen((v) => !v)}
+              aria-expanded={filtersVisible}
+            >
+              {t.filterToggle}
+              {hasFilter ? ` · ${filteredCount}` : ''}
+            </button>
+          )}
+          <ViewSwitch page="inbox" />
+        </div>
+        {showFilterBar && filtersVisible && (
             <div className="journal-filter-bar inbox-filter-bar">
               <button
                 className={`filter-chip ${!hasFilter ? 'active' : ''}`}
@@ -380,26 +421,71 @@ export function Home() {
                 </>
               )}
             </div>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
+      {!viewReady ? (
+        <div className="journal-loading">
+          <span className="spinner" />
+          <p>{t.loading}</p>
+        </div>
+      ) : effectiveView === 'home' ? (
+        <main className="wall-layout home-layout">
+          <div className="wall-scroll">
+            <HomeSections selectedId={selectedEntryId} onOpenEntry={handleSearchSelect} />
+          </div>
+          {selectedEntry && (
+            <DetailPanel onClose={closeDetail}>
+              <EntryInspector entry={selectedEntry} />
+            </DetailPanel>
+          )}
+        </main>
+      ) : effectiveView === 'wall' ? (
+        <main className="wall-layout">
+          <div className="wall-scroll">
+            {isSearchMode ? (
+              <>
+                {searchStatus}
+                {!searchLoading && searchResults.length === 0 && (
+                  <div className="journal-empty">
+                    <p>Nessun risultato per &ldquo;{q}&rdquo;</p>
+                  </div>
+                )}
+                <Wall posts={searchResults.map(postFromSearch)} selectedId={selectedEntryId} onSelect={handleSearchSelect} />
+              </>
+            ) : journalLoading ? (
+              <div className="journal-loading">
+                <span className="spinner" />
+                <p>{t.loading}</p>
+              </div>
+            ) : entries.length === 0 ? (
+              <div className="journal-empty">
+                <p>{t.noEntries}</p>
+                <p>{t.noEntriesHint}</p>
+              </div>
+            ) : (
+              <>
+                <Wall posts={entries.map(postFromEntry)} selectedId={selectedEntryId} onSelect={handleSearchSelect} />
+                {!hasFilter && (
+                  <Link to="/entries" className="inbox-see-all">
+                    {t.seeAllJournal}
+                  </Link>
+                )}
+              </>
+            )}
+          </div>
+          {selectedEntry && (
+            <DetailPanel onClose={closeDetail}>
+              <EntryInspector entry={selectedEntry} />
+            </DetailPanel>
+          )}
+        </main>
+      ) : (
       <main className={`master-detail ${!selectedEntry ? 'no-selection' : ''}`}>
         <div className={`journal-panel ${mobileInspector ? 'mobile-hidden' : ''}`}>
           {isSearchMode ? (
             <div className="journal-list">
-              <div className="search-status">
-                {searchLoading ? (
-                  <span>Ricerca in corso…</span>
-                ) : (
-                  <span>{searchResults.length} risultati per &ldquo;{q}&rdquo;</span>
-                )}
-                {expandedTerms.length > 0 && (
-                  <span className="search-expanded-terms">
-                    Cercato anche: {expandedTerms.join(', ')}
-                  </span>
-                )}
-              </div>
+              {searchStatus}
               {!searchLoading && searchResults.length === 0 && (
                 <div className="journal-empty">
                   <p>Nessun risultato per &ldquo;{q}&rdquo;</p>
@@ -459,6 +545,7 @@ export function Home() {
           )}
         </div>
       </main>
+      )}
     </div>
   );
 }

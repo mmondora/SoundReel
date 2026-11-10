@@ -91,19 +91,19 @@
 
 **Files:** `frontend/src/services/api.ts` (`fetchUiPrefs`, `saveUiPrefs`, `resetUiPrefs`), `frontend/src/hooks/useUiPrefs.tsx` (`UiPrefsProvider`, `useUiPrefs()`), tests.
 - Produces: `useUiPrefs(): { prefs: UiPrefs | null; loading: boolean; update(patch): Promise<void>; reset(): Promise<void> }`: reads once, draws the cached copy (`sessionStorage`, try/catch) while the answer is on its way, applies an `update` at once and rolls it back (with an error message) if the server refuses.
-- [ ] Tests: first paint from the cache, the server answer wins, optimistic update + rollback on `400`, no write when there is no user (anonymous).
+- [x] Tests: first paint from the cache, the server answer wins, optimistic update + rollback on `400`, no write when there is no user (anonymous). **Done 10 Nov (2.22.0):** also serial writes (one at a time, in order), a late answer never undoes a newer choice, `401` keeps the choice for the visit.
 
 ### Task 7: Studio, Bacheca and the switch
 
 **Files:** `frontend/src/components/views/ViewSwitch.tsx`, `Wall.tsx` (the wall of cards + the closable detail panel), changes to `pages/Home.tsx` (Inbox) and `pages/EntriesPage.tsx` (Link), i18n, CSS, tests.
 - The Studio view is the current master–detail restyled; the Bacheca is the grid of `CompactCard`-like cards with the media of the post in view; the switch is the segmented control of the mockup; choosing a view saves it (`update({ views: { inbox: 'wall' } })`).
-- [ ] Tests: the default is Studio; the switch changes the view and saves it; a saved `wall` opens as the wall; the wall's card opens the panel and the panel closes; both views show the same entries; the search and the filters work in both.
+- [x] Tests: the default is Studio; the switch changes the view and saves it; a saved `wall` opens as the wall; the wall's card opens the panel and the panel closes; both views show the same entries; the search and the filters work in both. **Done 10 Nov (2.22.0):** Inbox (Home · Studio · Bacheca) and Link page (Studio with the post on the right · Bacheca).
 
 ### Task 8: The Home view (sections) and its route
 
 **Files:** `backend/src/services/webHome.ts`, `backend/src/routes/webHome.ts` (+ tests), `frontend/src/components/views/HomeSections.tsx` (+ tests).
 - `GET /api/home` (Authelia user): ready-made sections `resume` (the latest posts), `songs` (new songs from the posts), `playlists` (the user's playlists, newest first, with `kind` and `origin`), `collections` (empty until ADR-0022 is built: the section is simply absent), `films`; the server decides what is in each and in which order of items; the client draws the sections in the order and visibility of the configuration (rule P). One failing section costs only itself.
-- [ ] Tests: each section's rules, an empty library, one section that fails, the user sees only what he can see (own + shared), the client skips an unknown section and keeps the order of the configuration.
+- [x] Tests: each section's rules, an empty library, one section that fails, the user sees only what he can see (own + shared), the client skips an unknown section and keeps the order of the configuration. **Done 10 Nov (2.22.0):** `docs/web-home.md` is the contract.
 
 ### Task 9: Release P3 (2.22.0) — as Task 4.
 

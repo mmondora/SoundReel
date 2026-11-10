@@ -18,6 +18,31 @@ export interface Translations {
   shellClearSearch: string;
   shellMore: string;
   shellPlayerLabel: string;
+  // the views of a page (Home, Studio, Bacheca) and the detail that closes (look and feel, phase P3)
+  viewSwitchLabel: string;
+  viewHome: string;
+  viewStudio: string;
+  viewWall: string;
+  prefsSaveError: string;
+  /** The «×» of a message that can be dismissed. */
+  dismiss: string;
+  detailClose: string;
+  /** The name of the panel that shows a post next to the wall. */
+  detailLabel: string;
+  wallLabel: string;
+  /** «+{count} brani» under the first songs of a post on the wall. */
+  wallMoreSongs: string;
+  wallMoreFilms: string;
+  // the Home view: the sections the server prepares and the user orders (docs/web-home.md, docs/ui-prefs.md)
+  homeSectionResume: string;
+  homeSectionSongs: string;
+  homeSectionPlaylists: string;
+  homeSectionCollections: string;
+  homeSectionFilms: string;
+  /** «Vedi tutto (N)» at the head of a section. */
+  homeSeeAll: string;
+  homeLoadError: string;
+  homeEmpty: string;
   shellPlay: string;
   shellPause: string;
   shellNext: string;
@@ -854,6 +879,25 @@ export const translations: Record<Language, Translations> = {
     shellClearSearch: 'Cancella la ricerca',
     shellMore: 'Altro',
     shellPlayerLabel: 'Player',
+    viewSwitchLabel: 'Vista della pagina',
+    viewHome: 'Home',
+    viewStudio: 'Studio',
+    viewWall: 'Bacheca',
+    prefsSaveError: 'Non riesco a salvare la scelta: la vista è tornata com\'era.',
+    dismiss: 'Chiudi',
+    detailClose: 'Chiudi il dettaglio',
+    detailLabel: 'Dettaglio del post',
+    wallLabel: 'Post della libreria',
+    wallMoreSongs: '+{count} brani',
+    wallMoreFilms: '+{count} film',
+    homeSectionResume: 'Riprendi',
+    homeSectionSongs: 'Nuove canzoni',
+    homeSectionPlaylists: 'Le tue playlist',
+    homeSectionCollections: 'Raccolte',
+    homeSectionFilms: 'Da vedere',
+    homeSeeAll: 'Vedi tutto ({count})',
+    homeLoadError: 'Non riesco a caricare la Home.',
+    homeEmpty: 'Niente da mostrare qui: incolla un link per cominciare.',
     shellPlay: 'Riproduci',
     shellPause: 'Pausa',
     shellNext: 'Brano successivo',
@@ -1704,6 +1748,25 @@ export const translations: Record<Language, Translations> = {
     shellClearSearch: 'Clear the search',
     shellMore: 'More',
     shellPlayerLabel: 'Player',
+    viewSwitchLabel: 'Page view',
+    viewHome: 'Home',
+    viewStudio: 'Studio',
+    viewWall: 'Wall',
+    prefsSaveError: 'Could not save your choice: the view went back to how it was.',
+    dismiss: 'Dismiss',
+    detailClose: 'Close the detail',
+    detailLabel: 'Post detail',
+    wallLabel: 'Library posts',
+    wallMoreSongs: '+{count} songs',
+    wallMoreFilms: '+{count} films',
+    homeSectionResume: 'Pick up',
+    homeSectionSongs: 'New songs',
+    homeSectionPlaylists: 'Your playlists',
+    homeSectionCollections: 'Collections',
+    homeSectionFilms: 'To watch',
+    homeSeeAll: 'See all ({count})',
+    homeLoadError: 'Could not load the Home.',
+    homeEmpty: 'Nothing to show here: paste a link to start.',
     shellPlay: 'Play',
     shellPause: 'Pause',
     shellNext: 'Next song',

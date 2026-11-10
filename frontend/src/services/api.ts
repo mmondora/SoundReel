@@ -4,6 +4,7 @@ import type {
   PlaylistSummary, PlaylistDetail, PlaylistFilter, PlaylistSort, PlaylistPage, JournalStats, MeResponse, SongStateResponse, SongDownloadResponse,
   DynamicPreset, DynamicRule, PlayEvent, PlayPlan,
   LibraryScope, LibrarySearchResponse, MusicFoldersPayload, MusicFolderInput, FolderBrowse,
+  UiPrefs, UiPrefsPatch, WebHomeResponse,
 } from '../types';
 
 // When served from the same origin as the backend, relative paths work.
@@ -93,6 +94,48 @@ export async function fetchJournalStats(): Promise<JournalStats> {
 export async function fetchMe(): Promise<MeResponse> {
   const res = await fetch(url('/api/me'));
   return json<MeResponse>(res);
+}
+
+// --- The sections of the Home view (docs/web-home.md): the server decides what each holds, the page draws ---
+
+/** `GET /api/home`: ready-made sections (resume, songs, playlists, films); one that is empty or failed is simply not sent. */
+export async function fetchWebHome(): Promise<WebHomeResponse> {
+  const res = await fetch(url('/api/home'), { cache: 'no-store' });
+  return json<WebHomeResponse>(res);
+}
+
+// --- The configuration of the site, per user, on the server (ADR-0026, docs/ui-prefs.md) ---
+
+/** The server answered 401: there is no user (local development without Authelia). The page keeps the choice for this visit only. */
+export class UiPrefsAnonymousError extends Error {
+  constructor() {
+    super('authentication required');
+    this.name = 'UiPrefsAnonymousError';
+  }
+}
+
+/** The complete document, with the starting values the server decides (also for a visitor with no user: `200`). */
+export async function fetchUiPrefs(): Promise<UiPrefs> {
+  const res = await fetch(url('/api/me/prefs'), { cache: 'no-store' });
+  return (await json<{ prefs: UiPrefs }>(res)).prefs;
+}
+
+/** Only the parts to change; the server validates, merges and answers the complete document. `400` names what is wrong, `401` is no user. */
+export async function saveUiPrefs(patch: UiPrefsPatch): Promise<UiPrefs> {
+  const res = await fetch(url('/api/me/prefs'), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (res.status === 401) throw new UiPrefsAnonymousError();
+  return (await json<{ prefs: UiPrefs }>(res)).prefs;
+}
+
+/** Forgets the choices of the user: the answer is the starting values. */
+export async function resetUiPrefs(): Promise<UiPrefs> {
+  const res = await fetch(url('/api/me/prefs'), { method: 'DELETE' });
+  if (res.status === 401) throw new UiPrefsAnonymousError();
+  return (await json<{ prefs: UiPrefs }>(res)).prefs;
 }
 
 export async function shareEntryWith(
