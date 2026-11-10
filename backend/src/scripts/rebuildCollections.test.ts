@@ -125,6 +125,24 @@ describe('the golden set of the spec (§9), read on what the pass makes', () => 
     expect(status(evaluateGolden(input({ collections: [col('Ristoranti', ['e1'])], places: [places[0]], texts })), /testo/)).toBe('PASS');
   });
 
+  it('a place is checked the way the pass finds it: any written form the list knows grounds it (the English name, a possessive, a hyphen compound, a hashtag), not only the name the list stores', () => {
+    const places = [place('e1', 'Messico'), place('e2', 'Cina'), place('e3', 'Germania'), place('e4', 'Messico')];
+    const texts = new Map([
+      ['e1', "It also mentions Mexico's biodiversity and its history"],
+      ['e2', 'China’s DeepSeek just took a serious shot at Claude Code'],
+      ['e3', 'A GERMANY-BASED AI STARTUP JUST RELEASED a new generator'],
+      ['e4', 'ricette di cucina #mexico'],
+    ]);
+    expect(status(evaluateGolden(input({ collections: [col('Viaggi', ['e1', 'e2', 'e3', 'e4'])], places, texts })), /testo/)).toBe('PASS');
+    // and a place the text does not name in any form is still a failure
+    const wrong = new Map([['e1', 'Un post sul vino francese'], ['e2', 'China’s DeepSeek'], ['e3', 'Germany'], ['e4', '#mexico']]);
+    const checks = evaluateGolden(input({ collections: [col('Viaggi', ['e1', 'e2', 'e3', 'e4'])], places, texts: wrong }));
+    const grounded = checks.find((c) => /testo/.test(c.name));
+    expect(grounded?.status).toBe('FAIL');
+    expect(grounded?.detail).toMatch(/e1/);
+    expect(grounded?.detail).not.toMatch(/e2|e3|e4/);
+  });
+
   it('an unnamed collection never counts as published, even if it were active; the biggest of two with one name is the one that counts; the case of a name does not matter', () => {
     const features = new Map<string, EntryFeatures>(ids('m', 8).map((id) => [id, feats({ hasContentSongs: true })] as const));
     expect(status(evaluateGolden(input({ collections: [col(UNNAMED, ids('m', 8))], features })), /musica o film/i)).toBe('PASS');

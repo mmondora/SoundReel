@@ -22,7 +22,7 @@
  *   node dist/scripts/rebuildCollections.js --all            # elenca anche i gruppi che sono solo «in osservazione»
  *   node dist/scripts/rebuildCollections.js --apply          # scrive davvero
  */
-import { isGrounded } from '../services/entryPlaces';
+import { canonicalPlace } from '../services/entryPlaces';
 import { cleanName } from '../services/collectionsCluster';
 import { COLLECTION_PARAMS } from '../services/collectionsParams';
 import {
@@ -65,7 +65,7 @@ export interface GoldenInput {
   features: Map<string, EntryFeatures>;
   /** The places the store holds for the entries of the collections. */
   places: EntryPlaceRow[];
-  /** The text each place was read from (what `isGrounded` checks against). */
+  /** The text each place was read from (what `canonicalPlace` checks against). */
   texts: Map<string, string>;
 }
 
@@ -136,7 +136,8 @@ export function evaluateGolden(input: GoldenInput): GoldenCheck[] {
   } else {
     const missing = input.places.filter((p) => {
       const text = input.texts.get(p.entryId);
-      return text !== undefined && !isGrounded(p.name, text);
+      // the way the pass finds a place (`canonicalPlace`: the list's own written forms, the capital rule, hashtags), NOT the literal name (`isGrounded` is for venues): «Messico» is in «Mexico's»
+      return text !== undefined && canonicalPlace(p.name, text) === null;
     });
     checks.push({
       name: 'Ogni luogo compare nel testo',
