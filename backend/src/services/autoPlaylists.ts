@@ -13,6 +13,7 @@ import { songKey } from './songMeta';
 import { themeKey, titleOverlap, type PlaylistKind, type TitlePlan, type TitleSource } from './autoPlaylistTitle';
 import type { DynamicRule } from './dynamicRules';
 import { GENRE_PLAYLIST_LIMIT, genreRule, genreThemeKey, genresOfThemeTitle } from './genreThemes';
+import { LIKED_THEME_KEY } from './likedPlaylist';
 
 /**
  * A post that LISTS music names at least this many songs from its content: a playlist of its own when the title is precise, or a theme when it
@@ -280,7 +281,8 @@ export async function processEntry(
   if (!found) return { status: 'skipped', reason: 'not_music_post' };
   const { keys, songs, mode } = found;
 
-  const themes = await deps.store.listThemes(owner);
+  // the playlist «Mi piace» of the person (ADR-0028) is in the registry only so that a deletion is remembered: a post never joins it, and the model never sees it
+  const themes = (await deps.store.listThemes(owner)).filter((t) => t.themeKey !== LIKED_THEME_KEY);
   const plan = await deps.title({
     caption: entry.caption,
     summary: entry.results?.summary ?? null,

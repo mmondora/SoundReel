@@ -8,7 +8,9 @@
 import { query } from '../utils/db';
 import { canonicalGenres } from '../utils/genres';
 import type { DynamicRule } from './dynamicRules';
+import { libraryOnlySong } from './libraryOnlySongs';
 import { listReadySongKeys } from './songFiles';
+import { likedKeys } from './songLikes';
 import { getUserSongs } from './userSongs';
 
 export * from './dynamicRules';
@@ -62,6 +64,22 @@ export async function resolveDynamicSongKeys(rule: DynamicRule, ctx: ResolveCont
   const songs = await getUserSongs(ctx.userId, ctx.isAdmin ?? false);
   const readyKeys = rule.downloadedOnly ? await listReadySongKeys().catch(() => new Set<string>()) : new Set<string>();
   const wanted = rule.genres ? new Set(rule.genres) : null;
+
+  if (rule.order === 'liked') {
+    // not about what was heard either: the songs THIS person liked (the rule's family scope changes nothing: a like is of one person), the most
+    // recently liked first. A song is the journal's, or a file the library has; one that is nowhere any more is skipped (no source, no track),
+    // and a library that cannot be read is a library with nothing in it, never a failure of the whole list of playlists. No listening events read.
+    const out: string[] = [];
+    for (const key of await likedKeys(ctx.userId)) {
+      const song = songs.get(key) ?? (await libraryOnlySong(key).catch(() => undefined));
+      if (!song) continue;
+      if (wanted && !canonicalGenres(song.meta?.genres).some((g) => wanted.has(g))) continue;
+      if (rule.downloadedOnly && !(song.meta?.downloaded || readyKeys.has(key))) continue;
+      out.push(key);
+      if (out.length >= rule.limit) break;
+    }
+    return out;
+  }
 
   const candidates = [...songs.values()].filter((s) => {
     if (wanted && !canonicalGenres(s.meta?.genres).some((g) => wanted.has(g))) return false;

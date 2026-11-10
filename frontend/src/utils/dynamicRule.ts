@@ -6,13 +6,13 @@
 import type { DynamicOrder, DynamicRule } from '../types';
 
 export const PERIOD_CHOICES = ['7', '30', '90', '365', 'all'] as const;
-export const ORDERS: readonly DynamicOrder[] = ['most_played', 'least_played', 'recent', 'never_played', 'newest'];
+export const ORDERS: readonly DynamicOrder[] = ['most_played', 'least_played', 'recent', 'never_played', 'newest', 'liked'];
 
-/** `newest` (the library, the last added first) and `never_played` have no listening to place in a time window, or to count. */
-export const ignoresWindow = (order: DynamicOrder): boolean => order === 'never_played' || order === 'newest';
+/** `newest` (the library, the last added first), `liked` (the likes of the person, the last liked first) and `never_played` have no listening to place in a time window, or to count. */
+export const ignoresWindow = (order: DynamicOrder): boolean => order === 'never_played' || order === 'newest' || order === 'liked';
 
-/** `newest` does not look at what was heard at all: no period, no family, no minimum of plays. */
-export const ignoresListening = (order: DynamicOrder): boolean => order === 'newest';
+/** `newest` and `liked` do not look at what was heard at all: no period, no family, no minimum of plays. */
+export const ignoresListening = (order: DynamicOrder): boolean => order === 'newest' || order === 'liked';
 export const LIMIT_MIN = 1;
 export const LIMIT_MAX = 200;
 export const DEFAULT_LIMIT = 50;
@@ -153,9 +153,9 @@ export interface RuleLabels {
 
 /** One-line summary of a rule ("Più ascoltate · 07:00–08:00 · lun–ven · ultimi 30 giorni"), like the backend's. */
 export function describeRule(rule: DynamicRule, l: RuleLabels): string {
-  if (rule.order === 'newest') {
-    // it does not look at what was heard: no window, no period, no family in the words (the backend says it the same way)
-    return [l.orders.newest, rule.genres?.length ? rule.genres.join(', ') : '', rule.downloadedOnly ? l.downloadedOnly : '', l.max(rule.limit)].filter(Boolean).join(' · ');
+  if (rule.order === 'newest' || rule.order === 'liked') {
+    // they do not look at what was heard: no window, no period, no family in the words (the backend says it the same way)
+    return [l.orders[rule.order], rule.genres?.length ? rule.genres.join(', ') : '', rule.downloadedOnly ? l.downloadedOnly : '', l.max(rule.limit)].filter(Boolean).join(' · ');
   }
   const parts: string[] = [l.orders[rule.order]];
   if (rule.window && !ignoresWindow(rule.order)) {

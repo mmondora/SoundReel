@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_FORM,
   LIMIT_MAX,
+  ORDERS,
   crossesMidnight,
   describeRule,
   formToRule,
+  ignoresListening,
+  ignoresWindow,
   isTime,
   periodOptions,
   ruleToForm,
@@ -14,7 +17,7 @@ import type { RuleForm, RuleLabels } from './dynamicRule';
 import type { DynamicRule } from '../types';
 
 const LABELS: RuleLabels = {
-  orders: { most_played: 'Più ascoltate', least_played: 'Meno ascoltate', recent: 'Recenti', never_played: 'Mai ascoltate', newest: 'Aggiunte di recente' },
+  orders: { most_played: 'Più ascoltate', least_played: 'Meno ascoltate', recent: 'Recenti', never_played: 'Mai ascoltate', newest: 'Aggiunte di recente', liked: 'Piaciuti di recente' },
   lastDays: (n) => `ultimi ${n} giorni`,
   allTime: 'sempre',
   daysShort: ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom'],
@@ -67,6 +70,27 @@ describe('formToRule', () => {
     const rule = formToRule(form({ order: 'newest', windowEnabled: true, genres: ['R&B/Soul'], limit: '200' }));
     expect(rule.window).toBeUndefined();
     expect(rule).toMatchObject({ order: 'newest', genres: ['R&B/Soul'], limit: 200 });
+  });
+
+  it('"liked" (the songs this person liked, the most recently liked first) has no time window either, and keeps its genres', () => {
+    const rule = formToRule(form({ order: 'liked', windowEnabled: true, genres: ['Jazz'], limit: '200' }));
+    expect(rule.window).toBeUndefined();
+    expect(rule).toMatchObject({ order: 'liked', genres: ['Jazz'], limit: 200 });
+  });
+
+  it('the rule the server made for the playlist «Mi piace» comes back into the editor as it is (it must not turn into "most played": that would take the likes away on save)', () => {
+    const fromServer: DynamicRule = { v: 1, scope: 'me', period: 'all', order: 'liked', limit: 200, minPlays: 1, downloadedOnly: false };
+    const back = ruleToForm(fromServer, 'Mi piace');
+    expect(back.order).toBe('liked');
+    expect(formToRule(back)).toMatchObject({ order: 'liked', period: 'all', limit: 200, scope: 'me' });
+  });
+
+  it('the orders the editor offers are the ones the server knows, the last two being the ones that do not look at what was heard', () => {
+    expect([...ORDERS]).toEqual(['most_played', 'least_played', 'recent', 'never_played', 'newest', 'liked']);
+    expect(ignoresListening('liked')).toBe(true);
+    expect(ignoresWindow('liked')).toBe(true);
+    expect(ignoresListening('newest')).toBe(true);
+    expect(ignoresListening('never_played')).toBe(false);
   });
 
   it('the rule the server made for a playlist of a genre comes back into the editor as it is (it must not turn into "most played")', () => {
@@ -150,6 +174,8 @@ describe('validateForm', () => {
     expect(codes(form({ windowEnabled: true, from: 'x', order: 'never_played' }))).toEqual([]);
     // "newest" does not look at the listening: no minimum of plays and no window to get wrong
     expect(codes(form({ order: 'newest', minPlays: '', windowEnabled: true, from: 'x' }))).toEqual([]);
+    // nor does "liked"
+    expect(codes(form({ order: 'liked', minPlays: '', windowEnabled: true, from: 'x' }))).toEqual([]);
     expect(codes(form({ order: 'most_played', minPlays: '' }))).toContain('minPlaysRange');
   });
 });
@@ -180,6 +206,12 @@ describe('describeRule', () => {
   it('mentions midnight crossing, days, genres, family and downloaded-only', () => {
     expect(describeRule({ v: 1, scope: 'family', period: 'all', window: { from: '22:00', to: '06:00', days: [5, 6] }, order: 'least_played', limit: 20, minPlays: 1, genres: ['Trap'], downloadedOnly: true }, LABELS))
       .toBe('Meno ascoltate · 22:00–06:00 (oltre la mezzanotte) · ven sab · sempre · Trap · famiglia · solo scaricate · max 20');
+  });
+
+  it('"liked" says only the genre and the maximum, like "newest": no window, no period, no family', () => {
+    expect(describeRule({ v: 1, scope: 'family', period: { days: 7 }, window: { from: '07:00', to: '08:00' }, order: 'liked', limit: 200, minPlays: 1, genres: ['Jazz'], downloadedOnly: false }, LABELS))
+      .toBe('Piaciuti di recente · Jazz · max 200');
+    expect(describeRule({ v: 1, scope: 'me', period: 'all', order: 'liked', limit: 20, minPlays: 1, downloadedOnly: true }, LABELS)).toBe('Piaciuti di recente · solo scaricate · max 20');
   });
 
   it('"newest" says only the genre and the maximum: no window, no period, no family', () => {

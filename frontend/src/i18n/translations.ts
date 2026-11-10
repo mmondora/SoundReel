@@ -814,7 +814,9 @@ export interface Translations {
   dynOrderRecent: string;
   dynOrderNever: string;
   dynOrderNewest: string;
+  dynOrderLiked: string;
   dynNewestNote: string;
+  dynLikedNote: string;
   dynLimit: string;
   dynMinPlays: string;
   dynDownloadedOnly: string;
@@ -1774,7 +1776,9 @@ export const translations: Record<Language, Translations> = {
     dynOrderRecent: 'Ascoltate di recente',
     dynOrderNever: 'Mai ascoltate',
     dynOrderNewest: 'Aggiunte di recente',
+    dynOrderLiked: 'Piaciuti di recente',
     dynNewestNote: 'Questa regola guarda la libreria, non gli ascolti: periodo, fascia oraria, famiglia e numero minimo di ascolti non contano. Prende ogni brano col genere scelto, i più recenti per primi.',
+    dynLikedNote: 'Questa regola guarda i brani che ti piacciono (i like dati da Mondrop), non gli ascolti: periodo, fascia oraria, famiglia e numero minimo di ascolti non contano. Prende ogni brano che ti piace, gli ultimi piaciuti per primi.',
     dynLimit: 'Numero massimo di brani (1–200)',
     dynMinPlays: 'Ascolti minimi',
     dynDownloadedOnly: 'Solo brani già scaricati',
@@ -2741,7 +2745,9 @@ export const translations: Record<Language, Translations> = {
     dynOrderRecent: 'Recently played',
     dynOrderNever: 'Never played',
     dynOrderNewest: 'Recently added',
+    dynOrderLiked: 'Recently liked',
     dynNewestNote: 'This rule looks at the library, not at what was heard: period, time window, family and the minimum of plays do not count. It takes every song with the chosen genre, the newest first.',
+    dynLikedNote: 'This rule looks at the songs you liked (the likes given in Mondrop), not at what was heard: period, time window, family and the minimum of plays do not count. It takes every song you liked, the most recently liked first.',
     dynLimit: 'Maximum songs (1–200)',
     dynMinPlays: 'Minimum plays',
     dynDownloadedOnly: 'Downloaded songs only',

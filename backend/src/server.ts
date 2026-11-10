@@ -33,6 +33,8 @@ import { registerTtsRoutes } from './routes/tts';
 import { registerShareRoute } from './routes/share';
 import { registerMondropRoutes } from './routes/mondrop';
 import { registerMondropInboxRoutes } from './routes/mondropInbox';
+import { registerMondropLikesRoutes } from './routes/mondropLikes';
+import { MAX_ENCODED_SONG_KEY } from './services/songLikes';
 import { registerMeRoute } from './routes/me';
 import { registerUiPrefsRoutes } from './routes/uiPrefs';
 import { registerWebHomeRoute } from './routes/webHome';
@@ -56,6 +58,8 @@ async function bootstrap(): Promise<void> {
     logger: { level: process.env.LOG_LEVEL || 'info' },
     bodyLimit: 10 * 1024 * 1024,
     disableRequestLogging: false,
+    // a song key is in the path of the Mondrop routes (up to 500 characters, nine each once percent-encoded): the default of 100 answers 404 to a long title
+    maxParamLength: MAX_ENCODED_SONG_KEY,
   });
 
   await app.register(fastifyCors, { origin: true });
@@ -90,6 +94,7 @@ async function bootstrap(): Promise<void> {
   registerShareRoute(app);
   registerMondropRoutes(app);
   registerMondropInboxRoutes(app);
+  registerMondropLikesRoutes(app); // the likes of the songs: the Mondrop key like the other /api/mondrop routes (Traefik bypasses Authelia there), ADR-0028
   registerMeRoute(app);
   registerUiPrefsRoutes(app); // the configuration of the site, per user: behind Authelia like /api/me (ADR-0026)
   registerWebHomeRoute(app); // the front page of the site in sections: behind Authelia like /api/me, never under /api/mondrop or /api/share

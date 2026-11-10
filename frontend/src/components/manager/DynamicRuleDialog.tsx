@@ -11,6 +11,7 @@ import {
   crossesMidnight,
   describeRule,
   formToRule,
+  ignoresListening,
   ignoresWindow,
   periodOptions,
   ruleToForm,
@@ -68,8 +69,8 @@ export function DynamicRuleDialog({ mode, initialName, initialRule, genres, onSu
     windowEmpty: t.dynIssueWindowEmpty,
   };
   const neverPlayed = form.order === 'never_played';
-  // "newest" looks at the library, not at the listening: period, family, window and the minimum of plays do not count
-  const newest = form.order === 'newest';
+  // "newest" looks at the library and "liked" at the likes of the person, not at the listening: period, family, window and the minimum of plays do not count
+  const newest = ignoresListening(form.order);
   const windowIgnored = ignoresWindow(form.order);
   const midnight = form.windowEnabled && !windowIgnored && crossesMidnight(form.from, form.to);
   const summary = issues.length === 0 ? describeRule(formToRule(form), labels) : null;
@@ -99,6 +100,7 @@ export function DynamicRuleDialog({ mode, initialName, initialRule, genres, onSu
     recent: t.dynOrderRecent,
     never_played: t.dynOrderNever,
     newest: t.dynOrderNewest,
+    liked: t.dynOrderLiked,
   };
 
   return (
@@ -194,7 +196,7 @@ export function DynamicRuleDialog({ mode, initialName, initialRule, genres, onSu
           </label>
         </div>
 
-        {newest && <p className="mgr-help">{t.dynNewestNote}</p>}
+        {newest && <p className="mgr-help">{form.order === 'liked' ? t.dynLikedNote : t.dynNewestNote}</p>}
 
         <fieldset className="mgr-facet" disabled={windowIgnored}>
           <legend>{t.dynWindowEnable}</legend>

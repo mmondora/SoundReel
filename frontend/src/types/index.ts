@@ -237,8 +237,8 @@ export interface SongDownloadResponse {
 }
 
 /** Dynamic playlists (docs/mondrop-stats.md §4): a rule re-evaluated on every request. */
-/** `newest` looks at the library, not at the listening: the songs that match (the genre), the last added first (ADR-0024). */
-export type DynamicOrder = 'most_played' | 'least_played' | 'recent' | 'never_played' | 'newest';
+/** `newest` looks at the library, not at the listening: the songs that match (the genre), the last added first (ADR-0024). `liked` looks at the likes of the person (Mondrop, ADR-0028), the most recently liked first. */
+export type DynamicOrder = 'most_played' | 'least_played' | 'recent' | 'never_played' | 'newest' | 'liked';
 
 export interface DynamicRuleWindow {
   /** "HH:MM", the listener's LOCAL time. `from > to` crosses midnight. */

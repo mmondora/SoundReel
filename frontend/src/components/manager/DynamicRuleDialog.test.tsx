@@ -67,6 +67,39 @@ describe('DynamicRuleDialog: the order "recently added" (a playlist of a genre)'
   });
 });
 
+describe('DynamicRuleDialog: the order "recently liked" (the playlist «Mi piace»)', () => {
+  const LIKED_RULE: DynamicRule = { v: 1, scope: 'me', period: 'all', order: 'liked', limit: 200, minPlays: 1, downloadedOnly: false };
+
+  it('opens on the order the server made, says what the rule looks at, and greys out what does not count', () => {
+    const { dialog } = renderDialog({ mode: 'edit', initialName: 'Mi piace', initialRule: LIKED_RULE });
+    expect(dialog.getByRole('combobox', { name: 'Order' })).toHaveValue('liked');
+    expect(dialog.getByText(/looks at the songs you liked \(the likes given in Mondrop\), not at what was heard/)).toBeInTheDocument();
+    expect(dialog.queryByText(/looks at the library/)).not.toBeInTheDocument();
+    expect(dialog.getByRole('combobox', { name: 'Period' })).toBeDisabled();
+    expect(dialog.getByRole('spinbutton', { name: 'Minimum plays' })).toBeDisabled();
+    expect(dialog.getByRole('radio', { name: 'The whole family' })).toBeDisabled();
+    expect(dialog.getByRole('checkbox', { name: 'Only listening within a time window' })).toBeDisabled();
+  });
+
+  it('saving it keeps the order and the 200: editing the playlist «Mi piace» must not turn it into "most played" and take the likes away', async () => {
+    const { dialog, onSubmit } = renderDialog({ mode: 'edit', initialName: 'Mi piace', initialRule: LIKED_RULE });
+    fireEvent.click(dialog.getByRole('button', { name: /Save/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][1]).toMatchObject({ order: 'liked', limit: 200, scope: 'me', period: 'all' });
+  });
+
+  it('is an order a person can choose in a new rule, with the same fields greyed out; choosing another order gives them back', () => {
+    const { dialog } = renderDialog();
+    expect(within(dialog.getByRole('combobox', { name: 'Order' })).getByRole('option', { name: 'Recently liked' })).toBeInTheDocument();
+    fireEvent.change(dialog.getByRole('combobox', { name: 'Order' }), { target: { value: 'liked' } });
+    expect(dialog.getByRole('combobox', { name: 'Period' })).toBeDisabled();
+    expect(dialog.getByText(/looks at the songs you liked/)).toBeInTheDocument();
+    fireEvent.change(dialog.getByRole('combobox', { name: 'Order' }), { target: { value: 'most_played' } });
+    expect(dialog.getByRole('combobox', { name: 'Period' })).toBeEnabled();
+    expect(dialog.queryByText(/looks at the songs you liked/)).not.toBeInTheDocument();
+  });
+});
+
 describe('DynamicRuleDialog: creating', () => {
   it('needs a name; the create button stays disabled until the form is valid', async () => {
     const { dialog } = renderDialog();

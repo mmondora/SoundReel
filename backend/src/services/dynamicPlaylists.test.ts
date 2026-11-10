@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const m = vi.hoisted(() => ({ query: vi.fn(), getUserSongs: vi.fn(), listReadySongKeys: vi.fn() }));
+const m = vi.hoisted(() => ({ query: vi.fn(), getUserSongs: vi.fn(), listReadySongKeys: vi.fn(), likedKeys: vi.fn(), libraryOnlySong: vi.fn() }));
 vi.mock('../utils/db', () => ({ query: m.query }));
 vi.mock('./userSongs', () => ({ getUserSongs: m.getUserSongs }));
 vi.mock('./songFiles', () => ({ listReadySongKeys: m.listReadySongKeys }));
+vi.mock('./songLikes', () => ({ likedKeys: m.likedKeys }));
+vi.mock('./libraryOnlySongs', () => ({ libraryOnlySong: m.libraryOnlySong }));
 
 import { parseRule, PRESETS, resolveDynamicSongKeys, ruleSummary, type DynamicRule } from './dynamicPlaylists';
 
@@ -18,6 +20,8 @@ const stat = (key: string, plays: number, last: string) => ({ song_key: key, pla
 beforeEach(() => {
   vi.clearAllMocks();
   m.listReadySongKeys.mockResolvedValue(new Set());
+  m.likedKeys.mockResolvedValue([]);
+  m.libraryOnlySong.mockResolvedValue(undefined);
 });
 
 describe('parseRule', () => {
@@ -64,6 +68,11 @@ describe('parseRule', () => {
     expect(r).toEqual({ ok: true, rule: { v: 1, scope: 'me', period: 'all', order: 'newest', limit: 200, minPlays: 1, genres: ['R&B/Soul'], downloadedOnly: false } });
   });
 
+  it('accepts the order "liked" (the songs this person liked, the most recently liked first: no listening in it) and keeps the genres', () => {
+    const r = parseRule({ order: 'liked', genres: ['Jazz'], period: 'all', limit: 200 });
+    expect(r).toEqual({ ok: true, rule: { v: 1, scope: 'me', period: 'all', order: 'liked', limit: 200, minPlays: 1, genres: ['Jazz'], downloadedOnly: false } });
+  });
+
   it('refuses garbage that is not a rule at all', () => {
     for (const junk of [null, undefined, 7, 'x', []]) expect(parseRule(junk)).toEqual({ ok: false, error: 'rule_required' });
   });
@@ -83,6 +92,12 @@ describe('ruleSummary', () => {
     expect(ruleSummary(rule({ order: 'newest', period: 'all', genres: ['R&B/Soul'], limit: 200 }))).toBe('Aggiunte di recente · R&B/Soul · max 200');
     expect(ruleSummary(rule({ order: 'newest', period: { days: 7 }, scope: 'family', window: { from: '07:00', to: '08:00' }, downloadedOnly: true, limit: 20 })))
       .toBe('Aggiunte di recente · solo scaricate · max 20');
+  });
+
+  it('"liked" does not look at what was heard either: the words are «Piaciuti di recente», with no window, no period and no family', () => {
+    expect(ruleSummary(rule({ order: 'liked', period: 'all', limit: 200 }))).toBe('Piaciuti di recente · max 200');
+    expect(ruleSummary(rule({ order: 'liked', period: { days: 7 }, scope: 'family', window: { from: '07:00', to: '08:00' }, genres: ['Jazz'], downloadedOnly: true, limit: 20 })))
+      .toBe('Piaciuti di recente · Jazz · solo scaricate · max 20');
   });
 
   it('every preset is a valid rule that survives parsing unchanged, with a summary', () => {
@@ -181,6 +196,80 @@ describe('resolveDynamicSongKeys: newest (the playlist of a genre: every song wi
     expect(out).toHaveLength(3);
     expect(out.slice(0, 2).sort()).toEqual(['d::rocker', 'e::untagged']);
     expect(out[2]).toBe('b::new-soul');
+  });
+});
+
+describe('resolveDynamicSongKeys: liked (the playlist «Mi piace»: the songs this person liked, the most recently liked first)', () => {
+  const LIKED = rule({ order: 'liked', period: 'all', limit: 200 });
+  const journal = new Map([
+    ['a::alpha', song('a::alpha')],
+    ['b::bravo', song('b::bravo', { meta: { genres: ['Jazz'], downloaded: true } })],
+    ['c::charlie', song('c::charlie')],
+  ]);
+  const fileOnly = (key: string, over: Record<string, unknown> = {}) => song(key, { libraryOnly: true, meta: undefined, mentions: [], ...over });
+  beforeEach(() => {
+    m.getUserSongs.mockResolvedValue(journal);
+    m.likedKeys.mockResolvedValue(['c::charlie', 'a::alpha', 'b::bravo']);
+  });
+
+  it('are the liked keys in the order of the likes, the most recently liked first', async () => {
+    expect(await resolveDynamicSongKeys(LIKED, { userId: 'mike' }, NOW)).toEqual(['c::charlie', 'a::alpha', 'b::bravo']);
+  });
+
+  it('are the likes of THIS person: the user of the viewer, only that one, and the family scope of the rule changes nothing', async () => {
+    await resolveDynamicSongKeys(rule({ order: 'liked', scope: 'family', period: 'all' }), { userId: 'sara' }, NOW);
+    expect(m.likedKeys).toHaveBeenCalledTimes(1);
+    expect(m.likedKeys).toHaveBeenCalledWith('sara');
+  });
+
+  it('do not read the listening events at all (no query: what was heard does not count)', async () => {
+    await resolveDynamicSongKeys(LIKED, { userId: 'mike' }, NOW);
+    expect(m.query).not.toHaveBeenCalled();
+  });
+
+  it('respect the limit of the rule: the first ones, that is the most recently liked', async () => {
+    expect(await resolveDynamicSongKeys(rule({ order: 'liked', period: 'all', limit: 2 }), { userId: 'mike' }, NOW)).toEqual(['c::charlie', 'a::alpha']);
+  });
+
+  it('include a song that exists only as a file (a like given in «Cerca» on a song of the library), even with no journal at all', async () => {
+    m.getUserSongs.mockResolvedValue(new Map());
+    m.likedKeys.mockResolvedValue(['x::only-file', 'a::alpha']);
+    m.libraryOnlySong.mockImplementation(async (key: string) => (key === 'x::only-file' ? fileOnly(key) : undefined));
+    expect(await resolveDynamicSongKeys(LIKED, { userId: 'mike' }, NOW)).toEqual(['x::only-file']);
+  });
+
+  it('skip a liked song that exists nowhere any more (no source, no track: it would only inflate the count)', async () => {
+    m.likedKeys.mockResolvedValue(['gone::song', 'a::alpha']);
+    expect(await resolveDynamicSongKeys(LIKED, { userId: 'mike' }, NOW)).toEqual(['a::alpha']);
+    expect(m.libraryOnlySong).toHaveBeenCalledWith('gone::song');
+  });
+
+  it('look for a file only when the journal does not have the song', async () => {
+    await resolveDynamicSongKeys(LIKED, { userId: 'mike' }, NOW);
+    expect(m.libraryOnlySong).not.toHaveBeenCalled();
+  });
+
+  it('a library that cannot be read is a library with nothing in it, never a failure of the list of playlists', async () => {
+    m.likedKeys.mockResolvedValue(['x::only-file', 'a::alpha']);
+    m.libraryOnlySong.mockRejectedValue(new Error('index down'));
+    expect(await resolveDynamicSongKeys(LIKED, { userId: 'mike' }, NOW)).toEqual(['a::alpha']);
+  });
+
+  it('are narrowed by the genre of the rule, like every rule (a song that has none of them is out, a file-only one too)', async () => {
+    m.likedKeys.mockResolvedValue(['x::only-file', 'c::charlie', 'b::bravo']);
+    m.libraryOnlySong.mockImplementation(async (key: string) => (key === 'x::only-file' ? fileOnly(key) : undefined));
+    expect(await resolveDynamicSongKeys(rule({ order: 'liked', period: 'all', genres: ['Jazz'] }), { userId: 'mike' }, NOW)).toEqual(['b::bravo']);
+  });
+
+  it('are narrowed by «solo scaricate», by the flag of the song or by a file the server has ready', async () => {
+    m.likedKeys.mockResolvedValue(['a::alpha', 'b::bravo', 'c::charlie']);
+    m.listReadySongKeys.mockResolvedValue(new Set(['c::charlie']));
+    expect(await resolveDynamicSongKeys(rule({ order: 'liked', period: 'all', downloadedOnly: true }), { userId: 'mike' }, NOW)).toEqual(['b::bravo', 'c::charlie']);
+  });
+
+  it('a person who liked nothing has an empty playlist', async () => {
+    m.likedKeys.mockResolvedValue([]);
+    expect(await resolveDynamicSongKeys(LIKED, { userId: 'mike' }, NOW)).toEqual([]);
   });
 });
 

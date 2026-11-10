@@ -16,6 +16,7 @@ import {
 } from './autoPlaylists';
 import type { TitlePlan, TitleSource } from './autoPlaylistTitle';
 import { genreRule } from './genreThemes';
+import { ensureLikedPlaylist } from './likedPlaylist';
 
 type SongSource = 'audio_fingerprint' | 'ai_analysis' | 'both' | 'music_list' | 'spotify_link' | 'shazam_link';
 const song = (title: string, artist: string, source: SongSource = 'ai_analysis') => ({
@@ -89,6 +90,20 @@ const run = async (e: Entry, opts?: { announce?: boolean }) => {
   lookup.set(e.id, e);
   return processEntry(e, deps(), opts);
 };
+
+describe('the playlist «Mi piace» of a person is none of the posts\' business (ADR-0028)', () => {
+  it('is never offered to the model as a theme a post could join, nor matched by a title that names it', async () => {
+    const liked = await ensureLikedPlaylist(store, { owner: 'mike', at: new Date('2026-11-10T20:00:00Z') });
+    await store.createPlaylist({ owner: 'mike', name: 'Natale da ascoltare', kind: 'theme', themeKey: 'ascoltare natale', sourceEntryId: 'e0', createdAt: new Date('2026-11-01T10:00:00Z') });
+    titles.mockResolvedValue(theme('Mi piace', 'Mi piace'));
+    await run(entry(jazz('A', 'B')));
+    const offered = (titles.mock.calls[0][0] as TitleSource).themes;
+    expect(offered).toEqual(['Natale da ascoltare']);                      // the other theme is offered, the liked one is not
+    // and the songs of the post did not go into the playlist of the likes, which has none of its own
+    expect(store.songKeysOf((liked as { id: string }).id)).toEqual([]);
+    expect(store.playlists.get((liked as { id: string }).id)?.rule?.order).toBe('liked');
+  });
+});
 
 describe('what counts as a post that talks about music', () => {
   it('takes the songs of the CONTENT, once each, in the order of the post', () => {

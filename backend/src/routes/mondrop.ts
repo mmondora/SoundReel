@@ -8,7 +8,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authenticateApiKey } from '../utils/apiKeyAuth';
 import { normalizeFamilyUser, ANONYMOUS_USER } from '../utils/requestUser';
 import { classifyNetwork } from '../utils/network';
-import { addSongToPlaylist, listPlaylists, getPlaylist } from '../services/playlists';
+import { addSongToPlaylist, listPlaylists, getPlaylist, removeSongFromPlaylist } from '../services/playlists';
 import { resolveDetail, resolveSummaries } from '../services/playlistResolver';
 import { applyPlaylistList, parsePlaylistListQuery } from '../services/playlistList';
 import { computeFacets, filterSongs, parseLibraryQuery, sortByArtistTitle } from '../services/libraryFacets';
@@ -188,6 +188,35 @@ export function registerMondropRoutes(app: FastifyInstance): void {
       if (String(err).includes('playlist_is_dynamic')) return reply.code(409).send({ error: 'playlist_is_dynamic' });
       logError('POST /api/mondrop/playlists/:id/songs failed', { id: req.params.id, err: String(err) });
       return reply.code(500).send({ ok: false, error: 'playlist add song failed' });
+    }
+  });
+
+  // Take a song out of one of HIS static playlists (the swipe «Togli dalla playlist», spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U7):
+  // the mirror of the POST above. Only the owner of a static playlist can: one that is not his (or only shared with him: read-only) is 404, and a dynamic one is
+  // a rule (409). IDEMPOTENT: a song that is not there is not an error. The song need not exist any more (a playlist can hold a stale key and the person must be able
+  // to take it out): it is only looked up to write its name in the activity line. `:songKey` arrives already decoded by the router; decoding it again breaks a key
+  // that has a `%` in it (the web route does the same).
+  app.delete<{ Params: { id: string; songKey: string } }>('/api/mondrop/playlists/:id/songs/:songKey', async (req, reply) => {
+    const auth = await requireMondrop(req, reply);
+    if (!auth) return;
+    const songKey = req.params.songKey;
+    if (typeof songKey !== 'string' || !songKey.trim() || songKey.length > MAX_SONG_KEY) {
+      return reply.code(400).send({ error: 'songKey is required' });
+    }
+    const key = songKey.trim(); // what the POST stored
+    try {
+      const playlist = await removeSongFromPlaylist(req.params.id, key, auth.userId);
+      if (!playlist) return reply.code(404).send({ error: 'playlist not found' });
+      const track = await getTrack(key, auth.userId, false).catch(() => null);
+      const actor = callerActor(auth);
+      logActivity('playlist', 'remove_song', `${describeActor(actor)} ha tolto «${songLabel(track, key)}» dalla playlist «${playlist.name}»`, actor, {
+        playlistId: playlist.id, name: playlist.name, songKey: key, songs: playlist.songKeys.length,
+      });
+      return { ok: true, playlist: { id: playlist.id, name: playlist.name, songs: playlist.songKeys.length }, user: auth.userId };
+    } catch (err) {
+      if (String(err).includes('playlist_is_dynamic')) return reply.code(409).send({ error: 'playlist_is_dynamic' });
+      logError('DELETE /api/mondrop/playlists/:id/songs/:songKey failed', { id: req.params.id, err: String(err) });
+      return reply.code(500).send({ ok: false, error: 'playlist remove song failed' });
     }
   });
 
