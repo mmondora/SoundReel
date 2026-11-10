@@ -1,7 +1,7 @@
 # ADR-0024: An automatic playlist has at least two songs, and a theme that names a genre is a rule on the genre, not a list of songs
 
 ## Status
-**Accepted** (10 November 2026): Michele's three corrections after the first application of the automatic playlists (ADR-0023, SoundReel 2.20.1), designed with defaults he can correct (spec §5, P15–P18). **Built and tested** as SoundReel 2.20.2; it waits for his OK to deploy and, separately, for his OK to repair the 56 playlists already made.
+**Accepted** (10 November 2026): Michele's three corrections after the first application of the automatic playlists (ADR-0023, SoundReel 2.20.1), designed with defaults he can correct (spec §5, P15–P18). **Built and tested** as SoundReel 2.20.2 and **in production since 10 November, 08:24** (his OK: «Sì, deploy e ripara»); the 56 playlists already made were **repaired at 08:27**: 15 became rules, 3 were taken apart, 38 stayed (53 automatic playlists now, none with fewer than two songs).
 
 ## Date
 2026-11-10

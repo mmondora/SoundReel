@@ -25,4 +25,4 @@
 | 0021 | The server finds the lyrics on the Internet when a song has none, keeps them and serves them; the clients only ask SoundReel | Accepted (2.19.1 in production) | 2026-11-08 |
 | 0022 | The server discovers the collections of the library by itself, names and keeps them; the clients only draw them | Accepted (Michele's choices of 10 November; built in phases after ADR-0023, nothing built yet) | 2026-11-09 |
 | 0023 | The server builds playlists from the posts that talk about music (one per specific title, one rolling playlist per generic theme); the list of playlists is searched, filtered, sorted and paged by the server | Accepted (2.20.0 in production; Mondrop build 12 on TestFlight) | 2026-11-10 |
-| 0024 | An automatic playlist has at least two songs, and a theme that names a genre is a rule on the genre, not a list of songs | Accepted (2.20.2 built; deploy and repair wait for Michele's OK) | 2026-11-10 |
+| 0024 | An automatic playlist has at least two songs, and a theme that names a genre is a rule on the genre, not a list of songs | Accepted (2.20.2 in production; the 56 playlists already made repaired) | 2026-11-10 |
