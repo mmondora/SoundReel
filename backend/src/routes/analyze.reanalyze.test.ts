@@ -232,8 +232,12 @@ describe('analyze route second pass', () => {
       onlyMatch(/const carouselSlidesPending = !reusedSlides && slides\.length > 0;/);
     });
 
-    it('does not re-derive carousel items already folded into the entry', () => {
-      onlyMatch(/if \(!reanalyze && featuresConfig\.carouselStructuredExtraction/);
+    it('does not re-derive carousel items already folded into the entry: a second pass reads the slides again ONLY when the pass before found none', () => {
+      // 10 November: a prompt/answer shape mismatch read ten albums as «itemsFound: 0»; a «nothing» found is not something to keep, so a second pass reads the
+      // OCR text the entry already carries (only our own Ollama: no download, no OCR, no external service). An entry whose last pass found items is left alone.
+      onlyMatch(/const rereadStoredSlides = reanalyze && !!reusedSlides && carouselItemsFoundBefore\(priorEntry\?\.actionLog\) === 0;/);
+      onlyMatch(/if \(featuresConfig\.carouselStructuredExtraction && \(rereadStoredSlides \|\| \(!reanalyze && \(localPaths\?\.slidePaths\?\.length \?\? 0\) > 0\)\)\)/);
+      onlyMatch(/storedSlideOcrTexts\(reusedSlides\)/);
     });
   });
 

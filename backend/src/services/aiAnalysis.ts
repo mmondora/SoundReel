@@ -11,6 +11,9 @@ import { logInfo, logWarning, logError } from '../utils/logger';
 import { getPrompt, renderTemplate } from './promptLoader';
 import { getFeaturesConfig, outputLanguageDisplayName } from '../utils/db';
 import type { AiAnalysisResult, MediaAiAnalysisResult, AiUsageMetadata } from '../types';
+import { SLIDE_MAX_TOKENS, buildSlidePrompt, itemsOfSlide, parseSlideItems, slideItemKey, type SlideItem } from './slideItems';
+
+export type { SlideItem } from './slideItems';
 
 /**
  * Perche' l'analisi non ha prodotto nulla, quando non e' perche' non c'era
@@ -595,16 +598,11 @@ export async function analyzeWithAi(
   }
 }
 
-export interface SlideItem {
-  type: 'song' | 'film' | 'book' | 'album' | 'text';
-  title: string;
-  artist?: string | null;
-  director?: string | null;
-  year?: number | null;
-  notes?: string | null;
-  sourceSlide: number;
-}
-
+/**
+ * What each slide of a carousel names (songs, albums, films, books): one question to the local model per slide, read in every shape it answers and mended with the OCR
+ * text of the slide (`slideItems.ts`: on 10 November a prompt that asked for an array got ONE OBJECT per slide, and ten albums were read as nothing). A slide whose
+ * answer was cut, or that failed, is a warning and the others are read; the same item on two slides is one.
+ */
 export async function extractFromSlides(
   slideOcrTexts: Array<{ slideIndex: number; text: string }>
 ): Promise<SlideItem[]> {
@@ -612,39 +610,22 @@ export async function extractFromSlides(
 
   const total = slideOcrTexts.length;
   const results: SlideItem[] = [];
+  const seen = new Set<string>();
 
   for (const { slideIndex, text } of slideOcrTexts) {
     if (!text.trim()) continue;
 
-    const prompt = `Questa è la slide ${slideIndex + 1} di ${total} di un carosello Instagram.
-
-Testo OCR estratto:
-${text}
-
-Estrai tutti gli oggetti culturali menzionati in formato JSON array.
-Per ogni oggetto usa questo schema:
-{"type":"song"|"film"|"book"|"album"|"text","title":"...","artist":null,"director":null,"year":null,"notes":null}
-Usa null per campi sconosciuti. Se non c'è nulla di estraibile, ritorna [].
-Rispondi SOLO con il JSON array, senza testo aggiuntivo.`;
-
     try {
-      const response = await generateText(prompt, [], { json: true });
-      const text_resp = response.text;
-      const jsonMatch = text_resp.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) continue;
-
-      const parsed = JSON.parse(jsonMatch[0]) as Array<Partial<SlideItem>>;
-      for (const item of parsed) {
-        if (!item.title) continue;
-        results.push({
-          type: (item.type as SlideItem['type']) || 'text',
-          title: item.title,
-          artist: item.artist ?? null,
-          director: item.director ?? null,
-          year: item.year ?? null,
-          notes: item.notes ?? null,
-          sourceSlide: slideIndex,
-        });
+      const response = await generateText(buildSlidePrompt(slideIndex, total, text), [], { json: true, maxTokens: SLIDE_MAX_TOKENS });
+      if (response.truncated) {
+        logWarning(`extractFromSlides slide ${slideIndex}: risposta troncata, la slide non conta`, { maxTokens: SLIDE_MAX_TOKENS });
+        continue;
+      }
+      for (const item of itemsOfSlide(parseSlideItems(response.text, slideIndex), text, slideIndex)) {
+        const key = slideItemKey(item);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push(item);
       }
     } catch (e) {
       logWarning(`extractFromSlides slide ${slideIndex} failed`, { error: String(e) });

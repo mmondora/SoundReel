@@ -5,6 +5,7 @@ import { extractContent, detectPlatform, setLogger as setContentExtractorLogger 
 import { recognizeAudio } from '../services/_legacy/audioRecognition';
 import { analyzeWithAi, extractFromSlides, AiAnalysisResponse } from '../services/aiAnalysis';
 import type { SlideItem } from '../services/aiAnalysis';
+import { carouselItemsFoundBefore, storedSlideOcrTexts } from '../services/slideItems';
 import { ocrImages } from '../services/ocrClient';
 import type { OcrResult } from '../services/ocrClient';
 import { pickKeyFrames } from '../services/frameSelector';
@@ -808,19 +809,27 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
           // the same items — and those are already folded into the entry's
           // songs and films, which the merge preserves. Re-deriving them would
           // only spend a Spotify and a TMDb lookup each to be thrown away.
-          if (!reanalyze && featuresConfig.carouselStructuredExtraction && (localPaths?.slidePaths?.length ?? 0) > 0) {
+          //
+          // ...unless the pass before found NONE (10 November: a prompt and an answer of a different shape read the ten albums of a carousel as «itemsFound: 0»,
+          // and a «nothing» found is not something to keep): then the slides the entry already carries are read again from their stored OCR text, which reaches
+          // only our own Ollama (no download, no OCR, no external service). An entry whose last pass found items is left alone.
+          const rereadStoredSlides = reanalyze && !!reusedSlides && carouselItemsFoundBefore(priorEntry?.actionLog) === 0;
+          if (featuresConfig.carouselStructuredExtraction && (rereadStoredSlides || (!reanalyze && (localPaths?.slidePaths?.length ?? 0) > 0))) {
             const frameCount = localPaths?.framePaths?.length ?? 0;
-            const slideOcrTexts = ocr.perImage
-              .slice(frameCount)
-              .map((r, i) => ({ slideIndex: i, text: r.text ?? '' }))
-              .filter((s) => s.text.trim().length > 0);
+            const slideOcrTexts = rereadStoredSlides
+              ? storedSlideOcrTexts(reusedSlides)
+              : ocr.perImage
+                  .slice(frameCount)
+                  .map((r, i) => ({ slideIndex: i, text: r.text ?? '' }))
+                  .filter((s) => s.text.trim().length > 0);
 
             const extracted = await extractFromSlides(slideOcrTexts);
             slideItems.push(...extracted);
 
             await appendActionLog(entryId, createActionLog('carousel_extraction', {
-              slides: localPaths?.slidePaths?.length ?? 0,
+              slides: rereadStoredSlides ? (reusedSlides?.length ?? 0) : (localPaths?.slidePaths?.length ?? 0),
               itemsFound: extracted.length,
+              ...(rereadStoredSlides ? { reanalyze: true } : {}),
             }));
           }
 
