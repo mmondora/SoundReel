@@ -6,7 +6,7 @@ Main features
 1. Share: the Share sheet extension "Mondrop" (and the Share tab) sends a link to the family server; the outcome comes back in the Inbox ("Posta") tab.
 2. Home and Search: search the family music library by song, artist or album; resume where you were; new songs and playlists; "Tutte" on the Home opens the list of all playlists.
 3. Player: queue, mini player, cover art and lyrics; the queue is kept between launches and never starts playing by itself. From version 1.8.0 there is also a "like" heart and a repeat mode, available from the lock screen and from Bluetooth or car controls.
-4. Playlists: the user's own and automatic ones, with search and sort by date. Each song shows whether it is on the phone, online or in error, and the songs on the phone are listed first. The page of a playlist shows its list and a Play button at once (the list is kept on the phone). From 1.8.0, when the user plays a playlist, its missing songs are downloaded in the background for offline listening (a warning appears above a size limit); Settings > Sync has a button, "Controlla le playlist sul telefono", that checks the playlists the phone holds and downloads what is missing.
+4. Playlists: the user's own and automatic ones, with search and sort by date. Each song shows whether it is on the phone, online or in error, and the songs on the phone are listed first. The page of a playlist shows its list and a Play button at once (the list is kept on the phone). From 1.8.0, when the user plays a playlist, its missing songs are downloaded in the background for offline listening, in the order in which they are about to play (a warning appears above a size limit); Settings > Sync has a button, "Controlla le playlist sul telefono", that checks the playlists the phone holds and downloads what is missing.
 
 Please look at
 a. Share a link from Safari to Mondrop and check that the outcome appears in the Inbox tab.
@@ -14,4 +14,4 @@ b. Play a song from Search and open the full-screen player (cover, lyrics, queue
 c. Play a playlist, wait for its downloads and play it again with the phone in airplane mode.
 d. In Settings > Sync, tap "Controlla le playlist sul telefono" and read the result. The mini player appears only while something plays.
 
-Version 1.8.0 (build 17).
+Version 1.8.0 (build 18).

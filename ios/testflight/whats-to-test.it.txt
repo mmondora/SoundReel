@@ -1,12 +1,13 @@
-Mondrop 1.8.0 (build 17). Le macro funzionalità:
+Mondrop 1.8.0 (build 18). Le macro funzionalità:
 1. Share: manda un link da Safari o da un'altra app al foglio «Mondrop» (o dalla scheda Share) e guarda l'esito nella scheda Posta.
 2. Home e Cerca: cerca una canzone, un artista o un album; il «+» sul brano trovato lo mette in una playlist; «Tutte» sulla Home apre l'elenco di tutte le playlist.
 3. Player: suona un brano e apri il Player a schermo intero (copertina, testo, coda). Il cuore «Mi piace» e la ripetizione, anche dai comandi Bluetooth e dalla schermata di blocco. Il mini player compare solo quando qualcosa suona e scivola via mentre scorri.
-4. Playlist: ogni brano è «sul telefono», «online» o «in errore», e quelli sul telefono stanno prima. La pagina di una playlist ha subito «Suona» e la lista. Quando suoni una playlist i brani che mancano si scaricano da soli (sotto un limite di GB; sopra chiede cosa fare). In Impostazioni → Sync, «Controlla le playlist sul telefono» scarica quello che manca.
+4. Playlist: ogni brano è «sul telefono», «online» o «in errore», e quelli sul telefono stanno prima. La pagina di una playlist ha subito «Suona» e la lista. Quando suoni una playlist i brani che mancano si scaricano da soli, nell'ordine in cui stanno per suonare (sotto un limite di GB; sopra chiede cosa fare). In Impostazioni → Sync, «Controlla le playlist sul telefono» scarica quello che manca.
 
-Le tre cose da guardare con più attenzione:
+Le quattro cose da guardare con più attenzione:
 • La lista: apri una playlist dalla Home, senza rete: la lista c'è e «Suona» parte con i brani che hai già sul telefono per primi.
 • Il mini player: non c'è finché non suoni qualcosa; scorrendo una pagina verso il basso si nasconde e non copre le righe.
 • Il controllo: Impostazioni → Sync → «Controlla le playlist sul telefono» e guarda che dica cosa ha trovato e scarichi i brani che mancano.
+• L'ordine dei download: suona una playlist da un brano a metà (o con «Mescola») e guarda che i brani che stanno per suonare passino per primi da nuvola a giallo.
 
-Novità della build 17: sul telefono prima, la lista della playlist sempre pronta, nessun «sync» in vista, il controllo nelle Impostazioni.
+Novità della build 18: i brani si scaricano nell'ordine in cui stanno per suonare (e «Limita» tiene quelli). Dalla build 17: sul telefono prima, la lista della playlist sempre pronta, nessun «sync» in vista, il controllo nelle Impostazioni.

@@ -26,6 +26,8 @@ struct MondropApp: App {
         // The playlist that plays is the one that syncs (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U2). Set here, not by asking the player
         // to observe: the player is not created (nor its audio session started) at launch for it.
         LocalAudioPlayer.sharedPlaybackObserver = { PlayingPlaylistSync.shared.playbackChanged($0) }
+        // What is about to play decides the order of the downloads (U16, Michele: «Sync scarica i brani in ordine di stanno per suonare.»): the engine arranges what waits.
+        LocalAudioPlayer.sharedUpcomingObserver = { SyncEngine.shared.setUpcoming($0) }
     }
 
     var body: some Scene {

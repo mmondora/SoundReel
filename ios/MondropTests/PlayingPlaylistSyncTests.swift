@@ -434,6 +434,28 @@ final class PlayingPlaylistSyncTests: XCTestCase {
         XCTAssertFalse(r.api.calls.contains("manifest:a"), "after «Limita» nothing more is read for that playlist: a4 stays online as well")
     }
 
+    func testWhatIsDownloadedStartsWithTheSongsAboutToPlay() async throws {
+        // «Sync scarica i brani in ordine di stanno per suonare.» (Michele, 11 November, U16): the playlist was started from its third song
+        let r = try make()
+        script(r.api, "a", ["a1", "a2", "a3", "a4"])
+        r.engine.setUpcoming(["a3", "a4", "a1", "a2"])
+        r.sync.playbackChanged(ctx(true, "a"))
+        await r.sync.settledOrFail()
+        XCTAssertEqual(queued(r), ["a1", "a2", "a3", "a4"])
+        XCTAssertEqual(r.engineRig.transport.startedKeys, ["a3", "a4"], "the two that come down first are the ones that play first; the others wait")
+    }
+
+    func testLimitKeepsTheSongsAboutToPlayNotTheFirstOnesOfThePlaylist() async throws {
+        let r = try make()
+        setUpBig(r.api)                                              // a1…a4, 1 GB each, over a 2 GB limit
+        r.engine.setUpcoming(["a3", "a4", "a1", "a2"])               // the playlist was started from its third song
+        r.sync.playbackChanged(ctx(true, "a"))
+        _ = try await untilAsking(r.sync)
+        r.sync.answer(.limit)
+        await r.sync.settledOrFail()
+        XCTAssertEqual(queued(r), ["a3", "a4"], "the 2 GB that fit are the songs that are about to play")
+    }
+
     func testCancelDownloadsNothingAndTheQuestionIsNotAskedAgainForThatPlaylistUntilTheAppReopens() async throws {
         let declines = SyncDeclines()
         let r = try make(declines: declines)

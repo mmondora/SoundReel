@@ -64,6 +64,7 @@ public final class LocalAudioPlayer: ObservableObject {
     public static let shared: LocalAudioPlayer = {
         let player = LocalAudioPlayer()
         player.observePlayback { context in LocalAudioPlayer.sharedPlaybackObserver?(context) }
+        player.observeUpcoming { LocalAudioPlayer.sharedUpcomingObserver?($0) }
         return player
     }()
 
@@ -83,9 +84,9 @@ public final class LocalAudioPlayer: ObservableObject {
     /// Something was put in play in this run and has not ended: a song playing, or paused by the user, or one the user queued from Cerca. False for a queue the phone
     /// brought back paused at launch, after the last song has ended and with nothing queued. The mini player is there only while this is true
     /// (`MiniPlayerPresence`; Michele, 11 November: «Il mini player non deve essere visibile se non ci sono cose in play.»).
-    @Published public private(set) var inPlay: Bool = false
-    @Published public private(set) var index: Int = 0 { didSet { refreshLikeCommand() } }
-    @Published public private(set) var queue: [QueueItem] = [] { didSet { refreshLikeCommand() } }
+    @Published public private(set) var inPlay: Bool = false { didSet { reportUpcoming() } }
+    @Published public private(set) var index: Int = 0 { didSet { refreshLikeCommand(); reportUpcoming() } }
+    @Published public private(set) var queue: [QueueItem] = [] { didSet { refreshLikeCommand(); reportUpcoming() } }
     @Published public private(set) var currentTime: Double = 0
     @Published public private(set) var duration: Double = 0
     @Published public private(set) var playbackStatus: PlaybackStatus = .idle
@@ -129,6 +130,36 @@ public final class LocalAudioPlayer: ObservableObject {
     /// For the screenshots on a simulator (`-MondropDemoPlaying`): the queue the demo brought back is shown as if the user had started it.
     func demoMarkInPlay() { inPlay = true }
     #endif
+
+    // MARK: - What the downloads follow (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U16)
+
+    /// What is about to play, for the downloads: see `UpcomingOrder`. Set once at launch, like `sharedPlaybackObserver`.
+    public static var sharedUpcomingObserver: (@MainActor ([String]) -> Void)?
+
+    /// The songs of the queue in the order they are about to play (`UpcomingOrder`): from the song in play to the end, and round again. Empty while nothing is in play — a
+    /// queue the phone brought back paused at launch, the end of the last song — because nobody asked to hear it: nothing is brought down in its order.
+    public var upcomingKeys: [String] {
+        inPlay ? UpcomingOrder.keys(queue: queue.map(\.songKey), index: index) : []
+    }
+
+    private var upcomingObserver: (@MainActor ([String]) -> Void)?
+    private var lastReportedUpcoming: [String]?
+
+    /// The observer hears the present at once and then every change, one time each (like `observePlayback`). Inside `setQueue` a report may name the new queue with the
+    /// old position for an instant: the next one, in the same turn, is the right one, and nothing downloads in between.
+    public func observeUpcoming(_ observer: @escaping @MainActor ([String]) -> Void) {
+        upcomingObserver = observer
+        lastReportedUpcoming = nil
+        reportUpcoming()
+    }
+
+    private func reportUpcoming() {
+        guard let observer = upcomingObserver else { return }
+        let keys = upcomingKeys
+        guard keys != lastReportedUpcoming else { return }
+        lastReportedUpcoming = keys
+        observer(keys)
+    }
 
     // MARK: - What the sync of the playing playlist listens to
 

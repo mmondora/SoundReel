@@ -82,6 +82,7 @@ final class SyncSizeGuardTests: XCTestCase {
         XCTAssertEqual(q.playlistName, "Road trip")
         XCTAssertTrue(q.message.contains("«Road trip»"), q.message)
         XCTAssertTrue(q.message.contains("nell'ordine della playlist"), "«Limita» follows the order of THIS playlist: \(q.message)")
+        XCTAssertTrue(q.message.contains("per primi i brani che stanno per suonare"), "…after the songs that are about to play (U16): \(q.message)")
         XCTAssertFalse(q.message.contains("delle playlist"), "the sync is of the playlist that plays, not of all of them: \(q.message)")
         guard case .ask(let anonymous) = SyncSizeGuard.decide(download: songs([3 * gb]), limit: .gb2) else { return XCTFail("expected a question") }
         XCTAssertNil(anonymous.playlistName)

@@ -381,6 +381,30 @@ final class PlaylistConsistencyCheckTests: XCTestCase {
         XCTAssertEqual(report.leftOut, 1)
     }
 
+    func testLimitKeepsTheSongsAboutToPlayWhenSomethingPlays() async throws {
+        // U16, «Sync scarica i brani in ordine di stanno per suonare.»: the queue that plays is on its way to a4
+        let r = try make(limit: .gb1)
+        try hold(r, "one", songs: ["a1", "a2", "a3", "a4"], local: ["a1", "a2"], missing: 600 * mb)       // a3 and a4 to download: 1.2 GB
+        serverHas(r, ["one"])
+        r.engine.setUpcoming(["a4", "a1", "a2", "a3"])
+        let task = Task { await r.check.run() }
+        _ = try await untilAsking(r.check)
+        r.check.answer(.limit)
+        await task.value
+        XCTAssertEqual(queued(r), ["a4"], "600 MB fit under 1 GB: the song about to play, not the first one that is missing")
+    }
+
+    func testWhatTheCheckDownloadsStartsWithTheSongsAboutToPlay() async throws {
+        let r = try make()
+        try hold(r, "one", songs: ["a1", "a2", "a3", "a4"], local: ["a1", "a2"])
+        try hold(r, "two", songs: ["b1", "b2", "b3", "b4"], local: ["b1", "b2"])
+        serverHas(r, ["one", "two"])
+        r.engine.setUpcoming(["b4", "a3"])
+        await r.check.run()
+        XCTAssertEqual(queued(r), ["a3", "a4", "b3", "b4"])
+        XCTAssertEqual(r.engineRig.transport.startedKeys, ["b4", "a3"], "the two that come down first are the ones about to play, whatever the playlist")
+    }
+
     func testCancelDownloadsNothing() async throws {
         let r = try make(limit: .gb1)
         try hold(r, "one", songs: ["a1", "a2", "a3", "a4"], local: ["a1", "a2"], missing: 600 * mb)

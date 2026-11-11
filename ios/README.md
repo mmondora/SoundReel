@@ -277,6 +277,18 @@ playlist locali o già scaricate se hanno tutti i file e scaricano quelli che ma
 - **Test** nuovi (1474 in tutto, 0 falliti): `LocalFirstTests`, `LibraryQueueTests` (la coda che preferisce il telefono), `MiniPlayerPresenceTests`, `MiniPlayerScrollRuleTests`, `PlaylistManifestCacheTests`, `PlaylistConsistencyTests`,
   `PhoneFirstStructureTests`; riscritti `SimplifiedAppStructureTests` e il test della voce. Provati anche rompendo il codice di proposito (75 rotture).
 
+### Dopo la build 17: la build 18 — i download nell'ordine in cui i brani stanno per suonare (11 novembre)
+
+Spec `docs/superpowers/specs/2026-11-10-mondrop-simplify-playlists-and-song-states-design.md` §11 (U16) · ADR-0030. Michele, a una domanda lasciata aperta a fine build 17: «Sync scarica i brani in ordine di stanno per suonare.»
+
+- **L'ordine** (`MondropKit/UpcomingOrder.swift`, pura): la coda del lettore **dal brano che suona fino in fondo e poi, girando, dai primi**. Il lettore lo dice a ogni cambio (`LocalAudioPlayer.observeUpcoming`, collegato al lancio con `sharedUpcomingObserver` a
+  `SyncEngine.setUpcoming`) e il motore mette in quest'ordine **quel che aspetta** (`SyncEngine`: `upcoming`, `inPlayOrder`); i brani che il server prepara dopo si mettono al loro posto. Con niente in play (la coda ripristinata ferma, la fine
+  dell'ultimo brano) non c'è ordine.
+- **Che cosa non si tocca:** un download già iniziato non si annulla per un ordine nuovo; quello chiesto per nome («Riscarica», «Riprova», «Scarica» in Cerca, il brano che suona: `front`, `QueuedJob.pinned`) resta davanti.
+- **«Limita»** (la domanda «Da scaricare…» della playlist che suona e quella del controllo) tiene per primi i brani che stanno per suonare, poi gli altri nell'ordine della playlist; il testo della domanda e quello di Impostazioni → Sync lo dicono.
+- **Non cambia il server** e non cambia la regola P (l'ordine decide quando scende un file pronto, non da dove). **Limite noto:** la preparazione sul server resta nell'ordine della playlist.
+- **Test** nuovi: `UpcomingOrderTests`, `SyncOrderTests`, e le aggiunte a `PlaybackContextTests`, `PlayingPlaylistSyncTests`, `PlaylistConsistencyTests`, `SimplifiedAppStructureTests`, `SyncSizeGuardTests`.
+
 ## I testi delle canzoni (1.7.0 build 10 e 11 · SoundReel 2.19.0 e 2.19.1)
 
 Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/songs/:songKey/lyrics») · ADR-0021 · spec `docs/superpowers/specs/2026-11-08-lyrics-from-the-internet-design.md`

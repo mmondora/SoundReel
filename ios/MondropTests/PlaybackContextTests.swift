@@ -267,4 +267,98 @@ final class PlaybackContextTests: XCTestCase {
         player.setQueue(items(2), startAt: 0, playlistId: "a", label: "Playlist · A", autoplay: false)
         XCTAssertEqual(player.playbackContext, PlaybackContext(isPlaying: false, playlistId: "a"))
     }
+
+    // MARK: what the downloads follow — the songs about to play (U16: «Sync scarica i brani in ordine di stanno per suonare.»)
+
+    private func keys(_ numbers: [Int]) -> [String] { numbers.map { "t::song \($0)" } }
+
+    /// Everything the observer of the order hears, in order.
+    private final class HeardOrder {
+        var lists: [[String]] = []
+    }
+
+    private func listenToOrder(_ player: LocalAudioPlayer) -> HeardOrder {
+        let heard = HeardOrder()
+        player.observeUpcoming { heard.lists.append($0) }
+        return heard
+    }
+
+    func testTheSongsAboutToPlayAreTheQueueFromTheSongThatPlaysRoundAgain() throws {
+        let player = try newPlayer(songs: 4)
+        player.start(PlayQueue(items: items(4), startIndex: 2, label: "Playlist · A", playlistId: "a"))
+        XCTAssertEqual(player.upcomingKeys, keys([2, 3, 0, 1]))
+    }
+
+    func testTheOrderMovesOnWithTheSong() throws {
+        let player = try newPlayer(songs: 4)
+        player.start(PlayQueue(items: items(4), startIndex: 1, label: "Playlist · A", playlistId: "a"))
+        player.next()
+        XCTAssertEqual(player.upcomingKeys, keys([2, 3, 0, 1]))
+        player.next()
+        XCTAssertEqual(player.upcomingKeys, keys([3, 0, 1, 2]))
+        player.previous()
+        XCTAssertEqual(player.upcomingKeys, keys([2, 3, 0, 1]))
+    }
+
+    func testTheObserverHearsThePresentAndThenEveryChangeOnce() throws {
+        let player = try newPlayer(songs: 4)
+        let heard = listenToOrder(player)
+        XCTAssertEqual(heard.lists, [[]], "the present first: nothing is about to play")
+        player.start(PlayQueue(items: items(4), startIndex: 2, label: "Playlist · A", playlistId: "a"))
+        XCTAssertEqual(heard.lists.last, keys([2, 3, 0, 1]))
+        player.next()
+        XCTAssertEqual(heard.lists.last, keys([3, 0, 1, 2]))
+        let before = heard.lists.count
+        player.pauseOnly()
+        player.playOnly()
+        XCTAssertEqual(heard.lists.count, before, "pausing and playing again change nothing about what is about to play")
+        XCTAssertTrue(zip(heard.lists, heard.lists.dropFirst()).allSatisfy { $0 != $1 }, "the same order is never told twice in a row: \(heard.lists)")
+    }
+
+    func testALateObserverOfTheOrderHearsThePresentToo() throws {
+        let player = try newPlayer(songs: 4)
+        player.start(PlayQueue(items: items(4), startIndex: 1, label: "Playlist · A", playlistId: "a"))
+        let late = listenToOrder(player)
+        XCTAssertEqual(late.lists, [keys([1, 2, 3, 0])], "an observer that comes later is told where things are")
+    }
+
+    func testAQueueBroughtBackAtLaunchHasNothingAboutToPlayUntilTheUserPlaysIt() throws {
+        let first = try newPlayer(songs: 3)
+        first.setQueue(items(3), startAt: 1, playlistId: "pl1", label: "Playlist · Road trip", autoplay: false)
+
+        let relaunched = try newPlayer(songs: 3)
+        let heard = listenToOrder(relaunched)
+        XCTAssertEqual(relaunched.upcomingKeys, [], "loaded and paused: nobody asked to hear it, so nothing is brought down for it")
+        XCTAssertEqual(heard.lists, [[]])
+        relaunched.playOnly()
+        XCTAssertEqual(relaunched.upcomingKeys, keys([1, 2, 0]))
+        XCTAssertEqual(heard.lists.last, keys([1, 2, 0]))
+    }
+
+    func testTheEndOfTheLastSongLeavesNothingAboutToPlay() throws {
+        let player = try newPlayer(songs: 2)
+        let heard = listenToOrder(player)
+        player.start(PlayQueue(items: items(2), startIndex: 1, label: "Playlist · A", playlistId: "a"))
+        XCTAssertEqual(heard.lists.last, keys([1, 0]))
+        player.songEnded()
+        XCTAssertEqual(player.upcomingKeys, [])
+        XCTAssertEqual(heard.lists.last, [], "the loop is off and the queue is over")
+    }
+
+    func testASongAddedFromCercaJoinsTheEndOfTheOrder() throws {
+        let player = try newPlayer(songs: 3)
+        let heard = listenToOrder(player)
+        player.start(PlayQueue(items: items(2), startIndex: 0, label: "Playlist · A", playlistId: "a"))
+        _ = player.append([TestSupport.track("t::song 2")], isLocal: { _ in true })
+        XCTAssertEqual(player.upcomingKeys, keys([0, 1, 2]))
+        XCTAssertEqual(heard.lists.last, keys([0, 1, 2]))
+    }
+
+    func testAnotherQueueReplacesTheOrder() throws {
+        let player = try newPlayer(songs: 4)
+        let heard = listenToOrder(player)
+        player.start(PlayQueue(items: items(4), startIndex: 0, label: "Playlist · A", playlistId: "a"))
+        player.start(PlayQueue(items: Array(items(4).reversed()), startIndex: 1, label: "Playlist · B", playlistId: "b"))
+        XCTAssertEqual(heard.lists.last, keys([2, 1, 0, 3]))
+    }
 }

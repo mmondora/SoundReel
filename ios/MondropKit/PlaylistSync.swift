@@ -8,8 +8,8 @@ import Foundation
 /// of the playlist that is playing has one; the «Sync» the user presses inside a playlist has none and takes everything, as it always did.
 @MainActor
 public protocol DownloadGate: AnyObject {
-    /// Of the songs the sync wants (ready on the server, missing from the phone, in the order of the playlist), the ones to download now. May ask the user, and
-    /// then waits for the answer.
+    /// Of the songs the sync wants (ready on the server, missing from the phone, in the order they are about to play and then in the order of the playlist: `SyncEngine.inPlayOrder`),
+    /// the ones to download now. May ask the user, and then waits for the answer.
     func admit(_ wanted: [OfflineTrack], in manifest: OfflineManifest) async -> [OfflineTrack]
     /// True when nothing more will be admitted (the user said «Annulla» or «Limita», or the playlist stopped being the one that plays): the sync stops reading.
     var isClosed: Bool { get }
@@ -196,7 +196,7 @@ public final class PlaylistSyncCoordinator: ObservableObject {
         guard let gate else { return engine.enqueue(manifest.tracks, origin: origin) }
         let plan = engine.plan(manifest.tracks)
         let adopt = manifest.tracks.filter { plan.adopt.contains($0.songKey) }
-        let admitted = await gate.admit(plan.download, in: manifest)
+        let admitted = await gate.admit(engine.inPlayOrder(plan.download), in: manifest)
         guard !Task.isCancelled else { return plan }
         if !adopt.isEmpty || !admitted.isEmpty { engine.enqueue(adopt + admitted, origin: origin) }
         return plan

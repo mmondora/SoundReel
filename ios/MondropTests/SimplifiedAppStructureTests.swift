@@ -121,6 +121,31 @@ final class SimplifiedAppStructureTests: XCTestCase {
         XCTAssertTrue(player.contains("player.observePlayback { context in LocalAudioPlayer.sharedPlaybackObserver?(context) }"), "the shared player, and only it, forwards to the app")
     }
 
+    func testTheDownloadsFollowTheQueueOfThePlayer() throws {
+        // «Sync scarica i brani in ordine di stanno per suonare.» (Michele, 11 November, U16): the player says what is about to play, the engine orders what waits
+        let app = try code("Mondrop/MondropApp.swift")
+        XCTAssertTrue(app.contains("LocalAudioPlayer.sharedUpcomingObserver = { SyncEngine.shared.setUpcoming($0) }"), "set at launch, before the player exists")
+
+        let player = try code("MondropKit/LocalAudioPlayer.swift")
+        XCTAssertTrue(player.contains("player.observeUpcoming { LocalAudioPlayer.sharedUpcomingObserver?($0) }"), "the shared player, and only it, forwards to the app")
+        let declarations = player.components(separatedBy: "\n")
+        for property in ["var inPlay: Bool", "var index: Int", "var queue: [QueueItem]"] {
+            let line = try XCTUnwrap(declarations.first { $0.contains(property) }, property)
+            XCTAssertTrue(line.contains("reportUpcoming()"), "«\(property)» tells the observer of the order when it changes")
+        }
+
+        // every place that decides which songs go down asks the engine for the order they play in
+        let sync = try code("MondropKit/PlaylistSync.swift")
+        XCTAssertTrue(sync.contains("gate.admit(engine.inPlayOrder(plan.download), in: manifest)"), "the size gate sees the songs in the order they are about to play")
+        let check = try code("MondropKit/PlaylistConsistency.swift")
+        XCTAssertTrue(check.contains("engine.inPlayOrder(wanted)"), "the check of the Settings too")
+    }
+
+    func testTheSettingsSayInWhichOrderTheSongsComeDown() throws {
+        let settings = try code("Mondrop/SettingsView.swift")
+        XCTAssertTrue(settings.contains("nell'ordine in cui stanno per suonare"))
+    }
+
     func testOnlyTheSyncOfThePlayingPlaylistBuildsAGatedSync() throws {
         // a gate is what turns «prepare and download» into «prepare, ask over the limit, download»: the «Sync» inside a playlist has none
         var users: [String] = []

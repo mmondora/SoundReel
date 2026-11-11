@@ -123,6 +123,9 @@ public enum DownloadOrigin: Sendable {
 /// One song waiting in the queue. The queue file of an older build also has a flag per job (where the phone was): ignored.
 struct QueuedJob: Codable, Equatable {
     var track: OfflineTrack
+    /// The user asked for this song by name («Riscarica», «Riprova», the song that plays now): it stays ahead of whatever the order of the queue says (`UpcomingOrder`).
+    /// Absent in the queue file of an older build: nobody asked.
+    var pinned: Bool? = nil
 }
 
 @MainActor
@@ -184,6 +187,33 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
     public var activeCount: Int { active.count }
     public var queuedCount: Int { queue.count }
 
+    // MARK: - The order of the downloads (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U16)
+
+    /// The songs of the player's queue in the order they are about to play (`UpcomingOrder.keys`); empty while nothing is in play.
+    public private(set) var upcoming: [String] = []
+
+    /// The player says what is about to play («Sync scarica i brani in ordine di stanno per suonare.», Michele, 11 November). What waits in the queue goes down in that
+    /// order from now on, and what is queued later joins it in its place. A download that has begun is not touched (nothing is cancelled for a new order), and neither
+    /// is one the user asked for by name (`front`): it stays ahead. With nothing in play (an empty order) the queue stays as it is.
+    public func setUpcoming(_ keys: [String]) {
+        guard keys != upcoming else { return }
+        upcoming = keys
+        let arrangedQueue = arranged(queue)
+        guard arrangedQueue.map({ $0.track.songKey }) != queue.map({ $0.track.songKey }) else { return }
+        queue = arrangedQueue
+        persist()
+    }
+
+    /// `tracks` in the order they are about to play: the ones the player's queue holds first, in the order of the queue, then the others as they were. The size
+    /// question («Limita» keeps the first songs up to the limit) is asked over songs in this order.
+    public func inPlayOrder(_ tracks: [OfflineTrack]) -> [OfflineTrack] {
+        UpcomingOrder.arrange(tracks, songKey: { $0.songKey }, upcoming: upcoming)
+    }
+
+    private func arranged(_ jobs: [QueuedJob]) -> [QueuedJob] {
+        UpcomingOrder.arrange(jobs, songKey: { $0.track.songKey }, pinned: { $0.pinned == true }, upcoming: upcoming)
+    }
+
     // MARK: - Public API
 
     /// What `enqueue` WOULD do with these tracks, without doing it: the question «Scarica tutti» asks before it starts.
@@ -213,12 +243,14 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
                 store.adoptVersion(songKey: key, version: version)
             }
         }
-        let jobs = plan.download.map { QueuedJob(track: $0) }
+        // `front`: the user asked for these by name, so they are pinned ahead of the order of the queue; the others take their place in it
+        let jobs = inPlayOrder(plan.download).map { QueuedJob(track: $0, pinned: front ? true : nil) }
         for job in jobs {
             failedJobs.removeValue(forKey: job.track.songKey)
             progress[job.track.songKey] = .queued
         }
         if front { queue.insert(contentsOf: jobs, at: 0) } else { queue.append(contentsOf: jobs) }
+        queue = arranged(queue)
         if origin == .sync {
             // What the sync asked for: the songs it queues now, plus the ones already on their way (they settle it too).
             batch.enqueue(jobs.map { $0.track.songKey } + plan.inFlight, at: now())

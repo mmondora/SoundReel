@@ -63,7 +63,7 @@ public struct SyncSizeQuestion: Equatable, Sendable {
 
     public var message: String {
         let which = playlistName.map { "Playlist «\($0)». " } ?? ""
-        return "\(which)Il limite che hai scelto è \(limit.title) (Impostazioni → Sync, «Avvisa sopra»). Con «Limita» scarico i brani nell'ordine della playlist fino a quel limite; gli altri restano online."
+        return "\(which)Il limite che hai scelto è \(limit.title) (Impostazioni → Sync, «Avvisa sopra»). Con «Limita» scarico per primi i brani che stanno per suonare, poi gli altri nell'ordine della playlist, fino a quel limite; il resto resta online."
     }
 
     public var allButtonTitle: String { "Scarica tutto" }
@@ -97,7 +97,7 @@ public enum SyncSizeGuard {
         return .ask(SyncSizeQuestion(songs: download.count, bytes: total, limit: limit, playlistName: playlistName))
     }
 
-    /// «Limita»: the songs in the order they come (the order of the playlist), as many as fit under the limit. It stops at the
+    /// «Limita»: the songs in the order they come (the ones about to play first, then the order of the playlist: the caller puts them in it), as many as fit under the limit. It stops at the
     /// first song that does not fit: the order is the promise, a small song further down never jumps the queue. A song of unknown size rides along.
     public static func limited(_ tracks: [OfflineTrack], limitBytes: Int) -> [OfflineTrack] {
         var used = 0

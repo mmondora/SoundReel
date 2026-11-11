@@ -231,7 +231,9 @@ public final class PlaylistConsistencyCheck: ObservableObject {
             phase = .checking(done: index + 1, total: candidates.count)
         }
 
-        // One question for the whole check, over the limit of the Settings.
+        // One question for the whole check, over the limit of the Settings. The songs are asked about in the order they are about to play («Limita» keeps the first ones),
+        // then in the order of the playlists (U16).
+        wanted = engine.inPlayOrder(wanted)
         var admitted = wanted
         switch SyncSizeGuard.decide(download: wanted, limit: limit(), playlistName: nil) {
         case .nothing:

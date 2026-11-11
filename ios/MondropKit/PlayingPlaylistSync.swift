@@ -30,7 +30,7 @@ public final class SyncDeclines {
 
 /// The gate of ONE sync of a playlist: which of the songs it wants may be downloaded. Under the limit everything goes without a word; over it the user is asked,
 /// once, and what was answered holds for the rest of that sync (the songs that turn ready later):
-/// «Scarica tutto» → everything, «Limita» → the first songs of the playlist up to the limit and nothing more, «Annulla» → nothing, and the playlist is
+/// «Scarica tutto» → everything, «Limita» → the songs about to play first and then the first ones of the playlist, up to the limit and nothing more, «Annulla» → nothing, and the playlist is
 /// remembered as declined. A question that was withdrawn (the user went on to another playlist) says nothing about the playlist and is not remembered.
 @MainActor
 public final class PlayingSyncGate: DownloadGate {
