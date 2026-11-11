@@ -129,6 +129,26 @@ struct EngineRig {
     }
 }
 
+// MARK: - Waiting for the sync of the playing playlist
+
+extension PlayingPlaylistSync {
+    /// Waits for every sync to finish, but not for ever: a question nobody answers, or a sync that was never told to stop, fails the test in a few seconds instead of
+    /// hanging the suite.
+    func settledOrFail(timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = #line) async {
+        final class Done: @unchecked Sendable { var value = false }
+        let done = Done()
+        Task { @MainActor in
+            await self.settled()
+            done.value = true
+        }
+        let deadline = Date().addingTimeInterval(timeout)
+        while !done.value, Date() < deadline { try? await Task.sleep(nanoseconds: 2_000_000) }
+        if !done.value {
+            XCTFail("the sync did not settle in \(Int(timeout)) s: a question nobody answered, or a sync that was never stopped", file: file, line: line)
+        }
+    }
+}
+
 // MARK: - API
 
 final class FakeAPI: MondropAPIProtocol, @unchecked Sendable {

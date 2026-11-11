@@ -57,7 +57,15 @@ public enum PlaybackStatus: Equatable, Sendable {
 
 @MainActor
 public final class LocalAudioPlayer: ObservableObject {
-    public static let shared = LocalAudioPlayer()
+    /// The app listens to what the shared player does: the sync of the playlist that plays (`PlayingPlaylistSync`). Set once at launch, before the player
+    /// exists, so that nothing creates the player (and its audio session) just to listen to it.
+    public static var sharedPlaybackObserver: (@MainActor (PlaybackContext) -> Void)?
+
+    public static let shared: LocalAudioPlayer = {
+        let player = LocalAudioPlayer()
+        player.observePlayback { context in LocalAudioPlayer.sharedPlaybackObserver?(context) }
+        return player
+    }()
 
     @Published public private(set) var title: String = ""
     @Published public private(set) var artist: String = ""
@@ -71,7 +79,7 @@ public final class LocalAudioPlayer: ObservableObject {
     }
     @Published public private(set) var lyricsOrigin: LyricsOrigin = .none
     @Published public private(set) var lyricsSearching: Bool = false
-    @Published public private(set) var playing: Bool = false
+    @Published public private(set) var playing: Bool = false { didSet { reportPlayback() } }
     @Published public private(set) var index: Int = 0 { didSet { refreshLikeCommand() } }
     @Published public private(set) var queue: [QueueItem] = [] { didSet { refreshLikeCommand() } }
     @Published public private(set) var currentTime: Double = 0
@@ -92,8 +100,8 @@ public final class LocalAudioPlayer: ObservableObject {
     private var timeControlObservation: NSKeyValueObservation?
     /// Bumped for every AVPlayer created: lets a late KVO callback of a torn-down player be ignored.
     private var playerGeneration = 0
-    /// The playlist the current queue was started from (listening stats), nil for the offline list.
-    public private(set) var queuePlaylistId: String?
+    /// The playlist the current queue was started from (listening stats, and the sync of the playlist that plays), nil for every other queue.
+    @Published public private(set) var queuePlaylistId: String? { didSet { reportPlayback() } }
     private var resolveTask: Task<Void, Never>?
     private var pendingSources: [PlaybackSource] = []
     private var artworkImage: MPMediaItemArtwork? = nil
@@ -112,6 +120,30 @@ public final class LocalAudioPlayer: ObservableObject {
     private let likes: LikesStore
     private let commandLog: RemoteCommandLog
     private var likesObservation: AnyCancellable?
+
+    // MARK: - What the sync of the playing playlist listens to
+
+    /// What the player is doing, for the sync: a song is really playing (a queue that is only loaded, like the one a relaunch brings back, is not) and the
+    /// playlist the queue was started from.
+    public var playbackContext: PlaybackContext { PlaybackContext(isPlaying: playing, playlistId: queuePlaylistId) }
+
+    private var playbackObserver: (@MainActor (PlaybackContext) -> Void)?
+    private var lastReportedContext: PlaybackContext?
+
+    /// The observer hears the present at once and then every change, one time each. A player nobody observes tells nobody anything.
+    public func observePlayback(_ observer: @escaping @MainActor (PlaybackContext) -> Void) {
+        playbackObserver = observer
+        lastReportedContext = nil
+        reportPlayback()
+    }
+
+    private func reportPlayback() {
+        guard let observer = playbackObserver else { return }
+        let context = playbackContext
+        guard context != lastReportedContext else { return }
+        lastReportedContext = context
+        observer(context)
+    }
 
     /// Internal, not private: the tests build their own player on a folder of their own.
     init(

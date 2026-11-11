@@ -77,12 +77,23 @@ final class SyncSizeGuardTests: XCTestCase {
         XCTAssertTrue(q.message.contains("Impostazioni"), "and where to change it")
     }
 
+    func testTheQuestionSaysWhichPlaylistItIsAboutWhenItKnowsAndTalksOfThePlaylistNotOfAllOfThem() {
+        guard case .ask(let q) = SyncSizeGuard.decide(download: songs([3 * gb]), limit: .gb2, playlistName: "Road trip") else { return XCTFail("expected a question") }
+        XCTAssertEqual(q.playlistName, "Road trip")
+        XCTAssertTrue(q.message.contains("«Road trip»"), q.message)
+        XCTAssertTrue(q.message.contains("nell'ordine della playlist"), "«Limita» follows the order of THIS playlist: \(q.message)")
+        XCTAssertFalse(q.message.contains("delle playlist"), "the sync is of the playlist that plays, not of all of them: \(q.message)")
+        guard case .ask(let anonymous) = SyncSizeGuard.decide(download: songs([3 * gb]), limit: .gb2) else { return XCTFail("expected a question") }
+        XCTAssertNil(anonymous.playlistName)
+        XCTAssertFalse(anonymous.message.contains("Playlist «"), "no name, no «Playlist …» in front: \(anonymous.message)")
+    }
+
     func testOneSongIsOneSong() {
         guard case .ask(let q) = SyncSizeGuard.decide(download: songs([3 * gb]), limit: .gb2) else { return XCTFail("expected a question") }
         XCTAssertTrue(q.title.hasSuffix("(1 brano)"), q.title)
     }
 
-    // MARK: «Limita»: the order of the playlists and of the songs, until the limit
+    // MARK: «Limita»: the order of the playlist, until the limit
 
     func testTheLimitedSelectionKeepsTheOrderAndStopsWhereTheNextWouldNotFit() {
         let all = songs([600 * mb, 700 * mb, 500 * mb, 100 * mb])
@@ -132,22 +143,14 @@ final class SyncSizeGuardTests: XCTestCase {
 
     // MARK: kept in the Settings
 
-    func testTheLimitAndTheFirstSyncFlagAreKeptInTheSettings() {
+    func testTheLimitIsKeptInTheSettings() {
         let settings = Settings.shared
         let savedLimit = settings.storage.object(forKey: "syncWarnLimitGB")
-        let savedDone = settings.storage.object(forKey: "firstSyncDone")
-        defer {
-            settings.storage.set(savedLimit, forKey: "syncWarnLimitGB")
-            settings.storage.set(savedDone, forKey: "firstSyncDone")
-        }
+        defer { settings.storage.set(savedLimit, forKey: "syncWarnLimitGB") }
         settings.storage.removeObject(forKey: "syncWarnLimitGB")
-        settings.storage.removeObject(forKey: "firstSyncDone")
         XCTAssertEqual(settings.syncWarnLimit, .gb2, "a phone that never chose starts at 2 GB")
-        XCTAssertFalse(settings.firstSyncDone)
         settings.syncWarnLimit = .gb20
-        settings.firstSyncDone = true
         XCTAssertEqual(settings.syncWarnLimit, .gb20)
-        XCTAssertTrue(settings.firstSyncDone)
         settings.syncWarnLimit = .never
         XCTAssertEqual(settings.syncWarnLimit, .never)
         settings.storage.set(7, forKey: "syncWarnLimitGB")

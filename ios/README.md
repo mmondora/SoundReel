@@ -213,15 +213,15 @@ Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/playlists») · ADR-0023 �
 - Un messaggio di Posta di tipo `auto_playlist` («Nuova playlist: …») ha l'icona di una playlist.
 - **Test** nuovi (+18, 1022): `PlaylistListTests` (la query nell'ordine documentato, la risposta di un server vecchio senza `total`, la data, il modello); 16 rotture provate, tutte scoperte.
 
-## Meno schede, stati dei brani, primo accesso (1.8.0)
+## Meno schede, stati dei brani, il sync della playlist che suona (1.8.0)
 
 Spec `docs/superpowers/specs/2026-11-10-mondrop-simplify-playlists-and-song-states-design.md` (U1–U9; Michele, 10 novembre: «Su Mondrop non vedo utilità nel tab playlist avendo le playlist
 in home page e al primo accesso viene fatto un sync automatico. […] Dentro ogni playlist le canzoni devono avere uno stato ( online, errore, locale ). Il player in homepage non serve. Per aggiungere
 in play list lo devo poter fare dalla ricerca […]. La canzone viene cancellata solo con uno swipe della canzone in ricerca, non nel browser di una playlist.» e «Anche la playlist deve avere un
 simbolo/icona che dice online/errore/locale»).
 
-- **Cinque schede** (`RootTab`): Home, Cerca, Posta, Share, Impostazioni. Le playlist stanno sulla Home: la riga «Le tue playlist» ha **«Sync»** (tutte le playlist, con l'avviso sui GB) e **«Tutte»**
-  (l'elenco con ricerca, ordine e pagine: `PlaylistsView`, che si apre nella pila della Home). Se il server non manda la riga, la Home vuota ha «Tutte le playlist».
+- **Cinque schede** (`RootTab`): Home, Cerca, Posta, Share, Impostazioni. Le playlist stanno sulla Home: la riga «Le tue playlist» ha **«Tutte»** (l'elenco con ricerca, ordine e pagine:
+  `PlaylistsView`, che si apre nella pila della Home). Se il server non manda la riga, la Home vuota ha «Tutte le playlist». **Non c'è un «Sync» di tutte le playlist** (tolto l'11 novembre, vedi sotto).
 - **Il mini player non c'è sulla pagina principale della Home** (c'è «Riprendi»); c'è su ogni altra scheda e su ogni pagina che si apre dalla Home (`.miniPlayer(open:visible:)`: la Home dice
   quando la sua pagina è in vista, `onRootVisible`).
 - **Tre stati** (`SongState`, `PlaylistState`: `MondropKit/SongState.swift`, il disegno in `StateMarks.swift`): dentro una playlist ogni brano è **Sul telefono** (segno giallo), **Online**
@@ -235,16 +235,24 @@ simbolo/icona che dice online/errore/locale»).
   (un server più vecchio dà «Non disponibile con questo server» e il brano resta).
 - **Cancellare dal telefono**: scorrimento «Cancella dal telefono» **solo su un brano di Cerca che è sul telefono** (non si fa con uno scorrimento fino in fondo: serve il tocco sul pulsante), con la stessa conferma
   e la stessa riga nel registro di «Spazio e brani scaricati» delle Impostazioni; mai in una playlist, nella Home, nel Player o nella coda (`DeletionPlacesTests`).
-- **Primo accesso e «Sync»** (`LibrarySyncCoordinator`, `SyncSizeGuard`): la prima volta che l'app si apre con una chiave legge tutte le playlist, somma quello che c'è da scaricare e **prima del primo download**,
-  se supera «Avvisa sopra» (Impostazioni → Sync: 1, 2, 5, 10, 20, 50 GB o Mai; **predefinito 2 GB**), chiede «Da scaricare N GB (M brani)»: **Scarica tutto**, **Limita a X GB** o **Annulla**.
-  «Limita» scarica nell'ordine delle playlist e dei loro brani finché ci stanno e **si ferma al primo che non ci sta**; gli altri restano online. «Annulla» non scarica niente e conta come fatto. Un errore, o una playlist
-  che non si legge, lasciano il primo accesso da rifare alla prossima apertura. Lo stesso sync, con la stessa domanda, parte dal pulsante «Sync» della Home. Il cellulare resta come prima (solo Wi-Fi salvo l'interruttore);
-  regola P: l'avviso è uguale ovunque si sia e non blocca. Chi aggiorna da una build precedente è «al primo accesso». iOS non è interpellato per le notifiche dal primo accesso, ma dal «Sync» premuto.
+- **Il sync è quello della playlist che suona** (build 15 provata da Michele l'11 novembre: «Il sync deve girare solo per playlist che sto suonando. Non di tutti in assoluto.»; `PlayingPlaylistSync`,
+  `PlaylistSyncTrigger`, `PlayingSyncGate`, `SyncSizeGuard`): **al primo accesso non si scarica niente** (si aggiornano solo gli elenchi, come a ogni apertura). Quando **una coda parte da una playlist**, o la coda
+  che suona **passa a un'altra playlist**, l'app chiede a SoundReel di **preparare quella playlist** e **scarica in background i brani che mancano sul telefono**, come il «Sync» dentro la playlist (e continua a
+  rileggere mentre il server prepara): i brani non ancora sul telefono si sentono online e diventano «sul telefono» man mano. **«Sta suonando»** vuol dire: `LocalAudioPlayer.playing` (un brano suona davvero) in una
+  coda **nata da una playlist** (`queuePlaylistId`, che mettono le schermate delle playlist, «Sfoglia» e Siri). Una coda **ripristinata e ferma** all'apertura **non** suona: non si sincronizza niente finché non si
+  preme play. Una coda che non nasce da una playlist (un brano di Cerca, una scelta della libreria, i brani del telefono) non sincronizza niente. Si parte **una volta per ogni arrivo** di una playlist: le pause tra
+  due brani, pausa e play, un altro brano della stessa playlist non lo rifanno; lasciare la playlist (un'altra, o Cerca) **ferma le letture** di quella (i download già in coda restano) e **ritira** una domanda
+  aperta; tornarci lo rifà. Un sync **che non è arrivato in fondo** (rete, errore del server) si riprova al brano dopo. **Prima di scaricare** somma i byte dei brani che mancano e, se superano **«Avvisa sopra»**
+  (Impostazioni → Sync: 1, 2, 5, 10, 20, 50 GB o Mai; **predefinito 2 GB**), chiede «Da scaricare N GB (M brani)»: **Scarica tutto**, **Limita a X GB** o **Annulla**; sotto il limite parte senza chiedere.
+  «Limita» scarica nell'ordine della playlist finché ci stanno (**si ferma al primo che non ci sta**) e **non scarica altro** per quella playlist; **«Annulla» non scarica niente e non lo richiede per quella
+  playlist finché l'app non si riapre** (la memoria è `SyncDeclines`, in RAM: un'app riaperta chiede di nuovo). La domanda aspetta se il Player copre lo schermo. Il «Sync» **dentro** la playlist resta com'è
+  (a mano, senza domanda), la rete cellulare resta spenta per i download, regola P: l'avviso è uguale ovunque si sia e non blocca. iOS non è interpellato per le notifiche da questo sync, ma dal «Sync» premuto.
 - **Per guardarlo senza server** (solo DEBUG): `-MondropDemo` mostra cinque playlist con i tre stati; `-MondropDemoTab playlists` (o `-MondropDemoPush allplaylists`) apre «Tutte» sopra la Home,
   `-MondropDemoPush playlist` una playlist con le tre righe, `-MondropDemoSearchText <testo>` apre Cerca con quel testo (i «+» e gli scorrimenti).
-- **Test** nuovi (`SongStateTests`, `SyncSizeGuardTests`, `LibrarySyncTests`, `PlaylistRemoveTests`, `PlaylistRecordTests`, `SimplifiedAppStructureTests`, `DeletionPlacesTests`; `HomeStructureTests` riscritto,
-  `DeletionInSettingsTests` sostituito da `DeletionPlacesTests`): tabelle per i tre stati e il segno della playlist, il limite e l'ordine di «Limita», il primo accesso (una volta sola, senza chiave aspetta,
-  un errore lo rifà), il ritorno del brano tolto, la forma delle schermate. Provati anche rompendo il codice di proposito.
+- **Test** nuovi (`SongStateTests`, `SyncSizeGuardTests`, `PlaylistSyncTriggerTests`, `PlayingSyncGateTests`, `PlayingPlaylistSyncTests`, `PlaybackContextTests`, `PlaylistRemoveTests`, `PlaylistRecordTests`,
+  `SimplifiedAppStructureTests`, `DeletionPlacesTests`; `HomeStructureTests` riscritto, `DeletionInSettingsTests` sostituito da `DeletionPlacesTests`): tabelle per i tre stati e il segno della playlist, il limite
+  e l'ordine di «Limita», **quando parte il sync** (coda da una playlist, da Cerca, ripristinata e ferma, passaggio da una playlist a un'altra, la stessa playlist due volte), la memoria di «Annulla», il giro
+  del player, la forma delle schermate. Provati anche rompendo il codice di proposito.
 
 ## I testi delle canzoni (1.7.0 build 10 e 11 · SoundReel 2.19.0 e 2.19.1)
 

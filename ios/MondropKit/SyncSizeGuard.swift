@@ -1,6 +1,7 @@
 // SyncSizeGuard.swift — the question asked BEFORE the first download of a big sync (Michele, 10 November: «Deve fare il sync. Se sono molti gb deve
 // avvisare oppure limitare, da internet in Wi-Fi deve solo avvisare dei gb con la possibilità di annullare o limitare - oppure i max gb possono essere
-// una configurazione»; spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U2).
+// una configurazione»; and, trying build 15 on 11 November: «Il sync deve girare solo per playlist che sto suonando»: the sync is the one of the playlist
+// that plays; spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U2).
 //
 // Pure: the bytes of what is still to download and the limit the user set in the Settings go in, a decision comes out. The warning is the same
 // wherever the phone is and it never blocks (rule P: the app does not tell where it is, and chooses no source).
@@ -44,11 +45,14 @@ public struct SyncSizeQuestion: Equatable, Sendable {
     /// Their size, as far as the manifests say.
     public let bytes: Int
     public let limit: SyncWarnLimit
+    /// The playlist the question is about: it can come up over any screen.
+    public let playlistName: String?
 
-    public init(songs: Int, bytes: Int, limit: SyncWarnLimit) {
+    public init(songs: Int, bytes: Int, limit: SyncWarnLimit, playlistName: String? = nil) {
         self.songs = songs
         self.bytes = bytes
         self.limit = limit
+        self.playlistName = playlistName
     }
 
     public var limitBytes: Int { limit.bytes ?? 0 }
@@ -58,7 +62,8 @@ public struct SyncSizeQuestion: Equatable, Sendable {
     }
 
     public var message: String {
-        "Il limite che hai scelto è \(limit.title) (Impostazioni → Sync, «Avvisa sopra»). Con «Limita» scarico i brani nell'ordine delle playlist fino a quel limite; gli altri restano online."
+        let which = playlistName.map { "Playlist «\($0)». " } ?? ""
+        return "\(which)Il limite che hai scelto è \(limit.title) (Impostazioni → Sync, «Avvisa sopra»). Con «Limita» scarico i brani nell'ordine della playlist fino a quel limite; gli altri restano online."
     }
 
     public var allButtonTitle: String { "Scarica tutto" }
@@ -84,15 +89,15 @@ public enum SyncSizeChoice: Equatable, Sendable {
 public enum SyncSizeGuard {
     /// `download` is what a sync WOULD download (`SyncEngine.plan(...).download`). A song whose size the manifest does not give weighs nothing here but
     /// is counted as a song. Exactly the limit is still under it.
-    public static func decide(download: [OfflineTrack], limit: SyncWarnLimit) -> SyncSizeDecision {
+    public static func decide(download: [OfflineTrack], limit: SyncWarnLimit, playlistName: String? = nil) -> SyncSizeDecision {
         guard !download.isEmpty else { return .nothing }
         guard let limitBytes = limit.bytes else { return .proceed }
         let total = download.reduce(0) { $0 + ($1.bytes ?? 0) }
         guard total > limitBytes else { return .proceed }
-        return .ask(SyncSizeQuestion(songs: download.count, bytes: total, limit: limit))
+        return .ask(SyncSizeQuestion(songs: download.count, bytes: total, limit: limit, playlistName: playlistName))
     }
 
-    /// «Limita»: the songs in the order they come (the order of the playlists, then of the songs in each), as many as fit under the limit. It stops at the
+    /// «Limita»: the songs in the order they come (the order of the playlist), as many as fit under the limit. It stops at the
     /// first song that does not fit: the order is the promise, a small song further down never jumps the queue. A song of unknown size rides along.
     public static func limited(_ tracks: [OfflineTrack], limitBytes: Int) -> [OfflineTrack] {
         var used = 0

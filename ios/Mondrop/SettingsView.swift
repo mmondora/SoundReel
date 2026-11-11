@@ -184,7 +184,7 @@ struct SettingsView: View {
         } header: {
             Text("Sync")
         } footer: {
-            Text("Al primo accesso Mondrop scarica da solo i brani delle tue playlist; se sono più di «Avvisa sopra» ti chiede prima: scarica tutto, limita o annulla (dalla prima pagina, «Sync» lo rifà). I download del Sync usano solo il Wi-Fi, salvo che attivi la rete cellulare. I brani arrivano sempre e solo da SoundReel, a casa e fuori casa. Quando un Sync finisce e l'app non è aperta ti arriva una notifica con quanti brani sono stati scaricati e quanti errori ci sono (iOS lo chiede la prima volta). Quanto pesano i brani e come toglierli: in «Cancellazione», qui sotto.")
+            Text("Quando suoni una playlist, Mondrop scarica in background i brani che mancano sul telefono: quelli che non ci sono ancora li senti online e diventano «sul telefono» man mano. Se sono più di «Avvisa sopra» ti chiede prima: scarica tutto, limita o annulla (annulla: per quella playlist non lo richiede finché non riapri l'app). Non scarica niente per le playlist che non suoni, né per i brani messi in coda da Cerca; il «Sync» dentro una playlist lo fai tu a mano. I download usano solo il Wi-Fi, salvo che attivi la rete cellulare. I brani arrivano sempre e solo da SoundReel, a casa e fuori casa. Quando un Sync finisce e l'app non è aperta ti arriva una notifica con quanti brani sono stati scaricati e quanti errori ci sono (iOS lo chiede la prima volta che premi «Sync» in una playlist). Quanto pesano i brani e come toglierli: in «Cancellazione», qui sotto.")
         }
     }
 

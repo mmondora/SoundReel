@@ -23,6 +23,9 @@ struct MondropApp: App {
         SyncNotifications.install()
         // Siri learns the names of the playlists whenever they change (spec 2026-11-10-mondrop-like-and-repeat-design.md L10).
         PlaylistCatalog.shared.onChange = { Task { @MainActor in MondropShortcuts.updateAppShortcutParameters() } }
+        // The playlist that plays is the one that syncs (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U2). Set here, not by asking the player
+        // to observe: the player is not created (nor its audio session started) at launch for it.
+        LocalAudioPlayer.sharedPlaybackObserver = { PlayingPlaylistSync.shared.playbackChanged($0) }
     }
 
     var body: some Scene {

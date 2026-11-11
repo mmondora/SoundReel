@@ -16,6 +16,12 @@ final class SimplifiedAppStructureTests: XCTestCase {
 
     private func count(_ needle: String, in text: String) -> Int { text.components(separatedBy: needle).count - 1 }
 
+    private func kitFiles() throws -> [String] {
+        let dir = iosRoot.appendingPathComponent("MondropKit")
+        let found = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? []
+        return found.filter { $0.pathExtension == "swift" }.map { "MondropKit/" + $0.lastPathComponent }.sorted()
+    }
+
     private func appFiles() throws -> [String] {
         let dir = iosRoot.appendingPathComponent("Mondrop")
         let found = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? []
@@ -76,17 +82,57 @@ final class SimplifiedAppStructureTests: XCTestCase {
         XCTAssertEqual(count("actions.askPlaylist(for: track)", in: actions), 2, "the «+» and the long press: both open the same list of playlists")
     }
 
-    // MARK: U2 — the sync at the first access, with its limit
+    // MARK: U2 — the sync of the playlist that PLAYS, with its limit
 
-    func testTheFirstAccessSyncStartsWhenTheAppOpensAndAsksOverTheLimit() throws {
+    func testNothingSyncsAtTheFirstAccessNorFromAButtonOfTheFirstPage() throws {
+        // «Il sync deve girare solo per playlist che sto suonando. Non di tutti in assoluto.» (Michele, 11 November, build 15)
+        for file in try appFiles() + (try kitFiles()) {
+            let source = try code(file)
+            for gone in ["runFirstSyncIfNeeded", "firstSyncDone", "isFirstSyncDone", "markFirstSyncDone", "LibrarySyncCoordinator", "syncAll("] {
+                XCTAssertFalse(source.contains(gone), "\(file): «\(gone)» — no sync of every playlist, at the first access or from a button")
+            }
+        }
+    }
+
+    func testTheSyncFollowsThePlayerAndItsQuestionIsAskedOverTheScreen() throws {
+        let app = try code("Mondrop/MondropApp.swift")
+        XCTAssertTrue(app.contains("LocalAudioPlayer.sharedPlaybackObserver"), "set at launch, before the player exists: the player is not created for it")
+        XCTAssertTrue(app.contains("PlayingPlaylistSync.shared.playbackChanged"))
+
         let root = try code("Mondrop/RootTabView.swift")
-        XCTAssertEqual(count("runFirstSyncIfNeeded()", in: root), 2, "when the first screen appears and when the app comes back to the front (a key may arrive later)")
-        XCTAssertTrue(root.contains(".syncSizeDialog(librarySync)"))
-        let host = try code("Mondrop/LibrarySyncHost.swift")
+        XCTAssertTrue(root.contains(".syncSizeDialog(playingSync, suppressed: showPlayer)"), "the question waits while the Player covers the screen")
+
+        let host = try code("Mondrop/PlayingSyncHost.swift")
         for words in ["question.allButtonTitle", "question.limitButtonTitle", "question.cancelButtonTitle", "sync.answer(.all)", "sync.answer(.limit)", "sync.answer(.cancel)"] {
             XCTAssertTrue(host.contains(words), words)
         }
         XCTAssertTrue(host.contains("Settings.shared.syncWarnLimit"), "the limit is the one of the Settings")
+
+        let player = try code("MondropKit/LocalAudioPlayer.swift")
+        let declarations = player.components(separatedBy: "\n")
+        for property in ["var playing: Bool", "var queuePlaylistId: String?"] {
+            let line = try XCTUnwrap(declarations.first { $0.contains(property) }, property)
+            XCTAssertTrue(line.contains("reportPlayback()"), "«\(property)» tells the observer when it changes")
+        }
+        XCTAssertTrue(player.contains("player.observePlayback { context in LocalAudioPlayer.sharedPlaybackObserver?(context) }"), "the shared player, and only it, forwards to the app")
+    }
+
+    func testOnlyTheSyncOfThePlayingPlaylistBuildsAGatedSync() throws {
+        // a gate is what turns «prepare and download» into «prepare, ask over the limit, download»: the «Sync» inside a playlist has none
+        var users: [String] = []
+        for file in try appFiles() + (try kitFiles()) where try code(file).contains("gate: gate") { users.append(file) }
+        XCTAssertEqual(users, ["MondropKit/PlayingPlaylistSync.swift"])
+    }
+
+    func testTheSettingsSayThatTheSyncIsTheOneOfThePlaylistThatPlays() throws {
+        let settings = try code("Mondrop/SettingsView.swift")
+        XCTAssertTrue(settings.contains("Quando suoni una playlist, Mondrop scarica in background i brani che mancano sul telefono"))
+        XCTAssertTrue(settings.contains("annulla: per quella playlist non lo richiede finché non riapri l'app"))
+        XCTAssertTrue(settings.contains("Non scarica niente per le playlist che non suoni, né per i brani messi in coda da Cerca"))
+        XCTAssertFalse(settings.contains("Al primo accesso"), "nothing downloads at the first access any more")
+        XCTAssertFalse(settings.contains("dalla prima pagina, «Sync»"))
+        let space = try code("Mondrop/SpaceView.swift")
+        XCTAssertFalse(space.contains("Dalla prima pagina"), "the first page has no «Sync» to send the user to")
     }
 
     func testTheLimitIsAnOptionOfTheSettingsInTheSyncSection() throws {
@@ -100,14 +146,14 @@ final class SimplifiedAppStructureTests: XCTestCase {
 
     func testTheNewCodeNamesNoNetworkAndChoosesNoSource() throws {
         let home = try NSRegularExpression(pattern: "\\bhome\\b", options: [.caseInsensitive])
-        for file in ["MondropKit/LibrarySync.swift", "MondropKit/SyncSizeGuard.swift", "MondropKit/SongState.swift", "MondropKit/PlaylistRemove.swift", "Mondrop/LibrarySyncHost.swift"] {
+        for file in ["MondropKit/PlayingPlaylistSync.swift", "MondropKit/PlayingPlaylist.swift", "MondropKit/SyncSizeGuard.swift", "MondropKit/SongState.swift", "MondropKit/PlaylistRemove.swift", "Mondrop/PlayingSyncHost.swift"] {
             let source = try code(file)
             for banned in ["NetStatus", "onExpensivePath", "viaCloudflare", "currentHome", "192.168."] {
                 XCTAssertFalse(source.contains(banned), "\(file): «\(banned)» — the warning is the same wherever the phone is")
             }
             XCTAssertNil(home.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)), "\(file): the word «home» does not belong in code that moves files")
         }
-        let tests = ["MondropTests/LibrarySyncTests.swift", "MondropTests/SyncSizeGuardTests.swift", "MondropTests/SongStateTests.swift"]
+        let tests = ["MondropTests/PlayingPlaylistSyncTests.swift", "MondropTests/PlayingSyncGateTests.swift", "MondropTests/PlaylistSyncTriggerTests.swift", "MondropTests/PlaybackContextTests.swift", "MondropTests/SyncSizeGuardTests.swift", "MondropTests/SongStateTests.swift"]
         for file in tests {
             let source = try code(file)
             XCTAssertNil(home.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)), "\(file)")

@@ -104,10 +104,13 @@ final class HomeStructureTests: XCTestCase {
         XCTAssertTrue(home.contains("Tutte le playlist"), "and when the server sent no row of them, a way to the list all the same")
     }
 
-    func testTheRowOfThePlaylistsHasTheSyncOfEveryPlaylist() throws {
+    func testTheRowOfThePlaylistsHasNoSyncOfAllOfThem() throws {
+        // «Il sync deve girare solo per playlist che sto suonando. Non di tutti in assoluto.» (Michele, 11 November): the button that synced every playlist is gone
         let home = try code("Mondrop/HomeView.swift")
-        XCTAssertTrue(home.contains("librarySync.syncAll()"))
-        XCTAssertTrue(home.contains("Text(librarySync.isBusy ? \"Sync…\" : \"Sync\")"))
+        for gone in ["syncAll", "librarySync", "LibrarySync", "\"Sync", "Sync…", "Sincronizza"] {
+            XCTAssertFalse(home.contains(gone), "the first page has no sync of every playlist: «\(gone)»")
+        }
+        XCTAssertTrue(home.contains("Text(\"Tutte\")"), "«Tutte» stays: it is the way to the whole list")
     }
 
     func testNothingStillSendsTheUserToATabThatIsGone() throws {

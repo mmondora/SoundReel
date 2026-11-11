@@ -12,12 +12,8 @@ struct HomeView: View {
     @StateObject private var model: HomeModel
     @StateObject private var actions = TrackActions()
     @ObservedObject private var engine = SyncEngine.shared
-    /// «Sync» on the row of the playlists: every playlist, with the question before a big download (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U2).
-    @ObservedObject private var librarySync = LibrarySyncCoordinator.shared
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var localKeys: Set<String> = []
-    /// The line of the last «Sync» stays after it ends (what it did); before the first press there is none.
-    @State private var showSyncMessage = false
     #if DEBUG
     @State private var demoPush = false
     @State private var demoPushAll = false
@@ -193,13 +189,9 @@ struct HomeView: View {
                     .foregroundStyle(Color(MondropPalette.text))
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 8)
-                // «Su Mondrop non vedo utilità nel tab playlist avendo le playlist in home page»: the whole list and the sync of all of them live here.
-                if section.kind == .playlists { playlistsHeaderButtons }
-            }
-            if section.kind == .playlists, !librarySync.message.isEmpty, librarySync.isBusy || showSyncMessage {
-                Text(librarySync.message)
-                    .font(.footnote)
-                    .foregroundStyle(secondary)
+                // «Su Mondrop non vedo utilità nel tab playlist avendo le playlist in home page»: the whole list lives here. There is no «Sync» of all of them
+                // («Il sync deve girare solo per playlist che sto suonando», 11 November): the playlist that plays syncs by itself.
+                if section.kind == .playlists { allPlaylistsButton }
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 14) {
@@ -224,26 +216,15 @@ struct HomeView: View {
         }
     }
 
-    /// «Sync» (every playlist, with the question before a big download) and «Tutte» (the whole list: search, sort, pages).
-    private var playlistsHeaderButtons: some View {
-        HStack(spacing: 8) {
-            Button {
-                showSyncMessage = true
-                Task { await librarySync.syncAll() }
-            } label: {
-                Text(librarySync.isBusy ? "Sync…" : "Sync")
-            }
-            .buttonStyle(MondropPillStyle(prominent: false))
-            .disabled(librarySync.isBusy)
-            .accessibilityLabel("Sincronizza tutte le playlist")
-            NavigationLink {
-                PlaylistsView()
-            } label: {
-                Text("Tutte")
-            }
-            .buttonStyle(MondropPillStyle(prominent: false))
-            .accessibilityLabel("Tutte le playlist")
+    /// «Tutte»: the whole list of the playlists (search, sort, pages).
+    private var allPlaylistsButton: some View {
+        NavigationLink {
+            PlaylistsView()
+        } label: {
+            Text("Tutte")
         }
+        .buttonStyle(MondropPillStyle(prominent: false))
+        .accessibilityLabel("Tutte le playlist")
     }
 
     private func playlistCard(_ playlist: HomePlaylist, state: PlaylistState?) -> some View {

@@ -161,6 +161,128 @@ final class PlaylistSyncCoordinatorTests: XCTestCase {
         XCTAssertEqual(r.transport.startedKeys, ["a"])
     }
 
+    // MARK: a sync with a gate (the playlist that plays) and the one without
+
+    /// A gate that admits what the test says, keeps what it was asked and can hold the answer back.
+    @MainActor
+    private final class FakeGate: DownloadGate {
+        var admit: ([OfflineTrack]) -> [OfflineTrack] = { $0 }
+        var closesAfterTheFirstAnswer = false
+        var holdsTheAnswer = false
+        private(set) var wanted: [[String]] = []
+        private(set) var isClosed = false
+        private var held: CheckedContinuation<Void, Never>?
+        var isHolding: Bool { held != nil }
+
+        func admit(_ wanted: [OfflineTrack], in manifest: OfflineManifest) async -> [OfflineTrack] {
+            self.wanted.append(wanted.map(\.songKey))
+            if holdsTheAnswer { await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in held = continuation } }
+            if closesAfterTheFirstAnswer { isClosed = true }
+            return admit(wanted)
+        }
+
+        func release() {
+            held?.resume()
+            held = nil
+        }
+    }
+
+    private func gatedRig(_ gate: DownloadGate, playlistId: String = "pl1") throws -> Rig {
+        let api = FakeAPI()
+        let engineRig = try EngineRig()
+        let dir = engineRig.root
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        let clock = FakeClock()
+        let coordinator = PlaylistSyncCoordinator(
+            playlist: MondropPlaylist(id: playlistId, name: "Road trip", songCount: 3),
+            api: api, engine: engineRig.engine, clock: clock.clock, pollInterval: 5, pollTimeout: 600, gate: gate
+        )
+        return Rig(api: api, engineRig: engineRig, clock: clock, coordinator: coordinator)
+    }
+
+    func testAGatedSyncDownloadsOnlyWhatTheGateAdmitsAndTheGateSeesWhatTheSyncWanted() async throws {
+        let gate = FakeGate()
+        gate.admit = { $0.filter { $0.songKey != "b" } }
+        let r = try gatedRig(gate)
+        r.api.scriptPrepare("pl1", [m([TestSupport.track("a"), TestSupport.track("b"), TestSupport.track("c"), TestSupport.track("p", state: "preparing")])])
+        r.api.scriptManifests("pl1", [.success(m([TestSupport.track("a"), TestSupport.track("b"), TestSupport.track("c"), TestSupport.track("p")]))])
+        await r.coordinator.sync()
+        XCTAssertEqual(gate.wanted.first, ["a", "b", "c"], "ready on the server and missing from the phone, in the order of the playlist")
+        XCTAssertEqual(Set(r.engine.progress.keys), ["a", "c", "p"], "«b» was not admitted; «p» was, when it turned ready")
+        XCTAssertEqual(gate.wanted.last, ["b", "p"], "the next reading asks again for what is still missing, «b» included: the gate decides, not the sync")
+    }
+
+    func testAGatedSyncStillAdoptsAFileThePhoneAlreadyHasEvenWhenNothingIsAdmitted() async throws {
+        let gate = FakeGate()
+        gate.admit = { _ in [] }
+        let r = try gatedRig(gate)
+        r.api.scriptPrepare("pl1", [m([TestSupport.track("old", version: "100-7", bytes: 100)])])
+        try r.engineRig.installLocal("old", version: nil, bytes: 100)
+        await r.coordinator.sync()
+        XCTAssertEqual(r.store.snapshot(songKey: "old")?.version, "100-7", "bookkeeping, not a download: the next sync skips it")
+        XCTAssertTrue(r.engine.progress.isEmpty)
+    }
+
+    func testAGateThatClosesStopsTheReadingsOfAPlaylistThatIsStillBeingPrepared() async throws {
+        let gate = FakeGate()
+        gate.closesAfterTheFirstAnswer = true
+        let r = try gatedRig(gate)
+        r.api.scriptPrepare("pl1", [m([TestSupport.track("a"), preparing("b")])])
+        r.api.scriptManifests("pl1", [.success(m([TestSupport.track("a"), TestSupport.track("b")]))])
+        await r.coordinator.sync()
+        XCTAssertTrue(r.clock.sleeps.isEmpty, "no waiting for songs that nobody will download")
+        XCTAssertFalse(r.api.calls.contains("manifest:pl1"))
+        XCTAssertEqual(Set(r.engine.progress.keys), ["a"])
+        XCTAssertEqual(r.coordinator.phase, .idle)
+    }
+
+    func testAGatedSyncThatIsCancelledWhileTheGateThinksQueuesNothing() async throws {
+        let gate = FakeGate()
+        gate.holdsTheAnswer = true
+        let r = try gatedRig(gate)
+        r.api.scriptPrepare("pl1", [m([TestSupport.track("a"), TestSupport.track("b")])])
+        let task = Task { await r.coordinator.sync() }
+        for _ in 0..<500 where !gate.isHolding { try await Task.sleep(nanoseconds: 2_000_000) }
+        XCTAssertTrue(gate.isHolding, "the sync is waiting for the gate")
+        XCTAssertTrue(r.engine.progress.isEmpty, "nothing is queued before the gate answers")
+        task.cancel()
+        gate.release()
+        await task.value
+        XCTAssertTrue(r.engine.progress.isEmpty, "the playlist stopped playing while the question was open: nothing goes")
+        XCTAssertEqual(r.coordinator.phase, .idle)
+    }
+
+    func testAGatedSyncDoesNotMakeALaterVisitToThePageDownloadWhatTheUserDidNotAllow() async throws {
+        let id = "gated-only-\(UUID().uuidString)"
+        let gate = FakeGate()
+        gate.admit = { _ in [] }
+        gate.closesAfterTheFirstAnswer = true
+        let r = try gatedRig(gate, playlistId: id)
+        r.api.scriptPrepare(id, [TestSupport.manifest(id, [TestSupport.track("a"), TestSupport.track("p", state: "preparing")])])
+        await r.coordinator.sync()
+        XCTAssertTrue(r.engine.progress.isEmpty)
+
+        // the page of the playlist is opened while the server is still preparing «p»: reading the list is all it does
+        let visit = PlaylistSyncCoordinator(
+            playlist: MondropPlaylist(id: id, name: "Road trip", songCount: 2),
+            api: r.api, engine: r.engine, clock: r.clock.clock, pollInterval: 5, pollTimeout: 600
+        )
+        r.api.scriptManifests(id, [
+            .success(TestSupport.manifest(id, [TestSupport.track("a"), TestSupport.track("p", state: "preparing")])),     // what the page reads
+            .success(TestSupport.manifest(id, [TestSupport.track("a"), TestSupport.track("p")])),                          // and then «p» is ready
+        ])
+        await visit.load()
+        XCTAssertTrue(r.api.calls.contains("manifest:\(id)"))
+        XCTAssertTrue(r.engine.progress.isEmpty, "only a «Sync» the user pressed makes a visit to the page download as songs turn ready")
+    }
+
+    func testTheSyncInsideAPlaylistHasNoQuestionWhateverTheSize() async throws {
+        let r = try rig()
+        r.api.scriptPrepare("pl1", [m([TestSupport.track("a", bytes: 40_000_000_000), TestSupport.track("b", bytes: 40_000_000_000)])])
+        await r.coordinator.sync()
+        XCTAssertEqual(Set(r.engine.progress.keys), ["a", "b"], "the manual «Sync» is as it was: it takes everything")
+    }
+
     // MARK: load + membership
 
     func testLoadShowsTheManifestWithoutDownloadingAnything() async throws {

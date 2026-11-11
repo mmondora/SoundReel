@@ -4,6 +4,17 @@
 
 import Foundation
 
+/// Decides which of the songs a sync WANTS to download may go now: the size question over the user's limit, and what was answered (`PlayingSyncGate`). The sync
+/// of the playlist that is playing has one; the «Sync» the user presses inside a playlist has none and takes everything, as it always did.
+@MainActor
+public protocol DownloadGate: AnyObject {
+    /// Of the songs the sync wants (ready on the server, missing from the phone, in the order of the playlist), the ones to download now. May ask the user, and
+    /// then waits for the answer.
+    func admit(_ wanted: [OfflineTrack], in manifest: OfflineManifest) async -> [OfflineTrack]
+    /// True when nothing more will be admitted (the user said «Annulla» or «Limita», or the playlist stopped being the one that plays): the sync stops reading.
+    var isClosed: Bool { get }
+}
+
 @MainActor
 public final class PlaylistSyncCoordinator: ObservableObject {
     public enum Phase: Equatable, Sendable {
@@ -28,6 +39,7 @@ public final class PlaylistSyncCoordinator: ObservableObject {
     private let pollTimeout: TimeInterval
     private let activity: SyncActivity?
     private let onSyncStarted: @MainActor () -> Void
+    private let gate: DownloadGate?
 
     /// Playlists the user pressed Sync on during this app run: if the view is reopened while the server is
     /// still preparing them, polling resumes WITH downloads (otherwise reopening only refreshes the list).
@@ -41,7 +53,8 @@ public final class PlaylistSyncCoordinator: ObservableObject {
         pollInterval: TimeInterval = 5,
         pollTimeout: TimeInterval = 600,
         activity: SyncActivity? = nil,
-        onSyncStarted: @escaping @MainActor () -> Void = {}
+        onSyncStarted: @escaping @MainActor () -> Void = {},
+        gate: DownloadGate? = nil
     ) {
         self.playlist = playlist
         self.api = api
@@ -51,6 +64,7 @@ public final class PlaylistSyncCoordinator: ObservableObject {
         self.pollTimeout = pollTimeout
         self.activity = activity
         self.onSyncStarted = onSyncStarted
+        self.gate = gate
     }
 
     public var isBusy: Bool { phase != .idle }
@@ -83,9 +97,10 @@ public final class PlaylistSyncCoordinator: ObservableObject {
         errorText = nil
         do {
             let prepared = try await api.prepare(playlistId: playlist.id, retryFailed: retryFailed)
-            Self.syncRequested.insert(playlist.id)
+            // Only a «Sync» the user pressed makes a later visit to the page download as songs turn ready: the sync of the playing playlist is bound by its gate.
+            if gate == nil { Self.syncRequested.insert(playlist.id) }
             accept(prepared)
-            let plan = engine.enqueue(prepared.tracks)
+            let plan = await enqueue(prepared)
             message = Self.summary(plan: plan, manifest: prepared)
             phase = .idle
             await pollWhilePreparing(download: true)
@@ -109,6 +124,7 @@ public final class PlaylistSyncCoordinator: ObservableObject {
         phase = .polling
         let started = clock.now()
         while let current = manifest, current.preparingCount > 0 {
+            if gate?.isClosed == true { break }      // nobody will download what turns ready: no need to wait for it
             if clock.now().timeIntervalSince(started) >= pollTimeout {
                 message = "Il server sta ancora preparando \(current.preparingCount) brani: riprova più tardi."
                 break
@@ -123,7 +139,7 @@ public final class PlaylistSyncCoordinator: ObservableObject {
                 let next = try await api.offlineManifest(playlistId: playlist.id)
                 accept(next)
                 if download {
-                    let plan = engine.enqueue(next.tracks)
+                    let plan = await enqueue(next)
                     message = Self.summary(plan: plan, manifest: next)
                 }
                 errorText = nil
@@ -164,6 +180,18 @@ public final class PlaylistSyncCoordinator: ObservableObject {
     }
 
     // MARK: - Helpers
+
+    /// Queues what the sync wants. With a gate the gate decides which of the songs to download go (it may ask the user first and wait for the answer); a file the
+    /// phone already has is adopted either way (bookkeeping, not a download). A sync that was cancelled while the gate was thinking queues nothing.
+    private func enqueue(_ manifest: OfflineManifest) async -> SyncPlan {
+        guard let gate else { return engine.enqueue(manifest.tracks) }
+        let plan = engine.plan(manifest.tracks)
+        let adopt = manifest.tracks.filter { plan.adopt.contains($0.songKey) }
+        let admitted = await gate.admit(plan.download, in: manifest)
+        guard !Task.isCancelled else { return plan }
+        if !adopt.isEmpty || !admitted.isEmpty { engine.enqueue(adopt + admitted) }
+        return plan
+    }
 
     private func accept(_ next: OfflineManifest) {
         manifest = next

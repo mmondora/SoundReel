@@ -31,9 +31,8 @@ struct RootTabView: View {
     @State private var handledRequests = 0
     /// The first page of the Home is on screen: there the mini player is not drawn (it is on every page pushed from it).
     @State private var homeRootShown = true
-    /// The sync of every playlist: the first access, and the question that comes before a big download.
-    @ObservedObject private var librarySync = LibrarySyncCoordinator.shared
-    @Environment(\.scenePhase) private var scenePhase
+    /// The sync of the playlist that plays: the question that comes before a big download is put on the display from here.
+    @ObservedObject private var playingSync = PlayingPlaylistSync.shared
 
     var body: some View {
         TabView(selection: $selection) {
@@ -82,12 +81,9 @@ struct RootTabView: View {
             .tag(RootTab.settings)
         }
         .playerPresentation(isPresented: $showPlayer)
-        .syncSizeDialog(librarySync)
-        // The first time the app is opened with a key it syncs every playlist by itself (and asks first if it is a lot); never again by itself.
-        .task { await librarySync.runFirstSyncIfNeeded() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await librarySync.runFirstSyncIfNeeded() } }
-        }
+        // «Il sync deve girare solo per playlist che sto suonando» (Michele, 11 November): nothing syncs at the first access; the playlist that begins to play does,
+        // and asks first when it is a lot. The Player covers the screen: the question comes up when it is closed.
+        .syncSizeDialog(playingSync, suppressed: showPlayer)
         .onChange(of: router.openInboxRequests) { _, requests in
             guard requests > handledRequests else { return }
             handledRequests = requests
