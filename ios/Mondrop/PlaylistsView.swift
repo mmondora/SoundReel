@@ -14,7 +14,8 @@ struct PlaylistsView: View {
         #else
         let transport: PlaylistListTransport = MondropAPI()
         #endif
-        _model = StateObject(wrappedValue: PlaylistListModel(transport: transport))
+        // the sort the person chose last is kept (`SortPreferences`); the list opens on «Stato», the ones on the phone first
+        _model = StateObject(wrappedValue: PlaylistListModel(transport: transport, preferences: SortPreferences(defaults: Settings.shared.storage)))
     }
 
     var body: some View {
@@ -23,8 +24,9 @@ struct PlaylistsView: View {
                 Text(failure).foregroundStyle(.red)
             }
             let marks = PlaylistMarks.current(store: engine.store, local: localKeys, progress: engine.progress)
-            // the playlists that are on the phone first, then the ones that are only online; the order of the list the person asked for (date, name, size) inside each group
-            ForEach(marks.ordered(model.items, id: \.id, songCount: \.songCount)) { p in
+            // «Stato»: the playlists that are on the phone first, then the ones that are only online (or the other way round), the date of creation inside each group; every other
+            // sort (date, name, size) is the server's and nothing goes in front of it (spec …-simplify-playlists-and-song-states-design.md §12, U17)
+            ForEach(marks.arranged(model.items, by: model.sort, order: model.order, id: \.id, songCount: \.songCount)) { p in
                 NavigationLink {
                     PlaylistOfflineView(playlist: p)
                 } label: {
@@ -138,16 +140,25 @@ private struct PlaylistRow: View {
 /// The page of a playlist: the list and «Suona» (Michele, 11 November: «quando da homepage clicco sulla playlist devo vedere la lista e poter mettere in play. Nessun sync
 /// evidente, tutto automatico»; spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U11, U12). The list is there in the first frame when the phone has read the
 /// playlist before (`PlaylistManifestCache`) and SoundReel is asked again behind it; there is no «Sync», no counters and no line about the network on the page — the playlist
-/// that plays downloads by itself, and the mark of each song says where its file is. What is on the phone is listed first, then what is online (`LocalFirst`).
+/// that plays downloads by itself, and the mark of each song says where its file is. What is on the phone is listed first, then what is online (`SongSort.state`, the default), unless the
+/// person chose another order from the menu (Michele, 11 November, after build 18: «Voglio in tutte le playlist anche degli ordinamenti tipo : data di creazione, nome, stato ( locali o
+/// online )»); and «Scarica tutta» (`PlaylistDownloadAll`) is the button the person presses to have the whole playlist on the phone («Inoltre su una playlist voglio anche il bottone
+/// 'scarica tutta'»; spec …-simplify-playlists-and-song-states-design.md §12, U18 and U20).
 struct PlaylistOfflineView: View {
     let playlist: MondropPlaylist
     @StateObject private var model: PlaylistSyncCoordinator
+    /// The sync that the person asks for with «Scarica tutta», and the question over the limit that it may ask.
+    @StateObject private var download: PlaylistDownloadAll
+    @StateObject private var questions: SizeQuestionPresenter
     @ObservedObject private var engine = SyncEngine.shared
     @ObservedObject private var player = LocalAudioPlayer.shared
     /// The files on the phone, read when the page appears and when a song arrives or goes (not at every tick of a download).
     @State private var localKeys: Set<String> = []
     @State private var youtubeTarget: OfflineTrack?
     @State private var youtubeText = ""
+    /// The order of the songs the person chose (kept between launches: `SortPreferences`).
+    @State private var songSort: SongSort
+    @State private var songOrder: PlaylistOrder
     /// The line at the bottom after «Togli dalla playlist» («Tolto da «Road trip»», or why it did not work).
     @StateObject private var actions = TrackActions()
 
@@ -158,6 +169,27 @@ struct PlaylistOfflineView: View {
         #else
         let api: MondropAPIProtocol = MondropAPI()
         #endif
+        let saved = SortPreferences(defaults: Settings.shared.storage).songs
+        _songSort = State(initialValue: saved.sort)
+        _songOrder = State(initialValue: saved.order)
+        let presenter = SizeQuestionPresenter()
+        _questions = StateObject(wrappedValue: presenter)
+        _download = StateObject(
+            wrappedValue: PlaylistDownloadAll(
+                playlist: playlist,
+                api: api,
+                engine: .shared,
+                limit: { Settings.shared.syncWarnLimit },
+                questions: presenter,
+                activity: .shared,
+                // the right moment to ask iOS for notifications, once: the person has just asked for a sync of their own
+                onSyncStarted: {
+                    Task { await SyncNotifier.shared.ensurePermission() }
+                    Task { await InboxWiring.refreshPlaylistsCache() }
+                },
+                cache: FilePlaylistManifestCache.shared
+            )
+        )
         _model = StateObject(
             wrappedValue: PlaylistSyncCoordinator(
                 playlist: playlist,
@@ -216,10 +248,23 @@ struct PlaylistOfflineView: View {
         .navigationTitle(playlist.name)
         .withMiniPlayer()
         .trackActions(actions)
+        .toolbar {
+            // the order of the songs: «Stato» (the phone first) is where it starts, the person chooses the rest (a list of one song has nothing to order)
+            if let manifest = model.manifest, manifest.tracks.count > 1 {
+                ToolbarItem(placement: .primaryAction) { sortMenu(manifest) }
+            }
+        }
         .task { await model.load() }
         .refreshable { await model.load() }
         .onAppear { localKeys = engine.store.localSongKeys() }
         .onChange(of: engine.revision) { _, _ in localKeys = engine.store.localSongKeys() }
+        // «Scarica tutta» ended: the list is read again (what the server prepared meanwhile shows with its new state)
+        .onChange(of: download.working) { _, working in
+            if !working { Task { await model.load() } }
+        }
+        // the question over the limit comes over this page; if the page is left with it open the question goes away (a sync that was asking ends, downloading nothing)
+        .syncSizeDialog(questions)
+        .onDisappear { questions.withdraw() }
         .alert("Link YouTube", isPresented: Binding(
             get: { youtubeTarget != nil },
             set: { if !$0 { youtubeTarget = nil } }
@@ -244,19 +289,88 @@ struct PlaylistOfflineView: View {
 
     // MARK: the top of the page
 
-    /// «Suona» and «Mescola», right under the title: the first thing on the page.
+    /// «Suona», «Mescola» and «Scarica tutta», right under the title, on ONE line and with icons only (Michele, 11 November, seeing build 19: «I bottoni devono stare sulla strada riga.
+    /// Piuttosto metti solo icona.»): the first thing on the page. Each keeps its words for VoiceOver.
     private func playRow(_ manifest: OfflineManifest) -> some View {
-        HStack(spacing: 12) {
-            Button { play(nil, shuffled: false, in: manifest) } label: { Label("Suona", systemImage: "play.fill").labelStyle(.titleAndIcon) }
-                .buttonStyle(MondropPillStyle(prominent: true))
-            Button { play(nil, shuffled: true, in: manifest) } label: { Label("Mescola", systemImage: "shuffle").labelStyle(.titleAndIcon) }
-                .buttonStyle(MondropPillStyle(prominent: false))
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                Button { play(nil, shuffled: false, in: manifest) } label: { Label("Suona", systemImage: "play.fill").labelStyle(.iconOnly) }
+                    .buttonStyle(MondropIconPillStyle(prominent: true))
+                Button { play(nil, shuffled: true, in: manifest) } label: { Label("Mescola", systemImage: "shuffle").labelStyle(.iconOnly) }
+                    .buttonStyle(MondropIconPillStyle(prominent: false))
+                downloadButton(manifest)
+                Spacer(minLength: 0)
+            }
+            .disabled(manifest.tracks.isEmpty)
+            .opacity(manifest.tracks.isEmpty ? 0.4 : 1)
+            if let error = download.errorText {
+                Text("Non riesco a scaricare: \(error)")
+                    .font(.footnote)
+                    .foregroundStyle(Color(MondropPalette.error))
+            }
         }
-        .disabled(manifest.tracks.isEmpty)
-        .opacity(manifest.tracks.isEmpty ? 0.4 : 1)
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
+    }
+
+    /// «Scarica tutta»: the person's own way to have the whole playlist on the phone (the automatic sync is for the playlist that plays). An icon like the other two; VoiceOver hears what it
+    /// would bring («Scarica tutta: 5 brani · 420 MB»); a spinner while it works (the server may be preparing what it had not prepared); not there when nothing could come.
+    @ViewBuilder
+    private func downloadButton(_ manifest: OfflineManifest) -> some View {
+        let state = PlaylistDownloadState.make(
+            tracks: manifest.tracks,
+            isLocal: { localKeys.contains($0) },
+            isSkipped: { engine.store.isSkipped($0) },
+            progress: { engine.progress[$0] },
+            busy: download.working
+        )
+        if state.kind != .none {
+            let atWork: Bool = { if case .working = state.kind { return true } else { return false } }()
+            Button { download.start() } label: {
+                Label {
+                    Text(state.title)
+                } icon: {
+                    if atWork { ProgressView() } else { Image(systemName: "arrow.down.circle") }
+                }
+                .labelStyle(.iconOnly)
+            }
+            .buttonStyle(MondropIconPillStyle(prominent: false))
+            .disabled(atWork)
+            .accessibilityLabel([state.title, state.detail].compactMap { $0 }.joined(separator: ": "))
+        }
+    }
+
+    // MARK: the order of the songs
+
+    /// What the menu and the list use: the choice of the person, unless it is «Data di aggiunta» and this playlist has no dates (SoundReel older than 2.26.0, or a dynamic playlist),
+    /// when it is the first sort.
+    private func effectiveSort(_ manifest: OfflineManifest) -> (sort: SongSort, order: PlaylistOrder) {
+        SongSort.available(for: manifest.tracks).contains(songSort) ? (songSort, songOrder) : (.state, SongSort.state.naturalOrder)
+    }
+
+    private func sortMenu(_ manifest: OfflineManifest) -> some View {
+        let current = effectiveSort(manifest)
+        return Menu {
+            Picker("Ordina per", selection: Binding(get: { current.sort }, set: { chooseSort($0) })) {
+                ForEach(SongSort.available(for: manifest.tracks)) { Text($0.title).tag($0) }
+            }
+            Button {
+                songSort = current.sort
+                songOrder = current.order == .desc ? .asc : .desc
+                SortPreferences(defaults: Settings.shared.storage).songs = (songSort, songOrder)
+            } label: {
+                Label(current.sort.orderTitle(current.order), systemImage: current.order == .desc ? "arrow.down" : "arrow.up")
+            }
+        } label: {
+            Label("Ordina", systemImage: "arrow.up.arrow.down")
+        }
+    }
+
+    /// Choosing a sort puts its natural direction; the arrow then flips it. The choice is kept.
+    private func chooseSort(_ sort: SongSort) {
+        songSort = sort
+        songOrder = sort.naturalOrder
+        SortPreferences(defaults: Settings.shared.storage).songs = (songSort, songOrder)
     }
 
     /// A playlist made by a rule says so, and says that the rule decides (there is nothing to sync by hand: it is recalculated by itself).
@@ -303,9 +417,11 @@ struct PlaylistOfflineView: View {
         )
     }
 
-    /// The songs as they are listed: the ones on the phone first, then the online ones, then the errors; the playlist's own order inside each group.
+    /// The songs as they are listed: by default the ones on the phone first, then the online ones, then the errors, the playlist's own order inside each group; otherwise the order
+    /// the person chose from the menu (`SongSort`).
     private func arranged(_ manifest: OfflineManifest) -> [OfflineTrack] {
-        LocalFirst.songs(manifest.tracks) { SongState(status(of: $0)) }
+        let chosen = effectiveSort(manifest)
+        return SongSort.sorted(manifest.tracks, by: chosen.sort, order: chosen.order) { SongState(status(of: $0)) }
     }
 
     /// Only the user's own static playlists take songs out by hand (`PlaylistRowActions`).
@@ -362,15 +478,16 @@ struct PlaylistOfflineView: View {
         }
     }
 
-    /// The playlist as the queue («In coda: Playlist · Road trip»), from the tapped song — or from the top / shuffled — with the songs that are on the phone first
-    /// (`localFirst`: «Vanno privilegiati i file già scaricati»). A song the server found no source for is left out unless it is already on the phone.
+    /// The playlist as the queue («In coda: Playlist · Road trip»), from the tapped song — or from the top / shuffled. A tap plays this song and the ones that follow ON THE SCREEN, in
+    /// the order the person sees (by default the phone's songs first: «Vanno privilegiati i file già scaricati»); «Mescola» mixes them, each group on its own and the phone's first
+    /// (`localFirst`). A song the server found no source for is left out unless it is already on the phone.
     private func play(_ songKey: String?, shuffled: Bool, in manifest: OfflineManifest) {
         guard let queue = LibraryQueueBuilder.make(
             choice: .playlist(id: playlist.id, name: playlist.name),
-            tracks: manifest.tracks,
+            tracks: arranged(manifest),
             startAt: songKey,
             shuffled: shuffled,
-            localFirst: true,
+            localFirst: shuffled,
             isLocal: { engine.store.fileURL(songKey: $0) != nil }
         ) else { return }
         player.start(queue)

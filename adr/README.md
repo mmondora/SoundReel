@@ -32,3 +32,4 @@
 | 0028 | A like belongs to a person and lives on the server; the phone only draws it and sends it | Accepted (Michele's answers of 10 November); the app is being built first, the server after 2.24.0, nothing in production yet | 2026-11-10 |
 | 0029 | The phone puts what it holds first and keeps the last list of every playlist; the server still decides what the lists are | Accepted (Mondrop 1.8.0 build 17; no server change) | 2026-11-11 |
 | 0030 | The downloads follow the order in which the songs are about to play; the player says it, the engine arranges it, the server is not asked | Accepted (Mondrop 1.8.0 build 18; no server change) | 2026-11-11 |
+| 0031 | A playlist can be sorted by what the phone holds and downloaded whole on request; the server says when each song was added | Accepted (Mondrop 1.8.0 build 19; one optional field from SoundReel 2.26.0) | 2026-11-11 |

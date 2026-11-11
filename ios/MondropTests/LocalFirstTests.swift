@@ -83,6 +83,28 @@ final class LocalFirstTests: XCTestCase {
         XCTAssertEqual(ordered.map(\.id), ["all1", "all2", "some1", "some2", "none1", "none2", "empty"])
     }
 
+    func testTheStateSortOfTheListPutsThePlaylistsOnThePhoneFirstOrOnlineFirstAndTheOtherSortsMoveNothing() {
+        // «Voglio in tutte le playlist anche degli ordinamenti tipo : data di creazione, nome, stato ( locali o online )» (Michele, 11 November, §12 U17)
+        struct P: Equatable { let id: String; let count: Int }
+        let list = [P(id: "none1", count: 2), P(id: "some1", count: 3), P(id: "all1", count: 2), P(id: "empty", count: 0), P(id: "all2", count: 1), P(id: "none2", count: 5), P(id: "some2", count: 2)]
+        let records = [
+            "none1": record(["n1", "n2"]), "some1": record(["s1", "x1", "x2"]), "all1": record(["l1", "l2"]), "empty": record([]),
+            "all2": record(["l3"]), "none2": record(["m1", "m2", "m3", "m4", "m5"]), "some2": record(["l1", "x9"]),
+        ]
+        let marks = PlaylistMarks(records: records, local: ["s1", "l1", "l2", "l3"], failedOnPhone: [])
+        func arranged(_ sort: PlaylistSort, _ order: PlaylistOrder) -> [String] {
+            marks.arranged(list, by: sort, order: order, id: \.id, songCount: \.count).map(\.id)
+        }
+        XCTAssertEqual(arranged(.state, .asc), ["all1", "all2", "some1", "some2", "none1", "none2", "empty"], "on the phone first")
+        XCTAssertEqual(arranged(.state, .desc), ["none1", "none2", "some1", "some2", "all1", "all2", "empty"], "online first, the empty ones still last")
+        let asTheServerSentIt = list.map(\.id)
+        for sort in [PlaylistSort.created, .updated, .name, .size] {
+            for order in [PlaylistOrder.asc, .desc] {
+                XCTAssertEqual(arranged(sort, order), asTheServerSentIt, "\(sort) \(order): a date or a name is a date or a name, with nothing «sul telefono prima» in front")
+            }
+        }
+    }
+
     func testAnErrorOnAPlaylistDoesNotSinkItWhatCountsIsHowMuchIsOnThePhone() {
         // the mark of a playlist with a failed song is the error mark, but the order is about where the files are: «a» has one song of two on the phone, «c» has none
         struct P { let id: String; let count: Int }

@@ -15,7 +15,7 @@
  */
 import { getEntry } from '../utils/db';
 import { albumOf, genresOf, yearOf } from './libraryFacets';
-import { getPlaylist } from './playlists';
+import { getPlaylist, getPlaylistSongDates } from './playlists';
 import { resolveDetail } from './playlistResolver';
 import { getSongPlayStats } from './listeningStats';
 import { getUserSongs } from './userSongs';
@@ -87,6 +87,12 @@ export interface OfflineTrack {
   plays: number;
   /** Last counted play of this user (ISO, UTC), or null. */
   lastPlayedAt: string | null;
+  /**
+   * When this song was put in THIS playlist (ISO, UTC; 2.26.0, spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md §12 U19): only the manifest of a hand-made or
+   * automatic playlist has it. A dynamic playlist is what its rule selects now, and a page of the library, a search or one song belong to no playlist. Absent, never null: an app
+   * that does not know the field reads the track as before.
+   */
+  addedAt?: string;
 }
 
 export interface OfflineManifest {
@@ -400,7 +406,10 @@ export async function buildPlaylistOfflineManifest(
     const resolved = await resolveSong(song, rows.get(key) ?? null, awaiting(song, open));
     built.push(toTrack(song, resolved, options.lyrics === false ? null : await lyricsForSong(song)));
   }
-  const tracks = await withPlayStats(built, ownerUser);
+  // When each song was put in the playlist (the date Mondrop sorts a playlist by): a hand-made or automatic playlist has it, a dynamic one has none — its rule decides what is in it
+  // now. A failure only costs the dates, never the manifest.
+  const addedAt = playlist.kind === 'dynamic' ? new Map<string, string>() : await getPlaylistSongDates(playlist.id).catch(() => new Map<string, string>());
+  const tracks = (await withPlayStats(built, ownerUser)).map((t) => (addedAt.has(t.songKey) ? { ...t, addedAt: addedAt.get(t.songKey)! } : t));
   return {
     playlistId: playlist.id,
     name: playlist.name,

@@ -74,4 +74,9 @@ extension View {
     func syncSizeDialog(_ check: PlaylistConsistencyCheck) -> some View {
         modifier(SyncSizeDialogHost(question: check.question, suppressed: false, answer: { check.answer($0) }))
     }
+
+    /// The question of the «Scarica tutta» of a playlist (its page): the page that started the download puts the question over itself.
+    func syncSizeDialog(_ presenter: SizeQuestionPresenter) -> some View {
+        modifier(SyncSizeDialogHost(question: presenter.question, suppressed: false, answer: { presenter.answer($0) }))
+    }
 }

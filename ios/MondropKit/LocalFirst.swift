@@ -49,4 +49,16 @@ extension PlaylistMarks {
     public func ordered<P>(_ playlists: [P], id: (P) -> String, songCount: (P) -> Int) -> [P] {
         LocalFirst.stable(playlists) { LocalFirst.rank(songCount: songCount($0), record: records[id($0)], local: local) }
     }
+
+    /// The playlists of the list «Playlist» as the person chose to see them (spec …-simplify-playlists-and-song-states-design.md §12, U17): with «Stato» the phone puts the ones on
+    /// it first (`.asc`) or the online ones first (`.desc`: the ones with nothing on the phone, then some of it, then all of it; the empty ones last either way); every other sort
+    /// is the server's and the list is left as it came — a date or a name is a date or a name, with no «sul telefono prima» in front.
+    public func arranged<P>(_ playlists: [P], by sort: PlaylistSort, order: PlaylistOrder, id: (P) -> String, songCount: (P) -> Int) -> [P] {
+        guard sort == .state else { return playlists }
+        return LocalFirst.stable(playlists) { playlist in
+            let rank = LocalFirst.rank(songCount: songCount(playlist), record: records[id(playlist)], local: local)
+            guard order == .desc else { return rank }
+            return rank == 3 ? 3 : 2 - rank
+        }
+    }
 }

@@ -29,14 +29,17 @@ public enum PlaylistOrder: String, Sendable {
     case asc, desc
 }
 
-/// What the list can be sorted by. By date of creation (the newest first) is the one Michele asked for.
+/// What the list can be sorted by. By date of creation (the newest first) is the one Michele asked for on 10 November; «Stato» (on the phone / online) the one he asked for
+/// on 11 November, after build 18 (spec …-simplify-playlists-and-song-states-design.md §12, U17): it is the phone's own — only the phone knows which files it holds — so the
+/// server is never asked for it (the date of creation decides inside each group).
 public enum PlaylistSort: String, CaseIterable, Identifiable, Sendable {
-    case created, updated, name, size
+    case state, created, updated, name, size
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
+        case .state: return "Stato (sul telefono / online)"
         case .created: return "Data di creazione"
         case .updated: return "Ultima modifica"
         case .name: return "Nome"
@@ -44,12 +47,14 @@ public enum PlaylistSort: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// A to Z by name; the newest or the biggest first for the others.
-    public var naturalOrder: PlaylistOrder { self == .name ? .asc : .desc }
+    /// On the phone first, or A to Z by name; the newest or the biggest first for the others.
+    public var naturalOrder: PlaylistOrder { self == .name || self == .state ? .asc : .desc }
 
     /// What the two directions mean for this sort, in words.
     public func orderTitle(_ order: PlaylistOrder) -> String {
         switch (self, order) {
+        case (.state, .asc): return "Sul telefono prima"
+        case (.state, .desc): return "Online prima"
         case (.created, .desc), (.updated, .desc): return "Più recenti prima"
         case (.created, .asc), (.updated, .asc): return "Più vecchie prima"
         case (.name, .asc): return "Da A a Z"
@@ -86,8 +91,10 @@ public struct PlaylistListQuery: Equatable, Sendable {
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !words.isEmpty { items.append(("q", words)) }
         items.append(("filter", filter.rawValue))
-        items.append(("sort", sort.rawValue))
-        items.append(("order", order.rawValue))
+        // «Stato» is the phone's own sort: the server hears the date of creation, the newest first, which is what decides inside each group
+        let asked = sort == .state ? (sort: PlaylistSort.created, order: PlaylistOrder.desc) : (sort: sort, order: order)
+        items.append(("sort", asked.sort.rawValue))
+        items.append(("order", asked.order.rawValue))
         items.append(("limit", String(limit)))
         items.append(("offset", String(offset)))
         return items
@@ -180,8 +187,9 @@ public final class PlaylistListModel: ObservableObject {
     @Published public private(set) var failure: String?
     @Published public private(set) var text = ""
     @Published public private(set) var filter: PlaylistFilter = .all
-    @Published public private(set) var sort: PlaylistSort = .created
-    @Published public private(set) var order: PlaylistOrder = .desc
+    /// The list opens on «Stato», the ones on the phone first (what it did from build 17 on), until the person chooses another sort; the choice is kept.
+    @Published public private(set) var sort: PlaylistSort = .state
+    @Published public private(set) var order: PlaylistOrder = .asc
 
     private let transport: PlaylistListTransport
     private let pageSize: Int
@@ -190,10 +198,21 @@ public final class PlaylistListModel: ObservableObject {
     private var task: Task<Void, Never>?
     private var lastGood: PlaylistListQuery?
 
-    public init(transport: PlaylistListTransport, pageSize: Int = PlaylistListModel.pageSize, searchDelay: UInt64 = PlaylistListModel.searchDelay) {
+    /// Where the choice of the sort is kept (nil: nowhere).
+    private let preferences: SortPreferences?
+
+    public init(
+        transport: PlaylistListTransport, pageSize: Int = PlaylistListModel.pageSize, searchDelay: UInt64 = PlaylistListModel.searchDelay,
+        preferences: SortPreferences? = nil
+    ) {
         self.transport = transport
         self.pageSize = pageSize
         self.searchDelay = searchDelay
+        self.preferences = preferences
+        if let saved = preferences?.playlists {
+            sort = saved.sort
+            order = saved.order
+        }
     }
 
     /// The change in flight (a test waits for it).
@@ -204,8 +223,11 @@ public final class PlaylistListModel: ObservableObject {
     /// A search or a filter narrows the list: «no playlist» then means «none matches», not «none yet».
     public var narrowed: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || filter != .all }
 
+    /// The biggest page the server gives (`limit` 100, ADR-0023): «Stato» needs the whole list, so it asks for it in the fewest pages.
+    public static let wholeListPageSize = 100
+
     private var query: PlaylistListQuery {
-        PlaylistListQuery(text: text, filter: filter, sort: sort, order: order, limit: pageSize, offset: 0)
+        PlaylistListQuery(text: text, filter: filter, sort: sort, order: order, limit: sort == .state ? max(pageSize, Self.wholeListPageSize) : pageSize, offset: 0)
     }
 
     // MARK: - What the person does
@@ -227,11 +249,13 @@ public final class PlaylistListModel: ObservableObject {
         guard value != sort else { return }
         sort = value
         order = value.naturalOrder
+        preferences?.playlists = (sort, order)
         schedule(after: 0)
     }
 
     public func toggleOrder() {
         order = order == .desc ? .asc : .desc
+        preferences?.playlists = (sort, order)
         schedule(after: 0)
     }
 
@@ -263,7 +287,7 @@ public final class PlaylistListModel: ObservableObject {
         var asked = query
         asked.offset = offset
         do {
-            let page = try await transport.playlistsPage(asked)
+            var page = try await transport.playlistsPage(asked)
             guard mine == turn else { return }
             failure = nil
             total = page.total
@@ -275,6 +299,18 @@ public final class PlaylistListModel: ObservableObject {
                 items = page.playlists
             }
             lastGood = asked.withoutPage
+            // «Stato» is the phone's own sort, and a partition by state is only right over the WHOLE list: the rest of the pages are asked before the list is done. What is
+            // already on the screen stays if one of them fails (`lastGood` is set); a list that cannot grow any more stops here.
+            while sort == .state, items.count < total, !page.playlists.isEmpty {
+                let before = items.count
+                asked.offset = items.count
+                page = try await transport.playlistsPage(asked)
+                guard mine == turn else { return }
+                total = page.total
+                let seen = Set(items.map(\.id))
+                items += page.playlists.filter { !seen.contains($0.id) }
+                if items.count == before { break }
+            }
         } catch {
             guard mine == turn else { return }
             failure = (error as? MondropAPIError)?.description ?? error.localizedDescription

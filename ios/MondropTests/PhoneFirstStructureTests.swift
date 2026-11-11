@@ -31,16 +31,21 @@ final class PhoneFirstStructureTests: XCTestCase {
         XCTAssertTrue(home.contains("LocalFirst.songs(section.tracks)"), "the songs of a row")
         XCTAssertTrue(home.contains("tracks: orderedTracks(of: section)"), "and the queue made from a row follows the row as it is drawn")
         let playlists = try code("Mondrop/PlaylistsView.swift")
-        XCTAssertTrue(playlists.contains("marks.ordered(model.items, id: \\.id, songCount: \\.songCount)"), "the whole list")
+        // the whole list: «Stato» puts the phone first (or online first), every other sort is the server's and nothing goes in front of it (§12, U17)
+        XCTAssertTrue(playlists.contains("marks.arranged(model.items, by: model.sort, order: model.order, id: \\.id, songCount: \\.songCount)"), "the whole list")
         let library = try code("Mondrop/LibraryView.swift")
         XCTAssertTrue(library.contains("marks.ordered(model.playlists, id: \\.id, songCount: \\.songCount)"), "«Sfoglia» → Playlist")
         XCTAssertTrue(library.contains("PlaylistStateMark(state: marks.state(id: playlist.id, songCount: playlist.songCount))"), "with the mark that explains the order")
     }
 
-    func testTheSongsOfAPlaylistAreListedAndQueuedWithThePhoneFirst() throws {
+    func testTheSongsOfAPlaylistAreListedWithThePhoneFirstUnlessAnotherOrderIsChosenAndQueuedAsTheyAreSeen() throws {
         let page = try code("Mondrop/PlaylistsView.swift")
-        XCTAssertTrue(page.contains("LocalFirst.songs(manifest.tracks)"))
-        XCTAssertEqual(count("localFirst: true", in: page), 1, "the queue of a playlist: «Suona», «Mescola» and a tap on a song all go through the one call")
+        // the order of the songs is `SongSort`, and «Stato» (the phone first) is where it starts (§12, U18)
+        XCTAssertTrue(page.contains("SongSort.sorted(manifest.tracks, by: chosen.sort, order: chosen.order)"))
+        XCTAssertFalse(page.contains("LocalFirst.songs(manifest.tracks)"), "the page does not force the phone first any more: it is the first choice of the menu")
+        XCTAssertEqual(count("tracks: arranged(manifest)", in: page), 1, "the queue of a playlist: «Suona», «Mescola» and a tap on a song all go through the one call, over the list as it is seen")
+        XCTAssertEqual(count("localFirst: shuffled", in: page), 1, "«Mescola» mixes each group on its own and plays the phone's first; a tap and «Suona» follow the screen")
+        XCTAssertEqual(count("localFirst: true", in: page), 0)
         let voice = try code("Mondrop/VoiceActions.swift")
         XCTAssertTrue(voice.contains("localFirst: true"), "«metti la playlist X»: the same rule, with no screen to show it")
     }

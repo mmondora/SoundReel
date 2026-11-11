@@ -61,8 +61,12 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
     public let genres: [String]
     /// Release year; nil when unknown or on an older backend. The decade is derived (`DecadeFilter.of(year:)`).
     public let year: Int?
+    /// ISO date this song was put in THIS playlist (SoundReel 2.26.0, spec …-simplify-playlists-and-song-states-design.md U19): only the manifest of a hand-made or automatic
+    /// playlist has it; nil for a dynamic playlist (its rule decides), for every other list and on an older server.
+    public let addedAt: String?
 
     public var lastPlayedDate: Date? { ISO.parse(lastPlayedAt) }
+    public var addedDate: Date? { ISO.parse(addedAt) }
 
     /// `state` when the server sent it, otherwise derived from the legacy `status`.
     public var resolvedState: TrackState {
@@ -92,7 +96,8 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
         lastPlayedAt: String? = nil,
         album: String? = nil,
         genres: [String] = [],
-        year: Int? = nil
+        year: Int? = nil,
+        addedAt: String? = nil
     ) {
         self.songKey = songKey
         self.title = title.isEmpty ? songKey : title
@@ -116,12 +121,13 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
         self.album = Self.tidy(album)
         self.genres = Self.tidyList(genres)
         self.year = Self.plausibleYear(year)
+        self.addedAt = addedAt
     }
 
     private enum CodingKeys: String, CodingKey {
         case songKey, title, artist, status, state, source, downloadPath, version
         case bytes, durationS, error, spotifyUrl, entryId, canEnqueueSpooty, coverUrl, coverPath, lyrics
-        case plays, lastPlayedAt, album, genres, year
+        case plays, lastPlayedAt, album, genres, year, addedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -151,6 +157,8 @@ public struct OfflineTrack: Codable, Identifiable, Sendable, Equatable {
         album = Self.tidy(try? c.decodeIfPresent(String.self, forKey: .album))
         genres = Self.decodeGenres(c)
         year = Self.plausibleYear(Self.flexibleInt(c, .year))
+        // 2.26.0: an older server does not send it
+        addedAt = try? c.decodeIfPresent(String.self, forKey: .addedAt)
     }
 
     /// Collapses whitespace; blank → nil.

@@ -11,6 +11,7 @@ import {
   createPlaylist,
   deletePlaylist,
   getPlaylist,
+  getPlaylistSongDates,
   listPlaylists,
   removeSongFromPlaylist,
   renamePlaylist,
@@ -76,6 +77,28 @@ describe('playlists service', () => {
   it('getPlaylist returns null when missing', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
     expect(await getPlaylist('missing')).toBeNull();
+  });
+
+  it('getPlaylistSongDates gives the date each song was put in the playlist, by song key (ISO, UTC)', async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [
+        { song_key: 'a::x', added_at: new Date('2026-11-05T10:00:00.000Z') },
+        { song_key: 'b::y', added_at: '2026-11-06T08:30:00.000Z' },
+      ],
+      rowCount: 2,
+    } as never);
+    const dates = await getPlaylistSongDates('p1');
+    expect(dates.get('a::x')).toBe('2026-11-05T10:00:00.000Z');
+    expect(dates.get('b::y')).toBe('2026-11-06T08:30:00.000Z');
+    expect(dates.size).toBe(2);
+    const [sql, params] = mockedQuery.mock.calls[0] as unknown as [string, unknown[]];
+    expect(sql).toMatch(/FROM playlist_songs/);
+    expect(params).toEqual(['p1']);                      // that playlist and no other
+  });
+
+  it('getPlaylistSongDates of an empty playlist is an empty map', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
+    expect((await getPlaylistSongDates('p1')).size).toBe(0);
   });
 
   it('renamePlaylist updates name', async () => {

@@ -183,3 +183,49 @@
 - **Una scelta mia:** il lettore può dire per un istante, dentro `setQueue`, la coda nuova con la posizione vecchia; il messaggio giusto arriva subito dopo nello stesso giro e in mezzo non parte nessun download.
 - **Non verificato:** su un **telefono vero**, con una playlist lunga e una vera sessione di ascolto (l'ordine dei download visto dai segni che passano da nuvola a giallo), e l'effetto con «Mescola» su centinaia di brani.
 
+## 12. Dopo la build 18 (11 novembre): ordinamenti e «Scarica tutta» (U17–U20)
+
+*(Michele, la sera dell'11 novembre, mentre la build 18 era a Apple. Il numero di build passa a 19, la versione resta 1.8.0; **un campo nuovo dal server: SoundReel 2.26.0**. La scelta è l'**ADR-0031**.)*
+
+### 12.1 Richiesta di Michele (testuale)
+
+«Mondrop. Voglio in tutte le playlist anche degli ordinamenti tipo : data di creazione, nome, stato ( locali o online ). Inoltre su una playlist vogli o anche il bottone ‘scarica tutta’» (il refuso «vogli o» è suo).
+
+**Poi, vedendo la build 19** (la sera dell'11 novembre, a proposito dei bottoni della pagina di una playlist): «I bottoni devono stare sulla strada riga. Piuttosto metti solo icona.» («strada» è un refuso suo per «stessa»).
+
+**La mia domanda** (l'elenco «Playlist» aveva già Data di creazione, Ultima modifica, Nome e Numero di brani nel menu in alto a destra, ma il «sul telefono prima» passava sempre davanti; dentro una playlist i brani non avevano nessun ordinamento): *dove li vuoi?* **Risposta: «Tutti e due»** — l'elenco delle playlist e i brani dentro ogni playlist.
+
+### 12.2 Decisioni (default miei, da correggere se non vanno)
+
+- **U17 — L'elenco delle playlist ha «Stato» tra gli ordinamenti, e gli ordinamenti sono puri.**
+  - **«Stato (sul telefono / online)»** è la prima voce del menu e **quella da cui l'elenco si apre**, come dalla build 17. Il verso è «Sul telefono prima» (tutta sul telefono → in parte → nessun brano) o «Online prima» (nessun brano → in parte → tutta); le playlist vuote stanno in fondo in tutti e due i casi; dentro ogni gruppo la data di creazione, la più nuova prima.
+  - **Il «sul telefono prima» forzato davanti a ogni ordine sparisce** (`PlaylistMarks.arranged`): con Data di creazione, Ultima modifica, Nome o Numero di brani l'ordine è quello del server e basta, senza niente davanti.
+  - **Chi lo fa:** il telefono, perché solo lui sa quali file ha; al server non si dice mai «stato» (la richiesta è `sort=created&order=desc`). L'elenco lo taglia il server in pagine e una partizione per stato è giusta solo sull'elenco intero, quindi **«Stato» chiede tutte le pagine** (da 100, il massimo del server) prima di dirsi finito (`PlaylistListModel`); se una pagina non arriva resta quel che c'è, con la riga dell'errore. Gli altri ordinamenti restano pagine da 30 con «Carica altre».
+  - **La scelta si ricorda** tra un lancio e l'altro (`SortPreferences`); una scelta illeggibile è «Stato».
+  - **La Home non cambia:** le sue card restano in ordine «sul telefono prima» (non si ordinano).
+- **U18 — Dentro ogni playlist, il menu «Ordina» sui brani** (icona in alto a destra della pagina; non c'è per una playlist di un solo brano).
+  - **Voci** (`SongSort`, pura): **Stato (sul telefono / online)** — dove si parte, com'era —, **Ordine della playlist**, **Nome** e **Data di aggiunta**. Ognuna ha il suo verso (la freccia nel menu): *Sul telefono prima / Online prima* (gli errori restano sempre in fondo), *Come nella playlist / Dall'ultimo al primo*, *Da A a Z / Da Z a A* (il titolo come lo legge una persona: senza maiuscole né accenti, 2 prima di 10; a parità l'artista, poi l'ordine della playlist), *Più recenti prima / Più vecchie prima* (i brani senza data in fondo, nell'ordine della playlist; due brani aggiunti insieme restano nell'ordine della playlist).
+  - **«Data di creazione» di un brano = la data in cui è entrato nella playlist** (scelta mia: dentro una playlist un brano non ha un'altra data che abbia senso). Appare **solo se SoundReel dice quando** i brani sono stati aggiunti (U19): con un server più vecchio, e per una playlist dinamica (la decide la regola), la voce non c'è, e una scelta già fatta di «Data di aggiunta» ripiega su «Stato».
+  - **La coda segue lo schermo:** un tocco su un brano e «Suona» suonano questo brano e i seguenti **nell'ordine che si vede**; «Mescola» mescola ogni gruppo e suona prima il telefono (build 17). Per la voce («metti la playlist X») non cambia niente.
+  - **La scelta si ricorda** (una per tutte le playlist, `SortPreferences`).
+- **U19 — Il server manda quando ogni brano è entrato nella playlist (SoundReel 2.26.0).** `addedAt` (ISO, UTC, da `playlist_songs.added_at`) su ogni brano del manifest di una playlist statica o automatica (`GET …/offline` e la risposta di `prepare`); **assente** per una playlist dinamica, per le liste della libreria, di Cerca e della Home, per un brano solo e per un server più vecchio; un guasto nel leggere le date costa solo le date, mai il manifest. **Nessuna rotta nuova, un campo facoltativo:** le app già installate non lo leggono. **Va in produzione solo con l'OK di Michele**; finché non c'è, l'app funziona e «Data di aggiunta» non compare.
+- **U20 — «Scarica tutta» sulla pagina di una playlist.**
+  - Un bottone **con la sola icona** (⬇︎) **sulla stessa riga di «Suona» e «Mescola»**, anch'essi **solo icona**: «I bottoni devono stare sulla strada riga. Piuttosto metti solo icona.» (`MondropIconPillStyle`; le parole restano per VoiceOver). La riga non ha posto per dire cosa porterebbe, quindi lo dice VoiceOver: «Scarica tutta: 5 brani · 420 MB» (la dimensione di quelli che SoundReel ha già pronti). **Non c'è** se non c'è niente che possa arrivare (tutta sul telefono, o quello che manca è bloccato).
+  - **Che cosa fa** (`PlaylistDownloadAll`): il sync di quella playlist. Chiede a SoundReel di **preparare** i brani non ancora preparati, mette in coda quelli che mancano, **aspetta e scarica man mano che il server li prepara** (fino a 10 minuti, anche se si lascia la pagina) e **sopra «Avvisa sopra» fa la stessa domanda** del sync che suona (Scarica tutto · Limita a X GB · Annulla; «Limita» tiene i brani che stanno per suonare, poi l'ordine della playlist; **un «Annulla» vale per quella pressione**, non si ricorda). Finito, con l'app chiusa, arriva «Sync finito»: è una richiesta della persona (`DownloadOrigin.sync`), a differenza del download muto della playlist che suona.
+  - **Mentre lavora** l'icona diventa una rotellina (VoiceOver: «Scarico…: ancora 3 brani») e non si preme di nuovo; **finito**, la lista si rilegge (quello che il server ha preparato nel frattempo mostra il suo stato nuovo); se SoundReel non risponde, una riga lo dice («Non riesco a scaricare: …»).
+  - **I brani che la persona ha tolto dal telefono apposta restano fuori** (scelta mia, come nel controllo di U15: hanno «Riscarica» sulla riga); quelli bloccati (nessuna sorgente, errore del server) hanno il loro «Riprova» e «Link» e non si contano. Se questa scelta non va — «tutta» vuol dire proprio tutta — basta far scendere anche quelli, sempre dopo la domanda.
+  - **Cambia U12 in un punto:** «nessun sync in vista» vale per il sync **automatico**; il bottone **chiesto dalla persona** torna, con un nome che dice che cosa fa e non «Sync». La pagina continua a non avere contatori, la riga della rete o una barra in cima.
+
+### 12.3 Cosa cambia rispetto a prima
+
+- **U10:** l'elenco delle playlist non è più sempre «sul telefono prima»: è la scelta «Stato», quella da cui si parte. I brani di una playlist idem (la prima voce del menu).
+- **U12 e ADR-0029 (punto 3 e l'alternativa «A «Sync» button on each playlist page: removed»):** torna un bottone sulla pagina, quello che la persona chiede, e si chiama «Scarica tutta» (ADR-0031).
+- Le Impostazioni → Sync dicono che cos'è «Scarica tutta» e che i brani tolti a mano restano fuori.
+
+### 12.4 Come è stata costruita — scelte mie e cose da sapere
+
+- **Prove:** `SongSortTests` (le tabelle degli ordini e le date), `SortPreferencesTests`, `PlaylistStateSortTests` («Stato» chiede il server per data, carica tutte le pagine, si ferma se si sceglie altro, si ricorda), `LocalFirstTests` (la partizione dell'elenco nei due versi, e gli altri ordini che non si toccano), `PlaylistDownloadStateTests` (quando il bottone c'è e che cosa dice), `SizeQuestionPresenterTests`, `PlaylistDownloadAllTests` (il sync di una playlist con la domanda sopra il limite), `PlaylistPageStructureTests`; nel server `offlineManifest.test.ts` e `playlists.test.ts` (la data nel manifest).
+- **Dove sono i punti nuovi:** `MondropKit/SongSort.swift`, `SortPreferences.swift`, `PlaylistDownloadState.swift`, `PlaylistDownloadAll.swift`, `SizeQuestionPresenter.swift`; `PlaylistList.swift` (`PlaylistSort.state`, il modello), `LocalFirst.swift` (`PlaylistMarks.arranged`), `SyncModels.swift` (`addedAt`); nell'app `PlaylistsView.swift` (il menu, il bottone, la coda), `PlayingSyncHost.swift` (la domanda per la pagina), `SettingsView.swift`; nel server `services/playlists.ts` (`getPlaylistSongDates`) e `offlineManifest.ts`.
+- **Per guardarlo senza server** (solo DEBUG): `-MondropDemoSongSort state|playlist|name|added` e `-MondropDemoPlaylistSort state|created|updated|name|size` (+ `-MondropDemoSortReverse`) scelgono l'ordine come se la persona avesse toccato il menu; «Anni 80» ha le date e un mix di stati, e mostra «Scarica tutta».
+- **Non verificato:** su un **telefono vero** il menu, il bottone con una playlist lunga e il server che prepara davvero, e la domanda «Da scaricare…» sulla pagina; **«Data di aggiunta» con il server vero** (serve la 2.26.0 in produzione); il caricamento di tutte le pagine con più di 100 playlist.
+

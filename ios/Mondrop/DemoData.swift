@@ -69,8 +69,8 @@ enum DemoData {
         }
     }
 
-    private static func track(_ artist: String, _ title: String, state: String = "ready") -> OfflineTrack {
-        OfflineTrack(songKey: "\(artist.lowercased())::\(title.lowercased())", title: title, artist: artist, state: state)
+    private static func track(_ artist: String, _ title: String, state: String = "ready", added: String? = nil) -> OfflineTrack {
+        OfflineTrack(songKey: "\(artist.lowercased())::\(title.lowercased())", title: title, artist: artist, state: state, addedAt: added)
     }
 
     private static let recent = [
@@ -105,10 +105,10 @@ enum DemoData {
     /// Three of them are on the phone (they are in «Road trip» too), two are not: online.
     private static let topPlayed = Array(recent.prefix(3)) + [track("Queen", "Don't Stop Me Now"), track("Prince", "Kiss")]
     private static let eighties = [
-        track("Toto", "Africa"), track("a-ha", "Take On Me"),                       // on the phone
-        track("Michael Jackson", "Thriller"), track("Madonna", "Material Girl"),    // online
-        track("Duran Duran", "Rio", state: "failed"),                               // the server could not prepare it: an error
-        track("Cyndi Lauper", "Time After Time", state: "preparing"),                // online, the server is on it
+        track("Toto", "Africa", added: "2026-09-14T10:00:00.000Z"), track("a-ha", "Take On Me", added: "2026-09-14T10:00:00.000Z"),                // on the phone
+        track("Michael Jackson", "Thriller", added: "2026-09-20T18:30:00.000Z"), track("Madonna", "Material Girl", added: "2026-10-02T09:00:00.000Z"),    // online
+        track("Duran Duran", "Rio", state: "failed", added: "2026-10-15T21:10:00.000Z"),                                                         // the server could not prepare it: an error
+        track("Cyndi Lauper", "Time After Time", state: "preparing", added: "2026-11-01T12:00:00.000Z"),                                         // online, the server is on it
     ]
     private static let novemberReels = fresh
     /// A list longer than the screen, a third of it on the phone: to see the end of a page with the mini player over it.
@@ -176,8 +176,25 @@ enum DemoData {
 
     /// The queue the player starts with: «Playlist · Road trip», on its second song, a minute in. Written BEFORE the player exists: it
     /// restores it, paused, exactly as it does after the system closed the app.
+    /// `-MondropDemoSongSort state|playlist|name|added` and `-MondropDemoPlaylistSort state|created|updated|name|size` (+ `-MondropDemoSortReverse`): the order of the songs of a playlist and of
+    /// the list of playlists, as if the person had chosen it from the menu (the simulator driven from the command line cannot touch a menu). Without them: the first choice, «Stato».
+    static func seedSorts() {
+        guard isOn else { return }
+        func value(of flag: String) -> String? {
+            guard let at = arguments.firstIndex(of: flag), arguments.indices.contains(at + 1) else { return nil }
+            return arguments[at + 1]
+        }
+        let reverse = arguments.contains("-MondropDemoSortReverse")
+        let preferences = SortPreferences(defaults: Settings.shared.storage)
+        let songs = value(of: "-MondropDemoSongSort").flatMap(SongSort.init(rawValue:)) ?? .state
+        preferences.songs = (songs, reverse ? (songs.naturalOrder == .asc ? .desc : .asc) : songs.naturalOrder)
+        let lists = value(of: "-MondropDemoPlaylistSort").flatMap(PlaylistSort.init(rawValue:)) ?? .state
+        preferences.playlists = (lists, reverse ? (lists.naturalOrder == .asc ? .desc : .asc) : lists.naturalOrder)
+    }
+
     static func seedQueue() {
         guard isOn else { return }
+        seedSorts()
         let items = recent.map { QueueItem(track: $0) }
         let store = QueueSnapshotStore()
         store.save(QueueSnapshot.make(queue: items, index: 1, label: "Playlist · Road trip", playlistId: "p1"))

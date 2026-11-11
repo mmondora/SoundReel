@@ -67,8 +67,15 @@ final class PlaylistListTests: XCTestCase {
 
     @MainActor private func ids(_ model: PlaylistListModel) -> [String] { model.items.map(\.id) }
 
+    /// These tests are about the pages the SERVER cuts for the sorts it knows: they start from the date of creation, the way the list opened before «Stato» existed
+    /// (`PlaylistStateSortTests` has the state sort, the whole list it loads and the choice that is kept).
     @MainActor private func model(_ transport: FakePlaylistTransport, pageSize: Int = 30, delay: UInt64 = 0) -> PlaylistListModel {
-        PlaylistListModel(transport: transport, pageSize: pageSize, searchDelay: delay)
+        let name = "mondrop.test.playlistlist.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        addTeardownBlock { suite.removePersistentDomain(forName: name) }
+        let preferences = SortPreferences(defaults: suite)
+        preferences.playlists = (.created, .desc)
+        return PlaylistListModel(transport: transport, pageSize: pageSize, searchDelay: delay, preferences: preferences)
     }
 
     // MARK: the question

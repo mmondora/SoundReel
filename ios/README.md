@@ -289,6 +289,18 @@ Spec `docs/superpowers/specs/2026-11-10-mondrop-simplify-playlists-and-song-stat
 - **Non cambia il server** e non cambia la regola P (l'ordine decide quando scende un file pronto, non da dove). **Limite noto:** la preparazione sul server resta nell'ordine della playlist.
 - **Test** nuovi: `UpcomingOrderTests`, `SyncOrderTests`, e le aggiunte a `PlaybackContextTests`, `PlayingPlaylistSyncTests`, `PlaylistConsistencyTests`, `SimplifiedAppStructureTests`, `SyncSizeGuardTests`.
 
+### Dopo la build 18: la build 19 — ordinamenti e «Scarica tutta» (11 novembre)
+
+Spec `docs/superpowers/specs/2026-11-10-mondrop-simplify-playlists-and-song-states-design.md` §12 (U17–U20) · ADR-0031. Michele: «Voglio in tutte le playlist anche degli ordinamenti tipo : data di creazione, nome, stato ( locali o online ). Inoltre su una playlist voglio anche il bottone 'scarica tutta'» — e, alla mia domanda su dove, «Tutti e due».
+
+- **L'elenco delle playlist** (`PlaylistsView.swift`, `PlaylistList.swift`): «Stato (sul telefono / online)» è la prima voce del menu e quella da cui si apre (**Sul telefono prima** / **Online prima**, dentro ogni gruppo la data di creazione); con gli altri ordinamenti l'elenco è **quello del server, senza il «sul telefono prima» davanti** (`PlaylistMarks.arranged`).
+  Al server non si dice «stato» (`sort=created&order=desc`) e «Stato» **chiede tutte le pagine** (da 100): una partizione per stato è giusta solo sull'elenco intero. La scelta si ricorda (`SortPreferences`).
+- **I brani di una playlist:** il menu «Ordina» (icona in alto a destra; `SongSort`): **Stato** (si parte da qui), **Ordine della playlist**, **Nome**, **Data di aggiunta** (solo se SoundReel manda `addedAt`: serve il server 2.26.0), ognuno col suo verso. **La coda segue lo schermo**; «Mescola» come prima.
+- **«Scarica tutta»** (`PlaylistDownloadAll`, `PlaylistDownloadState`, `SizeQuestionPresenter`): sulla stessa riga di «Suona» e «Mescola», **tutti e tre solo icona** (`MondropIconPillStyle`; le parole restano per VoiceOver, che dice anche cosa porterebbe: «Scarica tutta: 5 brani · 420 MB»), prepara, scarica man mano che il server è pronto, e sopra «Avvisa sopra» fa la domanda (Scarica tutto · Limita · Annulla; un «Annulla» vale per quella pressione); a fine lavoro con l'app chiusa «Sync finito».
+  Non c'è se non c'è niente che possa arrivare; i brani tolti dal telefono apposta restano fuori («Riscarica»).
+- **Per guardarlo senza server** (solo DEBUG): `-MondropDemoSongSort state|playlist|name|added`, `-MondropDemoPlaylistSort state|created|updated|name|size`, `-MondropDemoSortReverse` (con `-MondropDemoPush playlist`: «Anni 80», con le date e un mix di stati).
+- **Test** nuovi: `SongSortTests`, `SortPreferencesTests`, `PlaylistStateSortTests`, `PlaylistDownloadStateTests`, `SizeQuestionPresenterTests`, `PlaylistDownloadAllTests`, `PlaylistPageStructureTests`, e le aggiunte a `LocalFirstTests`, `PlaylistListTests`, `PhoneFirstStructureTests`, `SimplifiedAppStructureTests`.
+
 ## I testi delle canzoni (1.7.0 build 10 e 11 · SoundReel 2.19.0 e 2.19.1)
 
 Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/songs/:songKey/lyrics») · ADR-0021 · spec `docs/superpowers/specs/2026-11-08-lyrics-from-the-internet-design.md`

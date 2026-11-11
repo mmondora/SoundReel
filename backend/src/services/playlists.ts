@@ -110,6 +110,18 @@ export async function firstSongKeys(playlistIds: string[], perPlaylist = 4): Pro
   return out;
 }
 
+/**
+ * When each song was put in a playlist, by song key (ISO, UTC): the date Mondrop sorts the songs of a playlist by (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md
+ * §12 U19). One query for the playlist; a dynamic playlist has no stored songs, so its caller does not ask.
+ */
+export async function getPlaylistSongDates(playlistId: string): Promise<Map<string, string>> {
+  const result = await pool.query<{ song_key: string; added_at: Date | string }>(
+    `SELECT song_key, added_at FROM playlist_songs WHERE playlist_id = $1`,
+    [playlistId],
+  );
+  return new Map(result.rows.map((row) => [row.song_key, toIso(row.added_at)]));
+}
+
 export async function getPlaylist(
   id: string,
   visibility?: PlaylistVisibility,

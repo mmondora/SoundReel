@@ -146,11 +146,12 @@ final class SimplifiedAppStructureTests: XCTestCase {
         XCTAssertTrue(settings.contains("nell'ordine in cui stanno per suonare"))
     }
 
-    func testOnlyTheSyncOfThePlayingPlaylistBuildsAGatedSync() throws {
-        // a gate is what turns «prepare and download» into «prepare, ask over the limit, download»: the «Sync» inside a playlist has none
+    func testOnlyThePlayingPlaylistAndTheDownloadAllButtonBuildAGatedSync() throws {
+        // a gate is what turns «prepare and download» into «prepare, ask over the limit, download»: the playlist that plays has one, and so has the «Scarica tutta» that the person
+        // presses on a playlist (§12, U20: Michele, 11 November, «il bottone 'scarica tutta'»); nothing else asks
         var users: [String] = []
         for file in try appFiles() + (try kitFiles()) where try code(file).contains("gate: gate") { users.append(file) }
-        XCTAssertEqual(users, ["MondropKit/PlayingPlaylistSync.swift"])
+        XCTAssertEqual(users.sorted(), ["MondropKit/PlayingPlaylistSync.swift", "MondropKit/PlaylistDownloadAll.swift"])
     }
 
     func testTheSettingsSayThatTheSyncIsTheOneOfThePlaylistThatPlays() throws {

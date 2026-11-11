@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => ({
   getPlaylist: vi.fn(),
+  getPlaylistSongDates: vi.fn(),
   getUserSongs: vi.fn(),
   findLibraryMatch: vi.fn(),
   findMediaServerMatch: vi.fn(),
@@ -29,7 +30,7 @@ const m = vi.hoisted(() => ({
   findLyricsOnline: vi.fn(),
 }));
 vi.mock('../utils/db', () => ({ getEntry: m.getEntry, query: m.query }));
-vi.mock('./playlists', () => ({ getPlaylist: m.getPlaylist }));
+vi.mock('./playlists', () => ({ getPlaylist: m.getPlaylist, getPlaylistSongDates: m.getPlaylistSongDates }));
 vi.mock('./userSongs', () => ({ getUserSongs: m.getUserSongs }));
 vi.mock('./listeningStats', () => ({ getSongPlayStats: m.getSongPlayStats }));
 vi.mock('./playlistResolver', () => ({ resolveDetail: m.resolveDetail }));
@@ -94,6 +95,7 @@ beforeEach(async () => {
   lib = await mkdtemp(path.join(tmpdir(), 'manifest-lib-'));
   process.env.MUSIC_LIBRARY_PATH = lib;
   m.getPlaylist.mockResolvedValue({ id: 'p1', name: 'Auto', songKeys: [KEY] });
+  m.getPlaylistSongDates.mockResolvedValue(new Map()); // no recorded dates unless a test says so
   m.getUserSongs.mockResolvedValue(new Map([[KEY, song()]]));
   m.getSongFiles.mockResolvedValue(new Map());
   m.getSongFile.mockResolvedValue(null);
@@ -161,6 +163,60 @@ describe('manifest: listening numbers and dynamic playlists (docs/mondrop-stats.
     await preparePlaylist('d1', 'mike');
     expect(m.enqueueSongDownload).toHaveBeenCalledTimes(1);
     expect(m.enqueueSongDownload).toHaveBeenCalledWith(expect.objectContaining({ songKey: KEY, priority: PRIORITY_SYNC }));
+  });
+});
+
+describe('manifest: when each song was put in the playlist (spec …-simplify-playlists-and-song-states-design.md §12 U19, SoundReel 2.26.0)', () => {
+  // Michele, 11 November: «Voglio in tutte le playlist anche degli ordinamenti tipo : data di creazione, nome, stato ( locali o online )»: Mondrop sorts the songs of a playlist by the date
+  // they were added, and only SoundReel knows it.
+  it('a hand-made or automatic playlist tells when each song was put in it (`addedAt`, ISO UTC)', async () => {
+    m.getUserSongs.mockResolvedValue(new Map([[KEY, song()], ['a::b', song({ songKey: 'a::b', title: 'B', artist: 'A' })]]));
+    m.getPlaylist.mockResolvedValue({ id: 'p1', name: 'Auto', songKeys: [KEY, 'a::b'] });
+    m.getPlaylistSongDates.mockResolvedValue(new Map([[KEY, '2026-11-05T10:00:00.000Z'], ['a::b', '2026-11-07T08:30:00.000Z']]));
+    const tracks = (await buildPlaylistOfflineManifest('p1', 'mike'))!.tracks;
+    expect(tracks.map((t) => [t.songKey, t.addedAt])).toEqual([[KEY, '2026-11-05T10:00:00.000Z'], ['a::b', '2026-11-07T08:30:00.000Z']]);
+    expect(m.getPlaylistSongDates).toHaveBeenCalledWith('p1');
+  });
+
+  it('a song with no recorded date has no `addedAt` at all (an older app and a strict comparison see the track as before)', async () => {
+    const track = await manifestTrack();
+    expect('addedAt' in track).toBe(false);
+  });
+
+  it('the placeholder of a song SoundReel does not know is dated too: it is in the playlist', async () => {
+    m.getPlaylist.mockResolvedValue({ id: 'p1', name: 'Auto', songKeys: ['ghost::song'] });
+    m.getPlaylistSongDates.mockResolvedValue(new Map([['ghost::song', '2026-11-05T10:00:00.000Z']]));
+    expect(await manifestTrack()).toMatchObject({ songKey: 'ghost::song', state: 'missing', addedAt: '2026-11-05T10:00:00.000Z' });
+  });
+
+  it('a dynamic playlist has no dates — its rule decides what is in it now — and the table is not even read', async () => {
+    m.getPlaylist.mockResolvedValue({ id: 'd1', name: 'Notte', kind: 'dynamic', songKeys: ['stale::song'] });
+    m.resolveDetail.mockResolvedValue({ id: 'd1', name: 'Notte', kind: 'dynamic', songKeys: [KEY], songCount: 1, generatedAt: '2026-11-08T22:00:00.000Z' });
+    m.getPlaylistSongDates.mockResolvedValue(new Map([[KEY, '2026-11-05T10:00:00.000Z']]));
+    const manifest = (await buildPlaylistOfflineManifest('d1', 'mike'))!;
+    expect(manifest.tracks.map((t) => 'addedAt' in t)).toEqual([false]);
+    expect(m.getPlaylistSongDates).not.toHaveBeenCalled();
+  });
+
+  it('a failure reading the dates never breaks the manifest: it only costs the dates', async () => {
+    m.getPlaylistSongDates.mockRejectedValue(new Error('db down'));
+    const track = await manifestTrack();
+    expect(track).toMatchObject({ songKey: KEY, state: 'missing' });
+    expect('addedAt' in track).toBe(false);
+  });
+
+  it('preparing a playlist answers with the same dated manifest', async () => {
+    m.getPlaylistSongDates.mockResolvedValue(new Map([[KEY, '2026-11-05T10:00:00.000Z']]));
+    const manifest = (await preparePlaylist('p1', 'mike'))!;
+    expect(manifest.tracks[0].addedAt).toBe('2026-11-05T10:00:00.000Z');
+  });
+
+  it('the library, one song and a page of tracks carry no date: only a playlist has a date of addition', async () => {
+    m.getPlaylistSongDates.mockResolvedValue(new Map([[KEY, '2026-11-05T10:00:00.000Z']]));
+    expect('addedAt' in (await getTrack(KEY, 'mike'))!).toBe(false);
+    const [built] = await buildTracks([song()], 'mike');
+    expect('addedAt' in built).toBe(false);
+    expect(m.getPlaylistSongDates).not.toHaveBeenCalled();
   });
 });
 

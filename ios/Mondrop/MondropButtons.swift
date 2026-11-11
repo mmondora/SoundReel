@@ -24,3 +24,22 @@ struct MondropPillStyle: ButtonStyle {
             .contentShape(Capsule())
     }
 }
+
+/// A capsule with only an icon in it, the size of a finger: the row of the page of a playlist holds «Suona», «Mescola» and «Scarica tutta» on ONE line (Michele, 11 November: «I bottoni
+/// devono stare sulla strada riga. Piuttosto metti solo icona.»). The label keeps its words for VoiceOver (`Label` with `.labelStyle(.iconOnly)`); the colours are the ones of `MondropPillStyle`.
+struct MondropIconPillStyle: ButtonStyle {
+    let prominent: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(prominent ? Color(MondropPalette.onAccent) : Color(MondropPalette.text))
+            .frame(minWidth: 64, minHeight: 44)
+            .background(
+                prominent ? Color(MondropPalette.accent) : Color.white.opacity(configuration.isPressed ? 0.22 : MondropPalette.pillFillOpacity),
+                in: Capsule()
+            )
+            .opacity(prominent && configuration.isPressed ? 0.8 : 1)
+            .contentShape(Capsule())
+    }
+}
