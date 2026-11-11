@@ -1,7 +1,8 @@
 // PlayingSyncHost.swift — the sync of the playlist that PLAYS (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U2; Michele, 11 November:
 // «Il sync deve girare solo per playlist che sto suonando. Non di tutti in assoluto.»), wired to the real backend, engine and Settings, and the question it asks
 // before a big download: «Da scaricare 3,4 GB (812 brani)» — Scarica tutto · Limita a X GB · Annulla.
-// What decides is pure code in MondropKit (`PlaylistSyncTrigger`, `SyncSizeGuard`, `PlayingSyncGate`, `PlayingPlaylistSync`); this file only connects it.
+// And the check of the playlists the phone holds (Michele, 11 November: «Voglio un check di consistenza con sync sulle impostazioni…», U15), with the same question.
+// What decides is pure code in MondropKit (`PlaylistSyncTrigger`, `SyncSizeGuard`, `PlayingSyncGate`, `PlayingPlaylistSync`, `PlaylistConsistencyCheck`); this file only connects it.
 
 import SwiftUI
 
@@ -14,36 +15,48 @@ extension PlayingPlaylistSync {
         limit: { Settings.shared.syncWarnLimit },
         hasKey: { !Settings.shared.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },
         activity: .shared,
-        // Only what the share sheet offers is refreshed here. iOS is asked for notifications when the user presses «Sync» inside a playlist, never behind their back.
-        onSyncStarted: { Task { await InboxWiring.refreshPlaylistsCache() } }
+        // Only what the share sheet offers is refreshed here. iOS is asked for notifications when the user asks for a sync of their own (the check in the Settings, a «Riprova»
+        // on a song), never behind their back.
+        onSyncStarted: { Task { await InboxWiring.refreshPlaylistsCache() } },
+        // the list of the playlist that plays is kept, so that its page opens with it
+        cache: FilePlaylistManifestCache.shared
     )
 }
 
-/// The question, over whatever screen the user is on: the sync starts when a playlist begins to play, wherever the user is.
+extension PlaylistConsistencyCheck {
+    /// The one check of the app: the button in the Settings starts it, and the Settings put its question on the display.
+    @MainActor
+    static let shared = PlaylistConsistencyCheck(
+        api: MondropAPI(),
+        engine: .shared,
+        limit: { Settings.shared.syncWarnLimit },
+        hasKey: { !Settings.shared.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },
+        cache: FilePlaylistManifestCache.shared,
+        activity: .shared
+    )
+}
+
+/// The question of a big download, over whatever screen the user is on: «Da scaricare 3,4 GB (812 brani)» — Scarica tutto · Limita a X GB · Annulla.
 private struct SyncSizeDialogHost: ViewModifier {
-    @ObservedObject var sync: PlayingPlaylistSync
+    let question: SyncSizeQuestion?
     /// The Player covers the screen: a dialog cannot come up over it, so the question waits (the sync with it) until the Player is closed.
     let suppressed: Bool
-
-    private var question: SyncSizeQuestion? {
-        if case .asking(let question) = sync.phase { return question }
-        return nil
-    }
+    let answer: (SyncSizeChoice) -> Void
 
     func body(content: Content) -> some View {
         content.confirmationDialog(
             question?.title ?? "",
             isPresented: Binding(
                 get: { question != nil && !suppressed },
-                // Dismissing the sheet without a choice is «Annulla»; an answer that comes after a choice is ignored by the coordinator.
-                set: { shown in if !shown, question != nil, !suppressed { sync.answer(.cancel) } }
+                // Dismissing the sheet without a choice is «Annulla»; an answer that comes after a choice is ignored by whoever asked.
+                set: { shown in if !shown, question != nil, !suppressed { answer(.cancel) } }
             ),
             titleVisibility: .visible
         ) {
             if let question {
-                Button(question.allButtonTitle) { sync.answer(.all) }
-                Button(question.limitButtonTitle) { sync.answer(.limit) }
-                Button(question.cancelButtonTitle, role: .cancel) { sync.answer(.cancel) }
+                Button(question.allButtonTitle) { answer(.all) }
+                Button(question.limitButtonTitle) { answer(.limit) }
+                Button(question.cancelButtonTitle, role: .cancel) { answer(.cancel) }
             }
         } message: {
             if let question { Text(question.message) }
@@ -52,7 +65,13 @@ private struct SyncSizeDialogHost: ViewModifier {
 }
 
 extension View {
+    /// The question of the sync of the playlist that plays (the root screen: it can come up wherever the user is).
     func syncSizeDialog(_ sync: PlayingPlaylistSync, suppressed: Bool) -> some View {
-        modifier(SyncSizeDialogHost(sync: sync, suppressed: suppressed))
+        modifier(SyncSizeDialogHost(question: sync.question, suppressed: suppressed, answer: { sync.answer($0) }))
+    }
+
+    /// The question of the check of the playlists (the Settings).
+    func syncSizeDialog(_ check: PlaylistConsistencyCheck) -> some View {
+        modifier(SyncSizeDialogHost(question: check.question, suppressed: false, answer: { check.answer($0) }))
     }
 }

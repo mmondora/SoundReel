@@ -20,6 +20,9 @@ struct SettingsView: View {
     @State private var notificationPermission: NotificationPermission?
     @ObservedObject private var push = PushRegistrar.shared
     @ObservedObject private var net = NetStatus.shared
+    /// The check of the playlists the phone holds, and the downloads it starts (the one place where the sync is visible: Michele, 11 November, U15).
+    @ObservedObject private var check = PlaylistConsistencyCheck.shared
+    @ObservedObject private var engine = SyncEngine.shared
     @ObservedObject private var uploader = EventUploader.shared
     @ObservedObject private var commands = RemoteCommandLog.shared
     @State private var commandsOpen = false
@@ -119,9 +122,11 @@ struct SettingsView: View {
             deletionSection
         }
         .navigationTitle("Impostazioni")
+        .withMiniPlayer()
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .syncSizeDialog(check)
         .onAppear {
             if username.isEmpty {
                 username = Settings.suggestAutheliaUsername()
@@ -156,14 +161,14 @@ struct SettingsView: View {
             .onChange(of: syncWarn) { _, newValue in
                 Settings.shared.syncWarnLimit = newValue
             }
-            Toggle("Avvisami a sync finito", isOn: $notifyWhenDone)
+            Toggle("Avvisami quando finisce il controllo", isOn: $notifyWhenDone)
                 .onChange(of: notifyWhenDone) { _, newValue in
                     Settings.shared.syncNotificationsEnabled = newValue
                     // Asked when the switch is turned on (or at the first Sync), never behind the user's back.
                     if newValue { Task { await SyncNotifier.shared.ensurePermission(); await refreshNotificationPermission() } }
                 }
             if notifyWhenDone && notificationPermission == .denied {
-                Text("Le notifiche di Mondrop sono disattivate nelle Impostazioni di iOS: il Sync funziona lo stesso, ma non ti avviso quando finisce.")
+                Text("Le notifiche di Mondrop sono disattivate nelle Impostazioni di iOS: il controllo funziona lo stesso, ma non ti avviso quando finisce.")
                     .font(.footnote)
                     .foregroundStyle(.orange)
                 #if os(iOS)
@@ -172,6 +177,7 @@ struct SettingsView: View {
                 }
                 #endif
             }
+            consistencyRow
             HStack {
                 Text("Rete: \(net.checking ? "controllo…" : net.label)")
                 Spacer()
@@ -184,7 +190,53 @@ struct SettingsView: View {
         } header: {
             Text("Sync")
         } footer: {
-            Text("Quando suoni una playlist, Mondrop scarica in background i brani che mancano sul telefono: quelli che non ci sono ancora li senti online e diventano «sul telefono» man mano. Se sono più di «Avvisa sopra» ti chiede prima: scarica tutto, limita o annulla (annulla: per quella playlist non lo richiede finché non riapri l'app). Non scarica niente per le playlist che non suoni, né per i brani messi in coda da Cerca; il «Sync» dentro una playlist lo fai tu a mano. I download usano solo il Wi-Fi, salvo che attivi la rete cellulare. I brani arrivano sempre e solo da SoundReel, a casa e fuori casa. Quando un Sync finisce e l'app non è aperta ti arriva una notifica con quanti brani sono stati scaricati e quanti errori ci sono (iOS lo chiede la prima volta che premi «Sync» in una playlist). Quanto pesano i brani e come toglierli: in «Cancellazione», qui sotto.")
+            Text("Quando suoni una playlist, Mondrop scarica in background i brani che mancano sul telefono: quelli che non ci sono ancora li senti online e diventano «sul telefono» man mano. Se sono più di «Avvisa sopra» ti chiede prima: scarica tutto, limita o annulla (annulla: per quella playlist non lo richiede finché non riapri l'app). Non scarica niente per le playlist che non suoni, né per i brani messi in coda da Cerca. «Controlla le playlist sul telefono» guarda le playlist che hai sul telefono (complete o quasi), chiede a SoundReel cosa hanno adesso e scarica i brani che mancano o che non sono completi; i brani che hai cancellato tu non li riscarica. Se sono più di «Avvisa sopra» chiede una volta sola per tutto il controllo. I download usano solo il Wi-Fi, salvo che attivi la rete cellulare. I brani arrivano sempre e solo da SoundReel, a casa e fuori casa. Quando il controllo finisce e l'app non è aperta ti arriva una notifica con quanti brani sono stati scaricati e quanti errori ci sono. Quanto pesano i brani e come toglierli: in «Cancellazione», qui sotto.")
+        }
+    }
+
+    /// «Controlla le playlist sul telefono»: the check of what the phone holds (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U15), and where it
+    /// is while it runs. The downloads it starts go on in the background; this row says how many are left.
+    @ViewBuilder
+    private var consistencyRow: some View {
+        Button {
+            Task { await SyncNotifier.shared.ensurePermission() }       // asked now, once: the user has just asked for something that can take a while
+            check.start()
+        } label: {
+            Label("Controlla le playlist sul telefono", systemImage: "arrow.triangle.2.circlepath")
+        }
+        .disabled(check.isBusy)
+        .id("consistencyRow")
+        switch check.phase {
+        case .idle:
+            EmptyView()
+        case .checking(let done, let total):
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(total > 0 ? "Controllo \(done) di \(total) playlist…" : "Leggo le playlist…").font(.footnote)
+                Spacer(minLength: 0)
+                Button("Annulla") { check.cancel() }.font(.footnote)
+            }
+        case .asking:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Aspetto la tua risposta…").font(.footnote)
+            }
+        case .finished(let report):
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(report.lines, id: \.self) { Text($0).font(.footnote) }
+                let left = engine.activeCount + engine.queuedCount
+                if left > 0 {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Download in corso: ancora \(left) \(left == 1 ? "brano" : "brani").").font(.footnote)
+                    }
+                    if WifiHint.isWaitingForWifi(onExpensivePath: net.onExpensivePath, allowCellular: allowCellular, activeDownloads: engine.activeCount) {
+                        Text("In attesa del Wi-Fi: la rete cellulare è disattivata per i download (qui sopra).")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
         }
     }
 

@@ -40,6 +40,10 @@ public final class PlaylistSyncCoordinator: ObservableObject {
     private let activity: SyncActivity?
     private let onSyncStarted: @MainActor () -> Void
     private let gate: DownloadGate?
+    /// What the phone kept of this playlist the last time it read it: the page has its list in the first frame (`PlaylistManifestCache`). nil keeps nothing.
+    private let cache: PlaylistManifestCaching?
+    /// Why the songs this sync queues are downloaded: `.sync` is announced when it ends («Sync finito»), `.automatic` is not.
+    private let origin: DownloadOrigin
 
     /// Playlists the user pressed Sync on during this app run: if the view is reopened while the server is
     /// still preparing them, polling resumes WITH downloads (otherwise reopening only refreshes the list).
@@ -54,7 +58,9 @@ public final class PlaylistSyncCoordinator: ObservableObject {
         pollTimeout: TimeInterval = 600,
         activity: SyncActivity? = nil,
         onSyncStarted: @escaping @MainActor () -> Void = {},
-        gate: DownloadGate? = nil
+        gate: DownloadGate? = nil,
+        cache: PlaylistManifestCaching? = nil,
+        origin: DownloadOrigin = .sync
     ) {
         self.playlist = playlist
         self.api = api
@@ -65,6 +71,9 @@ public final class PlaylistSyncCoordinator: ObservableObject {
         self.activity = activity
         self.onSyncStarted = onSyncStarted
         self.gate = gate
+        self.cache = cache
+        self.origin = origin
+        self.manifest = cache?.load(playlistId: playlist.id)
     }
 
     public var isBusy: Bool { phase != .idle }
@@ -184,21 +193,20 @@ public final class PlaylistSyncCoordinator: ObservableObject {
     /// Queues what the sync wants. With a gate the gate decides which of the songs to download go (it may ask the user first and wait for the answer); a file the
     /// phone already has is adopted either way (bookkeeping, not a download). A sync that was cancelled while the gate was thinking queues nothing.
     private func enqueue(_ manifest: OfflineManifest) async -> SyncPlan {
-        guard let gate else { return engine.enqueue(manifest.tracks) }
+        guard let gate else { return engine.enqueue(manifest.tracks, origin: origin) }
         let plan = engine.plan(manifest.tracks)
         let adopt = manifest.tracks.filter { plan.adopt.contains($0.songKey) }
         let admitted = await gate.admit(plan.download, in: manifest)
         guard !Task.isCancelled else { return plan }
-        if !adopt.isEmpty || !admitted.isEmpty { engine.enqueue(adopt + admitted) }
+        if !adopt.isEmpty || !admitted.isEmpty { engine.enqueue(adopt + admitted, origin: origin) }
         return plan
     }
 
     private func accept(_ next: OfflineManifest) {
         manifest = next
-        engine.store.recordPlaylist(id: playlist.id, name: next.name, songKeys: next.tracks.map(\.songKey), failedKeys: next.failedKeys)
-        engine.store.recordServerNumbers(from: next)      // plays / lastPlayedAt for the "meno ascoltate" ranking
-        engine.store.recordMetadata(from: next.tracks)    // album / genres / year: «Libreria» browses the phone offline
-        activity?.observe(next.tracks)                    // the line at the top: how many the server is preparing
+        cache?.save(next)                                 // the next opening of the page has this list at once
+        engine.store.remember(next, id: playlist.id)
+        activity?.observe(next.tracks)                    // how many songs the server is preparing (the notification of a finished sync waits for them)
     }
 
     /// "Riscarica": the user wants a song they deleted back. Clears the skip-list entry and downloads it now.
@@ -233,6 +241,16 @@ public final class PlaylistSyncCoordinator: ObservableObject {
     }
 }
 
+extension OfflineStore {
+    /// The phone has just read this playlist: what it holds (the marks of the lists and the orphans read it), the server's listening numbers («meno ascoltate») and
+    /// the album / genres / year of the songs it already has («Libreria» browses the phone offline).
+    public func remember(_ manifest: OfflineManifest, id: String? = nil) {
+        recordPlaylist(id: id ?? manifest.playlistId, name: manifest.name, songKeys: manifest.tracks.map(\.songKey), failedKeys: manifest.failedKeys)
+        recordServerNumbers(from: manifest)
+        recordMetadata(from: manifest.tracks)
+    }
+}
+
 // MARK: - Taking a song out of the list
 
 extension PlaylistSyncCoordinator {
@@ -251,6 +269,7 @@ extension PlaylistSyncCoordinator {
             let ack = try await remover.removeSong(songKey: songKey, fromPlaylist: playlist.id)
             let now = manifest ?? before
             engine.store.recordPlaylist(id: playlist.id, name: now.name, songKeys: now.tracks.map(\.songKey), failedKeys: now.failedKeys)
+            cache?.save(now)
             let name = ack.name.isBlank ? now.name : ack.name
             return .removed("Tolto da «\(name)»")
         } catch {

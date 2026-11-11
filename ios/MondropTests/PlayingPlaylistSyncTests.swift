@@ -120,6 +120,38 @@ final class PlayingPlaylistSyncTests: XCTestCase {
         XCTAssertEqual(r.box.started, 1)
     }
 
+    func testThePlaylistThatPlaysDownloadsWithoutAnyAnnouncementAtTheEnd() async throws {
+        // «Nessun sync evidente, tutto automatico» (Michele, 11 November): no «Sync finito» for a playlist that was only played
+        let r = try make()
+        script(r.api, "a", ["a1", "a2"])
+        var announced = 0
+        r.engine.onBatchFinished = { _ in announced += 1 }
+        r.sync.playbackChanged(ctx(true, "a"))
+        await r.sync.settledOrFail()
+        XCTAssertEqual(queued(r), ["a1", "a2"])
+        for job in r.engineRig.transport.started { try r.engineRig.finish(job.info) }
+        XCTAssertNotNil(r.engineRig.store.fileURL(songKey: "a1"))
+        XCTAssertNotNil(r.engineRig.store.fileURL(songKey: "a2"))
+        XCTAssertEqual(announced, 0)
+    }
+
+    func testTheListOfThePlaylistThatPlaysIsKeptForItsPage() async throws {
+        let engineRig = try EngineRig()
+        let api = FakeAPI()
+        final class Cache: PlaylistManifestCaching, @unchecked Sendable {
+            var saved: [String: OfflineManifest] = [:]
+            func load(playlistId: String) -> OfflineManifest? { saved[playlistId] }
+            func save(_ manifest: OfflineManifest) { saved[manifest.playlistId] = manifest }
+            func prune(keeping ids: Set<String>) {}
+        }
+        let cache = Cache()
+        let sync = PlayingPlaylistSync(api: api, engine: engineRig.engine, limit: { .gb2 }, hasKey: { true }, clock: FakeClock().clock, cache: cache)
+        script(api, "a", ["a1", "a2"])
+        sync.playbackChanged(ctx(true, "a"))
+        await sync.settledOrFail()
+        XCTAssertEqual(cache.saved["a"]?.tracks.map(\.songKey), ["a1", "a2"], "the page of the playlist that plays opens with its list")
+    }
+
     func testTheSongsAlreadyOnThePhoneAreNotDownloadedAgain() async throws {
         let r = try make()
         script(r.api, "a", ["on", "off"])

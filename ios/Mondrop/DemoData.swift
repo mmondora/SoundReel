@@ -34,6 +34,15 @@ enum DemoData {
     }
     /// `-MondropDemoCommands`: the list of the commands received (Settings) has a few lines, as after a drive, and is open.
     static var showsCommands: Bool { isOn && arguments.contains("-MondropDemoCommands") }
+    /// `-MondropDemoSyncSettings`: the Settings scroll to the check of the playlists; `-MondropDemoCheck` also presses it (with no key and no server it says why it cannot).
+    static var showsSyncSettings: Bool { isOn && (arguments.contains("-MondropDemoSyncSettings") || arguments.contains("-MondropDemoCheck")) }
+    static var runsCheck: Bool { isOn && arguments.contains("-MondropDemoCheck") }
+    /// `-MondropDemoPlaying`: the demo queue is shown as if the user had started it (the mini player is there only while something is in play).
+    static var startsPlaying: Bool { isOn && arguments.contains("-MondropDemoPlaying") }
+    /// `-MondropDemoKeepBar`: the mini player does not slide away while a page scrolls (to look at the end of a list with the bar over it).
+    static var keepsBar: Bool { isOn && arguments.contains("-MondropDemoKeepBar") }
+    /// `-MondropDemoMetrics`: the page of a playlist shows the numbers of its scrolling view (content height, insets), to check the room left for the mini player.
+    static var showsMetrics: Bool { isOn && arguments.contains("-MondropDemoMetrics") }
     /// `-MondropDemoQueueSheet` opens «In coda» on the Player: the rows of the songs, with the hearts of the liked ones.
     static var opensQueueSheet: Bool { isOn && arguments.contains("-MondropDemoQueueSheet") }
     /// The Home pushes the whole list of the playlists: `-MondropDemoPush allplaylists`, or the old `-MondropDemoTab playlists`.
@@ -75,11 +84,12 @@ enum DemoData {
     ]
 
     static let home = HomeResponse(user: "mike", displayName: "Michele", sections: [
+        // the server's order has the playlist that is only online first: the phone puts the one it holds in front (`LocalFirst`)
         HomeSection(id: "playlists", title: "Le tue playlist", kind: .playlists, playlists: [
-            HomePlaylist(id: "p1", name: "Road trip", songCount: 7, kind: "static", canEdit: true, coverKeys: recent.prefix(4).map(\.songKey)),
+            HomePlaylist(id: "p4", name: "Reel di novembre", songCount: 12, kind: "static", canEdit: true, coverKeys: fresh.prefix(4).map(\.songKey)),
             HomePlaylist(id: "p2", name: "Più ascoltate", songCount: 24, kind: "dynamic", ruleSummary: "Più ascoltate · ultimi 30 giorni"),
             HomePlaylist(id: "p3", name: "Anni 80", songCount: 41, kind: "static", canEdit: true, coverKeys: [recent[3].songKey]),
-            HomePlaylist(id: "p4", name: "Reel di novembre", songCount: 12, kind: "static", canEdit: true, coverKeys: fresh.prefix(4).map(\.songKey)),
+            HomePlaylist(id: "p1", name: "Road trip", songCount: 7, kind: "static", canEdit: true, coverKeys: recent.prefix(4).map(\.songKey)),
         ]),
         HomeSection(id: "recent", title: "Ascoltati di recente", kind: .tracks, tracks: recent),
         HomeSection(id: "fresh", title: "Nuovi dai tuoi reel", kind: .tracks, tracks: fresh),
@@ -101,25 +111,27 @@ enum DemoData {
         track("Cyndi Lauper", "Time After Time", state: "preparing"),                // online, the server is on it
     ]
     private static let novemberReels = fresh
+    /// A list longer than the screen, a third of it on the phone: to see the end of a page with the mini player over it.
+    private static let longList = (1...40).map { track("Artista \($0)", "Brano \($0)", state: $0 % 4 == 0 ? "failed" : "ready") }
 
     /// The songs of each playlist, as its manifest says.
-    static let playlistTracks: [String: [OfflineTrack]] = ["p1": roadTrip, "p2": topPlayed, "p3": eighties, "p4": novemberReels]
+    static let playlistTracks: [String: [OfflineTrack]] = ["p1": roadTrip, "p2": topPlayed, "p3": eighties, "p4": novemberReels, "p6": longList]
 
     /// Which of them are on the phone: the whole of «Road trip» (a tick on its card); that makes three of the most played and two of the eighties; none of the reels.
-    private static let onPhone: Set<String> = Set(roadTrip.map(\.songKey))
+    private static let onPhone: Set<String> = Set(roadTrip.map(\.songKey)).union(longList.enumerated().filter { $0.offset % 3 == 1 }.map(\.element.songKey))
 
     /// Every playlist the phone «has read» and the files it «holds»: written before the screens look. A tiny file stands for each song.
     static func seedStore() {
         guard isOn else { return }
         let store = OfflineStore.shared
-        for (id, name) in [("p1", "Road trip"), ("p2", "Più ascoltate"), ("p3", "Anni 80"), ("p4", "Reel di novembre")] {
+        for (id, name) in [("p1", "Road trip"), ("p2", "Più ascoltate"), ("p3", "Anni 80"), ("p4", "Reel di novembre"), ("p6", "Lunga")] {
             let tracks = playlistTracks[id] ?? []
             store.recordPlaylist(id: id, name: name, songKeys: tracks.map(\.songKey), failedKeys: tracks.filter { $0.resolvedState == .failed }.map(\.songKey))
         }
         for key in onPhone where store.fileURL(songKey: key) == nil {
             let staged = store.stagingURL()
             guard (try? Data(repeating: 1, count: 2_000).write(to: staged)) != nil else { continue }
-            let song = (recent + eighties + roadTrip).first { $0.songKey == key }
+            let song = (recent + eighties + roadTrip + longList).first { $0.songKey == key }
             _ = try? store.install(stagedFile: staged, songKey: key, metadata: InstallMetadata(title: song?.title ?? key, artist: song?.artist ?? "", version: "demo-1"))
         }
     }
@@ -144,6 +156,7 @@ enum DemoData {
         MondropPlaylist(id: "p3", name: "Anni 80", songCount: 6, createdAt: "2026-09-14T10:00:00.000Z", kind: "static", canEdit: true),
         MondropPlaylist(id: "p4", name: "Reel di novembre", songCount: 6, createdAt: "2026-11-09T10:00:00.000Z", kind: "static", canEdit: true),
         MondropPlaylist(id: "p5", name: "Jazz da ascoltare", songCount: 0, createdAt: "2026-11-10T07:30:00.000Z", kind: "static", canEdit: true, origin: "auto", autoKind: "theme"),
+        MondropPlaylist(id: "p6", name: "Lunga", songCount: 40, createdAt: "2026-11-08T10:00:00.000Z", kind: "static", canEdit: true),
     ]
 
     /// The full list of the playlists (search, sort, pages) without a server.
@@ -233,6 +246,51 @@ extension DemoData.PlaylistAPI: PlaylistListing {}
 
 import SwiftUI
 
+#if os(iOS)
+import UIKit
+
+extension DemoData {
+    /// What the biggest scrolling view on the screen says about itself, in one line: how tall its content is, the insets, and how far it can be scrolled.
+    @MainActor
+    static func scrollMetrics() -> String {
+        guard let window = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first else { return "no window" }
+        var biggest: UIScrollView?
+        func visit(_ view: UIView) {
+            if let scroll = view as? UIScrollView, scroll.bounds.height > 300, biggest == nil || scroll.contentSize.height > (biggest?.contentSize.height ?? 0) { biggest = scroll }
+            view.subviews.forEach(visit)
+        }
+        visit(window)
+        guard let scroll = biggest else { return "no scroll view" }
+        let content = Int(scroll.contentSize.height), bounds = Int(scroll.bounds.height)
+        let inset = Int(scroll.contentInset.bottom), adjusted = Int(scroll.adjustedContentInset.bottom), safe = Int(scroll.safeAreaInsets.bottom)
+        return "content \(content)  bounds \(bounds)  inset \(inset)  adjusted \(adjusted)  safe \(safe)  maxOffset \(content + adjusted - bounds)"
+    }
+}
+
+/// Simulator screenshots only (`-MondropDemoMetrics`): the numbers of the scrolling view over the page.
+struct DemoMetrics: ViewModifier {
+    @State private var text = ""
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .top) {
+                if DemoData.showsMetrics {
+                    Text(text).font(.system(size: 10, design: .monospaced)).padding(4).background(Color.black.opacity(0.85)).foregroundStyle(.white).padding(.top, 110)
+                }
+            }
+            .task {
+                guard DemoData.showsMetrics else { return }
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                text = DemoData.scrollMetrics()
+            }
+    }
+}
+
+extension View {
+    func demoMetrics() -> some View { modifier(DemoMetrics()) }
+}
+#endif
+
 /// With `-MondropDemoCommands` the Settings scroll to the list of the commands received (it is below the fold): a screenshot cannot scroll.
 struct DemoSettingsScroll<Content: View>: View {
     let content: Content
@@ -240,6 +298,15 @@ struct DemoSettingsScroll<Content: View>: View {
     var body: some View {
         ScrollViewReader { proxy in
             content.task {
+                if DemoData.showsSyncSettings {
+                    try? await Task.sleep(for: .seconds(1))
+                    proxy.scrollTo("consistencyRow", anchor: .center)
+                    if DemoData.runsCheck {
+                        try? await Task.sleep(for: .seconds(1))
+                        PlaylistConsistencyCheck.shared.start()
+                    }
+                    return
+                }
                 guard DemoData.showsCommands else { return }
                 try? await Task.sleep(for: .seconds(1))
                 proxy.scrollTo("commandsRow", anchor: .top)

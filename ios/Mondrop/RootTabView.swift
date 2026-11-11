@@ -94,6 +94,7 @@ struct RootTabView: View {
             #if DEBUG
             if let tab = DemoData.startTab { selection = tab }
             if DemoData.opensPlayer { showPlayer = true }
+            if DemoData.startsPlaying { LocalAudioPlayer.shared.demoMarkInPlay() }
             if DemoData.focusesSearch { RootRouter.shared.requestSearch() }
             #endif
             // The app was launched by a tap on a notification: the request arrived before this view existed.

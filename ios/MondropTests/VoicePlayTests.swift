@@ -262,7 +262,20 @@ final class VoicePlayActionsTests: XCTestCase {
             TestSupport.track("c::nowhere", state: "no_source"),
         ]))])
         _ = await VoiceActions.playPlaylist(id: "pl1", name: "X", api: api, store: rig.store, player: rig.player) { rig.started.queues.append($0) }
-        XCTAssertEqual(rig.started.queues.first?.items.map(\.songKey), ["a::ready", "b::on the phone"], "the files on the phone come first, whatever the server says")
+        XCTAssertEqual(rig.started.queues.first?.items.map(\.songKey), ["b::on the phone", "a::ready"], "the file on the phone is played whatever the server says, and first")
+    }
+
+    func testTheSongsOnThePhoneComeBeforeTheOnesThatAreOnlyOnline() async throws {
+        // «Vanno privilegiati i file già scaricati» (Michele, 11 November; spec ...-simplify-playlists-and-song-states-design.md U10): there is no screen to show an order,
+        // so the queue Siri starts has the songs on the phone first and the playlist's own order inside each group
+        let rig = make()
+        try installLocal(rig, "c::three")
+        try installLocal(rig, "e::five")
+        let api = FakeAPI()
+        api.scriptManifests("pl1", [.success(TestSupport.manifest("pl1", ["a::one", "b::two", "c::three", "d::four", "e::five"].map { TestSupport.track($0) }))])
+        _ = await VoiceActions.playPlaylist(id: "pl1", name: "Road trip", api: api, store: rig.store, player: rig.player) { rig.started.queues.append($0) }
+        XCTAssertEqual(rig.started.queues.first?.items.map(\.songKey), ["c::three", "e::five", "a::one", "b::two", "d::four"])
+        XCTAssertEqual(rig.started.queues.first?.playlistId, "pl1")
     }
 
     func testAPlaylistWithNothingToPlayIsSaidSoAndNothingStarts() async {

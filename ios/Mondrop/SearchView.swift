@@ -58,13 +58,13 @@ struct SearchView: View {
             }
         }
         .navigationTitle("Cerca")
+        .withMiniPlayer()
         #if os(iOS)
         .searchable(text: $text, isPresented: $searchPresented, placement: .navigationBarDrawer(displayMode: .always), prompt: "Brani, artisti, album")
         #else
         .searchable(text: $text, isPresented: $searchPresented, prompt: "Brani, artisti, album")
         #endif
         .onSubmit(of: .search) { remember(text) }
-        .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -229,7 +229,7 @@ struct SearchView: View {
                                 Label(playlist.name, systemImage: "music.note.list").lineLimit(1)
                                 if playlist.isDynamic { DynamicBadge() }
                             }
-                            Text(playlist.isDynamic && playlist.songCount == 0 ? "si calcola al Sync" : "\(playlist.songCount) brani")
+                            Text(playlist.isDynamic && playlist.songCount == 0 ? "si calcola quando la apri" : "\(playlist.songCount) brani")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

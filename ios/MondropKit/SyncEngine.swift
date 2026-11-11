@@ -111,10 +111,13 @@ public protocol DownloadTransportHandler: AnyObject {
 }
 
 /// Why a download was queued. Only a `sync` is announced when it ends (SyncBatch): the download a first play starts
-/// in parallel is not.
+/// in parallel is not, and neither is the one the playlist that plays makes by itself («Nessun sync evidente, tutto automatico», Michele, 11 November).
 public enum DownloadOrigin: Sendable {
+    /// What the user asked for (the check of the playlists in the Settings, a «Riprova» on a song): announced when it ends.
     case sync
     case play
+    /// The playlist that plays downloads what is missing from the phone: nobody is told.
+    case automatic
 }
 
 /// One song waiting in the queue. The queue file of an older build also has a flag per job (where the phone was): ignored.

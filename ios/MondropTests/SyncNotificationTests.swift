@@ -340,6 +340,18 @@ final class SyncEngineBatchTests: XCTestCase {
         XCTAssertNotNil(r.store.fileURL(songKey: "play-me"), "…but the song is downloaded all the same")
     }
 
+    func testTheDownloadsThePlaylistThatPlaysMakesByItselfAreNotASyncEither() throws {
+        // «Nessun sync evidente, tutto automatico» (Michele, 11 November): playing a playlist does not end with a «Sync finito»
+        let r = try rig()
+        let seen = listen(r)
+        r.engine.enqueue(tracks(["a", "b"]), origin: .automatic)
+        try r.finish(r.transport.started[0].info)
+        try r.finish(r.transport.started[1].info)
+        XCTAssertTrue(seen.summaries.isEmpty)
+        XCTAssertNotNil(r.store.fileURL(songKey: "a"), "…but the songs are downloaded all the same")
+        XCTAssertNotNil(r.store.fileURL(songKey: "b"))
+    }
+
     func testAFirstPlayDownloadInTheMiddleOfASyncDoesNotCountNorCloseIt() throws {
         let r = try rig()
         let seen = listen(r)

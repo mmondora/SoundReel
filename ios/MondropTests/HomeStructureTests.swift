@@ -89,7 +89,7 @@ final class HomeStructureTests: XCTestCase {
         XCTAssertTrue(home.contains("ResumeSection(onOpen:"), "«Riprendi» stays: it is the way to the Player from the Home")
         let mini = try code("Mondrop/MiniPlayer.swift")
         XCTAssertTrue(mini.contains("visible: Bool = true"), "every other screen keeps it by default")
-        XCTAssertTrue(mini.contains("if visible { MiniPlayerBar(onOpen: open) }"))
+        XCTAssertTrue(mini.contains("if visible {\n                    MiniPlayerBar(onOpen: open, tucked: scroll.hidden)"), "the bar is drawn only where the tab asks for it")
     }
 
     // MARK: the playlists live on the first page (U1)

@@ -7,11 +7,11 @@ final class LibraryQueueTests: XCTestCase {
 
     private func queue(
         _ choice: LibraryChoice, from tracks: [OfflineTrack]? = nil, startAt: String? = nil, shuffled: Bool = false,
-        local: Set<String> = []
+        local: Set<String> = [], localFirst: Bool = false
     ) -> PlayQueue? {
         var generator = SeededGenerator(seed: 42)
         return LibraryQueueBuilder.make(
-            choice: choice, tracks: tracks ?? all, startAt: startAt, shuffled: shuffled, using: &generator,
+            choice: choice, tracks: tracks ?? all, startAt: startAt, shuffled: shuffled, localFirst: localFirst, using: &generator,
             isLocal: { local.contains($0) }
         )
     }
@@ -147,6 +147,56 @@ final class LibraryQueueTests: XCTestCase {
         let first = try XCTUnwrap(queue(.everything, from: tracks, shuffled: true))
         let second = try XCTUnwrap(queue(.everything, from: tracks, shuffled: true))
         XCTAssertEqual(first.items.map(\.songKey), second.items.map(\.songKey))
+    }
+
+    // MARK: «Vanno privilegiati i file già scaricati» (U10)
+
+    func testAQueueThatPrefersThePhoneStartsWithTheSongsThatAreOnIt() throws {
+        let tracks = ["a", "b", "c", "d", "e"].map { TestSupport.track($0) }
+        let q = try XCTUnwrap(queue(.playlist(id: "p", name: "P"), from: tracks, local: ["d", "b"], localFirst: true))
+        XCTAssertEqual(q.items.map(\.songKey), ["b", "d", "a", "c", "e"], "the phone's songs first, each group in the order it came in")
+        XCTAssertEqual(q.startIndex, 0)
+        XCTAssertEqual(q.playlistId, "p", "the listens are still credited to the playlist")
+    }
+
+    func testTheTappedSongIsWhereItStandsInThatOrder() throws {
+        let tracks = ["a", "b", "c", "d", "e"].map { TestSupport.track($0) }
+        let q = try XCTUnwrap(queue(.playlist(id: "p", name: "P"), from: tracks, startAt: "c", local: ["d", "b"], localFirst: true))
+        XCTAssertEqual(q.items.map(\.songKey), ["b", "d", "a", "c", "e"])
+        XCTAssertEqual(q.items[q.startIndex].songKey, "c")
+    }
+
+    func testWithoutThePreferenceTheOrderIsTheOneGivenWhateverIsOnThePhone() throws {
+        let tracks = ["a", "b", "c"].map { TestSupport.track($0) }
+        let q = try XCTUnwrap(queue(.playlist(id: "p", name: "P"), from: tracks, local: ["c"]))
+        XCTAssertEqual(q.items.map(\.songKey), ["a", "b", "c"])
+    }
+
+    func testTheSongsThatCannotPlayAreStillLeftOutWhenThePhoneIsPreferred() throws {
+        let tracks = [TestSupport.track("a"), TestSupport.track("b", state: "no_source"), TestSupport.track("c")]
+        let q = try XCTUnwrap(queue(.everything, from: tracks, local: ["c"], localFirst: true))
+        XCTAssertEqual(q.items.map(\.songKey), ["c", "a"])
+    }
+
+    func testShuffleThatPrefersThePhoneMixesEachGroupOnItsOwnAndPlaysThePhoneFirst() throws {
+        let tracks = (1...30).map { TestSupport.track("s\($0)") }
+        let onPhone = Set((1...10).map { "s\($0 * 2)" })                       // ten of the thirty
+        let plain = try XCTUnwrap(queue(.everything, from: tracks, local: onPhone, localFirst: true))
+        let mixed = try XCTUnwrap(queue(.everything, from: tracks, shuffled: true, local: onPhone, localFirst: true))
+        let keys = mixed.items.map(\.songKey)
+        XCTAssertEqual(Set(keys), Set(plain.items.map(\.songKey)))
+        XCTAssertEqual(keys.count, 30)
+        XCTAssertEqual(Set(keys.prefix(10)), onPhone, "the first ten are exactly the songs on the phone")
+        XCTAssertNotEqual(Array(keys.prefix(10)), Array(plain.items.map(\.songKey).prefix(10)), "and they are mixed")
+        XCTAssertNotEqual(Array(keys.suffix(20)), Array(plain.items.map(\.songKey).suffix(20)), "so are the online ones")
+    }
+
+    func testShuffleThatPrefersThePhoneStillPlaysTheTappedSongFirst() throws {
+        let tracks = (1...30).map { TestSupport.track("s\($0)") }
+        let q = try XCTUnwrap(queue(.everything, from: tracks, startAt: "s17", shuffled: true, local: ["s2", "s4"], localFirst: true))
+        XCTAssertEqual(q.items.first?.songKey, "s17")
+        XCTAssertEqual(q.startIndex, 0)
+        XCTAssertEqual(q.items.count, 30)
     }
 
     func testShuffleStillPlaysTheTappedSongFirst() throws {

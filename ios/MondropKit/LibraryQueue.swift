@@ -74,11 +74,14 @@ public enum LibraryQueueBuilder {
     /// The queue for `choice` over `tracks`, starting at `startAt` (a songKey) or at the first one.
     /// nil when nothing is playable, or when the song asked for is not (a «da cercare» row does nothing).
     /// `shuffled` mixes the order; the song asked for, if any, still plays first.
+    /// `localFirst` («Vanno privilegiati i file già scaricati», Michele, 11 November; spec ...-simplify-playlists-and-song-states-design.md U10): the songs that are on the
+    /// phone play before the ones that are only online, each group in the order it came in — or, with `shuffled`, each group mixed on its own, the phone's first.
     public static func make<G: RandomNumberGenerator>(
         choice: LibraryChoice,
         tracks: [OfflineTrack],
         startAt songKey: String? = nil,
         shuffled: Bool = false,
+        localFirst: Bool = false,
         using generator: inout G,
         isLocal: (String) -> Bool
     ) -> PlayQueue? {
@@ -89,10 +92,20 @@ public enum LibraryQueueBuilder {
         guard !playable.isEmpty else { return nil }
         if let songKey, !playable.contains(where: { $0.songKey == songKey }) { return nil }
         if shuffled {
-            playable.shuffle(using: &generator)
+            if localFirst {
+                var onPhone = playable.filter { isLocal($0.songKey) }
+                var online = playable.filter { !isLocal($0.songKey) }
+                onPhone.shuffle(using: &generator)
+                online.shuffle(using: &generator)
+                playable = onPhone + online
+            } else {
+                playable.shuffle(using: &generator)
+            }
             if let songKey, let at = playable.firstIndex(where: { $0.songKey == songKey }), at != 0 {
                 playable.swapAt(0, at)
             }
+        } else if localFirst {
+            playable = LocalFirst.stable(playable) { isLocal($0.songKey) ? 0 : 1 }
         }
         let start = songKey.flatMap { key in playable.firstIndex(where: { $0.songKey == key }) } ?? 0
         return PlayQueue(
@@ -108,9 +121,10 @@ public enum LibraryQueueBuilder {
         tracks: [OfflineTrack],
         startAt songKey: String? = nil,
         shuffled: Bool = false,
+        localFirst: Bool = false,
         isLocal: (String) -> Bool
     ) -> PlayQueue? {
         var generator = SystemRandomNumberGenerator()
-        return make(choice: choice, tracks: tracks, startAt: songKey, shuffled: shuffled, using: &generator, isLocal: isLocal)
+        return make(choice: choice, tracks: tracks, startAt: songKey, shuffled: shuffled, localFirst: localFirst, using: &generator, isLocal: isLocal)
     }
 }

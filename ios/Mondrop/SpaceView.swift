@@ -17,6 +17,7 @@ struct SpaceView: View {
             songsSection
         }
         .navigationTitle("Spazio")
+        .withMiniPlayer()
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
@@ -111,7 +112,7 @@ struct SpaceView: View {
         } header: {
             Text("Scorciatoie")
         } footer: {
-            Text("«Meno ascoltate» = meno ascolti contati (su tutti i tuoi dispositivi), poi ascolto più vecchio; i mai ascoltati per primi. Più di un brano = doppia conferma. I brani eliminati restano su SoundReel e il Sync non li riscarica finché non tocchi «Riscarica».")
+            Text("«Meno ascoltate» = meno ascolti contati (su tutti i tuoi dispositivi), poi ascolto più vecchio; i mai ascoltati per primi. Più di un brano = doppia conferma. I brani eliminati restano su SoundReel e non li riscarico da solo finché non tocchi «Riscarica».")
         }
     }
 

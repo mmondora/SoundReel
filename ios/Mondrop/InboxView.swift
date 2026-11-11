@@ -58,6 +58,7 @@ struct InboxView: View {
             }
         }
         .navigationTitle("Posta")
+        .withMiniPlayer()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {

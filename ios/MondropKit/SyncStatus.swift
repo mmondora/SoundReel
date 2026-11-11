@@ -1,10 +1,10 @@
 // SyncStatus.swift — «che cosa sta succedendo» (spec 2026-11-08-player-selection-and-filters §X3).
 //
-// Three small pieces, all pure or nearly:
+// Two small pieces, all pure or nearly:
 //   • `TrackRowStatus` gets what a row needs to look right: a spinner (with the percent) while the server prepares
 //     the song or the phone downloads it, a ready mark when it is on the phone, and a clear word for the rest;
-//   • `SyncStatusLine` builds the line at the top («Preparo 3 brani sul server · 1 in download dal telefono»);
 //   • `SyncActivity` remembers which songs the server was last seen preparing (the phone only learns it by asking).
+// The line at the top of every page that said what the sync was doing (`SyncStatusLine`) is gone: «Nessun sync evidente, tutto automatico» (Michele, 11 November).
 
 import Foundation
 
@@ -61,65 +61,6 @@ extension TrackRowStatus {
 
     /// A spinner is turning for this song.
     public var isBusy: Bool { accessory == .spinner }
-}
-
-// MARK: - Line at the top
-
-public struct SyncStatusCounts: Equatable, Sendable {
-    /// Songs the server is preparing (seen recently — see `SyncActivity`).
-    public var preparingOnServer: Int
-    /// Songs the phone is downloading right now.
-    public var downloading: Int
-    /// Songs waiting for a free download slot.
-    public var queued: Int
-    /// Downloads that failed on the phone.
-    public var failed: Int
-    /// Cellular is off and the phone is on a metered network: downloads wait for Wi-Fi.
-    public var waitingForWifi: Bool
-
-    public init(preparingOnServer: Int = 0, downloading: Int = 0, queued: Int = 0, failed: Int = 0, waitingForWifi: Bool = false) {
-        self.preparingOnServer = preparingOnServer
-        self.downloading = downloading
-        self.queued = queued
-        self.failed = failed
-        self.waitingForWifi = waitingForWifi
-    }
-
-    /// Something is actually moving (a spinner makes sense); «in coda» and errors alone are not work in progress.
-    public var isWorking: Bool { preparingOnServer > 0 || downloading > 0 }
-
-    /// What the download engine reports, plus what the server is preparing.
-    public init(progress: [String: TrackProgress], preparingOnServer: Int, waitingForWifi: Bool = false) {
-        var downloading = 0
-        var queued = 0
-        var failed = 0
-        for state in progress.values {
-            switch state {
-            case .downloading: downloading += 1
-            case .queued: queued += 1
-            case .failed: failed += 1
-            }
-        }
-        self.init(
-            preparingOnServer: preparingOnServer, downloading: downloading, queued: queued, failed: failed,
-            waitingForWifi: waitingForWifi
-        )
-    }
-}
-
-public enum SyncStatusLine {
-    /// nil when nothing is going on (the line is simply not shown).
-    public static func make(_ c: SyncStatusCounts) -> String? {
-        var parts: [String] = []
-        if c.waitingForWifi && c.downloading + c.queued > 0 { parts.append("In attesa del Wi-Fi") }
-        if c.preparingOnServer > 0 {
-            parts.append("Preparo \(c.preparingOnServer) \(c.preparingOnServer == 1 ? "brano" : "brani") sul server")
-        }
-        if c.downloading > 0 { parts.append("\(c.downloading) in download dal telefono") }
-        if c.queued > 0 { parts.append("\(c.queued) in coda") }
-        if c.failed > 0 { parts.append("\(c.failed) \(c.failed == 1 ? "errore" : "errori")") }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
 }
 
 // MARK: - What the server is doing

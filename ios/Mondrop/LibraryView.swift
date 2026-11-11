@@ -92,8 +92,8 @@ struct LibraryView: View {
             content
         }
         .navigationTitle("Libreria")
+        .withMiniPlayer()
         .searchable(text: $searchText, prompt: "Cerca autore, titolo, album")
-        .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -192,23 +192,26 @@ struct LibraryView: View {
             if model.playlists.isEmpty {
                 Text(dimension.emptyText).foregroundStyle(.secondary)
             }
-            ForEach(model.playlists) { playlist in
+            let marks = PlaylistMarks.current(store: engine.store, local: localKeys, progress: engine.progress)
+            // the playlists that are on the phone first, then the ones that are only online, each with its mark
+            ForEach(marks.ordered(model.playlists, id: \.id, songCount: \.songCount)) { playlist in
                 NavigationLink {
                     PlaylistOfflineView(playlist: playlist)
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 8) {
+                            PlaylistStateMark(state: marks.state(id: playlist.id, songCount: playlist.songCount))
                             Text(playlist.name).font(.headline)
                             if playlist.isDynamic { DynamicBadge() }
                         }
-                        Text(playlist.isDynamic && playlist.songCount == 0 ? "si calcola al Sync" : "\(playlist.songCount) brani")
+                        Text(playlist.isDynamic && playlist.songCount == 0 ? "si calcola quando la apri" : "\(playlist.songCount) brani")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
         } footer: {
-            Text("Apri una playlist per ascoltarla (tutta o da un brano) e per sincronizzarla sul telefono.")
+            Text("Apri una playlist per ascoltarla, tutta o da un brano: quella che suoni si scarica da sola sul telefono.")
         }
     }
 
@@ -377,10 +380,10 @@ struct LibrarySelectionView: View {
             }
         }
         .navigationTitle(title)
+        .withMiniPlayer()
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
         .task {
             await model.reload()
             localKeys = engine.store.localSongKeys()

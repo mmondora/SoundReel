@@ -98,10 +98,10 @@ struct SearchResultsPage: View {
             }
         }
         .navigationTitle(kind.title)
+        .withMiniPlayer()
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
         .task {
             await model.reload()
             localKeys = engine.store.localSongKeys()

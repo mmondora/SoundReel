@@ -15,7 +15,6 @@ struct WinampPlayerView: View {
 
     var body: some View {
         playerSurface
-        .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
         #if DEBUG
         .onAppear {
             if DemoData.opensLyricsSheet {

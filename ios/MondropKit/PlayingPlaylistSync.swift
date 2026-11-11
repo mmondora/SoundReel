@@ -108,6 +108,8 @@ public final class PlayingPlaylistSync: ObservableObject {
     private let pollTimeout: TimeInterval
     private let activity: SyncActivity?
     private let onSyncStarted: @MainActor () -> Void
+    /// Keeps the list of the playlist that plays, so that its page opens at once (`PlaylistManifestCache`).
+    private let cache: PlaylistManifestCaching?
 
     private var trigger = PlaylistSyncTrigger()
 
@@ -134,7 +136,8 @@ public final class PlayingPlaylistSync: ObservableObject {
         pollInterval: TimeInterval = 5,
         pollTimeout: TimeInterval = 600,
         activity: SyncActivity? = nil,
-        onSyncStarted: @escaping @MainActor () -> Void = {}
+        onSyncStarted: @escaping @MainActor () -> Void = {},
+        cache: PlaylistManifestCaching? = nil
     ) {
         self.api = api
         self.engine = engine
@@ -146,10 +149,17 @@ public final class PlayingPlaylistSync: ObservableObject {
         self.pollTimeout = pollTimeout
         self.activity = activity
         self.onSyncStarted = onSyncStarted
+        self.cache = cache
     }
 
     /// The playlists whose sync is going now.
     public var runningPlaylists: Set<String> { Set(runs.keys) }
+
+    /// The question that is on screen, if any.
+    public var question: SyncSizeQuestion? {
+        if case .asking(let question) = phase { return question }
+        return nil
+    }
 
     // MARK: - What the player says
 
@@ -194,7 +204,7 @@ public final class PlayingPlaylistSync: ObservableObject {
         let sync = PlaylistSyncCoordinator(
             playlist: MondropPlaylist(id: id, name: "", songCount: 0),
             api: api, engine: engine, clock: clock, pollInterval: pollInterval, pollTimeout: pollTimeout,
-            activity: activity, onSyncStarted: onSyncStarted, gate: gate
+            activity: activity, onSyncStarted: onSyncStarted, gate: gate, cache: cache, origin: .automatic
         )
         let task = Task { [weak self] in
             await sync.sync()

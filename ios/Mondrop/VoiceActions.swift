@@ -26,8 +26,9 @@ enum VoiceActions {
         } catch {
             return VoicePlayOutcome.playlistUnreachable(name: name).spoken
         }
+        // the songs on the phone first («Vanno privilegiati i file già scaricati», Michele, 11 November): there is no screen to show the order, so the rule is the queue's
         guard let queue = LibraryQueueBuilder.make(
-            choice: .playlist(id: id, name: name), tracks: manifest.tracks, isLocal: { store.fileURL(songKey: $0) != nil }
+            choice: .playlist(id: id, name: name), tracks: manifest.tracks, localFirst: true, isLocal: { store.fileURL(songKey: $0) != nil }
         ) else { return VoicePlayOutcome.playlistEmpty(name: name).spoken }
         (start ?? { player.start($0) })(queue)
         return VoicePlayOutcome.playlistStarted(name: name).spoken

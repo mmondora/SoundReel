@@ -228,7 +228,7 @@ simbolo/icona che dice online/errore/locale»).
   (nuvola; la percentuale mentre il telefono lo scarica) o **Errore** (triangolo rosso, con il motivo). Un brano che il server non ha ancora o il cui nome non si risolve è online: da solo non è mai un errore.
   La playlist ha **un** segno, dai suoi brani: errore se ne ha uno in errore, sul telefono se lo sono tutti, altrimenti online (nessuno se è vuota); nella sua pagina anche «12 di 20 sul telefono».
   Le card della Home e le righe dell'elenco leggono ciò che il telefono ha visto di ogni playlist (`OfflineStore.playlistRecords()`: le chiavi dei brani e quali il server aveva dato per falliti),
-  così nessuna lista rilegge tutti i manifest. Fuori dalle playlist (Cerca, Libreria, coda) restano i segni di prima.
+  così nessuna lista rilegge tutti i manifest. ~~Fuori dalle playlist restano i segni di prima~~ (dalla build 17 i tre segni valgono in **ogni** elenco di brani: Cerca, Libreria, coda, card della Home).
 - **«+» in Cerca**: ogni brano trovato ha un pulsante visibile che apre la scelta della playlist (la pressione prolungata resta).
 - **Togliere da una playlist**: scorrimento «Togli dalla playlist» sul brano, **solo nelle tue playlist statiche** (non nelle dinamiche, nelle automatiche, né in quelle condivise con te), senza conferma:
   il brano esce subito e **torna al suo posto** se il server rifiuta o non risponde; non cancella niente dal telefono. Server: `DELETE /api/mondrop/playlists/:id/songs/:songKey`
@@ -245,14 +245,37 @@ simbolo/icona che dice online/errore/locale»).
   aperta; tornarci lo rifà. Un sync **che non è arrivato in fondo** (rete, errore del server) si riprova al brano dopo. **Prima di scaricare** somma i byte dei brani che mancano e, se superano **«Avvisa sopra»**
   (Impostazioni → Sync: 1, 2, 5, 10, 20, 50 GB o Mai; **predefinito 2 GB**), chiede «Da scaricare N GB (M brani)»: **Scarica tutto**, **Limita a X GB** o **Annulla**; sotto il limite parte senza chiedere.
   «Limita» scarica nell'ordine della playlist finché ci stanno (**si ferma al primo che non ci sta**) e **non scarica altro** per quella playlist; **«Annulla» non scarica niente e non lo richiede per quella
-  playlist finché l'app non si riapre** (la memoria è `SyncDeclines`, in RAM: un'app riaperta chiede di nuovo). La domanda aspetta se il Player copre lo schermo. Il «Sync» **dentro** la playlist resta com'è
-  (a mano, senza domanda), la rete cellulare resta spenta per i download, regola P: l'avviso è uguale ovunque si sia e non blocca. iOS non è interpellato per le notifiche da questo sync, ma dal «Sync» premuto.
+  playlist finché l'app non si riapre** (la memoria è `SyncDeclines`, in RAM: un'app riaperta chiede di nuovo). La domanda aspetta se il Player copre lo schermo. ~~Il «Sync» **dentro** la playlist resta com'è~~ (dalla build 17 non c'è più: il suo posto lo prende il controllo delle Impostazioni, sotto), la rete cellulare resta spenta per i download, regola P: l'avviso è uguale ovunque si sia e non blocca. iOS non è interpellato per le notifiche da questo sync.
 - **Per guardarlo senza server** (solo DEBUG): `-MondropDemo` mostra cinque playlist con i tre stati; `-MondropDemoTab playlists` (o `-MondropDemoPush allplaylists`) apre «Tutte» sopra la Home,
   `-MondropDemoPush playlist` una playlist con le tre righe, `-MondropDemoSearchText <testo>` apre Cerca con quel testo (i «+» e gli scorrimenti).
 - **Test** nuovi (`SongStateTests`, `SyncSizeGuardTests`, `PlaylistSyncTriggerTests`, `PlayingSyncGateTests`, `PlayingPlaylistSyncTests`, `PlaybackContextTests`, `PlaylistRemoveTests`, `PlaylistRecordTests`,
   `SimplifiedAppStructureTests`, `DeletionPlacesTests`; `HomeStructureTests` riscritto, `DeletionInSettingsTests` sostituito da `DeletionPlacesTests`): tabelle per i tre stati e il segno della playlist, il limite
   e l'ordine di «Limita», **quando parte il sync** (coda da una playlist, da Cerca, ripristinata e ferma, passaggio da una playlist a un'altra, la stessa playlist due volte), la memoria di «Annulla», il giro
   del player, la forma delle schermate. Provati anche rompendo il codice di proposito.
+
+### Dopo la prova della build 16: la build 17 (11 novembre)
+
+Spec `docs/superpowers/specs/2026-11-10-mondrop-simplify-playlists-and-song-states-design.md` §10 (U10–U15). Michele: «Su Mondrop le playlist e i brani devono essere in ordine di scaricati in locale e poi online. E quando da homepage
+clicco sulla playlist devo vedere la lista e poter mettere in play. Nessun sync evidente, tutto automatico. Vanno privilegiati i file già scaricati.» · «Il mini player non deve essere visibile se non ci sono cose in play.» ·
+«E comunque non deve sovrapporre le cose sotto, oppure deve sparire/nascondersi se navigo. Non è chiaro dove sono i file ( locali o remoto )» · «Voglio un check di consistenza con sync sulle impostazioni che verifica tutte le
+playlist locali o già scaricate se hanno tutti i file e scaricano quelli che mancano».
+
+- **Sul telefono prima** (`MondropKit/LocalFirst.swift`): le card della Home, «Tutte», «Sfoglia → Playlist», i brani di una playlist e le file della Home sono in partizione stabile **sul telefono → online → errore** (le playlist: tutta
+  sul telefono → in parte → nessun brano → vuota), con l'ordine del server dentro ogni gruppo. La coda segue l'ordine (`LibraryQueueBuilder … localFirst: true`: «Suona», «Mescola», un brano, la voce «metti la playlist X»);
+  «Mescola» mescola ogni gruppo da sé e suona prima quello del telefono. Cerca e le pagine di album, autore, tipo e anno **non** si riordinano. L'ordine è vivo (si ricalcola a ogni disegno).
+- **La pagina di una playlist** (`PlaylistsView.swift`, `PlaylistOfflineView`): titolo, **«Suona» / «Mescola»**, «12 di 20 sul telefono», i brani. La lista c'è al primo disegno: il telefono tiene l'ultima lista letta di ogni
+  playlist (`PlaylistManifestCache`, `Mondrop/Playlists/pl-<id>.json`) e SoundReel viene riinterpellato dietro; senza rete la lista resta. Niente «Sync», contatori o «Rete:» sulla pagina: restano «Riprova», «Link» e «Riscarica» sulla riga che ne ha bisogno.
+- **Nessun sync in vista:** non c'è più la barra in cima alle pagine (`SyncStatusBar`); il download della playlist che suona è **muto** (`DownloadOrigin.automatic`, nessun «Sync finito»). L'avviso sui GB resta.
+- **Il mini player** (`MiniPlayer.swift`) c'è solo se qualcosa è in play (`LocalAudioPlayer.inPlay`, `MiniPlayerPresence`): non per la coda ripristinata ferma (c'è «Riprendi»), non dopo l'ultimo brano; **scivola via scorrendo una pagina verso
+  il basso e torna salendo** (`MiniPlayerScrollRule`; `.withMiniPlayer()` sulla lista di ogni pagina: il margine dopo l'ultima riga e lo scorrimento, da iOS 18); mette accanto all'artista il segno di dove è il file.
+- **Tre segni in ogni elenco di brani** (`SongRowView`: giallo = sul telefono, nuvola = online, triangolo = errore, con «sul telefono» / «online» sotto il titolo): pagina della playlist, Cerca, Libreria, coda; sulle card della Home la nuvola sulla copertina.
+- **«Controlla le playlist sul telefono»** (Impostazioni → Sync; `MondropKit/PlaylistConsistency.swift`): le playlist con tutti i brani sul telefono o almeno la metà → `GET …/offline` di ognuna (e `prepare` per i brani mai preparati) →
+  si scarica ciò che manca o non è il file del server (dimensione o versione diversa), **una domanda sola** sopra «Avvisa sopra», mai un brano cancellato apposta. Dice «Controllo 3 di 7 playlist…», il risultato e «Download in corso: ancora N brani»;
+  a fine lavoro, con l'app chiusa, «Sync finito».
+- **Per guardarlo senza server** (solo DEBUG): `-MondropDemoPlaying` accende il mini player, `-MondropDemoPush long` apre una playlist di 40 brani, `-MondropDemoKeepBar` tiene la barra ferma mentre si scorre, `-MondropDemoMetrics` scrive sulla pagina i numeri dello scroll view
+  (con la barra il contenuto è più alto di 64 punti, l'altezza della barra); la Home di prova ha le playlist in un ordine che mostra «sul telefono prima».
+- **Test** nuovi (1474 in tutto, 0 falliti): `LocalFirstTests`, `LibraryQueueTests` (la coda che preferisce il telefono), `MiniPlayerPresenceTests`, `MiniPlayerScrollRuleTests`, `PlaylistManifestCacheTests`, `PlaylistConsistencyTests`,
+  `PhoneFirstStructureTests`; riscritti `SimplifiedAppStructureTests` e il test della voce. Provati anche rompendo il codice di proposito (75 rotture).
 
 ## I testi delle canzoni (1.7.0 build 10 e 11 · SoundReel 2.19.0 e 2.19.1)
 

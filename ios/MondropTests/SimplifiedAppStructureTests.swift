@@ -28,15 +28,19 @@ final class SimplifiedAppStructureTests: XCTestCase {
         return found.filter { $0.pathExtension == "swift" }.map { "Mondrop/" + $0.lastPathComponent }.sorted()
     }
 
-    // MARK: U3 — three states inside a playlist, the old marks everywhere else
+    // MARK: U3, U14 — the three states on every row of every list of songs
 
-    func testOnlyTheRowsOfAPlaylistShowTheThreeStates() throws {
-        var users: [String] = []
-        for file in try appFiles() where try code(file).contains("marks: .playlist") { users.append(file) }
-        XCTAssertEqual(users, ["Mondrop/PlaylistsView.swift"], "the page of a playlist; Cerca, the library and the queue keep the marks they had")
+    func testEveryRowOfSongsShowsTheThreeStatesAndThereAreNoOtherMarks() throws {
+        // «Non è chiaro dove sono i file ( locali o remoto )» (Michele, 11 November): from build 17 Cerca, the library and the queue show the same three marks the page of a
+        // playlist does (before, they kept the eight of old)
         let rows = try code("Mondrop/SongRows.swift")
-        XCTAssertTrue(rows.contains("case .playlist: SongStateMark(state: SongState(status))"))
-        XCTAssertTrue(rows.contains("case .detailed: StatusAccessoryView(status: status)"))
+        XCTAssertTrue(rows.contains("SongStateMark(state: state)"))
+        XCTAssertTrue(rows.contains("private var state: SongState { SongState(status) }"))
+        for gone in ["StatusAccessoryView", ".detailed", "enum Marks", "marks: .playlist"] {
+            for file in try appFiles() {
+                XCTAssertFalse(try code(file).contains(gone), "\(file): «\(gone)» — one set of marks for every list of songs")
+            }
+        }
     }
 
     func testTheMarksAreDrawnWithTheColoursOfThePalette() throws {
@@ -103,7 +107,7 @@ final class SimplifiedAppStructureTests: XCTestCase {
         XCTAssertTrue(root.contains(".syncSizeDialog(playingSync, suppressed: showPlayer)"), "the question waits while the Player covers the screen")
 
         let host = try code("Mondrop/PlayingSyncHost.swift")
-        for words in ["question.allButtonTitle", "question.limitButtonTitle", "question.cancelButtonTitle", "sync.answer(.all)", "sync.answer(.limit)", "sync.answer(.cancel)"] {
+        for words in ["question.allButtonTitle", "question.limitButtonTitle", "question.cancelButtonTitle", "answer(.all)", "answer(.limit)", "answer(.cancel)", "sync.question", "sync.answer($0)"] {
             XCTAssertTrue(host.contains(words), words)
         }
         XCTAssertTrue(host.contains("Settings.shared.syncWarnLimit"), "the limit is the one of the Settings")

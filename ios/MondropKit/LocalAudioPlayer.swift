@@ -80,6 +80,10 @@ public final class LocalAudioPlayer: ObservableObject {
     @Published public private(set) var lyricsOrigin: LyricsOrigin = .none
     @Published public private(set) var lyricsSearching: Bool = false
     @Published public private(set) var playing: Bool = false { didSet { reportPlayback() } }
+    /// Something was put in play in this run and has not ended: a song playing, or paused by the user, or one the user queued from Cerca. False for a queue the phone
+    /// brought back paused at launch, after the last song has ended and with nothing queued. The mini player is there only while this is true
+    /// (`MiniPlayerPresence`; Michele, 11 November: «Il mini player non deve essere visibile se non ci sono cose in play.»).
+    @Published public private(set) var inPlay: Bool = false
     @Published public private(set) var index: Int = 0 { didSet { refreshLikeCommand() } }
     @Published public private(set) var queue: [QueueItem] = [] { didSet { refreshLikeCommand() } }
     @Published public private(set) var currentTime: Double = 0
@@ -120,6 +124,11 @@ public final class LocalAudioPlayer: ObservableObject {
     private let likes: LikesStore
     private let commandLog: RemoteCommandLog
     private var likesObservation: AnyCancellable?
+
+    #if DEBUG
+    /// For the screenshots on a simulator (`-MondropDemoPlaying`): the queue the demo brought back is shown as if the user had started it.
+    func demoMarkInPlay() { inPlay = true }
+    #endif
 
     // MARK: - What the sync of the playing playlist listens to
 
@@ -302,6 +311,7 @@ public final class LocalAudioPlayer: ObservableObject {
         queuePlaylistId = playlistId
         queueLabel = label
         guard !items.isEmpty else {
+            inPlay = false
             persistQueue()                                   // an emptied queue is forgotten too
             return
         }
@@ -359,6 +369,7 @@ public final class LocalAudioPlayer: ObservableObject {
         guard merged.added > 0 else { return merged.outcome }
         if queue.isEmpty {
             setQueue(merged.queue, startAt: 0, playlistId: nil, label: "Aggiunti dalla ricerca", autoplay: false)
+            inPlay = true                                    // the user put it there; the bar is how they start it
             return .addedToEmptyQueue(merged.added)
         }
         queue = merged.queue
@@ -391,6 +402,7 @@ public final class LocalAudioPlayer: ObservableObject {
 
     public func play(at i: Int) {
         guard queue.indices.contains(i) else { return }
+        inPlay = true
         resolveTask?.cancel()
         resolveTask = nil
         recorder.tracker.finish(completed: false)       // leaving the previous song: its session ends here
@@ -665,6 +677,7 @@ public final class LocalAudioPlayer: ObservableObject {
             replayCurrent(completed: false)
         case .stop:
             playing = false
+            inPlay = false
             publishNowPlaying()
         }
     }
@@ -681,6 +694,7 @@ public final class LocalAudioPlayer: ObservableObject {
         case .stop:
             recorder.tracker.finish(completed: true)
             playing = false
+            inPlay = false
             publishNowPlaying()
         }
     }

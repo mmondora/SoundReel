@@ -2,9 +2,10 @@
 // «No aspetta, non mi piace il "cerca musica" - fai una proposta alla spotify» / «A, si giallo».
 //
 // A greeting, the field to search (a tap opens Cerca with the keyboard), «Riprendi» (the phone's own queue, kept between launches) and the
-// sections the SERVER decided: which exist, in what order, with what title and which songs (rule P — this view computes nothing and
-// reads neither the network nor any store). A tap on a song plays it and queues the ones that follow in its row; a long press offers
-// what Cerca offers. It is never a blank page: with nothing to show it still has the field and the way to browse.
+// sections the SERVER decided: which exist, which songs and which playlists, with what title (rule P — this view reads neither the network nor any store).
+// The one thing it does with a row is to put what is on the phone first (`LocalFirst`; Michele, 11 November: «le playlist e i brani devono essere in ordine di
+// scaricati in locale e poi online»): the phone knows what it holds, the server cannot. A tap on a song plays it and queues the ones that follow in its row; a long
+// press offers what Cerca offers. It is never a blank page: with nothing to show it still has the field and the way to browse.
 
 import SwiftUI
 
@@ -67,7 +68,6 @@ struct HomeView: View {
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)       // the greeting is the title (the Mac has no navigation bar to hide)
         #endif
-        .safeAreaInset(edge: .top, spacing: 0) { SyncStatusBar() }
         .refreshable { await model.load() }
         // Every time the tab comes into view: what was heard a minute ago is already in «Ascoltati di recente».
         .task {
@@ -79,10 +79,10 @@ struct HomeView: View {
         .onDisappear { onRootVisible(false) }
         .trackActions(actions)
         #if DEBUG
-        .navigationDestination(isPresented: $demoPush) { PlaylistOfflineView(playlist: DemoData.playlists[2]) }
+        .navigationDestination(isPresented: $demoPush) { PlaylistOfflineView(playlist: DemoData.push == "long" ? DemoData.playlists[5] : DemoData.playlists[2]) }
         .navigationDestination(isPresented: $demoPushAll) { PlaylistsView() }
         .onAppear {
-            if DemoData.push == "playlist" { demoPush = true }
+            if DemoData.push == "playlist" || DemoData.push == "long" { demoPush = true }
             if DemoData.opensAllPlaylists { demoPushAll = true }
         }
         #endif
@@ -198,11 +198,12 @@ struct HomeView: View {
                     switch section.kind {
                     case .playlists:
                         let marks = PlaylistMarks.current(store: engine.store, local: localKeys, progress: engine.progress)
-                        ForEach(section.playlists) { playlist in
+                        // the playlists that are on the phone first, then the ones that are only online
+                        ForEach(marks.ordered(section.playlists, id: \.id, songCount: \.songCount)) { playlist in
                             playlistCard(playlist, state: marks.state(id: playlist.id, songCount: playlist.songCount))
                         }
                     case .tracks:
-                        ForEach(section.tracks) { track in trackCard(track, in: section) }
+                        ForEach(orderedTracks(of: section)) { track in trackCard(track, in: section) }
                     case .unknown:
                         EmptyView()
                     }
@@ -253,13 +254,23 @@ struct HomeView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func trackCard(_ track: OfflineTrack, in section: HomeSection) -> some View {
-        let status = TrackRowStatus.make(
+    /// What the phone knows of a song: on it, on its way, deleted from it, failed.
+    private func songStatus(_ track: OfflineTrack) -> TrackRowStatus {
+        TrackRowStatus.make(
             track: track,
             isLocal: localKeys.contains(track.songKey),
             progress: engine.progress[track.songKey],
             isSkipListed: engine.store.isSkipped(track.songKey)
         )
+    }
+
+    /// The songs of a row, the ones on the phone first and the server's order inside each group.
+    private func orderedTracks(of section: HomeSection) -> [OfflineTrack] {
+        LocalFirst.songs(section.tracks) { SongState(songStatus($0)) }
+    }
+
+    private func trackCard(_ track: OfflineTrack, in section: HomeSection) -> some View {
+        let status = songStatus(track)
         return HomeTrackCard(
             track: track, status: status, side: cardSide,
             showsDownload: section.id == "fresh",
@@ -268,10 +279,10 @@ struct HomeView: View {
         )
     }
 
-    /// «Suona e accoda i seguenti»: this song, then the ones that follow it in the row; the queue is called what the row is.
+    /// «Suona e accoda i seguenti»: this song, then the ones that follow it in the row AS IT IS DRAWN (the phone's first); the queue is called what the row is.
     private func play(_ track: OfflineTrack, in section: HomeSection) {
         guard let queue = SearchPlayback.queue(
-            choice: .collection(section.title), tracks: section.tracks, tapped: track.songKey, isLocal: { localKeys.contains($0) }
+            choice: .collection(section.title), tracks: orderedTracks(of: section), tapped: track.songKey, isLocal: { localKeys.contains($0) }
         ) else {
             actions.show(QueueAppend.Outcome.notPlayable.message)
             return
@@ -413,24 +424,32 @@ private struct HomeTrackCard: View {
         }
     }
 
-    /// On the phone (a check), on its way (a spinner), or — in «Nuovi dai tuoi reel» — the button to put it there.
+    /// The mark of where the file is, on every card (the same three as everywhere): on the phone (a yellow check), online (a cloud), error (a triangle), and — in
+    /// «Nuovi dai tuoi reel» — instead of the cloud the button to put the song on the phone. A spinner while it is on its way.
     @ViewBuilder
     private var mark: some View {
-        switch status.accessory {
-        case .done:
-            badge { Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(.green) }
-                .accessibilityLabel("Scaricato")
-        case .spinner:
-            badge { ProgressView().controlSize(.mini).tint(Color(MondropPalette.text)) }
-                .accessibilityLabel(status.rowText)
-        default:
-            if showsDownload && canDownload {
+        let state = SongState(status)
+        switch state {
+        case .local:
+            badge { Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(Color(MondropPalette.accent)) }
+                .accessibilityLabel(state.accessibilityLabel)
+        case .online(let percent):
+            if percent != nil || status.isBusy {
+                badge { ProgressView().controlSize(.mini).tint(Color(MondropPalette.text)) }
+                    .accessibilityLabel(status.rowText)
+            } else if showsDownload && canDownload {
                 Button { actions.download(track, status: status) } label: {
                     badge { Image(systemName: "arrow.down").font(.caption.weight(.bold)).foregroundStyle(Color(MondropPalette.accent)) }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Scarica sul telefono")
+            } else {
+                badge { Image(systemName: "icloud").font(.caption).foregroundStyle(Color(MondropPalette.text).opacity(MondropPalette.secondaryTextOpacity)) }
+                    .accessibilityLabel(state.accessibilityLabel)
             }
+        case .error:
+            badge { Image(systemName: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(Color(MondropPalette.error)) }
+                .accessibilityLabel(state.accessibilityLabel)
         }
     }
 

@@ -30,3 +30,4 @@
 | 0026 | The configuration of the site belongs to the user and lives on the server | Accepted (2.21.0 in production, P2 of the look and feel; the site reads it from P3) | 2026-11-10 |
 | 0027 | Family chat, walkie-talkie and file exchange travel from device to device, end-to-end encrypted; SoundReel is only the key directory and the doorbell | Proposed (roadmap, nothing built; D1–D7 open) | 2026-11-10 |
 | 0028 | A like belongs to a person and lives on the server; the phone only draws it and sends it | Accepted (Michele's answers of 10 November); the app is being built first, the server after 2.24.0, nothing in production yet | 2026-11-10 |
+| 0029 | The phone puts what it holds first and keeps the last list of every playlist; the server still decides what the lists are | Accepted (Mondrop 1.8.0 build 17; no server change) | 2026-11-11 |
