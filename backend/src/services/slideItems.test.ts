@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import type { ActionLogItem, EntrySlide } from '../types';
-import { buildSlidePrompt, carouselItemsFoundBefore, dashedPairs, itemsOfSlide, parseSlideItems, refineSlideItems, slideItemKey, storedSlideOcrTexts, type SlideItem } from './slideItems';
+import {
+  MUSIC_GATE_MAX_TOKENS,
+  MUSIC_GATE_SCHEMA,
+  buildMusicGatePrompt,
+  buildSlidePrompt,
+  carouselItemsFoundBefore,
+  dashedPairs,
+  isMusicItem,
+  itemsOfSlide,
+  parseMusicVerdict,
+  parseSlideItems,
+  refineSlideItems,
+  slideItemKey,
+  storedSlideOcrTexts,
+  tidyItem,
+  type SlideItem,
+} from './slideItems';
 
 // The per-slide extraction of a carousel (10 November, two links of Michele: «5 modern jazz songs» with 6 slides and «album da ascoltare» with 15 slides,
 // 10 albums, both read 0 items). The prompt asked for a JSON ARRAY while the call was in JSON mode; the model answered with ONE OBJECT per slide
@@ -232,6 +248,51 @@ describe('itemsOfSlide: the model and the lines of the slide together', () => {
   });
 });
 
+describe('dashedPairs: the rank of a list that the OCR wrote without its dot («3 Chip E.»)', () => {
+  const ocr = [
+    '1. Jesse Saunders - On and On (1984, Jes Say Records)',
+    '2. Chip E. - Time to Jack (1985, DJ International)',
+    '3 Chip E. - It\'s House (1985, DJ International)',
+    '4 J.M. Silk - Music Is the Key (1985, DJ International)',
+    '5 Mr. Fingers - Mystery of Love (1985, Trax Records)',
+  ].join('\n');
+
+  it('takes a number before the artist for a rank when the numbers of the neighbouring lines go up by one, with the dot or without it (the 100 «essential» tracks lists lost the dot on half of the lines)', () => {
+    expect(dashedPairs(ocr).map((p) => p.artist)).toEqual(['Jesse Saunders', 'Chip E.', 'Chip E.', 'J.M. Silk', 'Mr. Fingers']);
+  });
+
+  it('keeps a number that is part of a name when the numbers do not go up by one («50 Cent», «2 Chainz»), and a single line with a number (it could be a name)', () => {
+    expect(dashedPairs('50 Cent - In Da Club\n2 Chainz - Birthday Song').map((p) => p.artist)).toEqual(['50 Cent', '2 Chainz']);
+    expect(dashedPairs('3 Chip E. - It\'s House').map((p) => p.artist)).toEqual(['3 Chip E.']);
+    expect(dashedPairs('1. Charlie - Spacer Woman').map((p) => p.artist)).toEqual(['1. Charlie']);
+  });
+
+  it('only the lines that are in a run lose their number: a name with a number in the middle of a list stays', () => {
+    const mixed = ['7 Marshall Jefferson - Move Your Body', '8 Adonis - No Way Back', '50 Cent - In Da Club'].join('\n');
+    expect(dashedPairs(mixed).map((p) => p.artist)).toEqual(['Marshall Jefferson', 'Adonis', '50 Cent']);
+  });
+
+  it('a countdown is a run too (a «top 10» that goes 10, 9, 8…): the numbers differ by one, up or down', () => {
+    expect(dashedPairs('9 Mr. Fingers - Can You Feel It\n8 Adonis - No Way Back\n7 Marshall Jefferson - Move Your Body').map((p) => p.artist)).toEqual(['Mr. Fingers', 'Adonis', 'Marshall Jefferson']);
+  });
+
+  it('numbers that do not differ by one are not a run, in either direction (9 then 7, 3 then 3): the names stay', () => {
+    expect(dashedPairs('9 Mr. Fingers - Can You Feel It\n7 Adonis - No Way Back').map((p) => p.artist)).toEqual(['9 Mr. Fingers', '7 Adonis']);
+    expect(dashedPairs('3 Doors Down - Kryptonite\n3 Inches of Blood - Deadly Sinners').map((p) => p.artist)).toEqual(['3 Doors Down', '3 Inches of Blood']);
+  });
+
+  it('goes through itemsOfSlide too: the songs of a slide of the list have the artist without the rank, and the year apart', () => {
+    const items = itemsOfSlide([], ocr, 2);
+    expect(items.map((i) => [i.title, i.artist, i.year])).toEqual([
+      ['On and On', 'Jesse Saunders', 1984],
+      ['Time to Jack', 'Chip E.', 1985],
+      ['It\'s House', 'Chip E.', 1985],
+      ['Music Is the Key', 'J.M. Silk', 1985],
+      ['Mystery of Love', 'Mr. Fingers', 1985],
+    ]);
+  });
+});
+
 describe('slideItemKey: the same item on two slides is one', () => {
   it('ignores case, accents and punctuation, and tells two artists apart', () => {
     expect(slideItemKey(item({ title: 'Turn on the Bright Lights', artist: 'Interpol' }))).toBe(slideItemKey(item({ title: 'TURN ON THE BRIGHT LIGHTS!', artist: 'interpol' })));
@@ -270,5 +331,137 @@ describe('carouselItemsFoundBefore: what the last pass found in the slides', () 
     expect(carouselItemsFoundBefore(undefined)).toBe(0);
     expect(carouselItemsFoundBefore([log('carousel_extraction', { itemsFound: 'tre' })])).toBe(0);
     expect(carouselItemsFoundBefore([log('carousel_extraction', { itemsFound: -2 })])).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// 11 November: the preview of the old carousels read «songs» in 164 of 403, and about nine in ten were not music: a business roadmap, a Flutter stack, tinnitus, finance, a list of horror
+// films. The model typed them well («text»); the «ARTIST - TITLE» lines of the OCR (`dashedPairs`) made songs of every line with a dash («Phase 1 - Stabilize…»). The songs of a carousel
+// are now trusted only when the carousel is about MUSIC, which the local model says in one yes/no question (a boolean under a schema: free JSON gave `{"false}:thinking_face:"…`).
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+
+describe('the music gate: the question, and the reading of the answer', () => {
+  const slidesOf = (...texts: string[]): Array<{ slideIndex: number; text: string }> => texts.map((text, slideIndex) => ({ slideIndex, text }));
+
+  it('asks about MUSIC to listen to (songs, albums, records, artists) and says that films, series, books, software, AI, finance and health are not, even with lists and dashes', () => {
+    const prompt = buildMusicGatePrompt('5 modern jazz songs', slidesOf('JAZZ RECS'));
+    expect(prompt).toContain('elenca o consiglia MUSICA da ascoltare (canzoni, album, dischi, artisti musicali)');
+    expect(prompt).toContain('Film, serie, libri, software, intelligenza artificiale, finanza, salute');
+    expect(prompt).toContain('anche se il testo ha elenchi con trattini o numeri');
+    expect(prompt).toContain('{"music": true} oppure {"music": false}');
+  });
+
+  it('carries the caption and every slide with its own number (the first slide is «Slide 1», whatever index it has in the carousel list: the index counts from zero)', () => {
+    const prompt = buildMusicGatePrompt('album da ascoltare tipo oggi #musica', [{ slideIndex: 0, text: 'Mystic Stylez' }, { slideIndex: 4, text: 'Interpol\nAntics' }]);
+    expect(prompt).toContain('Didascalia:\nalbum da ascoltare tipo oggi #musica');
+    expect(prompt).toContain('Slide 1: Mystic Stylez');
+    expect(prompt).toContain('Slide 5: Interpol Antics');
+  });
+
+  it('says so when there is no caption, and cuts the caption at 500 characters, each slide at 260 and the whole text of the slides at 2600 (a hundred-slide carousel is a question, not a book)', () => {
+    expect(buildMusicGatePrompt(null, slidesOf('a'))).toContain('Didascalia:\n(nessuna)');
+    expect(buildMusicGatePrompt('   ', slidesOf('a'))).toContain('Didascalia:\n(nessuna)');
+    const long = buildMusicGatePrompt('c'.repeat(900), slidesOf('s'.repeat(900)));
+    expect(long).toContain(`Didascalia:\n${'c'.repeat(500)}\n`);
+    expect(long).not.toContain('c'.repeat(501));
+    expect(long).toContain(`Slide 1: ${'s'.repeat(260)}\n`);
+    expect(long).not.toContain('s'.repeat(261));
+    const many = buildMusicGatePrompt('x', slidesOf(...Array.from({ length: 40 }, () => 'w'.repeat(260))));
+    const slidesPart = many.slice(many.indexOf('Slide 1:'), many.indexOf('Domanda:'));
+    expect(slidesPart.length).toBeLessThanOrEqual(2600 + 2);
+    expect(slidesPart).toContain('Slide 9:');
+    expect(slidesPart).not.toContain('Slide 12:');
+  });
+
+  it('the answer is ONE boolean under a schema, in few tokens', () => {
+    expect(MUSIC_GATE_SCHEMA).toEqual({ type: 'object', properties: { music: { type: 'boolean' } }, required: ['music'] });
+    expect(MUSIC_GATE_MAX_TOKENS).toBe(40);
+  });
+
+  it('reads the boolean exactly the way the model writes it under the schema, with a few words around it too, and NOTHING else is a verdict', () => {
+    expect(parseMusicVerdict('{"music":true}')).toBe(true);
+    expect(parseMusicVerdict('{"music" :true }')).toBe(true);
+    expect(parseMusicVerdict('{"music" :false }')).toBe(false);
+    expect(parseMusicVerdict('Risposta: {"music": true}.')).toBe(true);
+    expect(parseMusicVerdict('{"music":"true"}')).toBeNull();
+    expect(parseMusicVerdict('{"music":1}')).toBeNull();
+    expect(parseMusicVerdict('{"musica":true}')).toBeNull();
+    expect(parseMusicVerdict('{"music":true,"album":["Marquee Moon"]}')).toBe(true);
+    expect(parseMusicVerdict('{"false}:thinking_face:":\n1.0\n  }')).toBeNull();
+    expect(parseMusicVerdict('[true]')).toBeNull();
+    expect(parseMusicVerdict('true')).toBeNull();
+    expect(parseMusicVerdict('')).toBeNull();
+  });
+
+  it('a music item is a song or an album: a film, a book and a text are not', () => {
+    const item = (type: SlideItem['type']): SlideItem => ({ type, title: 't', sourceSlide: 0 });
+    expect(['song', 'album', 'film', 'book', 'text'].map((t) => isMusicItem(item(t as SlideItem['type'])))).toEqual([true, true, false, false, false]);
+  });
+});
+
+describe('tidyItem: a rank before the artist and a year after the title are not part of the names (the lists of 100 «essential» tracks)', () => {
+  const song = (title: string, artist: string | null, year: number | null = null, type: SlideItem['type'] = 'song'): SlideItem => ({ type, title, artist, year, sourceSlide: 0 });
+
+  it('drops «1.» «12)» «#3:» before the artist, and keeps a number that IS the name («50 Cent», «2 Chainz»)', () => {
+    expect(tidyItem(song('Spacer Woman', '1. Charlie')).artist).toBe('Charlie');
+    expect(tidyItem(song('Switched-On Bach', '1.Wendy Carlos')).artist).toBe('Wendy Carlos');
+    expect(tidyItem(song('x', '12) Koto')).artist).toBe('Koto');
+    expect(tidyItem(song('x', '#3: Laserdance')).artist).toBe('Laserdance');
+    expect(tidyItem(song('In Da Club', '50 Cent')).artist).toBe('50 Cent');
+    expect(tidyItem(song('Birthday Song', '2 Chainz')).artist).toBe('2 Chainz');
+  });
+
+  it('moves a year in brackets at the end of the title into `year`, with a label, a country or a comma around it', () => {
+    expect(tidyItem(song('Switched-On Bach (1968)', 'Wendy Carlos'))).toMatchObject({ title: 'Switched-On Bach', year: 1968 });
+    expect(tidyItem(song('Spacer Woman - Original Version (ZYX 1984)', 'Charlie'))).toMatchObject({ title: 'Spacer Woman - Original Version', year: 1984 });
+    expect(tidyItem(song('On and On (1984, Jes Say Records)', 'Jesse Saunders'))).toMatchObject({ title: 'On and On', year: 1984 });
+    expect(tidyItem(song('Humanoid Invasion (ZYX 1986*)', 'Laserdance'))).toMatchObject({ title: 'Humanoid Invasion', year: 1986 });
+    expect(tidyItem(song('Polaris ( (Memory records 1984)', 'Cyber People'))).toMatchObject({ title: 'Polaris', year: 1984 });
+    expect(tidyItem(song('Nothing Was The Same (2013)', 'Drake', null, 'album'))).toMatchObject({ title: 'Nothing Was The Same', year: 2013 });
+  });
+
+  it('keeps the year the model already read, and brackets that are not a year (Live, feat.)', () => {
+    expect(tidyItem(song('Heroes (1977)', 'David Bowie', 1978))).toMatchObject({ title: 'Heroes', year: 1978 });
+    expect(tidyItem(song('Heroes (Live)', 'David Bowie'))).toMatchObject({ title: 'Heroes (Live)', year: null });
+    expect(tidyItem(song('Get Lucky (feat. Pharrell Williams)', 'Daft Punk')).title).toBe('Get Lucky (feat. Pharrell Williams)');
+  });
+
+  it('keeps a bracket that says WHICH version it is, with or without a year: a version is a song of its own', () => {
+    expect(tidyItem(song('Heroes (Remastered 2009)', 'David Bowie'))).toMatchObject({ title: 'Heroes (Remastered 2009)', year: null });
+    expect(tidyItem(song('Heroes (Live 1985)', 'David Bowie'))).toMatchObject({ title: 'Heroes (Live 1985)', year: null });
+    expect(tidyItem(song('Rock the Casbah (Remix 2012)', 'The Clash'))).toMatchObject({ title: 'Rock the Casbah (Remix 2012)', year: null });
+    expect(tidyItem(song('Get Lucky (feat. Pharrell, 2013)', 'Daft Punk')).title).toBe('Get Lucky (feat. Pharrell, 2013)');
+  });
+
+  it('never leaves a title empty, never reads a year that is not between 1900 and 2099, and does not touch a title that merely starts with a year', () => {
+    expect(tidyItem(song('(1968)', 'x')).title).toBe('(1968)');
+    expect(tidyItem(song('Vol. 3 (1099)', 'x'))).toMatchObject({ title: 'Vol. 3 (1099)', year: null });
+    expect(tidyItem(song('1999', 'Prince'))).toMatchObject({ title: '1999', year: null });
+    expect(tidyItem(song('1999 (Prince)', null))).toMatchObject({ title: '1999 (Prince)', year: null });
+  });
+
+  it('leaves films, books and texts alone, and an item with no artist', () => {
+    const film: SlideItem = { type: 'film', title: 'Taxi Driver (1976)', artist: '1. x', sourceSlide: 0 };
+    expect(tidyItem(film)).toEqual(film);
+    expect(tidyItem(song('Heroes', null)).artist).toBeNull();
+  });
+
+  it('is what a list written «N. ARTIST - TITLE (LABEL YEAR)» gives, line by line, through itemsOfSlide', () => {
+    const items = itemsOfSlide([], '1. Charlie - Spacer Woman - Original Version (ZYX 1984)\n2. Koto - Visitors (Memory records 1985)', 3);
+    expect(items.map((i) => [i.type, i.title, i.artist, i.year, i.sourceSlide])).toEqual([
+      ['song', 'Spacer Woman - Original Version', 'Charlie', 1984, 3],
+      ['song', 'Visitors', 'Koto', 1985, 3],
+    ]);
+  });
+
+  it('tidies the items of the MODEL too, on a slide with no dashed line (the year after the title, the rank before the artist)', () => {
+    const [item] = itemsOfSlide([{ type: 'album', title: 'Nothing Was The Same (2013)', artist: '1. Drake', director: null, year: null, notes: null, sourceSlide: 4 }], 'Drake\nNothing Was The Same (2013)', 4);
+    expect(item).toMatchObject({ type: 'album', title: 'Nothing Was The Same', artist: 'Drake', year: 2013, sourceSlide: 4 });
+  });
+
+  it('and the same song written with and without the year on two slides is ONE item (the tidy comes before the key)', () => {
+    const [a] = itemsOfSlide([], '1. Charlie - Spacer Woman (ZYX 1984)', 0);
+    const [b] = itemsOfSlide([], 'Charlie - Spacer Woman', 1);
+    expect(slideItemKey(a)).toBe(slideItemKey(b));
   });
 });

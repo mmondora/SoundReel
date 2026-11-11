@@ -11,7 +11,19 @@ import { logInfo, logWarning, logError } from '../utils/logger';
 import { getPrompt, renderTemplate } from './promptLoader';
 import { getFeaturesConfig, outputLanguageDisplayName } from '../utils/db';
 import type { AiAnalysisResult, MediaAiAnalysisResult, AiUsageMetadata } from '../types';
-import { SLIDE_MAX_TOKENS, buildSlidePrompt, itemsOfSlide, parseSlideItems, slideItemKey, type SlideItem } from './slideItems';
+import {
+  MUSIC_GATE_MAX_TOKENS,
+  MUSIC_GATE_SCHEMA,
+  SLIDE_MAX_TOKENS,
+  buildMusicGatePrompt,
+  buildSlidePrompt,
+  isMusicItem,
+  itemsOfSlide,
+  parseMusicVerdict,
+  parseSlideItems,
+  slideItemKey,
+  type SlideItem,
+} from './slideItems';
 
 export type { SlideItem } from './slideItems';
 
@@ -598,15 +610,53 @@ export async function analyzeWithAi(
   }
 }
 
+/** The verdict of the question «is this carousel about music?»: `not_asked` when the slides gave no song or album, `unreadable` when the model did not answer with a boolean. */
+export type MusicGate = 'not_asked' | 'music' | 'not_music' | 'unreadable';
+
+export interface SlideExtraction {
+  items: SlideItem[];
+  musicGate: MusicGate;
+  /** The songs and albums read from the slides and thrown away because the carousel is not about music (or the verdict could not be read). */
+  droppedSongs: number;
+}
+
+/**
+ * ONE yes/no question for the whole carousel: does it list or recommend music? `true` / `false` as the local model says, `null` when it could not say (a failed call, an answer cut
+ * at the ceiling, no boolean): never a yes by default. The caption and the text of the slides are the evidence (`buildMusicGatePrompt`); the answer is one boolean under a schema.
+ */
+export async function carouselAboutMusic(
+  slideOcrTexts: ReadonlyArray<{ slideIndex: number; text: string }>,
+  caption: string | null | undefined
+): Promise<boolean | null> {
+  try {
+    const response = await generateText(buildMusicGatePrompt(caption, slideOcrTexts), [], { json: true, schema: MUSIC_GATE_SCHEMA, maxTokens: MUSIC_GATE_MAX_TOKENS });
+    if (response.truncated) {
+      logWarning('carouselAboutMusic: risposta troncata, il carosello non conta come musica', { maxTokens: MUSIC_GATE_MAX_TOKENS });
+      return null;
+    }
+    const verdict = parseMusicVerdict(response.text);
+    if (verdict === null) logWarning('carouselAboutMusic: la risposta non e\' un si o un no', { chars: response.text.length });
+    return verdict;
+  } catch (e) {
+    logWarning('carouselAboutMusic failed', { error: String(e) });
+    return null;
+  }
+}
+
 /**
  * What each slide of a carousel names (songs, albums, films, books): one question to the local model per slide, read in every shape it answers and mended with the OCR
  * text of the slide (`slideItems.ts`: on 10 November a prompt that asked for an array got ONE OBJECT per slide, and ten albums were read as nothing). A slide whose
  * answer was cut, or that failed, is a warning and the others are read; the same item on two slides is one.
+ *
+ * **The songs and albums are trusted only when the carousel is about music** (11 November: the «ARTIST - TITLE» lines of the OCR made a song of every dash of a roadmap, a stack of
+ * tools or a list of horror films, and about nine in ten of the «songs» of 403 old carousels were not music). So when the slides gave any, ONE more question is asked
+ * (`carouselAboutMusic`, with the caption): a «no», or an answer that cannot be read, throws them away; the films, books and texts are not songs and stay.
  */
-export async function extractFromSlides(
-  slideOcrTexts: Array<{ slideIndex: number; text: string }>
-): Promise<SlideItem[]> {
-  if (slideOcrTexts.length === 0) return [];
+export async function extractFromSlidesDetailed(
+  slideOcrTexts: Array<{ slideIndex: number; text: string }>,
+  context: { caption?: string | null } = {}
+): Promise<SlideExtraction> {
+  if (slideOcrTexts.length === 0) return { items: [], musicGate: 'not_asked', droppedSongs: 0 };
 
   const total = slideOcrTexts.length;
   const results: SlideItem[] = [];
@@ -632,6 +682,24 @@ export async function extractFromSlides(
     }
   }
 
-  logInfo('extractFromSlides', { slides: total, items: results.length });
-  return results;
+  let musicGate: MusicGate = 'not_asked';
+  let items = results;
+  const songs = results.filter(isMusicItem).length;
+  if (songs > 0) {
+    const about = await carouselAboutMusic(slideOcrTexts, context.caption);
+    musicGate = about === null ? 'unreadable' : about ? 'music' : 'not_music';
+    if (musicGate !== 'music') items = results.filter((i) => !isMusicItem(i));
+  }
+  const droppedSongs = results.length - items.length;
+
+  logInfo('extractFromSlides', { slides: total, items: items.length, musicGate, droppedSongs });
+  return { items, musicGate, droppedSongs };
+}
+
+/** The items of `extractFromSlidesDetailed`, for the callers that need nothing else. */
+export async function extractFromSlides(
+  slideOcrTexts: Array<{ slideIndex: number; text: string }>,
+  context: { caption?: string | null } = {}
+): Promise<SlideItem[]> {
+  return (await extractFromSlidesDetailed(slideOcrTexts, context)).items;
 }

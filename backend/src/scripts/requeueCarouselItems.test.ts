@@ -9,7 +9,7 @@ import { fetchCandidates, parseArgs, requeueCarouselItems, type Candidate, type 
 
 const slide = (index: number, ocrText: string | null): EntrySlide => ({ index, imageUrl: null, ocrText, visualDescription: null, summary: null, links: [] });
 const candidate = (id: string, ocrs: Array<string | null> = ['Drake\nNothing Was The Same', 'Portishead\nDummy', 'x']): Candidate => ({
-  id, source_url: `https://www.instagram.com/p/${id}`, source_platform: 'instagram', input_user: 'mike', slides: ocrs.map((t, i) => slide(i, t)),
+  id, source_url: `https://www.instagram.com/p/${id}`, source_platform: 'instagram', input_user: 'mike', caption: 'album da ascoltare #musica', slides: ocrs.map((t, i) => slide(i, t)),
 });
 const song = (title: string, type: SlideItem['type'] = 'album'): SlideItem => ({ type, title, artist: null, director: null, year: null, notes: null, sourceSlide: 0 });
 
@@ -21,6 +21,7 @@ function deps(over: Partial<Deps> & { rows?: Candidate[]; items?: Record<string,
   const rows = over.rows ?? [];
   return {
     db: { query: vi.fn(async (sql: string) => ({ rows: /FROM entries/.test(sql) ? rows : [{ chat_id: '42' }] })) } as never,
+    aboutMusic: over.aboutMusic ?? (async () => true),
     extract: over.extract ?? (async (texts) => items[texts.map((t) => t.text).join('|')] ?? []),
     enqueue: over.enqueue ?? (async (job) => { enqueued.push(job as never); }),
     record: over.record ?? (async (id, songs) => { recorded.push([id, songs]); }),
@@ -51,6 +52,7 @@ describe('fetchCandidates: the carousels whose slides were never read', () => {
     expect(rows.map((r) => r.id)).toEqual(['a']);
     const [sql, params] = (d.db.query as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(String(sql)).toMatch(/results->'slides'/);
+    expect(String(sql)).toMatch(/e\.caption/);
     expect(String(sql)).toMatch(/ocrText/);
     expect(String(sql)).toMatch(/carousel_extraction/);
     expect(String(sql)).toMatch(/itemsFound/);
@@ -68,7 +70,7 @@ describe('requeueCarouselItems', () => {
   it('a PREVIEW reads the slides, says what it finds and queues nothing', async () => {
     const d = deps({ rows: [a, b], items: { [items(a)]: [song('Nothing Was The Same'), song('Dummy'), song('Taxi Driver', 'film')], [items(b)]: [song('Titolo')] } });
     const out = await requeueCarouselItems(d, { apply: false, notify: false, since: null, limit: null, minSlides: 3, minItems: 2 });
-    expect(out).toEqual({ candidates: 2, withItems: 2, enough: 1, songs: 3, queued: 0, failed: 0 });
+    expect(out).toEqual({ candidates: 2, notMusic: 0, unsure: 0, withItems: 2, enough: 1, songs: 3, queued: 0, failed: 0 });
     expect(d.enqueued).toEqual([]);
     expect(d.recorded).toEqual([]);
     expect(d.lines.join('\n')).toMatch(/PREVIEW|ANTEPRIMA/i);
@@ -100,7 +102,37 @@ describe('requeueCarouselItems', () => {
 
   it('with no candidate it says so and does nothing', async () => {
     const d = deps({ rows: [] });
-    expect(await requeueCarouselItems(d, { apply: true, notify: false, since: null, limit: null, minSlides: 3, minItems: 2 })).toEqual({ candidates: 0, withItems: 0, enough: 0, songs: 0, queued: 0, failed: 0 });
+    expect(await requeueCarouselItems(d, { apply: true, notify: false, since: null, limit: null, minSlides: 3, minItems: 2 })).toEqual({ candidates: 0, notMusic: 0, unsure: 0, withItems: 0, enough: 0, songs: 0, queued: 0, failed: 0 });
+  });
+
+  // 11 November: the first preview of the 403 old carousels read «songs» in 164 and about nine in ten were not music (a roadmap, a stack of tools, tinnitus, finance). The question
+  // «is it about music?» is asked FIRST, with the caption: a carousel that is not about music is not read slide by slide (one question of half a second instead of fifteen seconds).
+  it('asks «is it about music?» BEFORE reading the slides, with the caption and the slides: a carousel that is not about music is not read at all and is counted', async () => {
+    const asked: Array<[string, string | null]> = [];
+    const extract = vi.fn(async () => [song('X'), song('Y')]);
+    const d = deps({ rows: [a, candidate('c')], extract, aboutMusic: async (slides, caption) => { asked.push([slides.map((s) => s.text).join('|'), caption]); return asked.length === 1; } });
+    const out = await requeueCarouselItems(d, { apply: true, notify: false, since: null, limit: null, minSlides: 3, minItems: 2 });
+    expect(asked).toEqual([[items(a), 'album da ascoltare #musica'], [items(candidate('c')), 'album da ascoltare #musica']]);
+    expect(extract).toHaveBeenCalledTimes(1);
+    expect(out).toMatchObject({ candidates: 2, notMusic: 1, unsure: 0, queued: 1 });
+    expect(d.enqueued.map((j) => j.entryId)).toEqual(['a']);
+  });
+
+  it('a verdict that could not be read is not a yes: the carousel is not read, not queued, and counted as «unsure» (a later run asks again)', async () => {
+    const extract = vi.fn(async () => [song('X'), song('Y')]);
+    const d = deps({ rows: [a], extract, aboutMusic: async () => null });
+    const out = await requeueCarouselItems(d, { apply: true, notify: false, since: null, limit: null, minSlides: 3, minItems: 2 });
+    expect(extract).not.toHaveBeenCalled();
+    expect(out).toMatchObject({ notMusic: 0, unsure: 1, queued: 0 });
+    expect(d.enqueued).toEqual([]);
+  });
+
+  it('gives the caption of the entry to the extraction too, and the final line says how many were not music', async () => {
+    const contexts: unknown[] = [];
+    const d = deps({ rows: [a, candidate('c', ['Phase 1 - Stabilize', 'Step 2 - Automate', 'x'])], aboutMusic: async (slides) => slides[0].text === a.slides[0].ocrText, extract: async (_t, context) => { contexts.push(context); return [song('X'), song('Y')]; } });
+    await requeueCarouselItems(d, { apply: false, notify: false, since: null, limit: null, minSlides: 3, minItems: 2 });
+    expect(contexts).toEqual([{ caption: 'album da ascoltare #musica' }]);
+    expect(d.lines[d.lines.length - 1]).toMatch(/non musica 1/);
   });
 
   it('--notify makes the jobs speak (Telegram); a platform that is not instagram is «other»', async () => {

@@ -3,7 +3,7 @@ import { withEntryKeyLock } from '../utils/entryKeyLock';
 import { ingestLink, resolveLink, IngestError } from '../services/linkIngest';
 import { extractContent, detectPlatform, setLogger as setContentExtractorLogger } from '../services/contentExtractor';
 import { recognizeAudio } from '../services/_legacy/audioRecognition';
-import { analyzeWithAi, extractFromSlides, AiAnalysisResponse } from '../services/aiAnalysis';
+import { analyzeWithAi, extractFromSlidesDetailed, AiAnalysisResponse } from '../services/aiAnalysis';
 import type { SlideItem } from '../services/aiAnalysis';
 import { carouselItemsFoundBefore, storedSlideOcrTexts } from '../services/slideItems';
 import { ocrImages } from '../services/ocrClient';
@@ -823,12 +823,16 @@ export function registerAnalyzeRoute(app: FastifyInstance): void {
                   .map((r, i) => ({ slideIndex: i, text: r.text ?? '' }))
                   .filter((s) => s.text.trim().length > 0);
 
-            const extracted = await extractFromSlides(slideOcrTexts);
-            slideItems.push(...extracted);
+            // The songs and albums of the slides count only when the carousel is about music (11 November: a roadmap, a stack of tools and a list of horror films gave
+            // «songs» from their dashes): the verdict is asked with the caption of the post and written in the log, so that a carousel that gives nothing says why.
+            const extraction = await extractFromSlidesDetailed(slideOcrTexts, { caption: content.caption });
+            slideItems.push(...extraction.items);
 
             await appendActionLog(entryId, createActionLog('carousel_extraction', {
               slides: rereadStoredSlides ? (reusedSlides?.length ?? 0) : (localPaths?.slidePaths?.length ?? 0),
-              itemsFound: extracted.length,
+              itemsFound: extraction.items.length,
+              musicGate: extraction.musicGate,
+              ...(extraction.droppedSongs > 0 ? { droppedSongs: extraction.droppedSongs } : {}),
               ...(rereadStoredSlides ? { reanalyze: true } : {}),
             }));
           }

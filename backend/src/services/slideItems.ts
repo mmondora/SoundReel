@@ -261,7 +261,25 @@ export function dashedPairs(ocrText: string): Array<{ artist: string; title: str
     if (wordsOf(title).length > 8) continue;
     pairs.push({ artist, title });
   }
-  return pairs;
+  return withoutRankRuns(pairs);
+}
+
+/** The number at the start of an artist, with the dot or the bracket of a rank or without: «1.», «12)», «#3:», «3 ». */
+const LEADING_NUMBER = /^#?(\d{1,3})\s*[.):]?\s*(?=\p{L})/u;
+
+/**
+ * The rank of a list the OCR wrote without its dot («3 Chip E.», «4 J.M. Silk» after «1. Jesse Saunders», «2. Chip E.»): a number in front of the artist is a RANK when the number of the
+ * next line or of the line before differs by one, up («1, 2, 3») or down (a countdown, «10, 9, 8»). A name with a number in it («50 Cent», «2 Chainz») has no such neighbour; a single
+ * line is never stripped here (it could be a name).
+ */
+function withoutRankRuns(pairs: Array<{ artist: string; title: string }>): Array<{ artist: string; title: string }> {
+  const ranks = pairs.map((p) => { const m = p.artist.match(LEADING_NUMBER); return m ? Number(m[1]) : null; });
+  const next = (a: number | null | undefined, b: number): boolean => a !== null && a !== undefined && Math.abs(a - b) === 1;
+  return pairs.map((p, i) => {
+    const rank = ranks[i];
+    const inRun = rank !== null && (next(ranks[i + 1], rank) || next(ranks[i - 1], rank));
+    return inRun ? { ...p, artist: p.artist.replace(LEADING_NUMBER, '').trim() } : p;
+  });
 }
 
 /** The same song or album written on two slides (in big letters and in small ones) is one item: title and artist without case, accents or punctuation. */
@@ -274,7 +292,7 @@ export function slideItemKey(item: SlideItem): string {
 export function itemsOfSlide(modelItems: readonly SlideItem[], ocrText: string, slideIndex: number): SlideItem[] {
   const refined = refineSlideItems(modelItems, ocrText);
   const pairs = dashedPairs(ocrText);
-  if (pairs.length === 0) return refined;
+  if (pairs.length === 0) return refined.map(tidyItem);
   const titles = new Set(pairs.map((p) => foldSolid(p.title)));
   const kept = refined
     .filter((i) => (i.type !== 'song' && i.type !== 'album') || titles.has(foldSolid(i.title)))
@@ -282,7 +300,85 @@ export function itemsOfSlide(modelItems: readonly SlideItem[], ocrText: string, 
   const pairItems: SlideItem[] = pairs
     .filter((p) => !kept.some((i) => foldSolid(i.title) === foldSolid(p.title)))
     .map((p) => ({ type: 'song', title: p.title, artist: p.artist, director: null, year: null, notes: null, sourceSlide: slideIndex }));
-  return [...kept, ...pairItems];
+  return [...kept, ...pairItems].map(tidyItem);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// the rank and the year are not part of the names
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+
+/** «1. », «12) », «#3: », «1.Wendy»: the rank of a list. A bare number is a name too («50 Cent», «2 Chainz»): without the dot or the bracket it stays. */
+const RANK_PREFIX = /^#?\d{1,3}\s*[.):]\s*(?=\p{L})/u;
+/** A bracket at the end of the title that holds a year («(1968)», «(ZYX 1984)», «(1984, Jes Say Records)»), even when the OCR left one bracket open («( (Memory records 1984)»). */
+const YEAR_BRACKET = /\s*\(+[^()]*?\b((?:19|20)\d{2})\b[^()]*\)?\s*$/;
+/** A bracket that says WHICH version it is stays: a version is a song of its own («Heroes (Live 1985)», «(Remastered 2009)», «(feat. X)»). */
+const VERSION_WORD = /\b(live|remix(?:ed)?|remaster(?:ed)?|version|demo|acoustic|edit|mix|instrumental|cover|reprise|session|dub|extended|radio|feat\.?|ft\.?|featuring)\b/i;
+
+/**
+ * A song or an album as the pipeline wants it: the rank of the list off the artist («1. Charlie» is «Charlie»), and the year written in brackets after the title («Switched-On
+ * Bach (1968)», «Spacer Woman (ZYX 1984)») in `year`, where a year already read is kept. Lists of «100 essential tracks» are written «N. ARTIST - TITLE (LABEL YEAR)», and a search for
+ * the title with the label and the year in it finds nothing. A title that would be left empty is not touched; films, books and texts are not songs and are not touched.
+ */
+export function tidyItem(item: SlideItem): SlideItem {
+  if (!isMusicItem(item)) return item;
+  let { title, artist, year } = item;
+  if (artist) {
+    const withoutRank = artist.replace(RANK_PREFIX, '').trim();
+    if (withoutRank !== '') artist = withoutRank;
+  }
+  const bracket = title.match(YEAR_BRACKET);
+  if (bracket && !VERSION_WORD.test(bracket[0])) {
+    const rest = title.slice(0, bracket.index).replace(/[\s(]+$/, '');
+    if (foldSolid(rest).length >= 2) {
+      title = rest;
+      year = year ?? Number(bracket[1]);
+    }
+  }
+  return title === item.title && artist === item.artist && year === item.year ? item : { ...item, title, artist, year };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// the carousel is about MUSIC, or its «songs» are not songs
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+
+/** The answer is ONE boolean. Free JSON gave `{"false}:thinking_face:"…` and a different object each time; under this schema it is `{"music":true}` in a few tokens. */
+export const MUSIC_GATE_SCHEMA = { type: 'object', properties: { music: { type: 'boolean' } }, required: ['music'] } as const;
+export const MUSIC_GATE_MAX_TOKENS = 40;
+const GATE_CAPTION_MAX = 500;
+const GATE_SLIDE_MAX = 260;
+const GATE_SLIDES_MAX = 2600;
+
+/** A song or an album: what the pipeline turns into a song of the entry. A film, a book and a text are not. */
+export const isMusicItem = (item: Pick<SlideItem, 'type'>): boolean => item.type === 'song' || item.type === 'album';
+
+/**
+ * ONE yes/no question for the whole carousel, asked when its slides gave «songs»: does it list or recommend music? The caption and the first words of every slide are the
+ * evidence. Every «ARTIST - TITLE» line of the OCR becomes a song (`dashedPairs`), and a business roadmap («Phase 1 - Stabilize»), a Flutter stack or a list of horror films
+ * have such lines too: on 403 old carousels 164 gave songs and about nine in ten were not music.
+ */
+export function buildMusicGatePrompt(caption: string | null | undefined, slides: ReadonlyArray<{ slideIndex: number; text: string }>): string {
+  const text = slides.map((s) => `Slide ${s.slideIndex + 1}: ${s.text.replace(/\s+/g, ' ').trim().slice(0, GATE_SLIDE_MAX)}`).join('\n').slice(0, GATE_SLIDES_MAX);
+  const description = (caption ?? '').replace(/\s+/g, ' ').trim().slice(0, GATE_CAPTION_MAX) || '(nessuna)';
+  return `Questo è un carosello Instagram: la didascalia del post e il testo delle sue slide.
+
+Didascalia:
+${description}
+
+${text}
+
+Domanda: questo carosello elenca o consiglia MUSICA da ascoltare (canzoni, album, dischi, artisti musicali)?
+Film, serie, libri, software, intelligenza artificiale, finanza, salute, consigli di vita e ogni altro argomento NON sono musica, anche se il testo ha elenchi con trattini o numeri.
+Rispondi SOLO con un oggetto JSON: {"music": true} oppure {"music": false}.`;
+}
+
+/** The verdict of the model: `true`, `false`, or `null` when the answer is not the boolean (a string, another key, no object): no answer is not a «yes». */
+export function parseMusicVerdict(raw: string): boolean | null {
+  const parsed = parseJson(raw);
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    const verdict = (parsed as Record<string, unknown>).music;
+    if (typeof verdict === 'boolean') return verdict;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------

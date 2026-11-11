@@ -7,6 +7,9 @@
  *
  * Questo script lavora sui dati gia' salvati: il testo OCR di ogni slide sta in `results.slides[].ocrText`. Non scarica niente, non rifa' l'OCR, non chiama servizi esterni:
  * solo il nostro Ollama (una chiamata a slide, mezzo secondo l'una, un modello caldo). Per ogni carosello con abbastanza slide con testo e senza elementi trovati:
+ *   - PRIMA UNA DOMANDA: «questo carosello parla di musica?» (la didascalia e il testo delle slide, un si' o un no in mezzo secondo). Il 11 novembre la prima anteprima sui 403 caroselli
+ *     vecchi lesse «brani» in 164 e nove su dieci non erano musica (una roadmap, uno stack di strumenti, acufene, finanza, un elenco di film horror: ogni riga «X - Y» dell'OCR
+ *     diventava una canzone). Un carosello che non parla di musica non si legge slide per slide; uno la cui risposta non si legge e' «incerto» e non si mette in coda;
  *   - ANTEPRIMA (default): legge le slide con l'estrazione corretta e dice cosa troverebbe; niente scritto, niente in coda;
  *   - `--apply`: mette in coda (corsia seriale `reanalyze`, silenziosa salvo `--notify`) la seconda passata delle sole entry che guadagnano almeno `--min-items` brani o
  *     album. La seconda passata rilegge le slide salvate (regola di `routes/analyze.ts`), cerca i brani, li unisce a quelli dell'entry e fa partire quello che parte
@@ -27,6 +30,8 @@ export interface Candidate {
   source_url: string;
   source_platform: string;
   input_user: string | null;
+  /** The caption of the post: the evidence of the music question, next to the text of the slides. */
+  caption: string | null;
   slides: EntrySlide[];
 }
 
@@ -66,7 +71,7 @@ export function parseArgs(argv: string[]): Options {
 /** I caroselli con abbastanza slide con testo OCR e senza elementi trovati dall'ultimo passo (o senza passo), non gia' in coda, dal piu' recente. */
 export async function fetchCandidates(db: Pick<Pool, 'query'>, opts: Pick<Options, 'since' | 'limit' | 'minSlides'>): Promise<Candidate[]> {
   const { rows } = await db.query<Candidate>(
-    `SELECT e.id, e.source_url, e.source_platform, e.input_user, e.results->'slides' AS slides
+    `SELECT e.id, e.source_url, e.source_platform, e.input_user, e.caption, e.results->'slides' AS slides
        FROM entries e
       WHERE e.status = 'completed'
         AND jsonb_typeof(e.results->'slides') = 'array'
@@ -88,8 +93,10 @@ export async function fetchCandidates(db: Pick<Pool, 'query'>, opts: Pick<Option
 
 export interface Deps {
   db: Pick<Pool, 'query'>;
-  /** Legge le slide (il testo OCR gia' salvato) con l'estrazione di `aiAnalysis`. */
-  extract: (slides: Array<{ slideIndex: number; text: string }>) => Promise<SlideItem[]>;
+  /** «Parla di musica?»: `true`, `false`, o `null` se il modello non ha saputo dirlo (mai un si' per default). Si chiede PRIMA di leggere le slide una a una. */
+  aboutMusic: (slides: Array<{ slideIndex: number; text: string }>, caption: string | null) => Promise<boolean | null>;
+  /** Legge le slide (il testo OCR gia' salvato) con l'estrazione di `aiAnalysis`, con la didascalia del post. */
+  extract: (slides: Array<{ slideIndex: number; text: string }>, context: { caption: string | null }) => Promise<SlideItem[]>;
   enqueue: (job: {
     entryId: string;
     sourceUrl: string;
@@ -106,6 +113,10 @@ export interface Deps {
 
 export interface Summary {
   candidates: number;
+  /** Caroselli di cui il modello ha detto che non parlano di musica: non letti slide per slide. */
+  notMusic: number;
+  /** Caroselli di cui la risposta alla domanda non si e' potuta leggere: non letti, non messi in coda; una prossima volta si richiede. */
+  unsure: number;
   /** Entry in cui la lettura ha trovato almeno un brano o un album. */
   withItems: number;
   /** Entry con almeno `minItems` brani o album: quelle che ci guadagnano. */
@@ -126,7 +137,7 @@ async function resolveChatId(db: Pick<Pool, 'query'>): Promise<number> {
 
 export async function requeueCarouselItems(deps: Deps, opts: Options): Promise<Summary> {
   const rows = await fetchCandidates(deps.db, opts);
-  const summary: Summary = { candidates: rows.length, withItems: 0, enough: 0, songs: 0, queued: 0, failed: 0 };
+  const summary: Summary = { candidates: rows.length, notMusic: 0, unsure: 0, withItems: 0, enough: 0, songs: 0, queued: 0, failed: 0 };
   deps.say(
     `[carousel-items] ${opts.apply ? 'SCRIVE (--apply)' : 'ANTEPRIMA (niente in coda)'} | caroselli da rileggere: ${rows.length}` +
       `${opts.since ? ` (dal ${opts.since})` : ''}${opts.limit ? ` | al massimo ${opts.limit}` : ''} | almeno ${opts.minSlides} slide con testo e ${opts.minItems} brani`,
@@ -135,9 +146,16 @@ export async function requeueCarouselItems(deps: Deps, opts: Options): Promise<S
   const chatId = opts.apply ? await resolveChatId(deps.db) : 0;
 
   for (const row of rows) {
+    const slides = storedSlideOcrTexts(row.slides);
+    const music = await deps.aboutMusic(slides, row.caption);
+    if (music !== true) {
+      if (music === false) summary.notMusic += 1;
+      else summary.unsure += 1;
+      continue;
+    }
     let items: SlideItem[];
     try {
-      items = await deps.extract(storedSlideOcrTexts(row.slides));
+      items = await deps.extract(slides, { caption: row.caption });
     } catch (err) {
       summary.failed += 1;
       deps.say(`  ${row.id}  ERRORE ${err instanceof Error ? err.message : String(err)}`);
@@ -166,14 +184,14 @@ export async function requeueCarouselItems(deps: Deps, opts: Options): Promise<S
     summary.queued += 1;
   }
   deps.say(
-    `[carousel-items] letti ${rows.length} | con brani ${summary.withItems} | con almeno ${opts.minItems} ${summary.enough} | brani trovati ${summary.songs}` +
+    `[carousel-items] letti ${rows.length} | non musica ${summary.notMusic}${summary.unsure ? ` | incerti ${summary.unsure}` : ''} | con brani ${summary.withItems} | con almeno ${opts.minItems} ${summary.enough} | brani trovati ${summary.songs}` +
       `${opts.apply ? ` | messi in coda ${summary.queued}` : ' | niente in coda (aggiungi --apply)'}${summary.failed ? ` | errori ${summary.failed}` : ''}`,
   );
   return summary;
 }
 
 async function main(): Promise<void> {
-  const [{ pool, appendActionLog, createActionLog }, { enqueueJob }, { extractFromSlides }] = await Promise.all([
+  const [{ pool, appendActionLog, createActionLog }, { enqueueJob }, { carouselAboutMusic, extractFromSlides }] = await Promise.all([
     import('../utils/db'),
     import('../utils/jobQueue'),
     import('../services/aiAnalysis'),
@@ -182,7 +200,8 @@ async function main(): Promise<void> {
     await requeueCarouselItems(
       {
         db: pool,
-        extract: (slides) => extractFromSlides(slides),
+        aboutMusic: (slides, caption) => carouselAboutMusic(slides, caption),
+        extract: (slides, context) => extractFromSlides(slides, context),
         enqueue: (job) => enqueueJob(job),
         record: async (entryId, songs) => {
           await appendActionLog(entryId, createActionLog('requeued_carousel_items', { songsFound: songs, silent: true }));

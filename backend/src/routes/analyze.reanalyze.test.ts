@@ -239,6 +239,14 @@ describe('analyze route second pass', () => {
       onlyMatch(/if \(featuresConfig\.carouselStructuredExtraction && \(rereadStoredSlides \|\| \(!reanalyze && \(localPaths\?\.slidePaths\?\.length \?\? 0\) > 0\)\)\)/);
       onlyMatch(/storedSlideOcrTexts\(reusedSlides\)/);
     });
+
+    it('asks the slides WITH the caption of the post, and writes the music verdict in the log: a carousel that gives nothing says why (11 November: its «songs» are trusted only when it is about music)', () => {
+      onlyMatch(/await extractFromSlidesDetailed\(slideOcrTexts, \{ caption: content\.caption \}\)/);
+      onlyMatch(/itemsFound: extraction\.items\.length,/);
+      onlyMatch(/musicGate: extraction\.musicGate,/);
+      onlyMatch(/\.\.\.\(extraction\.droppedSongs > 0 \? \{ droppedSongs: extraction\.droppedSongs \} : \{\}\),/);
+      onlyMatch(/slideItems\.push\(\.\.\.extraction\.items\);/);
+    });
   });
 
   /**
