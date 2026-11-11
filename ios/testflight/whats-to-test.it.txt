@@ -1,12 +1,12 @@
-Mondrop 1.7.0 (build 12). Le macro funzionalità:
+Mondrop 1.8.0 (build 16). Le macro funzionalità:
 1. Share: manda un link da Safari o da un'altra app al foglio «Mondrop» (o dalla scheda Share) e guarda l'esito nella scheda Posta.
-2. Home e Cerca: cerca una canzone, un artista o un album della libreria e riprendi da dove eri.
-3. Player: suona un brano e apri il Player a schermo intero (copertina, testo, coda).
-4. Playlist: l'elenco si cerca, si ordina per data e si sfoglia; le playlist si scaricano per ascoltarle senza rete.
+2. Home e Cerca: cerca una canzone, un artista o un album; il «+» sul brano trovato lo mette in una playlist; «Tutte» sulla Home apre l'elenco di tutte le playlist.
+3. Player: suona un brano e apri il Player a schermo intero (copertina, testo, coda). Novità: il cuore «Mi piace» e la ripetizione, anche dai comandi Bluetooth e dalla schermata di blocco.
+4. Playlist: ogni brano è «sul telefono», «online» o «in errore». Novità: quando suoni una playlist i brani che mancano si scaricano da soli (sotto un limite di GB; sopra chiede cosa fare).
 
 Le tre cose da guardare con più attenzione:
+• Il «Mi piace»: tocca il cuore su un brano e guarda che compaia nella playlist «Mi piace»; prova anche la ripetizione.
+• Il download: avvia una playlist e guarda che i brani mancanti si scarichino (poi riascoltala in modo aereo); le altre playlist non si scaricano.
 • Share e Posta: il link condiviso arriva e l'esito compare nella Posta.
-• Ascolto: il brano parte, il mini player resta in basso e, chiusa e riaperta l'app, la coda ricompare ferma (non parte da sola).
-• Senza rete: scarica una playlist e riascoltala con il telefono in modo aereo.
 
-Novità della build 12: l'elenco delle playlist con ricerca, filtri e ordine per data, anche per le playlist automatiche fatte dai post di musica.
+Novità della build 16: il download segue la playlist che stai suonando (prima partiva per tutte al primo accesso).

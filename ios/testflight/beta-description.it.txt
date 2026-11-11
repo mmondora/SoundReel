@@ -1,8 +1,8 @@
 Mondrop è la app di SoundReel, il diario musicale privato della famiglia: porta sul telefono le canzoni dei post che condividiamo.
 
 • Share: dal foglio di condivisione (Safari, Instagram, TikTok...) mandi un link a SoundReel e l'esito torna nella Posta.
-• Home e Cerca: cerchi canzoni, artisti e album della libreria di famiglia e riprendi da dove avevi lasciato.
-• Player: coda, copertine e testi delle canzoni.
-• Playlist: le tue e quelle automatiche, con ricerca e ordine per data; le scarichi per ascoltarle senza rete.
+• Home e Cerca: cerchi canzoni, artisti e album della libreria di famiglia e riprendi da dove avevi lasciato; dalla Home apri l'elenco di tutte le playlist, che si cerca e si ordina per data.
+• Player: coda, copertine e testi delle canzoni; il «Mi piace» e la ripetizione, anche dai comandi Bluetooth dell'auto e dalla schermata di blocco.
+• Playlist: le tue e quelle automatiche; ogni canzone dice se è sul telefono, online o in errore; quando suoni una playlist, i brani che mancano si scaricano da soli per ascoltarla senza rete (con un avviso se sono molti GB).
 
 Serve la chiave personale del server di famiglia (si inserisce nelle Impostazioni): senza, l'app non ha una libreria da mostrare.

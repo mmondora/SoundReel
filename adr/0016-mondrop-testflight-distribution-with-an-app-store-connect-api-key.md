@@ -43,6 +43,7 @@ Mondrop has so far been installed on Michele's iPhone from Xcode (`install-iphon
 - ⚠️ A new secret (the API key); an App Manager (or Admin) key can manage the team's apps, so it is kept 0600 and revoked if it leaks.
 - ⚠️ The first build of a version for external testers goes through Apple's beta review; builds expire after 90 days.
 - ⚠️ The build number must grow with every upload of the same version.
+- ✅ **The relatives are external testers, never developers** (Michele, 11 November: «Archimede […] non ha e non vuole account developer»): they receive Mondrop from the external group («FamilyPlus») with a plain Apple ID and the TestFlight app. The internal group needs App Store Connect users of the team (only Michele is one) and development builds need a registered device and Developer Mode: neither is a way to give the app to the family.
 - ⚠️ TestFlight builds use the **production** APNs environment: development tokens (Xcode builds) and production tokens (TestFlight) coexist on the server, which picks the host by the environment each token registered with.
 
 ## 5. Open questions

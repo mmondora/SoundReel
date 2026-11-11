@@ -66,3 +66,13 @@ Risposte alle domande che servivano per procedere (testuali):
 - **Un difetto trovato strada facendo:** `submit-review 9` senza `--whats-new` scartava il numero (l'indice del valore del flag valeva 0 quando il flag manca) e mandava in revisione **la build più recente**, non la 9. Ora è `submitArgs`, una funzione pura con il suo test.
 - **Da sapere:** se Apple chiede di vedere l'app con i dati, la richiesta arriva alla mail di contatto di Michele e la chiave temporanea si fa dalla pagina «Ottieni chiave» (`/mondrop/connect`, dietro Authelia). Se anche questa strada fallisce resta quella dei tester interni (§7: Sara e Archimede come utenti di App Store Connect nel gruppo interno).
 - **Test:** `node --test ios/scripts/asc.test.mjs` **35** (erano 27); i mutanti sul codice nuovo (confini del limite, lingua, confronto «già uguale», lettura dal file, indice del numero) sono tutti uccisi.
+
+## 9. 11 novembre: i familiari non hanno e non vogliono un account developer; la 1.8.0 va in revisione per gli esterni
+
+**Richiesta di Michele (testuale, 11 novembre):** «Perché archimede deve essere un developer per usare mondrop ? Lui non ha e non vuole account developer.»
+
+- **Regola:** i familiari ricevono Mondrop **solo come tester esterni di TestFlight** (il gruppo «FamilyPlus»: basta un Apple ID normale, l'app TestFlight e l'invito). **Mai** il gruppo interno «Family» (vuole utenti del team in App Store Connect: è solo Michele) e **mai** una build di sviluppo (Xcode, cavo, UDID registrato, «Modalità sviluppatore» sul telefono). Se un familiare incontra una schermata che gli chiede un account developer, è la strada sbagliata.
+- **Stato a metà mattina:** Archimede (`archi`) e Sara stavano nel gruppo esterno «FamilyPlus» con stato `NOT_INVITED`: l'invito parte quando Apple approva la build per gli esterni. La **1.7.0 build 12** era in coda dal 10 novembre alle 22:32 (`WAITING_FOR_REVIEW`); la build 8 era stata rifiutata per testi di prova troppo magri (§8).
+- **Fatto (Michele: «Sì, manda anche la 1.8.0»):** testi di `ios/testflight/` riscritti per la **1.8.0 (build 16)** (ancora validi per chi guarda la build 12: le novità sono dette «dalla 1.8.0»), `set-test-info`, `assign-build FamilyPlus 16`, `submit-review 16 --whats-new @ios/testflight/whats-to-test.it.txt` → `WAITING_FOR_REVIEW`. Le due revisioni (1.7.0 build 12 e 1.8.0 build 16) sono versioni diverse e Apple le tratta una per una.
+- **Da fare quando Apple approva:** controllare che Archimede e Sara risultino invitati (`node ios/scripts/asc.mjs groups FamilyPlus`); se restano `NOT_INVITED`, `invite-group FamilyPlus` **con l'OK di Michele** (parte una mail a ciascuno). Nessun account developer da creare.
+
