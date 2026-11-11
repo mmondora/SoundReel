@@ -64,6 +64,19 @@ public final class Settings {
         set { defaults.set(newValue, forKey: "allowCellularDownloads") }
     }
 
+    /// «Avvisa sopra»: the size above which a sync asks before it downloads (Impostazioni → Sync; spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U2).
+    /// A phone that never chose starts at 2 GB.
+    public var syncWarnLimit: SyncWarnLimit {
+        get { SyncWarnLimit(stored: defaults.object(forKey: "syncWarnLimitGB") as? Int) }
+        set { defaults.set(newValue.rawValue, forKey: "syncWarnLimitGB") }
+    }
+
+    /// The sync of every playlist at the first access has been done, or declined with «Annulla»: it is not run again by itself.
+    public var firstSyncDone: Bool {
+        get { defaults.bool(forKey: "firstSyncDone") }
+        set { defaults.set(newValue, forKey: "firstSyncDone") }
+    }
+
     /// «Avvisami a sync finito»: a local notification when a sync ends while the app is not in front. ON by default
     /// (a missing key means ON — `bool(forKey:)` would say OFF); iOS is only asked for permission when it is first needed.
     public var syncNotificationsEnabled: Bool {

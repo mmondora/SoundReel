@@ -118,7 +118,7 @@ struct SpaceView: View {
     private var songsSection: some View {
         Section {
             if model.rows.isEmpty {
-                Text("Nessun brano scaricato. Apri Playlist → Sync.").foregroundStyle(.secondary)
+                Text("Nessun brano scaricato. Dalla prima pagina, «Sync» scarica i brani delle playlist.").foregroundStyle(.secondary)
             }
             ForEach(model.rows) { row in
                 rowView(row)

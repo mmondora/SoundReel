@@ -70,7 +70,7 @@ cat ~/.config/soundreel/share-api-key
 
 ## Sync / primo play
 
-Contratto API: `docs/mondrop-sync.md`. Tab **Playlist** → una playlist.
+Contratto API: `docs/mondrop-sync.md`. Dalla **Home**, «Tutte» → l'elenco delle playlist → una playlist (dalla 1.8.0 non c'è più la scheda Playlist).
 
 - **Sync** = `POST …/prepare` (il server prepara i brani non pronti) + download in background: sessione `URLSession` *background*
   (continua anche con l'app sospesa), **solo Wi-Fi** salvo l'interruttore *Impostazioni → Sync → Scarica anche con rete cellulare*,
@@ -155,7 +155,7 @@ Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/search», «POST /api/mond
 - *Artista* e *Album*: la loro pagina, con **Riproduci** e **Casuale** (tutta la lista, anche oltre la prima pagina) e i brani; la pagina di un artista
   ha anche i suoi album. «Mostra tutti i brani (N)» apre l'elenco completo di una ricerca, con le pagine che si caricano scorrendo.
 - *Prima di scrivere*: le **ricerche recenti** (solo su questo telefono; si tolgono con uno scorrimento o con «Cancella») e **Sfoglia**, la vecchia
-  Libreria: Playlist, Album, Autori, Anni, Tipi e **Sul telefono**. «Solo sul telefono» sta nel menu di Cerca. **«Spazio» non c'è più nelle schermate della musica**: la cancellazione dei brani scaricati è un'opzione speciale e sta **solo nelle Impostazioni**, in una sezione «Cancellazione».
+  Libreria: Playlist, Album, Autori, Anni, Tipi e **Sul telefono**. «Solo sul telefono» sta nel menu di Cerca. **«Spazio» non c'è più nelle schermate della musica**: la cancellazione dei brani scaricati sta nelle Impostazioni, in una sezione «Cancellazione», e (dalla 1.8.0) con lo scorrimento di un brano **di Cerca che è sul telefono**; mai nelle playlist, nella Home o nel Player.
 - *Offline*, o con «Solo sul telefono»: la ricerca vale **solo per i brani scaricati** (le stesse regole, sul telefono) e lo dice una riga in cima. Se il
   server non risponde (rete, backend senza la rotta) la lista passa ai brani sul telefono con l'avviso: mai una schermata vuota.
 - **Scarica tutti** (build 9, spec `2026-11-08-mondrop-bulk-download-design.md`): nell'intestazione di «Brani» dei risultati e accanto a «Riproduci» negli artisti, negli album e in «Mostra tutti i brani».
@@ -163,7 +163,7 @@ Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/search», «POST /api/mond
   al server e si scaricano appena sono pronti, finché la schermata è aperta. Non riporta i brani tolti dal telefono, non tocca il Player.
 - **Il play non è mai automatico**: «Aggiungi in coda» con la coda vuota carica la coda e mostra il primo brano, e aspetta «Riproduci».
 - **Il Player** (build 9, spec `2026-11-08-mondrop-ipad-player-design.md`): scuro per costruzione, colori dalla tavolozza `MondropPalette` (`MondropKit/MondropPalette.swift`, contrasti provati), accento giallo, una colonna centrata (560 pt su iPad), cover quadrata. Dalla Home (sotto) non è più una scheda: si apre a schermo intero dal mini player.
-- **Schede**: **Home**, **Cerca**, Playlist, Posta, Share, Impostazioni. La Libreria non è più una scheda (si apre da «Sfoglia»). «Cerca musica» non esiste più.
+- **Schede**: **Home**, **Cerca**, Posta, Share, Impostazioni (dalla 1.8.0; prima c'era anche Playlist, che ora si apre dalla Home). La Libreria non è più una scheda (si apre da «Sfoglia»). «Cerca musica» non esiste più.
 - **Test** nuovi (`SearchModelsTests`, `SearchModelTests`, `SearchPlaybackTests`): la richiesta sul filo (parole, `+`, `&`, accenti, limiti), la
   risposta documentata e quelle storte, la ricerca online / sul telefono / con server che non risponde, risposta tardiva scartata, pagine, polling dei
   brani in preparazione, le playlist trovate per nome, «tocca = questo e i seguenti», «Aggiungi in coda», le ricerche recenti, il selettore delle playlist
@@ -202,7 +202,7 @@ Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/home») · ADR-0020 · spe
 Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/playlists») · ADR-0023 · spec `docs/superpowers/specs/2026-11-10-auto-playlists-and-playlist-list-design.md`
 (Michele, 10 novembre: «Se le play list diventano molte devo poterle selezionare/paginare/cercare, e di fianco al nome la data di creazione e un ordine di data. questo anche su mondrop.»).
 
-- La scheda **Playlist** (`PlaylistsView`) chiede **una pagina alla volta** al server (`PlaylistListModel`, `MondropAPI.playlistsPage`): la **ricerca** (barra nativa, aspetta 250 ms di pausa), il menu **Mostra**
+- L'elenco **Tutte le playlist** (`PlaylistsView`; dalla 1.8.0 si apre da «Tutte» sulla Home, non è più una scheda) chiede **una pagina alla volta** al server (`PlaylistListModel`, `MondropAPI.playlistsPage`): la **ricerca** (barra nativa, aspetta 250 ms di pausa), il menu **Mostra**
   (Tutte, Automatiche, Mie, Condivise, Dinamiche) e **Ordina per** (data di creazione, ultima modifica, nome, numero di brani, con il verso; scegliere un ordine mette il suo verso naturale) sono domande al server
   (regola P: l'app non scarica tutte le playlist per cercarne una). Predefinito: **per data di creazione, le più nuove per prime**.
 - Ogni riga ha la **data di creazione accanto al nome** (`PlaylistDateText`: «oggi», «ieri», «10 nov», «24 dic 2025»; una data illeggibile non scrive niente) e l'etichetta **AUTOMATICA** per le playlist fatte dal server
@@ -212,6 +212,39 @@ Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/playlists») · ADR-0023 �
   scelta della playlist) chiamano `listPlaylists()` senza parametri e ricevono tutto come prima.
 - Un messaggio di Posta di tipo `auto_playlist` («Nuova playlist: …») ha l'icona di una playlist.
 - **Test** nuovi (+18, 1022): `PlaylistListTests` (la query nell'ordine documentato, la risposta di un server vecchio senza `total`, la data, il modello); 16 rotture provate, tutte scoperte.
+
+## Meno schede, stati dei brani, primo accesso (1.8.0)
+
+Spec `docs/superpowers/specs/2026-11-10-mondrop-simplify-playlists-and-song-states-design.md` (U1–U9; Michele, 10 novembre: «Su Mondrop non vedo utilità nel tab playlist avendo le playlist
+in home page e al primo accesso viene fatto un sync automatico. […] Dentro ogni playlist le canzoni devono avere uno stato ( online, errore, locale ). Il player in homepage non serve. Per aggiungere
+in play list lo devo poter fare dalla ricerca […]. La canzone viene cancellata solo con uno swipe della canzone in ricerca, non nel browser di una playlist.» e «Anche la playlist deve avere un
+simbolo/icona che dice online/errore/locale»).
+
+- **Cinque schede** (`RootTab`): Home, Cerca, Posta, Share, Impostazioni. Le playlist stanno sulla Home: la riga «Le tue playlist» ha **«Sync»** (tutte le playlist, con l'avviso sui GB) e **«Tutte»**
+  (l'elenco con ricerca, ordine e pagine: `PlaylistsView`, che si apre nella pila della Home). Se il server non manda la riga, la Home vuota ha «Tutte le playlist».
+- **Il mini player non c'è sulla pagina principale della Home** (c'è «Riprendi»); c'è su ogni altra scheda e su ogni pagina che si apre dalla Home (`.miniPlayer(open:visible:)`: la Home dice
+  quando la sua pagina è in vista, `onRootVisible`).
+- **Tre stati** (`SongState`, `PlaylistState`: `MondropKit/SongState.swift`, il disegno in `StateMarks.swift`): dentro una playlist ogni brano è **Sul telefono** (segno giallo), **Online**
+  (nuvola; la percentuale mentre il telefono lo scarica) o **Errore** (triangolo rosso, con il motivo). Un brano che il server non ha ancora o il cui nome non si risolve è online: da solo non è mai un errore.
+  La playlist ha **un** segno, dai suoi brani: errore se ne ha uno in errore, sul telefono se lo sono tutti, altrimenti online (nessuno se è vuota); nella sua pagina anche «12 di 20 sul telefono».
+  Le card della Home e le righe dell'elenco leggono ciò che il telefono ha visto di ogni playlist (`OfflineStore.playlistRecords()`: le chiavi dei brani e quali il server aveva dato per falliti),
+  così nessuna lista rilegge tutti i manifest. Fuori dalle playlist (Cerca, Libreria, coda) restano i segni di prima.
+- **«+» in Cerca**: ogni brano trovato ha un pulsante visibile che apre la scelta della playlist (la pressione prolungata resta).
+- **Togliere da una playlist**: scorrimento «Togli dalla playlist» sul brano, **solo nelle tue playlist statiche** (non nelle dinamiche, nelle automatiche, né in quelle condivise con te), senza conferma:
+  il brano esce subito e **torna al suo posto** se il server rifiuta o non risponde; non cancella niente dal telefono. Server: `DELETE /api/mondrop/playlists/:id/songs/:songKey`
+  (un server più vecchio dà «Non disponibile con questo server» e il brano resta).
+- **Cancellare dal telefono**: scorrimento «Cancella dal telefono» **solo su un brano di Cerca che è sul telefono** (non si fa con uno scorrimento fino in fondo: serve il tocco sul pulsante), con la stessa conferma
+  e la stessa riga nel registro di «Spazio e brani scaricati» delle Impostazioni; mai in una playlist, nella Home, nel Player o nella coda (`DeletionPlacesTests`).
+- **Primo accesso e «Sync»** (`LibrarySyncCoordinator`, `SyncSizeGuard`): la prima volta che l'app si apre con una chiave legge tutte le playlist, somma quello che c'è da scaricare e **prima del primo download**,
+  se supera «Avvisa sopra» (Impostazioni → Sync: 1, 2, 5, 10, 20, 50 GB o Mai; **predefinito 2 GB**), chiede «Da scaricare N GB (M brani)»: **Scarica tutto**, **Limita a X GB** o **Annulla**.
+  «Limita» scarica nell'ordine delle playlist e dei loro brani finché ci stanno e **si ferma al primo che non ci sta**; gli altri restano online. «Annulla» non scarica niente e conta come fatto. Un errore, o una playlist
+  che non si legge, lasciano il primo accesso da rifare alla prossima apertura. Lo stesso sync, con la stessa domanda, parte dal pulsante «Sync» della Home. Il cellulare resta come prima (solo Wi-Fi salvo l'interruttore);
+  regola P: l'avviso è uguale ovunque si sia e non blocca. Chi aggiorna da una build precedente è «al primo accesso». iOS non è interpellato per le notifiche dal primo accesso, ma dal «Sync» premuto.
+- **Per guardarlo senza server** (solo DEBUG): `-MondropDemo` mostra cinque playlist con i tre stati; `-MondropDemoTab playlists` (o `-MondropDemoPush allplaylists`) apre «Tutte» sopra la Home,
+  `-MondropDemoPush playlist` una playlist con le tre righe, `-MondropDemoSearchText <testo>` apre Cerca con quel testo (i «+» e gli scorrimenti).
+- **Test** nuovi (`SongStateTests`, `SyncSizeGuardTests`, `LibrarySyncTests`, `PlaylistRemoveTests`, `PlaylistRecordTests`, `SimplifiedAppStructureTests`, `DeletionPlacesTests`; `HomeStructureTests` riscritto,
+  `DeletionInSettingsTests` sostituito da `DeletionPlacesTests`): tabelle per i tre stati e il segno della playlist, il limite e l'ordine di «Limita», il primo accesso (una volta sola, senza chiave aspetta,
+  un errore lo rifà), il ritorno del brano tolto, la forma delle schermate. Provati anche rompendo il codice di proposito.
 
 ## I testi delle canzoni (1.7.0 build 10 e 11 · SoundReel 2.19.0 e 2.19.1)
 

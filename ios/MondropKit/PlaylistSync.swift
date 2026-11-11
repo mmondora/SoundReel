@@ -167,7 +167,7 @@ public final class PlaylistSyncCoordinator: ObservableObject {
 
     private func accept(_ next: OfflineManifest) {
         manifest = next
-        engine.store.recordPlaylist(id: playlist.id, name: next.name, songKeys: next.tracks.map(\.songKey))
+        engine.store.recordPlaylist(id: playlist.id, name: next.name, songKeys: next.tracks.map(\.songKey), failedKeys: next.failedKeys)
         engine.store.recordServerNumbers(from: next)      // plays / lastPlayedAt for the "meno ascoltate" ranking
         engine.store.recordMetadata(from: next.tracks)    // album / genres / year: «Libreria» browses the phone offline
         activity?.observe(next.tracks)                    // the line at the top: how many the server is preparing
@@ -205,6 +205,41 @@ public final class PlaylistSyncCoordinator: ObservableObject {
     }
 }
 
+// MARK: - Taking a song out of the list
+
+extension PlaylistSyncCoordinator {
+    /// The swipe «Togli dalla playlist» (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U7): the song leaves the page AT ONCE, the server
+    /// is told, and if it says no (or cannot be reached) the song goes back where it was. Nothing is deleted from the phone: it only leaves the list.
+    @discardableResult
+    public func removeSong(songKey: String, using remover: PlaylistSongRemoving) async -> PlaylistRemoveOutcome {
+        guard let before = manifest, let index = before.tracks.firstIndex(where: { $0.songKey == songKey }) else {
+            return .failed("Questo brano non è più nella playlist.")
+        }
+        let track = before.tracks[index]
+        var kept = before.tracks
+        kept.remove(at: index)
+        manifest = OfflineManifest(playlistId: before.playlistId, name: before.name, tracks: kept, user: before.user, dynamic: before.dynamic, generatedAt: before.generatedAt)
+        do {
+            let ack = try await remover.removeSong(songKey: songKey, fromPlaylist: playlist.id)
+            let now = manifest ?? before
+            engine.store.recordPlaylist(id: playlist.id, name: now.name, songKeys: now.tracks.map(\.songKey), failedKeys: now.failedKeys)
+            let name = ack.name.isBlank ? now.name : ack.name
+            return .removed("Tolto da «\(name)»")
+        } catch {
+            putBack(track, at: index)
+            return PlaylistRemoveOutcome.refused(error)
+        }
+    }
+
+    /// The song goes back at the place it had (or at the end if the list got shorter meanwhile), unless a re-read already brought it back.
+    private func putBack(_ track: OfflineTrack, at index: Int) {
+        guard let current = manifest, !current.tracks.contains(where: { $0.songKey == track.songKey }) else { return }
+        var tracks = current.tracks
+        tracks.insert(track, at: min(index, tracks.count))
+        manifest = OfflineManifest(playlistId: current.playlistId, name: current.name, tracks: tracks, user: current.user, dynamic: current.dynamic, generatedAt: current.generatedAt)
+    }
+}
+
 /// Re-reads EVERY playlist: which songs each one holds (orphan detection) and the listening numbers of each song.
 public enum PlaylistSnapshots {
     /// Throws at the first playlist that cannot be read: a partial picture must never drive a deletion.
@@ -213,7 +248,7 @@ public enum PlaylistSnapshots {
         let playlists = try await api.listPlaylists()
         for playlist in playlists {
             let manifest = try await api.offlineManifest(playlistId: playlist.id)
-            store.recordPlaylist(id: playlist.id, name: manifest.name, songKeys: manifest.tracks.map(\.songKey))
+            store.recordPlaylist(id: playlist.id, name: manifest.name, songKeys: manifest.tracks.map(\.songKey), failedKeys: manifest.failedKeys)
             store.recordServerNumbers(from: manifest)
             store.recordMetadata(from: manifest.tracks)
         }

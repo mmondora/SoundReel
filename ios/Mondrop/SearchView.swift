@@ -29,6 +29,13 @@ struct SearchView: View {
     static let previewCount = 5
 
     init() {
+        #if DEBUG
+        if DemoData.isOn {
+            _model = StateObject(wrappedValue: SearchModel(api: DemoData.SearchAPI(), playlists: DemoData.PlaylistAPI(), store: .shared, activity: .shared))
+            _text = State(initialValue: DemoData.searchText ?? "")
+            return
+        }
+        #endif
         let api = MondropAPI()
         _model = StateObject(wrappedValue: SearchModel(api: api, playlists: api, store: .shared, activity: .shared))
     }
@@ -90,6 +97,7 @@ struct SearchView: View {
         .onDisappear { remember(text) }
         .onChange(of: engine.revision) { _, _ in localKeys = engine.store.localSongKeys() }
         .trackActions(actions)
+        .searchDeletion(actions)
         .bulkDownload(downloader, model: model, actions: actions)
         #if DEBUG
         .navigationDestination(isPresented: $demoPush) { LibraryView(initialDimension: .playlists) }

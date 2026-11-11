@@ -2,18 +2,32 @@ import SwiftUI
 
 struct PlaylistsView: View {
     // The list is asked to the server a page at a time, with search, filter and sort by date (ADR-0023, rule P).
-    @StateObject private var model = PlaylistListModel(transport: MondropAPI())
+    @StateObject private var model: PlaylistListModel
+    /// What each playlist shows as its mark comes from what the phone has read of it and holds (U9): read again when a download ends or fails.
+    @ObservedObject private var engine = SyncEngine.shared
+    /// The files on the phone, read when the page appears and when a song arrives or goes (not at every tick of a download).
+    @State private var localKeys: Set<String> = []
+
+    init() {
+        #if DEBUG
+        let transport: PlaylistListTransport = DemoData.isOn ? DemoData.PlaylistListAPI() : MondropAPI()
+        #else
+        let transport: PlaylistListTransport = MondropAPI()
+        #endif
+        _model = StateObject(wrappedValue: PlaylistListModel(transport: transport))
+    }
 
     var body: some View {
         List {
             if let failure = model.failure {
                 Text(failure).foregroundStyle(.red)
             }
+            let marks = PlaylistMarks.current(store: engine.store, local: localKeys, progress: engine.progress)
             ForEach(model.items) { p in
                 NavigationLink {
                     PlaylistOfflineView(playlist: p)
                 } label: {
-                    PlaylistRow(playlist: p)
+                    PlaylistRow(playlist: p, state: marks.state(id: p.id, songCount: p.songCount))
                 }
             }
             if model.items.isEmpty && !model.loading && model.failure == nil {
@@ -70,6 +84,8 @@ struct PlaylistsView: View {
                     .background(.ultraThinMaterial)
             }
         }
+        .onAppear { localKeys = engine.store.localSongKeys() }
+        .onChange(of: engine.revision) { _, _ in localKeys = engine.store.localSongKeys() }
         .task { await refreshAll() }
     }
 
@@ -87,10 +103,13 @@ struct PlaylistsView: View {
 /// One row of the list: the name, the labels (dynamic, automatic), the DATE OF CREATION beside the name, and how many songs.
 private struct PlaylistRow: View {
     let playlist: MondropPlaylist
+    /// The mark of the playlist: on the phone, online, error (nothing for an empty one).
+    let state: PlaylistState?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
+                PlaylistStateMark(state: state)
                 Text(playlist.name).font(.headline)
                 if playlist.isDynamic { DynamicBadge() }
                 if playlist.isAuto { AutoBadge() }
@@ -122,13 +141,20 @@ struct PlaylistOfflineView: View {
     @ObservedObject private var net = NetStatus.shared
     @State private var youtubeTarget: OfflineTrack?
     @State private var youtubeText = ""
+    /// The line at the bottom after «Togli dalla playlist» («Tolto da «Road trip»», or why it did not work).
+    @StateObject private var actions = TrackActions()
 
     init(playlist: MondropPlaylist) {
         self.playlist = playlist
+        #if DEBUG
+        let api: MondropAPIProtocol = DemoData.isOn ? DemoData.PlaylistAPI() : MondropAPI()
+        #else
+        let api: MondropAPIProtocol = MondropAPI()
+        #endif
         _model = StateObject(
             wrappedValue: PlaylistSyncCoordinator(
                 playlist: playlist,
-                api: MondropAPI(),
+                api: api,
                 engine: .shared,
                 activity: .shared,
                 // The right moment to ask iOS for notifications, once: the user has just started a sync. And to refresh the
@@ -162,6 +188,7 @@ struct PlaylistOfflineView: View {
                     }
                 }
                 Section {
+                    stateHeader(manifest)
                     summaryLine(manifest)
                     HStack(spacing: 14) {
                         Button { play(nil, shuffled: false, in: manifest) } label: { Label("Suona", systemImage: "play.fill") }
@@ -213,6 +240,7 @@ struct PlaylistOfflineView: View {
             }
         }
         .navigationTitle(playlist.name)
+        .trackActions(actions)
         .task { await model.load() }
         // The «Rete: casa / internet» line is information only (rule P): sync and play do not read it.
         .task { if net.info == nil { await net.refresh(api: MondropAPI()) } }
@@ -239,6 +267,40 @@ struct PlaylistOfflineView: View {
         }
     }
 
+    /// The mark of the whole playlist and «12 di 20 sul telefono» (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U9).
+    @ViewBuilder
+    private func stateHeader(_ manifest: OfflineManifest) -> some View {
+        let summary = PlaylistStateSummary(songs: manifest.tracks.map { SongState(status(of: $0)) })
+        if let words = summary.headerText {
+            HStack(spacing: 8) {
+                PlaylistStateMark(state: summary.state, font: .subheadline)
+                Text(words).font(.subheadline)
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func status(of track: OfflineTrack) -> TrackRowStatus {
+        TrackRowStatus.make(
+            track: track,
+            isLocal: engine.store.fileURL(songKey: track.songKey) != nil,
+            progress: engine.progress[track.songKey],
+            isSkipListed: engine.store.isSkipped(track.songKey)
+        )
+    }
+
+    /// Only the user's own static playlists take songs out by hand (`PlaylistRowActions`).
+    private var canRemoveSongs: Bool {
+        PlaylistRowActions.canRemoveSongs(from: playlist, dynamicManifest: model.manifest?.dynamic ?? false)
+    }
+
+    private func remove(_ track: OfflineTrack) {
+        Task {
+            let outcome = await model.removeSong(songKey: track.songKey, using: MondropAPI())
+            actions.show(outcome.message)
+        }
+    }
+
     private func summaryLine(_ manifest: OfflineManifest) -> some View {
         var parts = ["Pronti \(manifest.readyCount)"]
         if manifest.preparingCount > 0 { parts.append("in preparazione \(manifest.preparingCount)") }
@@ -248,19 +310,15 @@ struct PlaylistOfflineView: View {
     }
 
     private func row(_ track: OfflineTrack, at offset: Int, in manifest: OfflineManifest) -> some View {
-        let status = TrackRowStatus.make(
-            track: track,
-            isLocal: engine.store.fileURL(songKey: track.songKey) != nil,
-            progress: engine.progress[track.songKey],
-            isSkipListed: engine.store.isSkipped(track.songKey)
-        )
+        let status = status(of: track)
         return HStack {
             Button {
                 play(track.songKey, shuffled: false, in: manifest)
             } label: {
                 SongRowView(
                     track: track, status: status,
-                    isCurrent: player.currentSongKey == track.songKey, isPlaying: player.playing
+                    isCurrent: player.currentSongKey == track.songKey, isPlaying: player.playing,
+                    marks: .playlist
                 )
             }
             .buttonStyle(.plain)
@@ -281,6 +339,15 @@ struct PlaylistOfflineView: View {
                 }
                 .buttonStyle(.borderless)
                 .font(.caption)
+            }
+        }
+        // «il remove è in swipe sulla playlist»: the swipe takes the song out of THIS playlist and deletes nothing from the phone.
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if canRemoveSongs {
+                Button { remove(track) } label: {
+                    Label("Togli dalla playlist", systemImage: "minus.circle")
+                }
+                .tint(Color(MondropPalette.error))
             }
         }
     }

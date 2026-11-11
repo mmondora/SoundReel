@@ -234,6 +234,11 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
         return enqueue([track], front: true)
     }
 
+    /// The store changed outside the engine (a song deleted from «Cerca»): the lists that read it look again.
+    public func storeChanged() {
+        revision += 1
+    }
+
     /// Download failed on the device: try again from scratch (resume data is reused when still valid).
     public func retry(songKey: String) {
         guard let job = failedJobs[songKey] else { return }

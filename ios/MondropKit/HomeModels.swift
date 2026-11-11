@@ -15,18 +15,20 @@ public struct HomePlaylist: Decodable, Identifiable, Sendable, Equatable {
     public let kind: String?
     public let ruleSummary: String?
     public let canEdit: Bool?
+    /// `auto` = made by the server from a post (ADR-0023). The route does not send it yet: nil then, and the playlist is taken for one made by hand.
+    public let origin: String?
     /// The songs whose covers make the mosaic (at most four). The app asks SoundReel for each cover as always.
     public let coverKeys: [String]
 
     public var isDynamic: Bool { kind?.lowercased() == "dynamic" }
 
-    /// The same playlist as the Playlist tab shows it, so that a card opens the page that tab opens.
+    /// The same playlist as the full list shows it, so that a card opens the page a row of that list opens.
     public var playlist: MondropPlaylist {
-        MondropPlaylist(id: id, name: name, songCount: songCount, kind: kind, ruleSummary: ruleSummary, canEdit: canEdit)
+        MondropPlaylist(id: id, name: name, songCount: songCount, kind: kind, ruleSummary: ruleSummary, canEdit: canEdit, origin: origin)
     }
 
     public init(
-        id: String, name: String, songCount: Int, kind: String? = nil, ruleSummary: String? = nil, canEdit: Bool? = nil, coverKeys: [String] = []
+        id: String, name: String, songCount: Int, kind: String? = nil, ruleSummary: String? = nil, canEdit: Bool? = nil, origin: String? = nil, coverKeys: [String] = []
     ) {
         self.id = id
         self.name = name
@@ -34,10 +36,11 @@ public struct HomePlaylist: Decodable, Identifiable, Sendable, Equatable {
         self.kind = kind
         self.ruleSummary = ruleSummary
         self.canEdit = canEdit
+        self.origin = origin
         self.coverKeys = coverKeys
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, songCount, kind, ruleSummary, canEdit, coverKeys }
+    enum CodingKeys: String, CodingKey { case id, name, songCount, kind, ruleSummary, canEdit, origin, coverKeys }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -47,6 +50,7 @@ public struct HomePlaylist: Decodable, Identifiable, Sendable, Equatable {
         kind = try? c.decodeIfPresent(String.self, forKey: .kind)
         ruleSummary = try? c.decodeIfPresent(String.self, forKey: .ruleSummary)
         canEdit = (try? c.decodeIfPresent(Bool.self, forKey: .canEdit)) ?? nil
+        origin = try? c.decodeIfPresent(String.self, forKey: .origin)
         coverKeys = (try? c.decodeIfPresent([String].self, forKey: .coverKeys)) ?? []
     }
 }

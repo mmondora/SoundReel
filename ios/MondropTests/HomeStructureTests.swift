@@ -35,8 +35,11 @@ final class HomeStructureTests: XCTestCase {
 
     // MARK: the tabs (H3)
 
-    func testTheTabsAreHomeSearchPlaylistsInboxShareSettings() {
-        XCTAssertEqual(RootTab.allCases, [.home, .search, .playlists, .inbox, .share, .settings])
+    /// «Su Mondrop non vedo utilità nel tab playlist avendo le playlist in home page» (Michele, 10 November; spec
+    /// 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U1): five tabs, all of them on the bar of an iPhone, and no Playlist tab.
+    func testTheTabsAreHomeSearchInboxShareSettingsAndThereIsNoPlaylistTab() {
+        XCTAssertEqual(RootTab.allCases, [.home, .search, .inbox, .share, .settings])
+        XCTAssertLessThanOrEqual(RootTab.allCases.count, 5, "from the sixth tab on iOS folds the rest into «Altro»")
     }
 
     func testTheTabBarDeclaresThemInThatOrderAndTheFirstOneIsTheHome() throws {
@@ -45,7 +48,7 @@ final class HomeStructureTests: XCTestCase {
         let tags = regex.matches(in: source, range: NSRange(source.startIndex..., in: source)).compactMap { match -> String? in
             Range(match.range(at: 1), in: source).map { String(source[$0]) }
         }
-        XCTAssertEqual(tags, ["home", "search", "playlists", "inbox", "share", "settings"])
+        XCTAssertEqual(tags, ["home", "search", "inbox", "share", "settings"])
         XCTAssertTrue(source.contains("@State private var selection: RootTab = .home"), "the app opens on the Home")
     }
 
@@ -68,10 +71,52 @@ final class HomeStructureTests: XCTestCase {
         XCTAssertFalse(player.contains("onChoose"), "the Player does not send the user anywhere to look for music")
     }
 
-    func testEveryTabCarriesTheMiniPlayerOnItsNavigationStack() throws {
+    /// «Il mini player in basso» does not belong on the first page of the Home (Michele, 10 November; spec U5). Every other tab has it, and so does every page
+    /// pushed from the Home: the stack still carries it, and only the first page asks for it to be left out.
+    func testEveryTabCarriesTheMiniPlayerOnItsNavigationStackExceptTheFirstPageOfTheHome() throws {
         let source = try code("Mondrop/RootTabView.swift")
-        XCTAssertEqual(count("NavigationStack {", in: source), 6)
-        XCTAssertEqual(count(".miniPlayer(open: openPlayer)", in: source), 6, "every tab, so that it is on every page of every tab")
+        XCTAssertEqual(count("NavigationStack {", in: source), 5)
+        XCTAssertEqual(count(".miniPlayer(open: openPlayer)", in: source), 4, "Cerca, Posta, Share and the Settings: on every page of every one")
+        XCTAssertEqual(count(".miniPlayer(open: openPlayer, visible: !homeRootShown)", in: source), 1, "the Home: on every page but its first")
+        XCTAssertTrue(source.contains("@State private var homeRootShown = true"), "the app opens on the first page of the Home")
+        XCTAssertTrue(source.contains("onRootVisible: { homeRootShown = $0 }"))
+    }
+
+    func testTheFirstPageOfTheHomeTellsTheTabWhenItIsOnScreenAndWhenAPageHasBeenPushedOverIt() throws {
+        let home = try code("Mondrop/HomeView.swift")
+        XCTAssertTrue(home.contains(".onAppear { onRootVisible(true) }"))
+        XCTAssertTrue(home.contains(".onDisappear { onRootVisible(false) }"))
+        XCTAssertTrue(home.contains("ResumeSection(onOpen:"), "«Riprendi» stays: it is the way to the Player from the Home")
+        let mini = try code("Mondrop/MiniPlayer.swift")
+        XCTAssertTrue(mini.contains("visible: Bool = true"), "every other screen keeps it by default")
+        XCTAssertTrue(mini.contains("if visible { MiniPlayerBar(onOpen: open) }"))
+    }
+
+    // MARK: the playlists live on the first page (U1)
+
+    func testTheWholeListOfThePlaylistsIsPushedFromTheHomeAndIsNotATab() throws {
+        let root = try code("Mondrop/RootTabView.swift")
+        XCTAssertFalse(root.contains("PlaylistsView"), "no tab builds the list of the playlists")
+        XCTAssertFalse(root.contains("Label(\"Playlist\""))
+        let home = try code("Mondrop/HomeView.swift")
+        XCTAssertTrue(home.contains("Text(\"Tutte\")"), "«Tutte» on the row of the playlists")
+        XCTAssertTrue(home.contains("PlaylistsView()"))
+        XCTAssertTrue(home.contains("Tutte le playlist"), "and when the server sent no row of them, a way to the list all the same")
+    }
+
+    func testTheRowOfThePlaylistsHasTheSyncOfEveryPlaylist() throws {
+        let home = try code("Mondrop/HomeView.swift")
+        XCTAssertTrue(home.contains("librarySync.syncAll()"))
+        XCTAssertTrue(home.contains("Text(librarySync.isBusy ? \"Sync…\" : \"Sync\")"))
+    }
+
+    func testNothingStillSendsTheUserToATabThatIsGone() throws {
+        for source in try allSources() {
+            for line in source.code.components(separatedBy: "\n") where line.contains("\"") {
+                XCTAssertFalse(line.contains("Apri Playlist"), "\(source.name): the Playlist tab is gone")
+                XCTAssertFalse(line.contains("tab Playlist") || line.contains("scheda Playlist"), source.name)
+            }
+        }
     }
 
     func testThereIsOneMiniPlayerForTheWholeApp() throws {

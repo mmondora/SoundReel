@@ -12,6 +12,8 @@ struct SettingsView: View {
     @State private var username: String = Settings.shared.autheliaUsername
     @State private var savedMessage: String = ""
     @State private var allowCellular: Bool = Settings.shared.allowCellularDownloads
+    /// «Avvisa sopra»: the size above which a sync asks before it downloads (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U2).
+    @State private var syncWarn: SyncWarnLimit = Settings.shared.syncWarnLimit
     @State private var notifyWhenDone: Bool = Settings.shared.syncNotificationsEnabled
     @State private var notifyShares: Bool = Settings.shared.inboxNotificationsEnabled
     @State private var shareWithByDefault: Set<String> = Set(Settings.shared.defaultShareWith)
@@ -148,6 +150,12 @@ struct SettingsView: View {
                 .onChange(of: allowCellular) { _, newValue in
                     Settings.shared.allowCellularDownloads = newValue
                 }
+            Picker("Avvisa sopra", selection: $syncWarn) {
+                ForEach(SyncWarnLimit.allCases) { limit in Text(limit.title).tag(limit) }
+            }
+            .onChange(of: syncWarn) { _, newValue in
+                Settings.shared.syncWarnLimit = newValue
+            }
             Toggle("Avvisami a sync finito", isOn: $notifyWhenDone)
                 .onChange(of: notifyWhenDone) { _, newValue in
                     Settings.shared.syncNotificationsEnabled = newValue
@@ -176,12 +184,12 @@ struct SettingsView: View {
         } header: {
             Text("Sync")
         } footer: {
-            Text("I download del Sync usano solo il Wi-Fi, salvo che attivi la rete cellulare. I brani arrivano sempre e solo da SoundReel, a casa e fuori casa. Quando un Sync finisce e l'app non è aperta ti arriva una notifica con quanti brani sono stati scaricati e quanti errori ci sono (iOS lo chiede la prima volta). Quanto pesano i brani e come toglierli: in «Cancellazione», qui sotto.")
+            Text("Al primo accesso Mondrop scarica da solo i brani delle tue playlist; se sono più di «Avvisa sopra» ti chiede prima: scarica tutto, limita o annulla (dalla prima pagina, «Sync» lo rifà). I download del Sync usano solo il Wi-Fi, salvo che attivi la rete cellulare. I brani arrivano sempre e solo da SoundReel, a casa e fuori casa. Quando un Sync finisce e l'app non è aperta ti arriva una notifica con quanti brani sono stati scaricati e quanti errori ci sono (iOS lo chiede la prima volta). Quanto pesano i brani e come toglierli: in «Cancellazione», qui sotto.")
         }
     }
 
-    /// The ONE place where songs are removed from the phone (spec 2026-11-08-mondrop-deletion-in-settings-design.md): not in the
-    /// player, not in the lists, not in the bar of the search. A section of its own, away from the everyday options.
+    /// Where songs are removed from the phone: here (a lot at once) and with the swipe on a song of «Cerca» (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md
+    /// U8, which replaces «only here» of 2026-11-08-mondrop-deletion-in-settings-design.md); never in a playlist, the first page or the Player. A section of its own.
     private var deletionSection: some View {
         Section {
             NavigationLink {
@@ -192,7 +200,7 @@ struct SettingsView: View {
         } header: {
             Text("Cancellazione")
         } footer: {
-            Text("È l'unico posto in cui Mondrop toglie brani dal telefono. Ogni cancellazione chiede conferma (più brani, due volte) e non si può annullare; i brani tolti restano su SoundReel e si possono riscaricare. Dal Player, da Cerca e dalle playlist non si cancella niente.")
+            Text("Qui si toglie tanto in una volta; un brano alla volta si toglie anche scorrendolo in Cerca. Ogni cancellazione chiede conferma (più brani, due volte) e non si può annullare; i brani tolti restano su SoundReel e si possono riscaricare. Dal Player, dalla prima pagina e dalle playlist non si cancella niente: nelle playlist lo scorrimento toglie il brano dalla playlist e basta.")
         }
     }
 

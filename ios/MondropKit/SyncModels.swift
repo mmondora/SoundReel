@@ -242,6 +242,8 @@ public struct OfflineManifest: Codable, Sendable, Equatable {
     public var noSourceCount: Int { tracks.filter { $0.resolvedState == .noSource }.count }
     /// Contract compat: everything that is not ready.
     public var missingCount: Int { tracks.count - readyCount }
+    /// The songs the server could not prepare (they make a playlist show the error mark).
+    public var failedKeys: [String] { tracks.filter { $0.resolvedState == .failed }.map(\.songKey) }
 }
 
 /// `GET /api/mondrop/net`: INFORMATION for the Settings row «Rete: casa / internet», nothing more. Sync and play never

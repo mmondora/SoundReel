@@ -2,7 +2,7 @@ import XCTest
 
 /// The icons ship as committed PNGs, drawn by `ios/scripts/make_app_icon.mjs` (spec 2026-11-08-mondrop-app-icon-design.md).
 /// App Store Connect refuses a marketing icon that is not 1024×1024 or that has an alpha channel, and finds out only at
-/// upload: so the files are read here, like `DeletionInSettingsTests` reads the sources.
+/// upload: so the files are read here, like `DeletionPlacesTests` reads the sources.
 final class AppIconAssetsTests: XCTestCase {
     /// `ios/` as found from this file: it sits at `ios/MondropTests/`.
     private var iosRoot: URL {

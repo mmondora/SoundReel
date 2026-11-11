@@ -1,6 +1,6 @@
 // DemoData.swift — DEBUG builds only. Launching with `-MondropDemo` makes the Home draw the data below (no server needed) and starts the
 // player with a queue, so the screens can be looked at on a simulator: the Home with its rows, the mini player, «Riprendi», the Player.
-// `-MondropDemoTab search|playlists|inbox|share|settings` opens another tab, `-MondropDemoPlayer` opens the Player, `-MondropDemoSearch`
+// `-MondropDemoTab search|playlists|inbox|share|settings` opens another tab (`playlists` pushes the whole list from the Home: the tab is gone), `-MondropDemoPlayer` opens the Player, `-MondropDemoSearch`
 // does what a tap on the field of the Home does; `-MondropDemoLiked`, `-MondropDemoRepeat off|all|one` and `-MondropDemoCommands` show
 // the hearts, the loop and the list of the commands received (spec 2026-11-10-mondrop-like-and-repeat-design.md). None of this exists in a Release build (TestFlight, the App Store).
 
@@ -36,11 +36,23 @@ enum DemoData {
     static var showsCommands: Bool { isOn && arguments.contains("-MondropDemoCommands") }
     /// `-MondropDemoQueueSheet` opens «In coda» on the Player: the rows of the songs, with the hearts of the liked ones.
     static var opensQueueSheet: Bool { isOn && arguments.contains("-MondropDemoQueueSheet") }
+    /// The Home pushes the whole list of the playlists: `-MondropDemoPush allplaylists`, or the old `-MondropDemoTab playlists`.
+    static var opensAllPlaylists: Bool {
+        guard isOn else { return false }
+        if push == "allplaylists" { return true }
+        guard let at = arguments.firstIndex(of: "-MondropDemoTab"), arguments.indices.contains(at + 1) else { return false }
+        return arguments[at + 1] == "playlists"
+    }
+    /// `-MondropDemoSearchText daft`: the words Cerca starts with, so that its rows can be looked at.
+    static var searchText: String? {
+        guard isOn, let at = arguments.firstIndex(of: "-MondropDemoSearchText"), arguments.indices.contains(at + 1) else { return nil }
+        return arguments[at + 1]
+    }
     static var startTab: RootTab? {
         guard isOn, let at = arguments.firstIndex(of: "-MondropDemoTab"), arguments.indices.contains(at + 1) else { return nil }
         switch arguments[at + 1] {
         case "search": return .search
-        case "playlists": return .playlists
+        case "playlists": return .home                // the whole list of the playlists is a page pushed from the Home (see `opensAllPlaylists`)
         case "inbox": return .inbox
         case "share": return .share
         case "settings": return .settings
@@ -77,6 +89,78 @@ enum DemoData {
         func home() async throws -> HomeResponse { DemoData.home }
     }
 
+    // MARK: the playlists, their songs and what the phone holds (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U3, U9)
+
+    private static let roadTrip = recent + [track("Dua Lipa", "Houdini")]
+    /// Three of them are on the phone (they are in «Road trip» too), two are not: online.
+    private static let topPlayed = Array(recent.prefix(3)) + [track("Queen", "Don't Stop Me Now"), track("Prince", "Kiss")]
+    private static let eighties = [
+        track("Toto", "Africa"), track("a-ha", "Take On Me"),                       // on the phone
+        track("Michael Jackson", "Thriller"), track("Madonna", "Material Girl"),    // online
+        track("Duran Duran", "Rio", state: "failed"),                               // the server could not prepare it: an error
+        track("Cyndi Lauper", "Time After Time", state: "preparing"),                // online, the server is on it
+    ]
+    private static let novemberReels = fresh
+
+    /// The songs of each playlist, as its manifest says.
+    static let playlistTracks: [String: [OfflineTrack]] = ["p1": roadTrip, "p2": topPlayed, "p3": eighties, "p4": novemberReels]
+
+    /// Which of them are on the phone: the whole of «Road trip» (a tick on its card); that makes three of the most played and two of the eighties; none of the reels.
+    private static let onPhone: Set<String> = Set(roadTrip.map(\.songKey))
+
+    /// Every playlist the phone «has read» and the files it «holds»: written before the screens look. A tiny file stands for each song.
+    static func seedStore() {
+        guard isOn else { return }
+        let store = OfflineStore.shared
+        for (id, name) in [("p1", "Road trip"), ("p2", "Più ascoltate"), ("p3", "Anni 80"), ("p4", "Reel di novembre")] {
+            let tracks = playlistTracks[id] ?? []
+            store.recordPlaylist(id: id, name: name, songKeys: tracks.map(\.songKey), failedKeys: tracks.filter { $0.resolvedState == .failed }.map(\.songKey))
+        }
+        for key in onPhone where store.fileURL(songKey: key) == nil {
+            let staged = store.stagingURL()
+            guard (try? Data(repeating: 1, count: 2_000).write(to: staged)) != nil else { continue }
+            let song = (recent + eighties + roadTrip).first { $0.songKey == key }
+            _ = try? store.install(stagedFile: staged, songKey: key, metadata: InstallMetadata(title: song?.title ?? key, artist: song?.artist ?? "", version: "demo-1"))
+        }
+    }
+
+    /// The page of a playlist, without a server.
+    struct PlaylistAPI: MondropAPIProtocol {
+        func listPlaylists() async throws -> [MondropPlaylist] { DemoData.playlists }
+        func offlineManifest(playlistId: String) async throws -> OfflineManifest {
+            let name = DemoData.playlists.first { $0.id == playlistId }?.name ?? "Playlist"
+            return OfflineManifest(playlistId: playlistId, name: name, tracks: DemoData.playlistTracks[playlistId] ?? [], user: "mike", dynamic: playlistId == "p2")
+        }
+        func prepare(playlistId: String, retryFailed: Bool) async throws -> OfflineManifest { try await offlineManifest(playlistId: playlistId) }
+        func net() async throws -> NetInfo { NetInfo(viaCloudflare: false, home: true) }
+        func track(songKey: String) async throws -> OfflineTrack { throw MondropAPIError.http(404, nil) }
+        func requestDownload(songKey: String, priority: DownloadPriority) async throws -> DownloadAck { DownloadAck(ok: true, state: "preparing", track: nil) }
+        func setSource(songKey: String, youtubeUrl: String) async throws {}
+    }
+
+    static let playlists: [MondropPlaylist] = [
+        MondropPlaylist(id: "p1", name: "Road trip", songCount: 7, createdAt: "2026-11-02T10:00:00.000Z", kind: "static", canEdit: true),
+        MondropPlaylist(id: "p2", name: "Più ascoltate", songCount: 5, createdAt: "2026-10-20T10:00:00.000Z", kind: "dynamic", ruleSummary: "Più ascoltate · ultimi 30 giorni"),
+        MondropPlaylist(id: "p3", name: "Anni 80", songCount: 6, createdAt: "2026-09-14T10:00:00.000Z", kind: "static", canEdit: true),
+        MondropPlaylist(id: "p4", name: "Reel di novembre", songCount: 6, createdAt: "2026-11-09T10:00:00.000Z", kind: "static", canEdit: true),
+        MondropPlaylist(id: "p5", name: "Jazz da ascoltare", songCount: 0, createdAt: "2026-11-10T07:30:00.000Z", kind: "static", canEdit: true, origin: "auto", autoKind: "theme"),
+    ]
+
+    /// The full list of the playlists (search, sort, pages) without a server.
+    struct PlaylistListAPI: PlaylistListTransport {
+        func playlistsPage(_ query: PlaylistListQuery) async throws -> PlaylistPage {
+            PlaylistPage(playlists: DemoData.playlists, total: DemoData.playlists.count, limit: nil, offset: 0)
+        }
+    }
+
+    /// «Cerca» without a server: the same songs for any words, some of them on the phone.
+    struct SearchAPI: SearchTransport {
+        func search(_ query: SearchQuery) async throws -> SearchPage {
+            let tracks = DemoData.recent + DemoData.fresh
+            return SearchPage(q: query.text, tracks: tracks, artists: [], albums: [], total: tracks.count, offset: 0, limit: query.limit, user: "mike")
+        }
+    }
+
     /// The queue the player starts with: «Playlist · Road trip», on its second song, a minute in. Written BEFORE the player exists: it
     /// restores it, paused, exactly as it does after the system closed the app.
     static func seedQueue() {
@@ -87,6 +171,7 @@ enum DemoData {
         store.save(position: items[1].songKey, seconds: 74, duration: 241)
         seedLyrics(for: items[1].songKey)
         seedLikes()
+        seedStore()
         DefaultsRepeatModeStore(defaults: Settings.shared.storage).mode = repeatMode ?? .off
         seedCommands()
     }
@@ -143,6 +228,8 @@ enum DemoData {
         try? data.write(to: file, options: .atomic)
     }
 }
+
+extension DemoData.PlaylistAPI: PlaylistListing {}
 
 import SwiftUI
 

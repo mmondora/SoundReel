@@ -33,6 +33,12 @@ final class TrackActions: ObservableObject {
         playlistTarget = track
     }
 
+    /// «Cancella dal telefono»: the swipe on a song of «Cerca» (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U8). It only OPENS the
+    /// confirmation the Settings use for one song; nothing is deleted until it is accepted.
+    func askDelete(_ track: OfflineTrack) {
+        SearchDeletion.shared.request(track)
+    }
+
     /// «Mi piace» / «Non mi piace più» (spec 2026-11-10-mondrop-like-and-repeat-design.md L2): one short line says what happened.
     func likeToggled(_ track: OfflineTrack, liked: Bool) {
         show(liked ? "Ti piace «\(track.title)»" : "«\(track.title)» non ti piace più")
@@ -123,6 +129,60 @@ extension View {
     }
 }
 
+/// The deletion of ONE song from «Cerca» (Michele, 10 November: «La canzone viene cancellata solo con uno swipe della canzone in ricerca, non nel browser di
+/// una playlist»; spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U8). It is the model of «Spazio e brani scaricati» with its single-song
+/// request: the SAME confirmation, the SAME `delete_songs` event in the durable queue, the song put on the skip-list. One for the whole app.
+@MainActor
+final class SearchDeletion: ObservableObject {
+    static let shared = SearchDeletion()
+    let model = SpaceModel(store: .shared, queue: .shared, uploader: .shared, api: nil)
+
+    func request(_ track: OfflineTrack) {
+        model.reload()
+        model.requestDelete(songKey: track.songKey)
+    }
+}
+
+/// The confirmation of that deletion, for the screens of «Cerca» that offer the swipe, and the line that says what happened.
+private struct SearchDeletionHost: ViewModifier {
+    @ObservedObject var model: SpaceModel
+    let actions: TrackActions
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog(
+            firstText.title,
+            isPresented: Binding(
+                get: { model.confirmation.isAskingFirst },
+                set: { shown in if !shown && model.confirmation.isAskingFirst { model.cancel() } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button(firstText.confirmTitle, role: .destructive) { accept() }
+            Button(DeletionDialogs.cancelTitle, role: .cancel) { model.cancel() }
+        } message: {
+            Text(firstText.message)
+        }
+    }
+
+    private var firstText: DialogText {
+        if case .first(let plan) = model.confirmation.stage { return DeletionDialogs.first(plan) }
+        return DialogText(title: "Eliminare?", message: "", confirmTitle: "Elimina")
+    }
+
+    private func accept() {
+        model.accept()
+        if let message = model.message { actions.show(message) }
+        SyncEngine.shared.storeChanged()      // the lists of songs look at the phone again
+    }
+}
+
+extension View {
+    /// Where the swipe «Cancella dal telefono» is offered, the confirmation that follows it.
+    func searchDeletion(_ actions: TrackActions) -> some View {
+        modifier(SearchDeletionHost(model: SearchDeletion.shared.model, actions: actions))
+    }
+}
+
 /// The sheet of «Aggiungi a playlist» and the line at the bottom, for any screen that lists songs.
 private struct TrackActionsHost: ViewModifier {
     @ObservedObject var actions: TrackActions
@@ -166,10 +226,31 @@ struct SearchTrackRow: View {
     let onPlay: () -> Void
 
     var body: some View {
-        Button(action: onPlay) {
-            SongRowView(track: track, status: status, isCurrent: isCurrent, isPlaying: isPlaying, detail: track.libraryDetail)
+        HStack(spacing: 6) {
+            Button(action: onPlay) {
+                SongRowView(track: track, status: status, isCurrent: isCurrent, isPlaying: isPlaying, detail: track.libraryDetail)
+            }
+            .buttonStyle(.plain)
+            // «Aggiungere il tasto alla canzone ricercata per aggiungere alla playlist» (Michele, 10 November; spec ... U6): in plain sight, next to the
+            // long press that was the only way before.
+            Button { actions.askPlaylist(for: track) } label: {
+                Image(systemName: "plus.circle")
+                    .font(.title3)
+                    .foregroundStyle(Color(MondropPalette.accent))
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Aggiungi a playlist")
         }
-        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            // Only a song that is on the phone has something to delete. The ONLY places that delete songs: the Settings and this swipe.
+            if isLocal {
+                Button(role: .destructive) { actions.askDelete(track) } label: {
+                    Label("Cancella dal telefono", systemImage: "trash")
+                }
+            }
+        }
         .contextMenu {
             LikeMenuButton(songKey: track.songKey) { actions.likeToggled(track, liked: $0) }
             Button { actions.addToQueue(track, isLocal: isLocal) } label: {

@@ -130,6 +130,20 @@ public final class OfflineStore: @unchecked Sendable {
         var name: String
         var songKeys: [String]
         var seenAt: Date
+        /// The songs the SERVER said had failed the last time the playlist was read (the mark of a playlist). nil in an index written before 1.8.0.
+        var failedKeys: [String]? = nil
+    }
+
+    /// What the phone saw the last time it read a playlist: the keys of its songs and which of them the server had failed. A playlist is drawn from
+    /// this (its mark on a card, on a row of the list), so that no list has to read every manifest again.
+    public struct PlaylistRecord: Equatable, Sendable {
+        public let songKeys: [String]
+        public let failedKeys: Set<String>
+
+        public init(songKeys: [String], failedKeys: Set<String> = []) {
+            self.songKeys = songKeys
+            self.failedKeys = failedKeys
+        }
     }
 
     struct IndexFile: Codable {
@@ -536,10 +550,16 @@ public final class OfflineStore: @unchecked Sendable {
     // MARK: - Playlist membership + orphans
 
     /// Remember which songs a playlist holds (every manifest the app sees, not only synced files).
-    public func recordPlaylist(id: String, name: String, songKeys: [String]) {
+    public func recordPlaylist(id: String, name: String, songKeys: [String], failedKeys: [String] = []) {
         lock.lock(); defer { lock.unlock() }
-        index.playlists[id] = Membership(name: name, songKeys: songKeys, seenAt: Date())
+        index.playlists[id] = Membership(name: name, songKeys: songKeys, seenAt: Date(), failedKeys: failedKeys.isEmpty ? nil : failedKeys)
         save()
+    }
+
+    /// Every playlist the phone has read, by id (see `PlaylistRecord`).
+    public func playlistRecords() -> [String: PlaylistRecord] {
+        lock.lock(); defer { lock.unlock() }
+        return index.playlists.mapValues { PlaylistRecord(songKeys: $0.songKeys, failedKeys: Set($0.failedKeys ?? [])) }
     }
 
     /// Playlists deleted on the server stop protecting their songs.

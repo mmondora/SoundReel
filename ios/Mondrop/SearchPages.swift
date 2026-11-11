@@ -62,7 +62,7 @@ struct SearchResultsPage: View {
                     Text(artist).font(.subheadline).foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Tocca un brano per ascoltarlo: i brani che lo seguono vanno in coda. Tieni premuto per altre azioni.")
+                Text("Tocca un brano per ascoltarlo: i brani che lo seguono vanno in coda. «+» lo mette in una playlist; tieni premuto per altre azioni; scorri per cancellarlo dal telefono.")
             }
             if case .artist = kind, !model.albums.isEmpty {
                 Section("Album") {
@@ -113,6 +113,7 @@ struct SearchResultsPage: View {
         }
         .onChange(of: engine.revision) { _, _ in localKeys = engine.store.localSongKeys() }
         .trackActions(actions)
+        .searchDeletion(actions)
         .bulkDownload(downloader, model: model, actions: actions)
     }
 

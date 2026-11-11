@@ -12,17 +12,25 @@ struct HomeView: View {
     @StateObject private var model: HomeModel
     @StateObject private var actions = TrackActions()
     @ObservedObject private var engine = SyncEngine.shared
+    /// «Sync» on the row of the playlists: every playlist, with the question before a big download (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U2).
+    @ObservedObject private var librarySync = LibrarySyncCoordinator.shared
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var localKeys: Set<String> = []
+    /// The line of the last «Sync» stays after it ends (what it did); before the first press there is none.
+    @State private var showSyncMessage = false
     #if DEBUG
     @State private var demoPush = false
+    @State private var demoPushAll = false
     #endif
 
     /// The Player, at full screen (from the «Riprendi» card).
     let onOpenPlayer: () -> Void
+    /// Tells the tab whether THIS page (not a page pushed from it) is on screen: the mini player is not drawn here, and is on every page opened from here.
+    let onRootVisible: (Bool) -> Void
 
-    init(onOpenPlayer: @escaping () -> Void) {
+    init(onOpenPlayer: @escaping () -> Void, onRootVisible: @escaping (Bool) -> Void = { _ in }) {
         self.onOpenPlayer = onOpenPlayer
+        self.onRootVisible = onRootVisible
         #if DEBUG
         let transport: HomeTransport = DemoData.isOn ? DemoData.Transport() : MondropAPI()
         #else
@@ -71,10 +79,16 @@ struct HomeView: View {
             await model.load()
         }
         .onChange(of: engine.revision) { _, _ in localKeys = engine.store.localSongKeys() }
+        .onAppear { onRootVisible(true) }
+        .onDisappear { onRootVisible(false) }
         .trackActions(actions)
         #if DEBUG
-        .navigationDestination(isPresented: $demoPush) { PlaylistOfflineView(playlist: DemoData.home.sections[0].playlists[0].playlist) }
-        .onAppear { if DemoData.push == "playlist" { demoPush = true } }
+        .navigationDestination(isPresented: $demoPush) { PlaylistOfflineView(playlist: DemoData.playlists[2]) }
+        .navigationDestination(isPresented: $demoPushAll) { PlaylistsView() }
+        .onAppear {
+            if DemoData.push == "playlist" { demoPush = true }
+            if DemoData.opensAllPlaylists { demoPushAll = true }
+        }
         #endif
     }
 
@@ -161,20 +175,40 @@ struct HomeView: View {
             Label("Sfoglia", systemImage: "square.stack")
         }
         .buttonStyle(MondropPillStyle(prominent: false))
+        // The whole list of the playlists is reached from here when the server sent no row of them.
+        NavigationLink {
+            PlaylistsView()
+        } label: {
+            Label("Tutte le playlist", systemImage: "music.note.list")
+        }
+        .buttonStyle(MondropPillStyle(prominent: false))
     }
 
     @ViewBuilder
     private func sectionView(_ section: HomeSection) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(section.title)
-                .font(.title3.bold())
-                .foregroundStyle(Color(MondropPalette.text))
-                .accessibilityAddTraits(.isHeader)
+            HStack(alignment: .center, spacing: 10) {
+                Text(section.title)
+                    .font(.title3.bold())
+                    .foregroundStyle(Color(MondropPalette.text))
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 8)
+                // «Su Mondrop non vedo utilità nel tab playlist avendo le playlist in home page»: the whole list and the sync of all of them live here.
+                if section.kind == .playlists { playlistsHeaderButtons }
+            }
+            if section.kind == .playlists, !librarySync.message.isEmpty, librarySync.isBusy || showSyncMessage {
+                Text(librarySync.message)
+                    .font(.footnote)
+                    .foregroundStyle(secondary)
+            }
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     switch section.kind {
                     case .playlists:
-                        ForEach(section.playlists) { playlist in playlistCard(playlist) }
+                        let marks = PlaylistMarks.current(store: engine.store, local: localKeys, progress: engine.progress)
+                        ForEach(section.playlists) { playlist in
+                            playlistCard(playlist, state: marks.state(id: playlist.id, songCount: playlist.songCount))
+                        }
                     case .tracks:
                         ForEach(section.tracks) { track in trackCard(track, in: section) }
                     case .unknown:
@@ -190,7 +224,29 @@ struct HomeView: View {
         }
     }
 
-    private func playlistCard(_ playlist: HomePlaylist) -> some View {
+    /// «Sync» (every playlist, with the question before a big download) and «Tutte» (the whole list: search, sort, pages).
+    private var playlistsHeaderButtons: some View {
+        HStack(spacing: 8) {
+            Button {
+                showSyncMessage = true
+                Task { await librarySync.syncAll() }
+            } label: {
+                Text(librarySync.isBusy ? "Sync…" : "Sync")
+            }
+            .buttonStyle(MondropPillStyle(prominent: false))
+            .disabled(librarySync.isBusy)
+            .accessibilityLabel("Sincronizza tutte le playlist")
+            NavigationLink {
+                PlaylistsView()
+            } label: {
+                Text("Tutte")
+            }
+            .buttonStyle(MondropPillStyle(prominent: false))
+            .accessibilityLabel("Tutte le playlist")
+        }
+    }
+
+    private func playlistCard(_ playlist: HomePlaylist, state: PlaylistState?) -> some View {
         NavigationLink {
             PlaylistOfflineView(playlist: playlist.playlist)
         } label: {
@@ -203,6 +259,7 @@ struct HomeView: View {
                     .foregroundStyle(Color(MondropPalette.text))
                     .lineLimit(1)
                 HStack(spacing: 6) {
+                    PlaylistStateMark(state: state, font: .caption)
                     Text(playlist.songCount == 1 ? "1 brano" : "\(playlist.songCount) brani")
                         .font(.caption)
                         .foregroundStyle(secondary)

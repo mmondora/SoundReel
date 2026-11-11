@@ -67,6 +67,11 @@ struct SongRowView: View {
     /// «Thriller · 1982 · Pop» under the state, for lists that browse the library.
     var detail: String?
 
+    /// Which marks the row shows. Inside a playlist a song is in ONE of three states — on the phone, online, error (spec
+    /// 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U3); everywhere else the marks of before.
+    enum Marks { case detailed, playlist }
+    var marks: Marks = .detailed
+
     var body: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
@@ -78,7 +83,7 @@ struct SongRowView: View {
                 }
                 Text(subtitle)
                     .font(.caption2)
-                    .foregroundStyle(status.tint)
+                    .foregroundStyle(subtitleColor)
                     .lineLimit(2)
                 if let detail, !detail.isEmpty {
                     Text(detail)
@@ -92,13 +97,27 @@ struct SongRowView: View {
             }
             Spacer(minLength: 8)
             LikedMark(songKey: track.songKey)
-            StatusAccessoryView(status: status)
+            switch marks {
+            case .detailed: StatusAccessoryView(status: status)
+            case .playlist: SongStateMark(state: SongState(status))
+            }
         }
         .contentShape(Rectangle())
     }
 
+    private var words: String {
+        marks == .playlist ? SongState(status).rowText : status.rowText
+    }
+
     private var subtitle: String {
-        track.artist.isEmpty ? status.rowText : "\(track.artist) · \(status.rowText)"
+        track.artist.isEmpty ? words : "\(track.artist) · \(words)"
+    }
+
+    private var subtitleColor: Color {
+        switch marks {
+        case .detailed: return status.tint
+        case .playlist: return SongState(status).isError ? Color(MondropPalette.error) : .secondary
+        }
     }
 }
 

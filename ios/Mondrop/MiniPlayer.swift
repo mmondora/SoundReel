@@ -111,7 +111,12 @@ struct MiniPlayerBar: View {
 extension View {
     /// The mini player above the tab bar. Applied ONCE per tab, on its NavigationStack: the pages that tab pushes get it too, and none of
     /// them draws its own.
-    func miniPlayer(open: @escaping () -> Void) -> some View {
-        safeAreaInset(edge: .bottom, spacing: 0) { MiniPlayerBar(onOpen: open) }
+    ///
+    /// `visible: false` takes it away without moving it: the first page of the Home has none (Michele, 10 November: «Il mini player in basso» does not
+    /// belong there; spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U5), and the pages pushed from it have it.
+    func miniPlayer(open: @escaping () -> Void, visible: Bool = true) -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            if visible { MiniPlayerBar(onOpen: open) }
+        }
     }
 }
