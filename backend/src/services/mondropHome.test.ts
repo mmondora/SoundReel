@@ -3,9 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./playlists', () => ({ listPlaylists: vi.fn(), firstSongKeys: vi.fn() }));
 vi.mock('./playlistResolver', () => ({ resolveSummaries: vi.fn(), resolveSongKeys: vi.fn() }));
 vi.mock('./userSongs', () => ({ getUserSongs: vi.fn() }));
-vi.mock('./libraryOnlySongs', () => ({ libraryOnlySong: vi.fn() }));
 vi.mock('./offlineManifest', () => ({ buildTracks: vi.fn() }));
-vi.mock('./listeningStats', () => ({ getRecentSongKeys: vi.fn(), getPlayedSongKeys: vi.fn() }));
+vi.mock('./listeningStats', () => ({ getPlayedSongKeys: vi.fn() }));
 vi.mock('../utils/logger', () => ({ logError: vi.fn() }));
 
 import { buildHome, displayNameOf, HOME_LIMITS, realHomeDeps, type HomeDeps } from './mondropHome';
@@ -37,10 +36,8 @@ function deps(over: Partial<HomeDeps> = {}): HomeDeps {
   return {
     playlists: async () => [],
     coverKeys: async () => new Map(),
-    recentKeys: async () => [],
     playedKeys: async () => new Set(),
     journal: async () => new Map(),
-    fileSong: async () => undefined,
     tracks: asTracks,
     ...over,
   };
@@ -54,20 +51,19 @@ beforeEach(() => {
 });
 
 describe('buildHome: the sections and their order (ADR-0020, H5/H6)', () => {
-  it('sends the playlists, then what was heard lately, then what is new, each with its own title and kind', async () => {
+  it('sends the playlists, then what is new, each with its own title and kind (no «Ascoltati di recente»: Michele, 12 November)', async () => {
     const a = song('A', 'Heard', '2026-01-01');
     const b = song('B', 'Fresh', '2026-03-01');
     const home = await buildHome('mike', deps({
       playlists: async () => [playlist('p1', 'Road trip', 3)],
-      recentKeys: async () => [a.songKey],
       journal: async () => journalOf(a, b),
       playedKeys: async () => new Set([a.songKey]),
     }));
     expect(home.sections.map((s) => [s.id, s.title, s.kind])).toEqual([
       ['playlists', 'Le tue playlist', 'playlists'],
-      ['recent', 'Ascoltati di recente', 'tracks'],
       ['fresh', 'Nuovi dai tuoi reel', 'tracks'],
     ]);
+    expect(logError).not.toHaveBeenCalled();             // nothing is built and then failed behind the scenes
   });
 
   it('echoes the user and greets by the family name', async () => {
@@ -91,9 +87,9 @@ describe('buildHome: the sections and their order (ADR-0020, H5/H6)', () => {
     expect(idsOf(onlyFresh)).toEqual(['fresh']);
 
     const everythingPlayed = await buildHome('mike', deps({
-      journal: async () => journalOf(heard), playedKeys: async () => new Set([heard.songKey]), recentKeys: async () => [heard.songKey],
+      journal: async () => journalOf(heard), playedKeys: async () => new Set([heard.songKey]),
     }));
-    expect(idsOf(everythingPlayed)).toEqual(['recent']);
+    expect(idsOf(everythingPlayed)).toEqual([]);         // what was heard is not offered back as a row of its own any more
   });
 });
 
@@ -157,61 +153,21 @@ describe('the playlists section', () => {
   });
 });
 
-describe('«Ascoltati di recente»', () => {
-  it('keeps the order the plays give (newest first) and asks the tracks to be built in that order', async () => {
-    const [a, b, c] = [song('A', 'one', '2026-01-01'), song('B', 'two', '2026-01-02'), song('C', 'three', '2026-01-03')];
-    const tracks = vi.fn(asTracks);
-    const home = await buildHome('mike', deps({
-      recentKeys: async () => [c.songKey, a.songKey, b.songKey], journal: async () => journalOf(a, b, c), tracks,
-    }));
-    const section = home.sections.find((s) => s.id === 'recent');
-    if (section?.kind !== 'tracks') throw new Error('recent expected');
-    expect(section.tracks.map((t) => t.songKey)).toEqual([c.songKey, a.songKey, b.songKey]);
-    expect(tracks.mock.calls[0][0].map((s) => s.songKey)).toEqual([c.songKey, a.songKey, b.songKey]);
-  });
-
-  it('asks for more plays than it shows and holds 20 songs', async () => {
+describe('«Ascoltati di recente» is gone (Michele, 12 November: «gli Ascoltati di recente non mi interessano in homepage»)', () => {
+  it('is never a section, whatever the user has heard', async () => {
     const songs = Array.from({ length: 30 }, (_, i) => song('Art', `t${i}`, '2026-01-01'));
-    const recentKeys = vi.fn(async () => songs.map((s) => s.songKey));
-    const home = await buildHome('mike', deps({ recentKeys, journal: async () => journalOf(...songs), playedKeys: async () => new Set(songs.map((s) => s.songKey)) }));
-    expect(recentKeys).toHaveBeenCalledWith('mike', HOME_LIMITS.recent * 2);
-    const section = home.sections.find((s) => s.id === 'recent');
-    if (section?.kind !== 'tracks') throw new Error('recent expected');
-    expect(section.tracks).toHaveLength(HOME_LIMITS.recent);
-    expect(section.tracks[0].songKey).toBe(songs[0].songKey);
-  });
-
-  it('skips a song that exists nowhere any more instead of leaving a hole, and fills from the next ones', async () => {
-    const gone = keyOf('Old', 'Gone');
-    const a = song('A', 'one', '2026-01-01');
     const home = await buildHome('mike', deps({
-      recentKeys: async () => [gone, a.songKey], journal: async () => journalOf(a),
+      playlists: async () => [playlist('p1', 'Road trip', 3)],
+      journal: async () => journalOf(...songs),
+      playedKeys: async () => new Set(songs.map((s) => s.songKey)),
     }));
-    const section = home.sections.find((s) => s.id === 'recent');
-    if (section?.kind !== 'tracks') throw new Error('recent expected');
-    expect(section.tracks.map((t) => t.songKey)).toEqual([a.songKey]);
+    expect(idsOf(home)).not.toContain('recent');
+    expect(JSON.stringify(home)).not.toContain('Ascoltati di recente');
   });
 
-  it('plays a song that is only a file (ADR-0018) as well as a journal one', async () => {
-    const file = song('Bassi Maestro', 'Track 01', [], { libraryOnly: true, fs: true });
-    const fileSong = vi.fn(async (k: string) => (k === file.songKey ? file : undefined));
-    const home = await buildHome('mike', deps({ recentKeys: async () => [file.songKey], fileSong }));
-    const section = home.sections.find((s) => s.id === 'recent');
-    if (section?.kind !== 'tracks') throw new Error('recent expected');
-    expect(section.tracks.map((t) => t.songKey)).toEqual([file.songKey]);
-    expect(fileSong).toHaveBeenCalledWith(file.songKey);
-  });
-
-  it('does not look for a file when the journal has the song', async () => {
-    const a = song('A', 'one', '2026-01-01');
-    const fileSong = vi.fn(async () => undefined);
-    await buildHome('mike', deps({ recentKeys: async () => [a.songKey], journal: async () => journalOf(a), fileSong }));
-    expect(fileSong).not.toHaveBeenCalled();
-  });
-
-  it('has no section when every key is gone', async () => {
-    const home = await buildHome('mike', deps({ recentKeys: async () => [keyOf('X', 'y')] }));
-    expect(idsOf(home)).toEqual([]);
+  it('is not asked for: the Home reads no list of recent plays, only the set that «Nuovi dai tuoi reel» leaves out', () => {
+    expect(Object.keys(HOME_LIMITS).sort()).toEqual(['coverKeys', 'fresh', 'playlists']);
+    expect(Object.keys(realHomeDeps).sort()).toEqual(['coverKeys', 'journal', 'playedKeys', 'playlists', 'tracks']);   // and no file-only song: that was for the plays of songs that exist only as a file
   });
 });
 
@@ -265,20 +221,18 @@ describe('«Nuovi dai tuoi reel»', () => {
 });
 
 describe('the journal is read once', () => {
-  it('for the whole Home, even though two sections need it at the same moment', async () => {
+  it('for the whole Home', async () => {
     const a = song('A', 'heard', '2026-01-01');
     const b = song('B', 'fresh', '2026-02-01');
     const journal = vi.fn(async () => journalOf(a, b));
-    const home = await buildHome('mike', deps({ journal, recentKeys: async () => [a.songKey], playedKeys: async () => new Set([a.songKey]) }));
-    expect(idsOf(home)).toEqual(['recent', 'fresh']);
+    const home = await buildHome('mike', deps({ journal, playedKeys: async () => new Set([a.songKey]) }));
+    expect(idsOf(home)).toEqual(['fresh']);
     expect(journal).toHaveBeenCalledTimes(1);
   });
 
-  it('and a failure of the journal costs both sections that need it, not the playlists', async () => {
+  it('and a failure of the journal costs «Nuovi dai tuoi reel», not the playlists', async () => {
     const journal = vi.fn(async () => { throw new Error('db down'); });
-    const home = await buildHome('mike', deps({
-      journal, playlists: async () => [playlist('p1', 'Road trip', 3)], recentKeys: async () => ['a::b'],
-    }));
+    const home = await buildHome('mike', deps({ journal, playlists: async () => [playlist('p1', 'Road trip', 3)] }));
     expect(idsOf(home)).toEqual(['playlists']);
     expect(journal).toHaveBeenCalledTimes(1);
   });
@@ -289,11 +243,11 @@ describe('one section failing', () => {
     const fresh = song('B', 'fresh', '2026-01-01');
     const home = await buildHome('mike', deps({
       playlists: async () => [playlist('p1', 'Road trip', 3)],
-      recentKeys: async () => { throw new Error('play_events is down'); },
+      playedKeys: async () => { throw new Error('play_events is down'); },
       journal: async () => journalOf(fresh),
     }));
-    expect(idsOf(home)).toEqual(['playlists', 'fresh']);
-    expect(logError).toHaveBeenCalledWith('home: section recent failed', expect.objectContaining({ err: expect.stringContaining('play_events is down') }));
+    expect(idsOf(home)).toEqual(['playlists']);
+    expect(logError).toHaveBeenCalledWith('home: section fresh failed', expect.objectContaining({ err: expect.stringContaining('play_events is down') }));
   });
 
   it('a failing build of the tracks leaves the playlists in place', async () => {
@@ -314,7 +268,6 @@ describe('rule P (ADR-0018, ADR-0020): nothing names a store', () => {
     const home = await buildHome('mike', deps({
       playlists: async () => [playlist('p1', 'Road trip', 3)],
       coverKeys: async () => new Map([['p1', [a.songKey]]]),
-      recentKeys: async () => [a.songKey],
       journal: async () => journalOf(a, b),
       playedKeys: async () => new Set([a.songKey]),
     }));

@@ -296,6 +296,10 @@ struct PlaylistOfflineView: View {
             HStack(spacing: 12) {
                 Button { play(nil, shuffled: false, in: manifest) } label: { Label("Suona", systemImage: "play.fill").labelStyle(.iconOnly) }
                     .buttonStyle(MondropIconPillStyle(prominent: true))
+                    // «sul play voglio anche il "loop" del singolo o della playlist» (Michele, 12 November): a long press on the play offers the loop here too
+                    .contextMenu {
+                        Button { play(nil, shuffled: false, loop: true, in: manifest) } label: { Label("Suona in loop", systemImage: "repeat") }
+                    }
                 Button { play(nil, shuffled: true, in: manifest) } label: { Label("Mescola", systemImage: "shuffle").labelStyle(.iconOnly) }
                     .buttonStyle(MondropIconPillStyle(prominent: false))
                 downloadButton(manifest)
@@ -481,7 +485,7 @@ struct PlaylistOfflineView: View {
     /// The playlist as the queue («In coda: Playlist · Road trip»), from the tapped song — or from the top / shuffled. A tap plays this song and the ones that follow ON THE SCREEN, in
     /// the order the person sees (by default the phone's songs first: «Vanno privilegiati i file già scaricati»); «Mescola» mixes them, each group on its own and the phone's first
     /// (`localFirst`). A song the server found no source for is left out unless it is already on the phone.
-    private func play(_ songKey: String?, shuffled: Bool, in manifest: OfflineManifest) {
+    private func play(_ songKey: String?, shuffled: Bool, loop: Bool = false, in manifest: OfflineManifest) {
         guard let queue = LibraryQueueBuilder.make(
             choice: .playlist(id: playlist.id, name: playlist.name),
             tracks: arranged(manifest),
@@ -490,6 +494,7 @@ struct PlaylistOfflineView: View {
             localFirst: shuffled,
             isLocal: { engine.store.fileURL(songKey: $0) != nil }
         ) else { return }
+        if loop { player.setRepeatMode(.all) }           // «Suona in loop»: the whole playlist goes round, from the first song
         player.start(queue)
     }
 }

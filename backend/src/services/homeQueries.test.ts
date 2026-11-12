@@ -3,33 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { query, poolQuery } = vi.hoisted(() => ({ query: vi.fn(), poolQuery: vi.fn() }));
 vi.mock('../utils/db', () => ({ query, pool: { query: poolQuery } }));
 
-import { getPlayedSongKeys, getRecentSongKeys } from './listeningStats';
+import { getPlayedSongKeys } from './listeningStats';
 import { firstSongKeys } from './playlists';
 
 const sqlOf = (mock: ReturnType<typeof vi.fn>): string => String(mock.mock.calls[0][0]).replace(/\s+/g, ' ');
 
 beforeEach(() => {
   vi.clearAllMocks();
-});
-
-describe('getRecentSongKeys (the Home\'s «Ascoltati di recente», ADR-0020)', () => {
-  it('reads the songs of ONE user that really counted, one row per song, the latest heard first', async () => {
-    query.mockResolvedValue([{ song_key: 'b::two' }, { song_key: 'a::one' }]);
-    await expect(getRecentSongKeys('mike', 40)).resolves.toEqual(['b::two', 'a::one']);
-    const sql = sqlOf(query);
-    expect(sql).toContain('FROM play_events');
-    expect(sql).toContain('user_id = $1');
-    expect(sql).toContain('counted');                                  // a skip is not listening
-    expect(sql).toContain('GROUP BY song_key');                        // a song heard five times is one row
-    expect(sql).toContain('ORDER BY MAX(started_at) DESC');
-    expect(sql).toContain('LIMIT $2');
-    expect(query.mock.calls[0][1]).toEqual(['mike', 40]);
-  });
-
-  it('is empty for a user who has heard nothing', async () => {
-    query.mockResolvedValue([]);
-    await expect(getRecentSongKeys('sara', 40)).resolves.toEqual([]);
-  });
 });
 
 describe('getPlayedSongKeys (what «Nuovi dai tuoi reel» leaves out)', () => {

@@ -119,15 +119,14 @@ La prima schermata dell'app, **già decisa dal server** (ADR-0020, spec `2026-11
     { "id": "playlists", "title": "Le tue playlist", "kind": "playlists",
       "playlists": [ { "id": "…", "name": "Road trip", "songCount": 7, "kind": "static", "ruleSummary": null, "canEdit": true,
                        "createdAt": "…", "updatedAt": "…", "coverKeys": ["artista::titolo", "…"] } ] },
-    { "id": "recent", "title": "Ascoltati di recente", "kind": "tracks", "tracks": [ { "songKey": "…", "title": "…", "state": "ready", "coverPath": "/api/mondrop/songs/…/cover", "mediaUrl": null, "…": "…" } ] },
-    { "id": "fresh",  "title": "Nuovi dai tuoi reel",  "kind": "tracks", "tracks": [ … ] }
+    { "id": "fresh",  "title": "Nuovi dai tuoi reel",  "kind": "tracks", "tracks": [ { "songKey": "…", "title": "…", "state": "ready", "coverPath": "/api/mondrop/songs/…/cover", "mediaUrl": null, "…": "…" } ] }
   ]
 }
 ```
 
 - `displayName`: il nome con cui salutare (Michele, Archimede, Sara), o `null` per un utente che il server non conosce (l'app saluta senza nome). Il saluto («Buongiorno», «Buon pomeriggio», «Buonasera») lo sceglie l'app dall'ora del telefono.
 - `kind`: `playlists` (una carta per playlist) o `tracks` (una fila di brani); un `kind` nuovo è ignorato dalle app vecchie. Una sezione senza niente **non viene mandata**.
-- **Sezioni di oggi, in quest'ordine:** `playlists` (al massimo 12, la modificata per ultima per prima, anche dinamiche e condivise, **senza quelle vuote**; `coverKeys` = fino a 4 chiavi di brano per il mosaico della copertina, che l'app chiede come sempre con `GET …/songs/:key/cover`; `canEdit` come in `GET /playlists`) · `recent` (fino a 20 brani **diversi**, dal più recente, solo ascolti che contano — un salto non è ascoltare —; un brano che non esiste più né nel diario né come file è saltato, non lasciato come buco) · `fresh` (fino a 20 brani del diario, dal post più recente che li menziona, che questo utente **non ha mai ascoltato**).
+- **Sezioni di oggi, in quest'ordine:** `playlists` (al massimo 12, la modificata per ultima per prima, anche dinamiche e condivise, **senza quelle vuote**; `coverKeys` = fino a 4 chiavi di brano per il mosaico della copertina, che l'app chiede come sempre con `GET …/songs/:key/cover`; `canEdit` come in `GET /playlists`) · `fresh` (fino a 20 brani del diario, dal post più recente che li menziona, che questo utente **non ha mai ascoltato**). **Dalla 2.27.0 non c'è più `recent`** («Ascoltati di recente»: Michele, 12 novembre, «gli Ascoltati di recente non mi interessano in homepage»; spec `2026-11-12-mondrop-home-play-loop-reels-design.md` M3): le app già installate la mostravano finché il server è quello vecchio e smettono appena è in produzione, perché disegnano le sezioni che arrivano. Il contratto dei reel (il tab «Reel») è in `docs/mondrop-reels.md`.
 - `tracks` = **lo stesso oggetto `track`** del manifest e di Cerca (stato, `downloadPath`, `coverPath`, `plays`…); **`mediaUrl` è sempre `null`** e nessun campo nomina un negozio (regola P: la Home non dice dov'è un file).
 - Il guasto di **una** sezione costa solo quella sezione (il resto risponde; l'errore va nel log del server). Se non si riesce a costruire niente: `500 { "error": "home failed" }`; senza key valida `401`.
 - **«Riprendi» non c'è nella risposta:** è la coda dell'app, che il telefono salva e al lancio ricarica **ferma** (il play non parte mai da solo).
@@ -264,7 +263,7 @@ Regola unica per tutti i client. Se il brano è **già scaricato** (sul device, 
 ## Algoritmo del client (Fase 2)
 
 1. (Facoltativo, solo da mostrare) `GET /net` → `home`: non influisce su nessun percorso (regola P).
-2. `POST …/prepare` → manifest. Per ogni `ready` con `version` diversa da quella locale: scarica in background (Wi-Fi, max 2 in parallelo, ripresa). URL = `base + downloadPath`, con i due header di auth; **nessun altro indirizzo** (`mediaUrl` è `null` e un client non lo usa). Se fallisce → ritenta con attesa crescente.
+2. `POST …/prepare` → manifest. Per ogni `ready` con `version` diversa da quella locale: scarica in background (Wi-Fi, uno alla volta dalla build 20 di Mondrop — prima erano 2 in parallelo —, ripresa). URL = `base + downloadPath`, con i due header di auth; **nessun altro indirizzo** (`mediaUrl` è `null` e un client non lo usa). Se fallisce → ritenta con attesa crescente.
 3. Se ci sono `preparing`: rilegge il manifest ogni ~5 s in foreground (max ~10 min) e scarica i nuovi `ready`; il pulsante Sync è ripetibile (idempotente).
 4. Stato per brano nell'interfaccia: `preparing` · `in coda` · `scarico NN %` · `scaricato` · `errore` (con il motivo) · `no_source`.
 5. File in `Application Support` (escluso da iCloud), indice in JSON; brani non più in nessuna playlist sincronizzata = orfani, rimossi solo su richiesta esplicita.

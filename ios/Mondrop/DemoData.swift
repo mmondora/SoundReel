@@ -1,6 +1,6 @@
 // DemoData.swift — DEBUG builds only. Launching with `-MondropDemo` makes the Home draw the data below (no server needed) and starts the
 // player with a queue, so the screens can be looked at on a simulator: the Home with its rows, the mini player, «Riprendi», the Player.
-// `-MondropDemoTab search|playlists|inbox|share|settings` opens another tab (`playlists` pushes the whole list from the Home: the tab is gone), `-MondropDemoPlayer` opens the Player, `-MondropDemoSearch`
+// `-MondropDemoTab search|playlists|reels|inbox|settings` opens another tab (`playlists` pushes the whole list from the Home: the tab is gone; `reels` is the tab «Reel», and `-MondropDemoPush reel` opens the page of its first reel), `-MondropDemoPlayer` opens the Player, `-MondropDemoSearch`
 // does what a tap on the field of the Home does; `-MondropDemoLiked`, `-MondropDemoRepeat off|all|one` and `-MondropDemoCommands` show
 // the hearts, the loop and the list of the commands received (spec 2026-11-10-mondrop-like-and-repeat-design.md). None of this exists in a Release build (TestFlight, the App Store).
 
@@ -63,7 +63,7 @@ enum DemoData {
         case "search": return .search
         case "playlists": return .home                // the whole list of the playlists is a page pushed from the Home (see `opensAllPlaylists`)
         case "inbox": return .inbox
-        case "share": return .share
+        case "reels": return .reels
         case "settings": return .settings
         default: return nil
         }
@@ -91,12 +91,101 @@ enum DemoData {
             HomePlaylist(id: "p3", name: "Anni 80", songCount: 41, kind: "static", canEdit: true, coverKeys: [recent[3].songKey]),
             HomePlaylist(id: "p1", name: "Road trip", songCount: 7, kind: "static", canEdit: true, coverKeys: recent.prefix(4).map(\.songKey)),
         ]),
-        HomeSection(id: "recent", title: "Ascoltati di recente", kind: .tracks, tracks: recent),
+        // the row of the songs heard lately is gone (SoundReel 2.27.0, «gli Ascoltati di recente non mi interessano in homepage»)
         HomeSection(id: "fresh", title: "Nuovi dai tuoi reel", kind: .tracks, tracks: fresh),
     ])
 
     struct Transport: HomeTransport {
         func home() async throws -> HomeResponse { DemoData.home }
+    }
+
+    // MARK: the reels (spec 2026-11-12-mondrop-home-play-loop-reels-design.md M5)
+
+    /// The categories to choose from: how many reels have each.
+    static let reelKinds = [
+        ReelKindCount(kind: .music, label: "Musica", count: 7),
+        ReelKindCount(kind: .film, label: "Film", count: 3),
+        ReelKindCount(kind: .software, label: "Software", count: 5),
+        ReelKindCount(kind: .place, label: "Luoghi", count: 2),
+        ReelKindCount(kind: .book, label: "Libri", count: 1),
+    ]
+
+    static let reelCards: [ReelCard] = [
+        ReelCard(
+            id: "r1", createdAt: "2026-11-12T07:40:00.000Z", platform: "instagram",
+            summary: "Il post promuove una guida gratuita per costruire sette tipi di agenti AI con Claude, spiegando le differenze e le applicazioni pratiche.",
+            counts: [
+                ReelKindCount(kind: .music, label: "Musica", count: 2, names: ["Apple", "Billie Jean"]),
+                ReelKindCount(kind: .film, label: "Film", count: 1, names: ["Garden of Eden"]),
+                ReelKindCount(kind: .software, label: "Software", count: 5, names: ["Notion", "Gmail", "Slack"]),
+                ReelKindCount(kind: .brand, label: "Marchi", count: 1, names: ["AGENTI"]),
+            ]
+        ),
+        ReelCard(
+            id: "r2", createdAt: "2026-11-11T19:05:00.000Z", platform: "tiktok",
+            summary: "Cinque posti dove mangiare a Milano senza prenotare, con il piatto da ordinare in ognuno.",
+            counts: [
+                ReelKindCount(kind: .place, label: "Luoghi", count: 5, names: ["Trattoria Arlati", "Pavé", "Il Luogo di Aimo"]),
+                ReelKindCount(kind: .book, label: "Libri", count: 1, names: ["Il cuoco di Milano"]),
+            ]
+        ),
+        ReelCard(id: "r3", createdAt: "2026-11-03T12:00:00.000Z", platform: "youtube", summary: nil, counts: []),
+    ]
+
+    private static let reelDetails: [String: ReelDetail] = [
+        "r1": ReelDetail(
+            id: "r1", createdAt: "2026-11-12T07:40:00.000Z", platform: "instagram",
+            summary: "Il post promuove una guida gratuita per costruire sette tipi di agenti AI con Claude, spiegando le differenze e le applicazioni pratiche.",
+            tags: ["claude", "agentiai", "automazioni"],
+            sections: [
+                ReelSection(kind: .music, title: "Musica", tracks: [fresh[2], recent[0]]),
+                ReelSection(kind: .film, title: "Film", items: [ReelItem(title: "Garden of Eden", detail: "2025 · regia di Qualcuno")]),
+                ReelSection(kind: .software, title: "Software", items: [
+                    ReelItem(title: "Notion", detail: "prodotto"), ReelItem(title: "Gmail", detail: "prodotto"), ReelItem(title: "Slack", detail: nil),
+                    ReelItem(title: "Zapier", detail: "prodotto · automazioni tra app"), ReelItem(title: "Claude", detail: "prodotto · assistente AI"),
+                ]),
+                ReelSection(kind: .brand, title: "Marchi", items: [ReelItem(title: "AGENTI", detail: nil)]),
+            ],
+            insights: [
+                ReelInsight(label: "Brand: AGENTI", text: "Il brand propone corsi e risorse sugli agenti AI per chi lavora con strumenti di automazione."),
+                ReelInsight(label: "Software: Zapier", text: "Zapier collega app diverse e fa partire azioni al verificarsi di un evento, senza scrivere codice."),
+            ],
+            verdict: ReelVerdict(label: "dubbio", explanation: "La guida è presentata come gratuita ma richiede l'iscrizione a una newsletter."),
+            slides: [
+                ReelSlide(index: 0, summary: "La prima slide presenta la guida e promette sette agenti pronti da copiare."),
+                ReelSlide(index: 1, summary: "La seconda spiega la differenza tra un assistente e un agente che agisce da solo."),
+                ReelSlide(index: 2, summary: "La terza elenca gli strumenti da collegare: Notion, Gmail e Slack."),
+            ]
+        ),
+        "r2": ReelDetail(
+            id: "r2", createdAt: "2026-11-11T19:05:00.000Z", platform: "tiktok",
+            summary: "Cinque posti dove mangiare a Milano senza prenotare, con il piatto da ordinare in ognuno.",
+            tags: ["milano", "ristoranti"],
+            sections: [
+                ReelSection(kind: .place, title: "Luoghi", items: [
+                    ReelItem(title: "Trattoria Arlati", detail: nil), ReelItem(title: "Pavé", detail: nil), ReelItem(title: "Il Luogo di Aimo", detail: nil),
+                    ReelItem(title: "Osteria del Treno", detail: nil), ReelItem(title: "Da Giacomo", detail: nil),
+                ]),
+                ReelSection(kind: .book, title: "Libri", items: [ReelItem(title: "Il cuoco di Milano", detail: nil)]),
+            ]
+        ),
+        "r3": ReelDetail(id: "r3", createdAt: "2026-11-03T12:00:00.000Z", platform: "youtube"),
+    ]
+
+    /// The tab «Reel» without a server.
+    struct ReelsAPI: ReelsTransport {
+        func reels(limit: Int, offset: Int, kind: ReelKind?, facets: Bool) async throws -> ReelPage {
+            let cards = kind == nil ? DemoData.reelCards : DemoData.reelCards.filter { card in card.counts.contains { $0.kind == kind } }
+            return ReelPage(
+                total: cards.count, limit: limit, offset: offset, kinds: facets ? DemoData.reelKinds : [],
+                reels: Array(cards.dropFirst(offset).prefix(limit))
+            )
+        }
+
+        func reel(id: String) async throws -> ReelDetail {
+            guard let detail = DemoData.reelDetails[id] else { throw MondropAPIError.http(404, nil) }
+            return detail
+        }
     }
 
     // MARK: the playlists, their songs and what the phone holds (spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U3, U9)

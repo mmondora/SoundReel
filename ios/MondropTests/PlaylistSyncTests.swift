@@ -18,7 +18,7 @@ final class PlaylistSyncCoordinatorTests: XCTestCase {
 
     private func rig(playlistId: String = "pl1", pollTimeout: TimeInterval = 600) throws -> Rig {
         let api = FakeAPI()
-        let engineRig = try EngineRig()
+        let engineRig = try EngineRig(maxParallel: 2)
         let dir = engineRig.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         let clock = FakeClock()
@@ -189,7 +189,7 @@ final class PlaylistSyncCoordinatorTests: XCTestCase {
 
     private func gatedRig(_ gate: DownloadGate, playlistId: String = "pl1") throws -> Rig {
         let api = FakeAPI()
-        let engineRig = try EngineRig()
+        let engineRig = try EngineRig(maxParallel: 2)
         let dir = engineRig.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         let clock = FakeClock()
@@ -350,7 +350,7 @@ final class PlaylistSyncCoordinatorTests: XCTestCase {
 @MainActor
 final class LibraryCleanerTests: XCTestCase {
     private func store(_ keys: [String]) throws -> OfflineStore {
-        let rig = try EngineRig()
+        let rig = try EngineRig(maxParallel: 2)
         let dir = rig.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         for k in keys { try rig.installLocal(k, version: "1-1", bytes: 1000) }

@@ -27,7 +27,7 @@ struct CoverView: View {
         }
     }
 
-    private static func image(from data: Data) -> Image? {
+    static func image(from data: Data) -> Image? {
         #if canImport(UIKit)
         return UIImage(data: data).map { Image(uiImage: $0) }
         #elseif canImport(AppKit)

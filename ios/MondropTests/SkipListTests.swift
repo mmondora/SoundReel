@@ -67,7 +67,7 @@ final class SkipListPlannerTests: XCTestCase {
 @MainActor
 final class SkipListEngineTests: XCTestCase {
     private func rig() throws -> EngineRig {
-        let r = try EngineRig()
+        let r = try EngineRig(maxParallel: 2)
         let dir = r.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         return r
@@ -125,13 +125,13 @@ final class SkipListEngineTests: XCTestCase {
     }
 
     func testAQueuedJobWhoseSongWasSkipListedMeanwhileIsNotRestoredAfterARelaunch() async throws {
-        let first = try EngineRig(persistQueue: true)
+        let first = try EngineRig(maxParallel: 2, persistQueue: true)
         let dir = first.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         first.engine.enqueue((1...4).map { TestSupport.track("q\($0)") })      // q3, q4 queued and persisted
         first.store.addSkipped(["q4"])
 
-        let second = try EngineRig(persistQueue: true, root: first.root)
+        let second = try EngineRig(maxParallel: 2, persistQueue: true, root: first.root)
         await second.engine.attachExisting()
         XCTAssertEqual(second.transport.startedKeys, ["q3"], "q3 is restored and starts, q4 stays deleted")
         XCTAssertEqual(second.engine.queuedCount, 0)
@@ -277,7 +277,7 @@ final class SkipListStoreTests: XCTestCase {
 @MainActor
 final class SkipListCoordinatorTests: XCTestCase {
     func testSyncReportsAndLeavesSkipListedSongsAndRiscaricaBringsOneBack() async throws {
-        let rig = try EngineRig()
+        let rig = try EngineRig(maxParallel: 2)
         let dir = rig.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         let api = FakeAPI()

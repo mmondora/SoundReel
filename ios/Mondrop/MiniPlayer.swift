@@ -96,6 +96,11 @@ struct MiniPlayerBar: View {
                 glyph(player.playing ? "pause.fill" : "play.fill", size: 24, color: Color(MondropPalette.accent))
             }
             .accessibilityLabel(player.playing ? "Pausa" : "Riproduci")
+            // «sul play voglio anche il "loop" del singolo o della playlist» (Michele, 12 November): a long press on the play opens the loop, and a small mark says when it is on
+            .accessibilityHint("Tieni premuto per la ripetizione")
+            .accessibilityAction(named: "Cambia la ripetizione") { player.cycleRepeatMode() }
+            .overlay(alignment: .topTrailing) { RepeatIndicator().offset(x: -3, y: 5) }
+            .contextMenu { RepeatMenuItems() }
             Button { player.next() } label: { glyph("forward.fill", size: 18) }
                 .accessibilityLabel("Brano successivo")
         }

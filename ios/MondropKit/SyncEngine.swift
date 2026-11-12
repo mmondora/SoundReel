@@ -1,5 +1,5 @@
-// SyncEngine.swift — the download queue of the sync: at most 2 downloads at a time, skip-present,
-// resume data, installs into the OfflineStore. Every download comes from SoundReel (rule P, ADR-0018).
+// SyncEngine.swift — the download queue of the sync: ONE download at a time («Il download deve essere non necessariamente parallelo e massivo», Michele, 12 November;
+// spec of 12 November on the play, the loop and the reels, M4), skip-present, resume data, installs into the OfflineStore. Every download comes from SoundReel (rule P, ADR-0018).
 //
 // The engine knows nothing about URLSession: it talks to a `DownloadTransport`
 // (BackgroundDownloadTransport in the app, a fake in tests).
@@ -142,7 +142,8 @@ public final class SyncEngine: ObservableObject, DownloadTransportHandler {
     /// Bumped whenever the store changes (install / remove), so lists can re-read it.
     @Published public private(set) var revision = 0
 
-    public var maxParallel = 2
+    /// How many downloads are on their way at once: one. The songs come down in the order they are about to play (`setUpcoming`), so the first one gets the whole line.
+    public var maxParallel = 1
     public let store: OfflineStore
 
     private let transport: DownloadTransport

@@ -180,7 +180,7 @@ final class JobInfoDescriptorTests: XCTestCase {
 @MainActor
 final class DownloadedMetadataTests: XCTestCase {
     func testADownloadedSongArrivesWithAlbumGenresAndYearSoItCanBeBrowsedOffline() throws {
-        let r = try EngineRig()
+        let r = try EngineRig(maxParallel: 2)
         let dir = r.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         r.engine.enqueue([TestSupport.track("a", album: "Thriller", genres: ["Pop", "Rock"], year: 1982)])
@@ -195,13 +195,13 @@ final class DownloadedMetadataTests: XCTestCase {
     }
 
     func testTheQueueOnDiskKeepsThemToo() async throws {
-        let first = try EngineRig(persistQueue: true)
+        let first = try EngineRig(maxParallel: 2, persistQueue: true)
         let dir = first.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         let list = ["a", "b", "c"].map { TestSupport.track($0, album: "Album \($0)", genres: ["Pop"], year: 1990) }
         first.engine.enqueue(list)                         // c waits in the queue file
 
-        let second = try EngineRig(persistQueue: true, root: first.root)
+        let second = try EngineRig(maxParallel: 2, persistQueue: true, root: first.root)
         await second.engine.attachExisting()
         let c = try XCTUnwrap(second.transport.started.first)
         XCTAssertEqual(c.info.songKey, "c")

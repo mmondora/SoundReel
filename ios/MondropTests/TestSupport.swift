@@ -93,8 +93,10 @@ struct EngineRig {
     let transport: FakeTransport
     let engine: SyncEngine
 
+    /// `maxParallel`: how many downloads may run at once; nil leaves the engine's own default (one at a time, since 12 November). The tests written when two went at once say 2 here:
+    /// they are about something else (what is queued, announced, restored…) and need the second slot.
     init(
-        config: EngineConfig = .test, persistQueue: Bool = false, root: URL? = nil, transport: FakeTransport = FakeTransport(),
+        maxParallel: Int? = nil, config: EngineConfig = .test, persistQueue: Bool = false, root: URL? = nil, transport: FakeTransport = FakeTransport(),
         now: @escaping () -> Date = { Date() }
     ) throws {
         let dir = try root ?? TestSupport.tempDir("engine")
@@ -102,6 +104,7 @@ struct EngineRig {
         self.store = OfflineStore(root: dir)
         self.transport = transport
         self.engine = SyncEngine(transport: transport, store: store, config: { config }, persistQueue: persistQueue, now: now)
+        if let maxParallel { engine.maxParallel = maxParallel }
     }
 
     /// A finished download, delivered exactly like the transport does (a file already in staging).

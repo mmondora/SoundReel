@@ -64,7 +64,7 @@ final class PlayingPlaylistSyncTests: XCTestCase {
     private func make(
         limit: SyncWarnLimit = .gb2, hasKey: Bool = true, declines: SyncDeclines = SyncDeclines(), clock: PreparationClock? = nil
     ) throws -> Rig {
-        let engineRig = try EngineRig()
+        let engineRig = try EngineRig(maxParallel: 2)
         let api = FakeAPI()
         let box = Box()
         box.limit = limit
@@ -136,7 +136,7 @@ final class PlayingPlaylistSyncTests: XCTestCase {
     }
 
     func testTheListOfThePlaylistThatPlaysIsKeptForItsPage() async throws {
-        let engineRig = try EngineRig()
+        let engineRig = try EngineRig(maxParallel: 2)
         let api = FakeAPI()
         final class Cache: PlaylistManifestCaching, @unchecked Sendable {
             var saved: [String: OfflineManifest] = [:]
@@ -350,7 +350,7 @@ final class PlayingPlaylistSyncTests: XCTestCase {
     }
 
     func testAnAnswerFromTheServerThatArrivesAfterTheUserMovedOnAsksNothingAndQueuesNothing() async throws {
-        let engineRig = try EngineRig()
+        let engineRig = try EngineRig(maxParallel: 2)
         let slow = SlowAPI(TestSupport.manifest("a", ["a1", "a2", "a3", "a4"].map { TestSupport.track($0, bytes: 1 * gb) }))
         let sync = PlayingPlaylistSync(api: slow, engine: engineRig.engine, limit: { .gb2 }, hasKey: { true }, clock: FakeClock().clock)
         sync.playbackChanged(ctx(true, "a"))

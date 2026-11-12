@@ -117,7 +117,7 @@ final class PlaylistConsistencyCheckTests: XCTestCase {
     }
 
     private func make(limit: SyncWarnLimit = .gb2) throws -> Rig {
-        let engineRig = try EngineRig()
+        let engineRig = try EngineRig(maxParallel: 2)
         let api = FakeAPI()
         let cache = MemoryCache()
         let box = Limit()

@@ -6,12 +6,19 @@
 // The one thing it does with a row is to put what is on the phone first (`LocalFirst`; Michele, 11 November: «le playlist e i brani devono essere in ordine di
 // scaricati in locale e poi online»): the phone knows what it holds, the server cannot. A tap on a song plays it and queues the ones that follow in its row; a long
 // press offers what Cerca offers. It is never a blank page: with nothing to show it still has the field and the way to browse.
+//
+// 12 November (spec 2026-11-12-mondrop-home-play-loop-reels-design.md M1–M3; Michele: «in mondrop voglio avere il bottone play, in homepage, direttamente sulla play list, in un angolo - oppure
+// con una gesture… gli Ascoltati di recente non mi interessano in homepage»): every card of a playlist has a round play button on its cover — a tap plays the playlist from the top, the phone's
+// songs first — and a long press on the card offers «Suona», «Mescola» and «Suona in loop»; the row of the songs heard lately is gone (the server no longer sends it). There is no sync or check
+// on this page: the Settings are the only place that names them.
 
 import SwiftUI
 
 struct HomeView: View {
     @StateObject private var model: HomeModel
     @StateObject private var actions = TrackActions()
+    /// The play on the card of a playlist: the queue of that playlist, without opening its page.
+    @StateObject private var quickPlay: PlaylistQuickPlay
     @ObservedObject private var engine = SyncEngine.shared
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var localKeys: Set<String> = []
@@ -34,6 +41,12 @@ struct HomeView: View {
         let transport: HomeTransport = MondropAPI()
         #endif
         _model = StateObject(wrappedValue: HomeModel(transport: transport))
+        #if DEBUG
+        let playlistAPI: MondropAPIProtocol = DemoData.isOn ? DemoData.PlaylistAPI() : MondropAPI()
+        #else
+        let playlistAPI: MondropAPIProtocol = MondropAPI()
+        #endif
+        _quickPlay = StateObject(wrappedValue: PlaylistQuickPlay.app(api: playlistAPI))
     }
 
     private var wide: Bool { sizeClass == .regular }
@@ -69,7 +82,7 @@ struct HomeView: View {
         .toolbar(.hidden, for: .navigationBar)       // the greeting is the title (the Mac has no navigation bar to hide)
         #endif
         .refreshable { await model.load() }
-        // Every time the tab comes into view: what was heard a minute ago is already in «Ascoltati di recente».
+        // Every time the tab comes into view the server is asked again (what it composes for this user can change from one minute to the next).
         .task {
             localKeys = engine.store.localSongKeys()
             await model.load()
@@ -229,29 +242,75 @@ struct HomeView: View {
     }
 
     private func playlistCard(_ playlist: HomePlaylist, state: PlaylistState?) -> some View {
-        NavigationLink {
-            PlaylistOfflineView(playlist: playlist.playlist)
+        ZStack(alignment: .topLeading) {
+            NavigationLink {
+                PlaylistOfflineView(playlist: playlist.playlist)
+            } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    PlaylistMosaic(seed: playlist.id, keys: playlist.coverKeys)
+                        .frame(width: cardSide, height: cardSide)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    Text(playlist.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color(MondropPalette.text))
+                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        PlaylistStateMark(state: state, font: .caption)
+                        Text(playlist.songCount == 1 ? "1 brano" : "\(playlist.songCount) brani")
+                            .font(.caption)
+                            .foregroundStyle(secondary)
+                        if playlist.isDynamic { DynamicBadge() }
+                    }
+                }
+                .frame(width: cardSide, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            // the play, in the corner of the cover (a button of its own: the card still opens the page)
+            playButton(for: playlist)
+                .offset(x: cardSide - Self.playSide - 8, y: cardSide - Self.playSide - 8)
+        }
+        .frame(width: cardSide, alignment: .leading)
+        // the gesture: a long press on the card offers what the play can do
+        .contextMenu {
+            Button { play(playlist) } label: { Label("Suona", systemImage: "play.fill") }
+            Button { play(playlist, shuffled: true) } label: { Label("Mescola", systemImage: "shuffle") }
+            Button { play(playlist, loop: true) } label: { Label("Suona in loop", systemImage: "repeat") }
+        }
+    }
+
+    private static let playSide: CGFloat = 40
+
+    /// «il bottone play, in homepage, direttamente sulla play list, in un angolo»: yellow with a dark glyph, like the play of «Riprendi»; a spinner while the list is being read.
+    private func playButton(for playlist: HomePlaylist) -> some View {
+        Button {
+            play(playlist)
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                PlaylistMosaic(seed: playlist.id, keys: playlist.coverKeys)
-                    .frame(width: cardSide, height: cardSide)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Text(playlist.name)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color(MondropPalette.text))
-                    .lineLimit(1)
-                HStack(spacing: 6) {
-                    PlaylistStateMark(state: state, font: .caption)
-                    Text(playlist.songCount == 1 ? "1 brano" : "\(playlist.songCount) brani")
-                        .font(.caption)
-                        .foregroundStyle(secondary)
-                    if playlist.isDynamic { DynamicBadge() }
+            ZStack {
+                Circle().fill(Color(MondropPalette.accent))
+                if quickPlay.loadingId == playlist.id {
+                    ProgressView().controlSize(.small).tint(Color(MondropPalette.onAccent))
+                } else {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color(MondropPalette.onAccent))
                 }
             }
-            .frame(width: cardSide, alignment: .leading)
+            .frame(width: Self.playSide, height: Self.playSide)
+            .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Suona \(playlist.name)")
+        .accessibilityHint("Tieni premuto sulla playlist per mescolare o ripetere")
+    }
+
+    /// Builds the queue of the playlist and starts it; when it cannot, one short line at the bottom says why.
+    private func play(_ playlist: HomePlaylist, shuffled: Bool = false, loop: Bool = false) {
+        Task {
+            let outcome = await quickPlay.play(playlistId: playlist.id, name: playlist.name, shuffled: shuffled, loop: loop)
+            if let message = outcome.message(playlistName: playlist.name) { actions.show(message) }
+        }
     }
 
     /// What the phone knows of a song: on it, on its way, deleted from it, failed.
@@ -342,6 +401,11 @@ private struct ResumeSection: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(card.isPlaying ? "Pausa" : "Riprendi")
+                // «sul play voglio anche il "loop" del singolo o della playlist»: a long press opens the loop, a small mark says when it is on
+                .accessibilityHint("Tieni premuto per la ripetizione")
+                .accessibilityAction(named: "Cambia la ripetizione") { player.cycleRepeatMode() }
+                .overlay(alignment: .topTrailing) { RepeatIndicator(onYellow: true).offset(x: 2, y: -2) }
+                .contextMenu { RepeatMenuItems() }
             }
             .padding(12)
             .background(Color.white.opacity(MondropPalette.cardFillOpacity), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -465,5 +529,28 @@ private struct HomeTrackCard: View {
         case .readyOnServer, .removedFromPhone: return true
         default: return false
         }
+    }
+}
+
+// MARK: - The play on a card, wired to the app
+
+extension PlaylistQuickPlay {
+    /// The one of the Home: the lists the phone kept, the real player, and what the store and the engine say of each song (the same words as the page of a playlist).
+    @MainActor
+    static func app(api: MondropAPIProtocol) -> PlaylistQuickPlay {
+        PlaylistQuickPlay(
+            api: api,
+            cache: FilePlaylistManifestCache.shared,
+            player: LocalAudioPlayer.shared,
+            isLocal: { SyncEngine.shared.store.fileURL(songKey: $0) != nil },
+            state: { track in
+                SongState(TrackRowStatus.make(
+                    track: track,
+                    isLocal: SyncEngine.shared.store.fileURL(songKey: track.songKey) != nil,
+                    progress: SyncEngine.shared.progress[track.songKey],
+                    isSkipListed: SyncEngine.shared.store.isSkipped(track.songKey)
+                ))
+            }
+        )
     }
 }

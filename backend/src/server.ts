@@ -34,6 +34,7 @@ import { registerShareRoute } from './routes/share';
 import { registerMondropRoutes } from './routes/mondrop';
 import { registerMondropInboxRoutes } from './routes/mondropInbox';
 import { registerMondropLikesRoutes } from './routes/mondropLikes';
+import { registerMondropReelsRoutes } from './routes/mondropReels';
 import { MAX_ENCODED_SONG_KEY } from './services/songLikes';
 import { registerMeRoute } from './routes/me';
 import { registerUiPrefsRoutes } from './routes/uiPrefs';
@@ -95,6 +96,7 @@ async function bootstrap(): Promise<void> {
   registerMondropRoutes(app);
   registerMondropInboxRoutes(app);
   registerMondropLikesRoutes(app); // the likes of the songs: the Mondrop key like the other /api/mondrop routes (Traefik bypasses Authelia there), ADR-0028
+  registerMondropReelsRoutes(app); // what a reel contains, decomposed and explained, without the address of any post: the Mondrop key like the other /api/mondrop routes, ADR-0033
   registerMeRoute(app);
   registerUiPrefsRoutes(app); // the configuration of the site, per user: behind Authelia like /api/me (ADR-0026)
   registerWebHomeRoute(app); // the front page of the site in sections: behind Authelia like /api/me, never under /api/mondrop or /api/share

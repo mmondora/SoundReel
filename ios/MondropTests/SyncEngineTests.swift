@@ -4,7 +4,7 @@ import XCTest
 @MainActor
 final class SyncEngineTests: XCTestCase {
     private func rig(config: EngineConfig = .test, persistQueue: Bool = false, root: URL? = nil, transport: FakeTransport = FakeTransport()) throws -> EngineRig {
-        let r = try EngineRig(config: config, persistQueue: persistQueue, root: root, transport: transport)
+        let r = try EngineRig(maxParallel: 2, config: config, persistQueue: persistQueue, root: root, transport: transport)
         let dir = r.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         return r

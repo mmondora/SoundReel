@@ -27,7 +27,7 @@ final class PlaylistDownloadAllTests: XCTestCase {
 
     private func rig(limit: SyncWarnLimit = .gb2) throws -> Rig {
         let api = FakeAPI()
-        let engineRig = try EngineRig()
+        let engineRig = try EngineRig(maxParallel: 2)
         let dir = engineRig.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         let clock = FakeClock()

@@ -74,7 +74,7 @@ Contratto API: `docs/mondrop-sync.md`. Dalla **Home**, «Tutte» → l'elenco de
 
 - **Sync** = `POST …/prepare` (il server prepara i brani non pronti) + download in background: sessione `URLSession` *background*
   (continua anche con l'app sospesa), **solo Wi-Fi** salvo l'interruttore *Impostazioni → Sync → Scarica anche con rete cellulare*,
-  **max 2 in parallelo**, ripresa dei download interrotti. Finché il server ha brani `preparing` l'app rilegge il manifest ogni ~5 s
+  **uno alla volta** (dalla build 20; prima erano 2 in parallelo), nell'ordine in cui i brani stanno per suonare, ripresa dei download interrotti. Finché il server ha brani `preparing` l'app rilegge il manifest ogni ~5 s
   (max ~10 min) e scarica ogni brano appena è `ready`. Il pulsante è ripetibile: nulla viene scaricato due volte.
 - **Salta ciò che c'è già**: un brano è «presente» solo se il file esiste, **non è vuoto** e — quando il manifest conosce `bytes` — ha
   la stessa dimensione (la sola `version` non basta: il backend precedente serviva `200` con `Content-Length: 0` e la vecchia app
@@ -163,7 +163,7 @@ Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/search», «POST /api/mond
   al server e si scaricano appena sono pronti, finché la schermata è aperta. Non riporta i brani tolti dal telefono, non tocca il Player.
 - **Il play non è mai automatico**: «Aggiungi in coda» con la coda vuota carica la coda e mostra il primo brano, e aspetta «Riproduci».
 - **Il Player** (build 9, spec `2026-11-08-mondrop-ipad-player-design.md`): scuro per costruzione, colori dalla tavolozza `MondropPalette` (`MondropKit/MondropPalette.swift`, contrasti provati), accento giallo, una colonna centrata (560 pt su iPad), cover quadrata. Dalla Home (sotto) non è più una scheda: si apre a schermo intero dal mini player.
-- **Schede**: **Home**, **Cerca**, Posta, Share, Impostazioni (dalla 1.8.0; prima c'era anche Playlist, che ora si apre dalla Home). La Libreria non è più una scheda (si apre da «Sfoglia»). «Cerca musica» non esiste più.
+- **Schede**: **Home**, **Cerca**, **Reel**, Posta, Impostazioni (dalla 1.8.0 non c'è più Playlist, che si apre dalla Home; dalla build 20 **Reel** prende il posto di Share, il cui modulo si apre dal «+» del tab Reel). La Libreria non è più una scheda (si apre da «Sfoglia»). «Cerca musica» non esiste più.
 - **Test** nuovi (`SearchModelsTests`, `SearchModelTests`, `SearchPlaybackTests`): la richiesta sul filo (parole, `+`, `&`, accenti, limiti), la
   risposta documentata e quelle storte, la ricerca online / sul telefono / con server che non risponde, risposta tardiva scartata, pagine, polling dei
   brani in preparazione, le playlist trovate per nome, «tocca = questo e i seguenti», «Aggiungi in coda», le ricerche recenti, il selettore delle playlist
@@ -220,7 +220,7 @@ in home page e al primo accesso viene fatto un sync automatico. […] Dentro ogn
 in play list lo devo poter fare dalla ricerca […]. La canzone viene cancellata solo con uno swipe della canzone in ricerca, non nel browser di una playlist.» e «Anche la playlist deve avere un
 simbolo/icona che dice online/errore/locale»).
 
-- **Cinque schede** (`RootTab`): Home, Cerca, Posta, Share, Impostazioni. Le playlist stanno sulla Home: la riga «Le tue playlist» ha **«Tutte»** (l'elenco con ricerca, ordine e pagine:
+- **Cinque schede** (`RootTab`): Home, Cerca, ~~Posta, Share~~ Reel, Posta, Impostazioni (dalla build 20 Reel è al posto di Share). Le playlist stanno sulla Home: la riga «Le tue playlist» ha **«Tutte»** (l'elenco con ricerca, ordine e pagine:
   `PlaylistsView`, che si apre nella pila della Home). Se il server non manda la riga, la Home vuota ha «Tutte le playlist». **Non c'è un «Sync» di tutte le playlist** (tolto l'11 novembre, vedi sotto).
 - **Il mini player non c'è sulla pagina principale della Home** (c'è «Riprendi»); c'è su ogni altra scheda e su ogni pagina che si apre dalla Home (`.miniPlayer(open:visible:)`: la Home dice
   quando la sua pagina è in vista, `onRootVisible`).
@@ -300,6 +300,18 @@ Spec `docs/superpowers/specs/2026-11-10-mondrop-simplify-playlists-and-song-stat
   Non c'è se non c'è niente che possa arrivare; i brani tolti dal telefono apposta restano fuori («Riscarica»).
 - **Per guardarlo senza server** (solo DEBUG): `-MondropDemoSongSort state|playlist|name|added`, `-MondropDemoPlaylistSort state|created|updated|name|size`, `-MondropDemoSortReverse` (con `-MondropDemoPush playlist`: «Anni 80», con le date e un mix di stati).
 - **Test** nuovi: `SongSortTests`, `SortPreferencesTests`, `PlaylistStateSortTests`, `PlaylistDownloadStateTests`, `SizeQuestionPresenterTests`, `PlaylistDownloadAllTests`, `PlaylistPageStructureTests`, e le aggiunte a `LocalFirstTests`, `PlaylistListTests`, `PhoneFirstStructureTests`, `SimplifiedAppStructureTests`.
+
+### Dopo la build 19: la build 20 — play sulla card, il loop sul play, il tab Reel, un download alla volta (12 novembre)
+
+Spec `docs/superpowers/specs/2026-11-12-mondrop-home-play-loop-reels-design.md` (M1–M5) · ADR-0033 · SoundReel 2.27.0. Michele: «in mondrop voglio avere il bottone play, in homepage, direttamente sulla play list, in un angolo - oppure ocn una gesture. sul play voglio anche il "loop" del singolo o della playlist - gli Ascoltati di recente non mi interessano in homepage. Il download deve essere non necessariamente parallelo e massivo. Voglio avere anche un tab con le altre categorie sul reel ( dove però per ora l'unica cosa che viene portata sulla device è la musica ) ma non il link al reel ma la sua scomposizione e spiegazione.»
+
+- **Il play sulla card della Home** (`HomeView.swift`, `PlaylistQuickPlay`): un pulsante rotondo giallo nell'angolo della copertina di ogni playlist; un tocco suona la playlist **da capo, con i brani sul telefono per primi** (come «Suona» sulla pagina), dalla lista che il telefono tiene o, se manca, da SoundReel; un tocco sul resto della card apre la pagina. **Pressione prolungata sulla card: «Suona», «Mescola», «Suona in loop».** Non parte nessun sync (quello della playlist che suona parte da solo, come sempre). Sulla Home **non c'è nessun comando di sync o di controllo** (Michele, 12 novembre: «se è il controllo di consistenza lo voglio in "impostazioni"»): è in Impostazioni → Sync.
+- **Il loop sul play** (`RepeatChoice`, `RepeatMenuItems`, `RepeatIndicator`): **pressione prolungata sul tasto play del mini player e di «Riprendi»** = «Non ripetere», «Ripeti la playlist» (o «la coda» se non nasce da una playlist), «Ripeti questo brano», con la spunta su quella in uso; quando il loop è acceso il play porta un **piccolo segno giallo**. Il tasto del Player e i comandi dell'auto restano com'erano; «Suona» e «Mescola» non toccano il loop già scelto.
+- **La Home senza «Ascoltati di recente»**: lo decide il server (dalla 2.27.0 non manda più la riga `recent`); restano «Le tue playlist» e «Nuovi dai tuoi reel». L'app non filtra niente da sé (`ReelTabStructureTests` lo controlla).
+- **Un download alla volta** (`SyncEngine.maxParallel`: 1): la coda scarica un brano per volta, nell'ordine in cui i brani stanno per suonare. «Non massivo»: dalla build 16 non c'è più nessun sync di tutte le playlist (solo la playlist che suona, con la domanda sopra «Avvisa sopra»; «Scarica tutta» è una richiesta della persona).
+- **Il tab «Reel»** (`ReelsView`, `ReelDetailView`, `ReelsModel`, `ReelModels`, `ReelImageLoader`; server `GET /api/mondrop/reels{,/:id,/:id/image}`, contratto `docs/mondrop-reels.md`): al posto di Share. I reel che SoundReel ha analizzato, dal più recente: miniatura, **di cosa parla**, piattaforma e giorno, **cosa contiene per categoria** (Musica, Film, Software, Luoghi, Libri, Prodotti, Marchi, Persone, Eventi, Citazioni) con il conteggio e i primi nomi; in testa i **filtri per categoria** (il server dice quali ci sono e quanti reel ciascuna). La pagina di un reel: «Di cosa parla», le sezioni (la **Musica con le righe dei brani, «Suona tutta» e i tre segni**; le altre come testo), «Approfondimenti» (generati dall'IA, possono sbagliare), il verdetto se c'è, «Slide per slide», le parole chiave. **Nessun link al reel**, e **sul telefono resta solo la musica**: il resto si legge dalla rete ogni volta (senza rete il tab lo dice). Il modulo di condivisione manuale si apre dal **«+»** in alto nel tab; con un server più vecchio della 2.27.0 il tab dice «Serve un SoundReel più recente» e il resto funziona.
+- **Per guardarlo senza server** (solo DEBUG): `-MondropDemoTab reels` (tre reel di prova: musica, film, software, luoghi, libri, un verdetto, le slide) e `-MondropDemoPush reel` (la pagina del primo).
+- **Test** nuovi: `OneAtATimeTests`, `RepeatChoiceTests`, `PlaylistQuickPlayTests`, `ReelModelsTests`, `ReelsModelTests`, `ReelImageLoaderTests`, `ReelTabStructureTests`; `HomeStructureTests` aggiornato (le schede sono `home, search, reels, inbox, settings`).
 
 ## I testi delle canzoni (1.7.0 build 10 e 11 · SoundReel 2.19.0 e 2.19.1)
 

@@ -291,7 +291,7 @@ final class SyncNotifierTests: XCTestCase {
 final class SyncEngineBatchTests: XCTestCase {
     private func rig(persistQueue: Bool = false, root: URL? = nil, transport: FakeTransport = FakeTransport()) throws -> EngineRig {
         let dir = try root ?? TestSupport.tempDir("batch")
-        let r = try EngineRig(config: .test, persistQueue: persistQueue, root: dir, transport: transport)
+        let r = try EngineRig(maxParallel: 2, config: .test, persistQueue: persistQueue, root: dir, transport: transport)
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         return r
     }
@@ -446,7 +446,7 @@ final class SyncEngineBatchTests: XCTestCase {
     }
 
     func testASongThatHasNoAddressIsAnErrorOfTheSync() throws {
-        let r = try EngineRig(config: EngineConfig(baseURL: " / ", apiKey: "k", user: "mike"))
+        let r = try EngineRig(maxParallel: 2, config: EngineConfig(baseURL: " / ", apiKey: "k", user: "mike"))
         let dir = r.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         let seen = listen(r)
@@ -487,7 +487,7 @@ final class SyncEngineBatchTests: XCTestCase {
         try first.finish(first.transport.started[0].info)              // a installed; b was still running when the app died
         XCTAssertNotNil(first.store.readBatchData())
         // …and the app comes back 7 hours later: nobody wants «Sync finito» now
-        let late = try EngineRig(
+        let late = try EngineRig(maxParallel: 2,
             config: .test, persistQueue: true, root: first.root, transport: FakeTransport(),
             now: { Date().addingTimeInterval(7 * 3600) }
         )
@@ -515,7 +515,7 @@ final class SyncEngineBatchTests: XCTestCase {
 final class SyncStartedHookTests: XCTestCase {
     func testStartingASyncTellsTheHookAndNeverWaitsForIt() async throws {
         let api = FakeAPI()
-        let rig = try EngineRig()
+        let rig = try EngineRig(maxParallel: 2)
         let dir = rig.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         var started = 0
@@ -537,7 +537,7 @@ final class SyncStartedHookTests: XCTestCase {
 
     func testTheManifestsAlbumGenresAndYearAreKeptForThePhoneBrowsingOffline() async throws {
         let api = FakeAPI()
-        let rig = try EngineRig()
+        let rig = try EngineRig(maxParallel: 2)
         let dir = rig.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         try rig.installLocal("a", version: "100-1")
@@ -557,7 +557,7 @@ final class SyncStartedHookTests: XCTestCase {
 
     func testWhileTheServerPreparesTheActivityCountsIt() async throws {
         let api = FakeAPI()
-        let rig = try EngineRig()
+        let rig = try EngineRig(maxParallel: 2)
         let dir = rig.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         let activity = SyncActivity()

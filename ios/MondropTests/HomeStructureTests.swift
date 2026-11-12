@@ -37,8 +37,9 @@ final class HomeStructureTests: XCTestCase {
 
     /// «Su Mondrop non vedo utilità nel tab playlist avendo le playlist in home page» (Michele, 10 November; spec
     /// 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md U1): five tabs, all of them on the bar of an iPhone, and no Playlist tab.
-    func testTheTabsAreHomeSearchInboxShareSettingsAndThereIsNoPlaylistTab() {
-        XCTAssertEqual(RootTab.allCases, [.home, .search, .inbox, .share, .settings])
+    func testTheTabsAreHomeSearchReelInboxSettingsAndThereIsNoPlaylistTab() {
+        // 12 November, M5: «un tab con le altre categorie sul reel» takes the place of «Share» (the manual share form opens from the «+» of the Reel tab)
+        XCTAssertEqual(RootTab.allCases, [.home, .search, .reels, .inbox, .settings])
         XCTAssertLessThanOrEqual(RootTab.allCases.count, 5, "from the sixth tab on iOS folds the rest into «Altro»")
     }
 
@@ -48,7 +49,7 @@ final class HomeStructureTests: XCTestCase {
         let tags = regex.matches(in: source, range: NSRange(source.startIndex..., in: source)).compactMap { match -> String? in
             Range(match.range(at: 1), in: source).map { String(source[$0]) }
         }
-        XCTAssertEqual(tags, ["home", "search", "inbox", "share", "settings"])
+        XCTAssertEqual(tags, ["home", "search", "reels", "inbox", "settings"])
         XCTAssertTrue(source.contains("@State private var selection: RootTab = .home"), "the app opens on the Home")
     }
 
@@ -76,7 +77,7 @@ final class HomeStructureTests: XCTestCase {
     func testEveryTabCarriesTheMiniPlayerOnItsNavigationStackExceptTheFirstPageOfTheHome() throws {
         let source = try code("Mondrop/RootTabView.swift")
         XCTAssertEqual(count("NavigationStack {", in: source), 5)
-        XCTAssertEqual(count(".miniPlayer(open: openPlayer)", in: source), 4, "Cerca, Posta, Share and the Settings: on every page of every one")
+        XCTAssertEqual(count(".miniPlayer(open: openPlayer)", in: source), 4, "Cerca, Reel, Posta and the Settings: on every page of every one")
         XCTAssertEqual(count(".miniPlayer(open: openPlayer, visible: !homeRootShown)", in: source), 1, "the Home: on every page but its first")
         XCTAssertTrue(source.contains("@State private var homeRootShown = true"), "the app opens on the first page of the Home")
         XCTAssertTrue(source.contains("onRootVisible: { homeRootShown = $0 }"))

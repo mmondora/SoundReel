@@ -3,9 +3,10 @@ import SwiftUI
 /// The tabs, in the order they are drawn. The Player is NOT one of them: it is the mini player above the bar, which opens it at full
 /// screen (spec 2026-11-08-mondrop-home-spotify-design.md H2–H3). The playlists are NOT one either: they are on the first page, and the whole
 /// list opens from there («Su Mondrop non vedo utilità nel tab playlist», Michele, 10 November; spec 2026-11-10-mondrop-simplify-playlists-and-song-states-design.md
-/// U1). Five tabs: all of them stay on the bar of an iPhone.
+/// U1). Five tabs: all of them stay on the bar of an iPhone. «Reel» (12 November, spec 2026-11-12-mondrop-home-play-loop-reels-design.md M5) took the place of «Share»:
+/// the manual share form opens from the «+» of that tab, the Share Extension and the Settings are as they were.
 enum RootTab: Hashable, CaseIterable {
-    case home, search, inbox, share, settings
+    case home, search, reels, inbox, settings
 }
 
 /// What one screen asks of the root: today, «open Cerca with the keyboard» (the field on the Home). A counter, like
@@ -53,7 +54,15 @@ struct RootTabView: View {
             .tabItem { Label("Cerca", systemImage: "magnifyingglass") }
             .tag(RootTab.search)
 
-            // Third, and the five tabs all fit on the bar of an iPhone (a sixth would fold the rest into «Altro», where a badge would not be seen).
+            // What the reels the family shared hold, explained and split by category (no link to the reel; only the music goes to the phone).
+            NavigationStack {
+                ReelsView()
+            }
+            .miniPlayer(open: openPlayer)
+            .tabItem { Label("Reel", systemImage: "rectangle.stack") }
+            .tag(RootTab.reels)
+
+            // The five tabs all fit on the bar of an iPhone (a sixth would fold the rest into «Altro», where a badge would not be seen).
             NavigationStack {
                 InboxView()
             }
@@ -61,13 +70,6 @@ struct RootTabView: View {
             .tabItem { Label("Posta", systemImage: "tray") }
             .badge(inbox.unread)
             .tag(RootTab.inbox)
-
-            NavigationStack {
-                ContentView()
-            }
-            .miniPlayer(open: openPlayer)
-            .tabItem { Label("Share", systemImage: "square.and.arrow.up") }
-            .tag(RootTab.share)
 
             NavigationStack {
                 #if DEBUG

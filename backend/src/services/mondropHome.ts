@@ -5,6 +5,9 @@
  * gets and computes nothing); a section with nothing in it is not sent, and one that fails costs only itself. The songs are
  * the same objects as in the library and in «Cerca» (`buildTracks`): state, `coverPath`, `downloadPath`, `mediaUrl: null`.
  *
+ * Two sections: «Le tue playlist» and «Nuovi dai tuoi reel». There is NO «Ascoltati di recente» since 2.27.0 (Michele, 12 November:
+ * «gli Ascoltati di recente non mi interessano in homepage»; spec 2026-11-12-mondrop-home-play-loop-reels-design.md M3).
+ *
  * Reads only: nothing is queued and nothing is recorded. «Riprendi» is not here: it is the phone's own queue.
  */
 import type { AggregatedSong, PlaylistSummary } from '../types';
@@ -13,12 +16,11 @@ import { logError } from '../utils/logger';
 import { firstSongKeys, listPlaylists } from './playlists';
 import { resolveSongKeys, resolveSummaries } from './playlistResolver';
 import { getUserSongs } from './userSongs';
-import { libraryOnlySong } from './libraryOnlySongs';
 import { buildTracks, type OfflineTrack } from './offlineManifest';
-import { getPlayedSongKeys, getRecentSongKeys } from './listeningStats';
+import { getPlayedSongKeys } from './listeningStats';
 
 /** How much each section carries: the Home is a front page, not a catalogue (Cerca and the Playlist tab hold the rest). */
-export const HOME_LIMITS = { playlists: 12, recent: 20, fresh: 20, coverKeys: 4 } as const;
+export const HOME_LIMITS = { playlists: 12, fresh: 20, coverKeys: 4 } as const;
 
 export interface HomePlaylist {
   id: string;
@@ -36,7 +38,7 @@ export interface HomePlaylist {
 
 export type HomeSection =
   | { id: 'playlists'; title: string; kind: 'playlists'; playlists: HomePlaylist[] }
-  | { id: 'recent' | 'fresh'; title: string; kind: 'tracks'; tracks: OfflineTrack[] };
+  | { id: 'fresh'; title: string; kind: 'tracks'; tracks: OfflineTrack[] };
 
 export interface HomeResponse {
   user: string;
@@ -52,12 +54,10 @@ export interface HomeDeps {
   /** The playlists the user sees (own and shared), newest first, dynamic ones with the count of what their rule selects now. */
   playlists(userId: string): Promise<StoredPlaylist[]>;
   coverKeys(playlists: StoredPlaylist[], userId: string): Promise<Map<string, string[]>>;
-  recentKeys(userId: string, limit: number): Promise<string[]>;
+  /** Every song the user has a counted play of: what «Nuovi dai tuoi reel» leaves out. */
   playedKeys(userId: string): Promise<Set<string>>;
   /** The user's journal songs. */
   journal(userId: string): Promise<Map<string, AggregatedSong>>;
-  /** The song that exists only as a FILE behind this key (ADR-0018), if any. */
-  fileSong(songKey: string): Promise<AggregatedSong | undefined>;
   tracks(songs: AggregatedSong[], userId: string): Promise<OfflineTrack[]>;
 }
 
@@ -79,10 +79,8 @@ export const realHomeDeps: HomeDeps = {
     }
     return out;
   },
-  recentKeys: getRecentSongKeys,
   playedKeys: getPlayedSongKeys,
   journal: (userId) => getUserSongs(userId, false),
-  fileSong: libraryOnlySong,
   tracks: (songs, userId) => buildTracks(songs, userId),
 };
 
@@ -128,22 +126,6 @@ async function playlistsSection(userId: string, deps: HomeDeps): Promise<HomeSec
   };
 }
 
-async function recentSection(userId: string, deps: HomeDeps): Promise<HomeSection | null> {
-  // Ask for more keys than the section holds: a song whose entry or file is gone since is skipped, not left as a hole.
-  const keys = await deps.recentKeys(userId, HOME_LIMITS.recent * 2);
-  if (keys.length === 0) return null;
-  const journal = await deps.journal(userId);
-  const songs: AggregatedSong[] = [];
-  for (const key of keys) {
-    if (songs.length >= HOME_LIMITS.recent) break;
-    const song = journal.get(key) ?? (await deps.fileSong(key));
-    if (song) songs.push(song);
-  }
-  if (songs.length === 0) return null;
-  const tracks = await deps.tracks(songs, userId);
-  return tracks.length > 0 ? { id: 'recent', title: 'Ascoltati di recente', kind: 'tracks', tracks } : null;
-}
-
 async function freshSection(userId: string, deps: HomeDeps): Promise<HomeSection | null> {
   const [journal, played] = await Promise.all([deps.journal(userId), deps.playedKeys(userId)]);
   const songs = [...journal.values()]
@@ -168,14 +150,9 @@ async function guarded(id: string, build: () => Promise<HomeSection | null>): Pr
 }
 
 export async function buildHome(userId: string, deps: HomeDeps = realHomeDeps): Promise<HomeResponse> {
-  // «Ascoltati di recente» and «Nuovi dai tuoi reel» both read the journal, and they start together: aggregating it is the costly
-  // part of a cold Home (about a second), so it is asked once and both sections wait for the same answer.
-  let journal: Promise<Map<string, AggregatedSong>> | null = null;
-  const once: HomeDeps = { ...deps, journal: (id) => (journal ??= deps.journal(id)) };
   const built = await Promise.all([
-    guarded('playlists', () => playlistsSection(userId, once)),
-    guarded('recent', () => recentSection(userId, once)),
-    guarded('fresh', () => freshSection(userId, once)),
+    guarded('playlists', () => playlistsSection(userId, deps)),
+    guarded('fresh', () => freshSection(userId, deps)),
   ]);
   return {
     user: userId,

@@ -32,6 +32,47 @@ public enum RepeatMode: String, CaseIterable, Codable, Sendable {
     }
 }
 
+/// One line of the menu of the loop, which opens with a long press on the play of the mini player and of «Riprendi» (spec 2026-11-12-mondrop-home-play-loop-reels-design.md M2; Michele, 12 November:
+/// «sul play voglio anche il "loop" del singolo o della playlist»): the three states of the Player's button, named. Plain data: the screen only draws it.
+public struct RepeatChoice: Identifiable, Equatable, Sendable {
+    public let mode: RepeatMode
+    public let title: String
+    /// The symbol of the line: a checkmark on the one in use, its own on the others.
+    public let systemImage: String
+    public let isSelected: Bool
+
+    public var id: String { mode.rawValue }
+
+    /// `forPlaylist`: the queue was started from a playlist («Ripeti la playlist»); for a search, an album or a row of the Home it is «la coda».
+    public static func all(current: RepeatMode, forPlaylist: Bool) -> [RepeatChoice] {
+        RepeatMode.allCases.map { mode in
+            let selected = mode == current
+            switch mode {
+            case .off:
+                return RepeatChoice(mode: mode, title: "Non ripetere", systemImage: selected ? "checkmark" : "arrow.forward", isSelected: selected)
+            case .all:
+                return RepeatChoice(mode: mode, title: forPlaylist ? "Ripeti la playlist" : "Ripeti la coda", systemImage: selected ? "checkmark" : "repeat", isSelected: selected)
+            case .one:
+                return RepeatChoice(mode: mode, title: "Ripeti questo brano", systemImage: selected ? "checkmark" : "repeat.1", isSelected: selected)
+            }
+        }
+    }
+}
+
+extension RepeatMode {
+    /// The small mark on the play button while the loop is on; nothing when it is off.
+    public var indicatorSymbol: String? {
+        switch self {
+        case .off: return nil
+        case .all: return "repeat"
+        case .one: return "repeat.1"
+        }
+    }
+
+    /// What VoiceOver says of the mark (the same words as the button of the Player).
+    public var indicatorLabel: String? { indicatorSymbol == nil ? nil : accessibilityLabel }
+}
+
 extension RepeatMode {
     /// What the system (the car, the lock screen) calls the same three states.
     public init(_ system: MPRepeatType) {

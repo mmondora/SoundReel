@@ -77,7 +77,7 @@ final class StatsDecodingTests: XCTestCase {
 @MainActor
 final class DynamicPlaylistSyncTests: XCTestCase {
     func testADynamicPlaylistSyncsLikeAnyOtherAndItsSongsAreRecordedAsMembers() async throws {
-        let rig = try EngineRig()
+        let rig = try EngineRig(maxParallel: 2)
         let dir = rig.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         let api = FakeAPI()
@@ -93,7 +93,7 @@ final class DynamicPlaylistSyncTests: XCTestCase {
     }
 
     func testSongsThatLeftADynamicPlaylistBecomeOrphansButAreNeverDeletedBySync() throws {
-        let rig = try EngineRig()
+        let rig = try EngineRig(maxParallel: 2)
         let dir = rig.root
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
         try rig.installLocal("was-in", version: "100-1")
