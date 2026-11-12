@@ -631,7 +631,7 @@ describe('«Apri» on the sheet of a film', () => {
     expect(JSON.stringify(card)).not.toMatch(/https?:\/\//i);
   });
 
-  it('is the only address of the whole page, whatever else the post carried', () => {
+  it('is the only address in the words and things of the page, whatever else the post carried (the tracks of the library keep their own cover address)', () => {
     const detail = buildReelDetail(row({ ...WITH_ADDRESSES, films: [{ title: 'Dune', imdbUrl: SHEET }] }), [track('Yom', 'Garden of Eden')]);
     const text = JSON.stringify(detail);
     expect(text.match(/https?:\/\/[^"\s]*/gi)).toEqual([SHEET]);

@@ -7,8 +7,9 @@
  * anything. What the analysis saved is JSONB, whose shape is a convention and not a guarantee (a local model wrote it), so every read is defensive: a damaged post is a
  * post with nothing in it, never an error, and the words of the model that are only its own placeholders (`#tag`, `@utente`, `...`) are never shown.
  *
- * Rule P (ADR-0018): no field of an answer is an address — not the post's (`sourceUrl`), not a film's (`imdbUrl`, `posterUrl`), not a software's (`url`), and the
- * addresses written inside the words of the model are taken out of the words. The only paths are the ones of SoundReel itself (`imagePath`, the tracks).
+ * Rule P (ADR-0018): no field of the words and things of a reel is an address — not the post's (`sourceUrl`), not a film's (`imdbUrl`, `posterUrl`), not a software's (`url`), and the
+ * addresses written inside the words of the model are taken out of the words. The only paths are the ones of SoundReel itself (`imagePath`, the tracks). The tracks are the library's
+ * ordinary tracks and keep their legacy `coverUrl` (a cover address of the music provider; found on the real server on 13 November, ADR-0033): the app never fetches it.
  *
  * One exception, asked for by Michele on 12 November («Q3 si apri sulla scheda», ADR-0033 amended): a FILM may carry `openUrl`, the page of the film on IMDb, for an «Apri» on its
  * sheet. It is never an address as the analysis or the post wrote it: `filmSheetUrl` builds it from the id of a title page of IMDb and gives nothing for anything else. A software
@@ -102,7 +103,7 @@ export interface ReelItem {
   openUrl?: string;
 }
 
-/** A track as the library has it, without the legacy `mediaUrl` (always null since 2.13.0 and never read by the app): an answer of the reels has no address at all. */
+/** A track as the library has it, without the legacy `mediaUrl` (always null since 2.13.0 and never read by the app). The legacy `coverUrl` stays, as in every list of songs: a cover address of the provider that the app never fetches (it asks SoundReel through `coverPath`). */
 export type ReelTrack = Omit<OfflineTrack, 'mediaUrl'>;
 
 export type ReelSection =
