@@ -1,6 +1,6 @@
 # Mondrop: play sulla card della Home, il loop sul play, la Home senza «Ascoltati di recente», download uno alla volta e il tab «Reel»
 
-Stato: **richiesta registrata il 12 novembre 2026; costruzione in corso** (SoundReel 2.27.0 + Mondrop 1.8.0 build 20). Le scelte qui sotto marcate «mia scelta» sono di Claude finché Michele non le conferma. Nessun rilascio senza il suo OK, uno per ogni rilascio (server, TestFlight).
+Stato: **richiesta registrata il 12 novembre 2026; costruita e rilasciata** (SoundReel 2.27.0 in produzione alle 17:40, Mondrop 1.8.0 build 20 su TestFlight nel gruppo interno Family alle 17:44, con l'OK di Michele per ciascuno). Le scelte marcate «mia scelta» sono di Claude finché Michele non le conferma; Q1 e Q3 (§8) restano aperte.
 Riferimenti: ADR-0020 (la Home la decide il server), ADR-0029 e ADR-0030 (telefono prima, ordine dei download), ADR-0031 (ordinamenti, «Scarica tutta»), ADR-0033 (il tab Reel); spec `2026-11-10-mondrop-simplify-playlists-and-song-states-design.md` (U1–U20), `2026-11-10-mondrop-like-and-repeat-design.md` (il loop), `2026-11-08-mondrop-home-spotify-design.md` (la Home).
 
 ---

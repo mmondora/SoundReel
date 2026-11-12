@@ -1,7 +1,7 @@
 # I reel in Mondrop — contratto API (`/api/mondrop/reels`, `/api/mondrop/reels/:id`, `/api/mondrop/reels/:id/image`)
 
 Spec: `docs/superpowers/specs/2026-11-12-mondrop-home-play-loop-reels-design.md` (M5, §4), ADR-0033. Richiesta di Michele (12 novembre): «Voglio avere anche un tab con le altre categorie sul reel ( dove però per ora l'unica cosa che viene portata sulla device è la musica ) ma non il link al reel ma la sua scomposizione e spiegazione.»
-**Stato: costruito nel server (SoundReel 2.27.0, 12 novembre); non ancora in produzione.** Dove il codice ha precisato il contratto, è corretto qui (le righe «come fa il codice»).
+**Stato: in produzione dal 12 novembre (SoundReel 2.27.0, 17:40), verificato sul server vero.** Dove il codice ha precisato il contratto, è corretto qui (le righe «come fa il codice»).
 
 ## Che cosa è
 

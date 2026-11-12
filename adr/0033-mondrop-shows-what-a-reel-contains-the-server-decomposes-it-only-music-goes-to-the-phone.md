@@ -1,7 +1,7 @@
 # ADR-0033: Mondrop shows what a reel contains, decomposed and explained by the server; only the music goes to the phone
 
 ## Status
-Accepted (12 November 2026), built and tested in SoundReel 2.27.0 and Mondrop 1.8.0 build 20 (not in production and not on TestFlight until Michele says so). Amends ADR-0020 (the Home no longer has the «recent» section) and the «every card links back to the post» rule of ADR-0017 **for Mondrop only** (the site keeps the links).
+Accepted (12 November 2026), in production in SoundReel 2.27.0 (17:40) and on TestFlight in Mondrop 1.8.0 build 20 (internal group, 17:44), both with Michele's OK. Amends ADR-0020 (the Home no longer has the «recent» section) and the «every card links back to the post» rule of ADR-0017 **for Mondrop only** (the site keeps the links).
 
 ## Date
 2026-11-12
