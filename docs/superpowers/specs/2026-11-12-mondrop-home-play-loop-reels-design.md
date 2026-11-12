@@ -1,6 +1,6 @@
 # Mondrop: play sulla card della Home, il loop sul play, la Home senza «Ascoltati di recente», download uno alla volta e il tab «Reel»
 
-Stato: **richiesta registrata il 12 novembre 2026; costruita e rilasciata** (SoundReel 2.27.0 in produzione alle 17:40, Mondrop 1.8.0 build 20 su TestFlight nel gruppo interno Family alle 17:44, con l'OK di Michele per ciascuno). Le scelte marcate «mia scelta» sono di Claude finché Michele non le conferma; Q1 e Q3 (§8) restano aperte.
+Stato: **richiesta registrata il 12 novembre 2026; costruita e rilasciata** (SoundReel 2.27.0 in produzione alle 17:40, Mondrop 1.8.0 build 20 su TestFlight nel gruppo interno Family alle 17:44, con l'OK di Michele per ciascuno). Le scelte marcate «mia scelta» sono di Claude finché Michele non le conferma. **Risposte di Michele, 12 novembre (sera): Q1 «lascia così» (niente finestra di N brani), Q3 «si apri sulla scheda» (un «Apri» sulla scheda del film: §4.6, SoundReel 2.28.0 + Mondrop build 21, costruiti e provati, in attesa dell'OK per rilasciarli).** Q2 resta come l'ho proposta (nessuna obiezione).
 Riferimenti: ADR-0020 (la Home la decide il server), ADR-0029 e ADR-0030 (telefono prima, ordine dei download), ADR-0031 (ordinamenti, «Scarica tutta»), ADR-0033 (il tab Reel); spec `2026-11-10-mondrop-simplify-playlists-and-song-states-design.md` (U1–U20), `2026-11-10-mondrop-like-and-repeat-design.md` (il loop), `2026-11-08-mondrop-home-spotify-design.md` (la Home).
 
 ---
@@ -49,11 +49,11 @@ Risposta data: in Home **non c'è nessun «Sync» dalla build 16** (era della bu
 ### M4 I download uno alla volta
 - `SyncEngine.maxParallel` da **2 a 1**: la coda scarica un brano per volta, nell'ordine in cui i brani stanno per suonare (ADR-0030). Vale anche per «Scarica tutta».
 - «Non massivo»: dalla build 16 non c'è più nessun sync di tutte le playlist; scarica solo la **playlist che suona**, con la domanda sopra «Avvisa sopra» (2 GB di partenza), e «Scarica tutta» è una richiesta della persona. Questo resta com'è.
-- **Domanda aperta Q1:** vuoi anche che la playlist che suona scarichi **solo i prossimi N brani** (una finestra che avanza mentre ascolti, N = 10) invece di tutta? Costa: in auto, senza rete, avresti sul telefono solo quelli e gli altri no, salvo «Scarica tutta». Finché non rispondi non si fa.
+- **Q1, risposta di Michele (12 novembre, sera): «lascia così».** Niente finestra di N brani: la playlist che suona si scarica **tutta, un brano alla volta** (come oggi). Era: «solo i prossimi N brani (N = 10)»; costava che in auto, senza rete, sul telefono ci sarebbero stati solo quelli.
 
 ### M5 Il tab «Reel»
-- **Cos'è:** l'elenco dei reel (e dei post) che SoundReel ha già analizzato per l'utente, dal più recente; di ognuno **di cosa parla** (la spiegazione) e **cosa contiene, diviso per categoria**. Non ha il link al reel né un modo di aprirlo: «non il link al reel ma la sua scomposizione e spiegazione».
-- **Chi decide cosa si vede:** il server (regola P): compone le schede e le categorie, l'app le disegna. Nessun campo con un indirizzo di un reel, di un negozio o di una pagina esterna.
+- **Cos'è:** l'elenco dei reel (e dei post) che SoundReel ha già analizzato per l'utente, dal più recente; di ognuno **di cosa parla** (la spiegazione) e **cosa contiene, diviso per categoria**. Non ha il link al reel: «non il link al reel ma la sua scomposizione e spiegazione». L'unica cosa che si apre è la scheda di un film (§4.6, Q3).
+- **Chi decide cosa si vede:** il server (regola P): compone le schede e le categorie, l'app le disegna. Nessun campo con un indirizzo di un reel, di un negozio o di una pagina esterna, **tranne** la scheda di un film su IMDb (`openUrl`, §4.6).
 - **Sul telefono resta solo la musica:** i brani di un reel sono i brani di Mondrop (si suonano, si scaricano, si mettono in playlist, con i tre segni telefono/online/errore). Il resto (film, software, luoghi, libri…) è **testo letto da SoundReel, non salvato sul telefono**: senza rete il tab dice che serve la rete e la musica già scaricata si suona lo stesso.
 - **Categorie** (nell'ordine in cui compaiono): Musica, Film, Software, Luoghi, Libri, Prodotti, Marchi, Persone, Eventi, Citazioni. Vengono dalle estrazioni del reel (canzoni, film, software e le note per categoria). *Mia scelta:* la categoria «altro» delle note e quelle che non sono categorie di cose (`tag`, `note`, vuote) **non si mostrano**: sono ciò che il modello non ha saputo classificare (751 note «altro» su 5 000 e righe come `/n`).
 - **Scheda nell'elenco:** miniatura (se c'è), spiegazione in due-tre righe, data e piattaforma («Instagram · 12 nov»), una riga di **categorie con il conteggio e i primi nomi** («Software 3: Notion, Gmail +1»). In testa una riga di **filtri per categoria** (Tutti, Musica, Film, Software…) con quanti reel hanno ciascuna.
@@ -85,7 +85,7 @@ Tutte le rotte sono sotto `/api/mondrop`, con `X-SoundReel-Key` (`requireMondrop
 Il JPEG della miniatura (`MEDIA_ROOT/<id>/thumbnail.jpg`, 320 px), `Cache-Control: private, max-age=86400`. `404` se il reel non è leggibile, se la miniatura non c'è o se l'id non è un UUID (nessun percorso sfugge dalla cartella dei media). **Un handler async che manda uno stream deve restituire la reply.**
 
 ### 4.4 Regole da non rompere
-- **Regola P:** nessun campo nomina un negozio, un indirizzo o un link; **nessun `sourceUrl`, `mediaUrl`, `imdbUrl`, `url`** in nessuna risposta, e l'indirizzo del reel non compare da nessuna parte nel testo della risposta (un test cerca l'indirizzo di prova in tutto il JSON).
+- **Regola P:** nessun campo nomina un negozio, un indirizzo o un link; **nessun `sourceUrl`, `mediaUrl`, `imdbUrl`, `url`** in nessuna risposta, e l'indirizzo del reel non compare da nessuna parte nel testo della risposta (un test cerca l'indirizzo di prova in tutto il JSON). **Un'eccezione sola, dalla 2.28.0 (§4.6):** `openUrl` sull'item di un film, la scheda del film su IMDb costruita dal server; il resto del JSON resta senza indirizzi e un test lo conta (un solo indirizzo, e di quella forma).
 - **Sola lettura:** nessuna rotta del tab scrive o accoda niente. Un guasto di una parte (i brani, le miniature) costa solo quella parte: l'elenco non si rompe.
 - **SQL:** i valori (utente, categoria, limite, offset, id) sono sempre parametri, mai scritti nel testo della query; la visibilità è sempre nella `WHERE`.
 - **Nessun modello, nessuna chiamata esterna:** si legge quello che l'analisi ha già salvato (`results` dell'entry).
@@ -100,12 +100,22 @@ Il documento per i client è `docs/mondrop-reels.md` e vale più di questo testo
 - **Pulizia in più** (dai dati veri): i segni di un JSON rotto ai bordi dei nomi (58 nomi di software su 1 368), le note che sono solo il nome della loro categoria, le **note-frase** spezzate in titolo e dettaglio (650 su 5 000), gli indirizzi scritti dentro le parole tolti (le parole restano), il riassunto al massimo 1 500 caratteri.
 - **Misurato:** 1 665 schede, 16 senza spiegazione, 57 con la sola spiegazione, 1 del tutto vuota dopo la pulizia; 1 594 con la miniatura; l'elenco di tutti i reel costa 0,9 s al database. **Limiti noti, non correggibili qui:** il modello confonde le categorie («Claude» come persona, film e software) e a volte scrive un testo del riconoscimento ottico come nome.
 
+### 4.6 «Apri» sulla scheda del film (Q3, risposta di Michele; SoundReel 2.28.0 + Mondrop 1.8.0 build 21)
+
+**Richiesta (12 novembre, sera):** alla mia domanda «se vuoi un «Apri» sul sito del software o sulla scheda del film (non sul reel), dillo», Michele ha risposto **«Q3 si apri sulla scheda»**. La leggo come **la scheda del film** (la parola della domanda): un «Apri» su ogni film del reel che ha la sua pagina su IMDb. Per il software **non lo costruisco** (mia scelta, motivo qui sotto): se lo vuole, lo dica.
+
+- **Dati veri (12 novembre, 1 665 reel):** 741 film mostrati, **498 con la scheda IMDb** (67 %; l'indirizzo arriva dall'arricchimento con TMDb, sempre nella forma `https://www.imdb.com/title/tt…/`); 1 358 software mostrati, **nessuno con un indirizzo utilizzabile** (nell'analisi 1 software su 1 370 ha `url`: il modello lo scrive solo se compare nel testo del post). Un «Apri» sul sito del software comparirebbe una volta ogni mille schede.
+- **Contratto:** un item della categoria `film` di `GET /api/mondrop/reels/:id` può avere **`openUrl`**: `https://www.imdb.com/title/<id>/`, **costruito dal server** dall'id (`tt` e 7–10 cifre) di un indirizzo che è una pagina titolo di IMDb (`imdb.com`, con al più `www.` o `m.`, niente fra l'host e `/title/`: né credenziali, né porta, né un host più lungo). Qualunque altro valore (un altro sito, la pagina di una persona, una ricerca, l'indirizzo del post, un testo che non è un indirizzo) **non dà `openUrl`** (la chiave non c'è). Mai sul software, mai su una scheda dell'elenco, mai l'indirizzo come l'ha scritto il modello o il post. Lo stesso film nominato due volte è una sola voce e tiene la scheda della menzione che ce l'ha.
+- **App:** sotto il titolo e i dettagli del film, un pulsante **«Apri su imdb.com»** (dice dove va) che apre la pagina **solo con un tocco**; l'app apre solo una pagina web su **https**, con un host e **senza credenziali**; un indirizzo diverso lascia il film senza «Apri» (e non rovina la voce). Un server 2.27.0 non manda il campo: nessun «Apri», il resto funziona; la build 20 ignora il campo.
+- **Limite noto:** l'abbinamento dei film con TMDb a volte sbaglia (una parola generica come «movies» è stata abbinata a un film del 2026): «Apri» apre ciò che l'analisi ha abbinato, come fa il sito.
+- **Test:** server (`reelBreakdown.test.ts`: la forma dell'indirizzo, 16 indirizzi che non passano, valori che non sono testo, solo sui film, un film nominato due volte, il limite, la scheda dell'elenco senza indirizzi, un solo indirizzo in tutta la pagina; rotta e servizio); i 1 665 reel veri letti in sola lettura (498 «Apri», 0 sul software, 0 indirizzi fuori posto, 0 schede dell'elenco con un indirizzo); app (decodifica, https e host, struttura).
+
 ## 5. L'app (Mondrop 1.8.0 build 20)
 
 - **`PlaylistQuickPlay`** (MondropKit): dalla playlist della card al `PlayQueue` (cache o rete, `LibraryQueueBuilder`, telefono prima, loop opzionale); pura nelle decisioni, il lettore e le sorgenti sono iniettati.
 - **`RepeatChoice`** (MondropKit): le tre voci del menu del loop, con titolo, icona e spunta; `RepeatIndicator` (il segno sul play).
 - **Tab «Reel»:** `ReelModels` (lettura tollerante: una categoria o un campo che l'app non conosce si tiene e non si disegna), `ReelsTransport` (`MondropAPI`), `ReelsModel` (pagine da 20, filtro per categoria, sola rete), `ReelsView`, `ReelDetailView`, `ReelImageLoader` (miniature in `Caches`). `RootTab`: `home, search, reels, inbox, settings`.
-- **Regola P nell'app:** `RulePTests` fa fallire la build se i modelli dei reel hanno un campo di indirizzo (`sourceUrl`, `url`…) o se una vista dei reel apre un indirizzo esterno.
+- **Regola P nell'app:** `ReelTabStructureTests` fa fallire la build se i modelli dei reel hanno un campo di indirizzo diverso da `openUrl` (la scheda di un film: build 21) o se una vista dei reel apre un indirizzo (`Link(`: uno solo, nella pagina del reel, sull'`openUrl` dell'item).
 - **Dati di prova** (`DemoData`, solo DEBUG): il tab Reel e una Home senza «Ascoltati di recente», per guardare le schermate sul simulatore.
 
 ## 6. Test
@@ -118,9 +128,10 @@ Il documento per i client è `docs/mondrop-reels.md` e vale più di questo testo
 1. **SoundReel 2.27.0** (server: Home senza `recent`, le rotte dei reel): **solo con l'OK di Michele**, uno per ogni deploy. Nessuna migrazione.
 2. **Mondrop 1.8.0 build 20** su TestFlight, gruppo interno «Family» (solo Michele): **con il suo OK**. Il tab Reel serve il server 2.27.0: su un server più vecchio il tab dice «Serve un SoundReel più recente» e il resto dell'app funziona come prima.
 3. Non si manda niente a FamilyPlus finché Apple non dice perché ha rifiutato le build 16 e 17 (vedi CLAUDE.md).
+4. **SoundReel 2.28.0 + Mondrop 1.8.0 build 21** (l'«Apri» sulla scheda del film, §4.6): costruiti e provati il 12 novembre sera; **solo con l'OK di Michele**, uno per ogni rilascio (server, poi TestFlight gruppo interno).
 
 ## 8. Domande aperte
 
-- **Q1** (M4): finestra di N brani per il sync della playlist che suona, sì o no.
+- **Q1** (M4): finestra di N brani per il sync della playlist che suona, sì o no. **Risposta (12 novembre, sera): «lascia così»** → no.
 - **Q2** (M5): il tab si chiama «Reel»; i familiari vedono solo i **propri** reel e quelli condivisi con loro (come tutto il resto). Va bene?
-- **Q3** (M5): senza link, un software o un film trovato nel reel non si può aprire da nessuna parte. Se vuoi un «Apri» sul sito del software o sulla scheda del film (non sul reel), dillo: è un campo in più.
+- **Q3** (M5): senza link, un software o un film trovato nel reel non si può aprire da nessuna parte. Se vuoi un «Apri» sul sito del software o sulla scheda del film (non sul reel), dillo: è un campo in più. **Risposta (12 novembre, sera): «si apri sulla scheda»** → fatto per il film (§4.6); per il software no (non c'è il dato).

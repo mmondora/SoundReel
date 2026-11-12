@@ -56,8 +56,8 @@ struct ReelsView: View {
         .refreshable { await model.load() }
         .task { if model.phase == .idle { await model.load() } }
         #if DEBUG
-        .navigationDestination(isPresented: $demoPush) { ReelDetailView(card: DemoData.reelCards[0], transport: transport) }
-        .onAppear { if DemoData.push == "reel" { demoPush = true } }
+        .navigationDestination(isPresented: $demoPush) { ReelDetailView(card: DemoData.reelCards[DemoData.push == "reelfilm" ? 3 : 0], transport: transport) }
+        .onAppear { if DemoData.push == "reel" || DemoData.push == "reelfilm" { demoPush = true } }
         #endif
     }
 

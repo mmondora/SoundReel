@@ -228,6 +228,35 @@ describe('GET /api/mondrop/reels/:id', () => {
     expect(res.body).not.toMatch(/https?:\/\//i);
     expect(res.body).not.toMatch(/"(?:sourceUrl|mediaUrl|imdbUrl|url|posterUrl)"/);
   });
+
+  it('says the sheet of a film on IMDb as `openUrl` — the one address of the page — and nothing else of the kind (ADR-0033, «Q3 si apri sulla scheda»)', async () => {
+    const results = {
+      summary: `Vedi ${ADDRESS}`, links: [{ url: ADDRESS }], software: [{ title: 'Notion', url: 'https://notion.so', tag: 'product' }],
+      films: [
+        { title: 'Dune', year: '2021', imdbUrl: 'https://www.imdb.com/title/tt1160419/?ref_=fn_al_tt_1', posterUrl: 'https://img.test/p.jpg' },
+        { title: 'Arrival', imdbUrl: 'https://evil.test/title/tt2543164/' },
+      ],
+      slides: [{ index: 0, imageUrl: '/media/x/0.jpg', summary: `Slide ${ADDRESS}` }],
+    };
+    const res = await appWith(fakeDeps({ row: vi.fn(async () => row(results)) })).inject({ method: 'GET', url: `/api/mondrop/reels/${ID}`, headers: KEY });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { sections: Array<{ kind: string; items?: unknown[] }> };
+    expect(body.sections.find((s) => s.kind === 'film')?.items).toEqual([
+      { title: 'Dune', detail: '2021', openUrl: 'https://www.imdb.com/title/tt1160419/' },
+      { title: 'Arrival', detail: null },
+    ]);
+    expect(res.body.match(/https?:\/\/[^"\s]*/gi)).toEqual(['https://www.imdb.com/title/tt1160419/']);
+    expect(res.body).not.toContain(ADDRESS);
+    expect(res.body).not.toMatch(/"(?:sourceUrl|mediaUrl|imdbUrl|url|posterUrl)"/);
+  });
+
+  it('has no address at all in the list of reels, not even the sheet of a film', async () => {
+    const results = { films: [{ title: 'Dune', imdbUrl: 'https://www.imdb.com/title/tt1160419/' }], summary: 'Un film.' };
+    const res = await appWith(fakeDeps({ rows: vi.fn(async () => ({ rows: [row(results)], total: 1 })) })).inject({ method: 'GET', url: '/api/mondrop/reels', headers: KEY });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toMatch(/https?:\/\//i);
+    expect(res.body).not.toContain('openUrl');
+  });
 });
 
 describe('GET /api/mondrop/reels/:id/image', () => {

@@ -243,6 +243,17 @@ describe('getReel: the page of one reel', () => {
     expect(text).not.toMatch(/https?:\/\//i);
     expect(text).not.toMatch(/"(?:sourceUrl|mediaUrl|imdbUrl|url|posterUrl)"/);
   });
+
+  it('carries the sheet of a film on IMDb, built from its id, and the post and the software none (ADR-0033, «Q3 si apri sulla scheda»)', async () => {
+    const results = {
+      summary: `Vedi ${ADDRESS}`, links: [{ url: ADDRESS }], software: [{ title: 'Notion', url: 'https://notion.so', tag: 'product' }],
+      films: [{ title: 'Dune', imdbUrl: 'http://m.imdb.com/title/tt1160419/' }],
+    };
+    const detail = await getReel('mike', ID, deps({ row: async () => row(results), journal: async () => new Map() }));
+    const film = detail?.sections.find((s) => s.kind === 'film');
+    expect(film && 'items' in film && film.items).toEqual([{ title: 'Dune', detail: null, openUrl: 'https://www.imdb.com/title/tt1160419/' }]);
+    expect(JSON.stringify(detail).match(/https?:\/\/[^"\s]*/gi)).toEqual(['https://www.imdb.com/title/tt1160419/']);
+  });
 });
 
 describe('getReelImage', () => {

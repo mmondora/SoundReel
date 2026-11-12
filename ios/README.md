@@ -313,6 +313,15 @@ Spec `docs/superpowers/specs/2026-11-12-mondrop-home-play-loop-reels-design.md` 
 - **Per guardarlo senza server** (solo DEBUG): `-MondropDemoTab reels` (tre reel di prova: musica, film, software, luoghi, libri, un verdetto, le slide) e `-MondropDemoPush reel` (la pagina del primo).
 - **Test** nuovi: `OneAtATimeTests`, `RepeatChoiceTests`, `PlaylistQuickPlayTests`, `ReelModelsTests`, `ReelsModelTests`, `ReelImageLoaderTests`, `ReelTabStructureTests`; `HomeStructureTests` aggiornato (le schede sono `home, search, reels, inbox, settings`).
 
+### Dopo la build 20: la build 21 — «Apri» sulla scheda del film (12 novembre, sera)
+
+Spec `docs/superpowers/specs/2026-11-12-mondrop-home-play-loop-reels-design.md` §4.6 · ADR-0033 (decisione 8) · SoundReel 2.28.0. Michele, alla domanda Q3 («se vuoi un «Apri» sul sito del software o sulla scheda del film (non sul reel), dillo»): «Q3 si apri sulla scheda» (e a Q1, la finestra di N brani per il sync: «lascia così», quindi niente).
+
+- **«Apri su imdb.com»** (`ReelDetailView.swift`, `ReelItem.openUrl`/`openHost` in `ReelModels.swift`): sotto un film del reel un pulsante che apre la **scheda del film su IMDb** nel browser, **solo con un tocco**; dice dove va. L'indirizzo lo costruisce il server dall'id del film (`openUrl`, contratto `docs/mondrop-reels.md`) e arriva **solo sui film** (498 dei 741 film dei reel di Michele); **non sul software** (l'analisi ha un indirizzo per 1 software su 1 370) né sull'elenco. **Il link al reel non c'è** e non c'è mai: è l'unico indirizzo che l'app apre.
+- L'app apre solo una pagina **https con un host e senza credenziali** (`ReelItem.openable`): un indirizzo diverso lascia il film senza «Apri» e non rovina la voce. Un server 2.27.0 non manda il campo (nessun «Apri», il resto funziona).
+- **Per guardarlo senza server** (solo DEBUG): `-MondropDemo -MondropDemoTab reels -MondropDemoPush reelfilm` apre la pagina di un reel di prova con tre film in alto: «Arrival» e «Dune» hanno «Apri su imdb.com», «Un film senza scheda» no (nel primo reel di prova, `-MondropDemoPush reel`, «Garden of Eden» ha l'«Apri» e «Arrival» no).
+- **Test:** `ReelModelsTests` (la decodifica, https e host, un indirizzo sbagliato non rovina il film), `ReelTabStructureTests` (un solo `Link(` nella pagina del reel, sull'`openUrl` dell'item; nessun altro campo di indirizzo nei modelli; la regola di cosa si apre).
+
 ## I testi delle canzoni (1.7.0 build 10 e 11 · SoundReel 2.19.0 e 2.19.1)
 
 Contratto: `docs/mondrop-sync.md` («GET /api/mondrop/songs/:songKey/lyrics») · ADR-0021 · spec `docs/superpowers/specs/2026-11-08-lyrics-from-the-internet-design.md`

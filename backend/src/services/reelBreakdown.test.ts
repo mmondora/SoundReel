@@ -10,7 +10,9 @@ import {
   SHOWN_NOTE_CATEGORIES,
   buildReelCard,
   buildReelDetail,
+  filmSheetUrl,
   reelSongs,
+  type ReelItem,
   type ReelRow,
 } from './reelBreakdown';
 import { songKey } from './songMeta';
@@ -519,5 +521,123 @@ describe('buildReelDetail: the page of a reel', () => {
     expect(detail.summary).toBe('Una guida. Vedi per il resto.');                 // the address is taken out of the words, the words stay
     expect(detail.insights[0].text).toBe("Un'app. Fonte:");
     expect(detail.slides[0].summary).toBe('Prima slide');
+  });
+});
+
+// «Q3 si apri sulla scheda» (Michele, 12 November; spec 2026-11-12-mondrop-home-play-loop-reels-design.md M5, ADR-0033 amended): the page of a FILM carries «Apri» on the sheet of the film
+// on IMDb — never the post, never a software (the analysis almost never has an address for one: 1 of 1 370 on the real reels), never an address as the model or the post wrote it.
+describe('«Apri» on the sheet of a film', () => {
+  const SHEET = 'https://www.imdb.com/title/tt1160419/';
+  const filmItems = (films: unknown[], over: Record<string, unknown> = {}): ReelItem[] => {
+    const section = buildReelDetail(row({ films, ...over }), null).sections.find((s) => s.kind === 'film');
+    return section && 'items' in section ? section.items : [];
+  };
+
+  describe('filmSheetUrl', () => {
+    it('is the title page of IMDb, built from the id: https, www, the id and a closing slash', () => {
+      expect(filmSheetUrl(SHEET)).toBe(SHEET);
+      expect(filmSheetUrl('https://www.imdb.com/title/tt1160419')).toBe(SHEET);
+      expect(filmSheetUrl('http://imdb.com/title/tt1160419/')).toBe(SHEET);
+      expect(filmSheetUrl('https://m.imdb.com/title/tt1160419/?ref_=fn_al_tt_1#cast')).toBe(SHEET);
+      expect(filmSheetUrl('  https://www.imdb.com/title/tt1160419/  ')).toBe(SHEET);
+      expect(filmSheetUrl('https://www.imdb.com/title/tt1160419/reviews')).toBe(SHEET);          // the sheet, not a sub page that the model made up
+      expect(filmSheetUrl('HTTPS://WWW.IMDB.COM/title/TT1160419/')).toBe(SHEET);                  // written in capitals, built the same way: lower case id
+    });
+
+    it('takes ids of 7 to 10 digits (the old ones and the new ones) and no other', () => {
+      expect(filmSheetUrl('https://www.imdb.com/title/tt0000001/')).toBe('https://www.imdb.com/title/tt0000001/');
+      expect(filmSheetUrl('https://www.imdb.com/title/tt10872600/')).toBe('https://www.imdb.com/title/tt10872600/');
+      expect(filmSheetUrl('https://www.imdb.com/title/tt1234567890/')).toBe('https://www.imdb.com/title/tt1234567890/');
+      expect(filmSheetUrl('https://www.imdb.com/title/tt123456/')).toBeNull();                      // too short
+      expect(filmSheetUrl('https://www.imdb.com/title/tt1/')).toBeNull();
+      expect(filmSheetUrl('https://www.imdb.com/title/tt12345678901/')).toBeNull();                 // too long
+    });
+
+    it.each([
+      ['a person', 'https://www.imdb.com/name/nm0000093/'],
+      ['a search', 'https://www.imdb.com/find?q=dune'],
+      ['another site with the same path', 'https://example.test/title/tt1160419/'],
+      ['a host that only starts like IMDb', 'https://imdb.com.evil.test/title/tt1160419/'],
+      ['a host that ends like IMDb', 'https://evilimdb.com/title/tt1160419/'],
+      ['credentials that make the host another', 'https://www.imdb.com@evil.test/title/tt1160419/'],
+      ['credentials before the host', 'https://user:pass@www.imdb.com/title/tt1160419/'],
+      ['a port', 'https://www.imdb.com:8443/title/tt1160419/'],
+      ['a script', 'javascript:alert(1)//imdb.com/title/tt1160419/'],
+      ['a scheme that is not the web', 'ftp://www.imdb.com/title/tt1160419/'],
+      ['the id with something glued to it', 'https://www.imdb.com/title/tt1160419x/'],
+      ['the address of the post', 'https://www.instagram.com/reel/TESTCODE123/'],
+      ['the id in the words only', 'vedi imdb.com/title/tt1160419 sul sito'],
+      ['an address inside the address', 'https://evil.test/?u=https://www.imdb.com/title/tt1160419/'],
+      ['nothing', ''],
+      ['blank', '   '],
+    ])('is no address for %s', (_why, value) => {
+      expect(filmSheetUrl(value)).toBeNull();
+    });
+
+    it.each([[null], [undefined], [42], [{}], [['https://www.imdb.com/title/tt1160419/']], [true]])('is no address for a %j that is not text', (value) => {
+      expect(filmSheetUrl(value)).toBeNull();
+    });
+  });
+
+  it('is on a film that has the page of IMDb, after its year and director, and on no other key of the item', () => {
+    const [dune, arrival] = filmItems([
+      { title: 'Dune', director: 'Denis Villeneuve', year: '2021', imdbUrl: 'https://www.imdb.com/title/tt1160419/?ref_=x', posterUrl: 'https://img.test/p.jpg' },
+      { title: 'Arrival', director: null, year: null, imdbUrl: null },
+    ]);
+    expect(dune).toEqual({ title: 'Dune', detail: '2021 · regia di Denis Villeneuve', openUrl: SHEET });
+    expect(Object.keys(dune)).toEqual(['title', 'detail', 'openUrl']);
+    expect(Object.keys(arrival)).toEqual(['title', 'detail']);                                      // no key at all, not null
+  });
+
+  it('is not on a film whose address is not the title page of IMDb: the film stays, without «Apri»', () => {
+    const items = filmItems([
+      { title: 'A', imdbUrl: 'https://www.instagram.com/reel/TESTCODE123/' },
+      { title: 'B', imdbUrl: 'https://imdb.com.evil.test/title/tt1160419/' },
+      { title: 'C', imdbUrl: 'https://www.imdb.com/name/nm0000093/' },
+      { title: 'D', imdbUrl: 7 },
+      { title: 'E' },
+    ]);
+    expect(items.map((i) => i.title)).toEqual(['A', 'B', 'C', 'D', 'E']);
+    for (const item of items) expect(Object.keys(item)).not.toContain('openUrl');
+  });
+
+  it('is on films only: a software, a place or a note never has one, whatever address the post gave it', () => {
+    const detail = buildReelDetail(row({
+      software: [{ title: 'Notion', url: 'https://notion.so', tag: 'product' }, { title: 'Dune Tool', url: SHEET, tag: 'other' }],
+      notes: [note('place', `Cinema Arlecchino ${SHEET}`), note('book', 'Dune'), note('quote', 'https://notion.so')],
+      films: [{ title: 'Dune', imdbUrl: SHEET }],
+    }), null);
+    const withSheet = detail.sections.flatMap((s) => ('items' in s ? s.items.map((i) => [s.kind, i] as const) : [])).filter(([, i]) => i.openUrl !== undefined);
+    expect(withSheet.map(([kind]) => kind)).toEqual(['film']);
+    expect(JSON.stringify(detail).split('openUrl').length - 1).toBe(1);
+  });
+
+  it('stays on the film when it is named twice: the first mention keeps its place and takes the sheet of the second when it had none', () => {
+    expect(filmItems([{ title: 'Dune', year: '2021' }, { title: 'DUNE', imdbUrl: SHEET }])).toEqual([{ title: 'Dune', detail: '2021', openUrl: SHEET }]);
+    expect(filmItems([{ title: 'Dune', imdbUrl: SHEET }, { title: 'dune', imdbUrl: 'https://www.imdb.com/title/tt0087182/' }])).toEqual([{ title: 'Dune', detail: null, openUrl: SHEET }]);
+    expect(filmItems([{ title: 'Dune', imdbUrl: SHEET }, { title: 'dune' }])).toEqual([{ title: 'Dune', detail: null, openUrl: SHEET }]);
+  });
+
+  it('is not given by a mention that the limit left out (the same room rule as before)', () => {
+    const films = Array.from({ length: REEL_LIMITS.perSection + 1 }, (_, i) => ({ title: `Film ${i}`, imdbUrl: i === REEL_LIMITS.perSection ? SHEET : null }));
+    const items = filmItems(films);
+    expect(items).toHaveLength(REEL_LIMITS.perSection);
+    expect(items.some((i) => i.openUrl !== undefined)).toBe(false);
+  });
+
+  it('is nowhere on the card of the list (the card is names and counts), nor is any address', () => {
+    const card = buildReelCard(row({ films: [{ title: 'Dune', imdbUrl: SHEET }], software: [{ title: 'Notion', url: 'https://notion.so' }] }));
+    expect(keysDeep(card)).not.toContain('openUrl');
+    expect(JSON.stringify(card)).not.toMatch(/https?:\/\//i);
+  });
+
+  it('is the only address of the whole page, whatever else the post carried', () => {
+    const detail = buildReelDetail(row({ ...WITH_ADDRESSES, films: [{ title: 'Dune', imdbUrl: SHEET }] }), [track('Yom', 'Garden of Eden')]);
+    const text = JSON.stringify(detail);
+    expect(text.match(/https?:\/\/[^"\s]*/gi)).toEqual([SHEET]);
+    expect(text).not.toContain(ADDRESS);
+    const keys = keysDeep(detail);
+    for (const forbidden of ['sourceUrl', 'mediaUrl', 'imdbUrl', 'url', 'posterUrl', 'streamingUrls']) expect(keys).not.toContain(forbidden);
+    expect(keys.filter((k) => k === 'openUrl')).toHaveLength(1);
   });
 });

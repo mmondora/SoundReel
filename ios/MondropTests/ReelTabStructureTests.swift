@@ -27,7 +27,7 @@ final class ReelTabStructureTests: XCTestCase {
         XCTAssertTrue(reels.contains("systemImage: \"plus\""))
     }
 
-    func testTheReelScreensHaveNoLinkToTheReelAndOpenNoAddress() throws {
+    func testTheReelScreensHaveNoLinkToTheReelAndTheOnlyAddressTheyOpenIsTheSheetOfAFilm() throws {
         let words = ["sourceUrl", "mediaUrl", "imdbUrl", "openURL", "UIApplication", "NSWorkspace", "URL(string", "ShareLink"]
         let link = try NSRegularExpression(pattern: #"\bLink\("#)
         for file in ["Mondrop/ReelsView.swift", "Mondrop/ReelDetailView.swift", "MondropKit/ReelModels.swift", "MondropKit/ReelsModel.swift"] {
@@ -35,15 +35,28 @@ final class ReelTabStructureTests: XCTestCase {
             for word in words {
                 XCTAssertFalse(source.contains(word), "\(file): «\(word)» — «non il link al reel ma la sua scomposizione e spiegazione»")
             }
-            XCTAssertEqual(link.numberOfMatches(in: source, range: NSRange(source.startIndex..., in: source)), 0, "\(file): no Link(…) to anywhere")
+            // one exception, «Q3 si apri sulla scheda» (12 November): the page of a thing has «Apri» on the sheet of its film, nowhere else
+            let expected = file == "Mondrop/ReelDetailView.swift" ? 1 : 0
+            XCTAssertEqual(link.numberOfMatches(in: source, range: NSRange(source.startIndex..., in: source)), expected, "\(file): Link(…) only for the sheet of a film")
         }
+        let detail = try code("Mondrop/ReelDetailView.swift")
+        XCTAssertTrue(detail.contains("if let sheet = item.openUrl"), "the only Link is on what the server sent as the sheet of the item")
+        XCTAssertTrue(detail.contains("Link(destination: sheet)"))
+        XCTAssertTrue(detail.contains(#"Apri su \(item.openHost"#), "the button says where it goes («Apri su imdb.com»): a tap that opens an address says which")
     }
 
-    func testTheReelModelsHaveNoFieldThatIsAnAddress() throws {
+    func testTheReelModelsHaveNoFieldThatIsAnAddressButTheSheetOfAnItem() throws {
         let models = try code("MondropKit/ReelModels.swift")
         let field = try NSRegularExpression(pattern: #"\b(let|var)\s+\w*(url|link|href)\w*\s*:"#, options: [.caseInsensitive])
         let hits = field.matches(in: models, range: NSRange(models.startIndex..., in: models)).compactMap { Range($0.range, in: models).map { String(models[$0]) } }
-        XCTAssertEqual(hits, [], "a reel is described, not linked: the only path is the one of its picture (`imagePath`)")
+        XCTAssertEqual(hits, ["let openUrl:"], "a reel is described, not linked: the only paths are the one of its picture (`imagePath`) and the sheet of a film (`openUrl`)")
+    }
+
+    func testASheetIsOpenedOnlyIfItIsHttpsWithAHostAndNoCredentials() throws {
+        let models = try code("MondropKit/ReelModels.swift")
+        for part in [#"scheme?.lowercased() == "https""#, "url.user == nil", "url.password == nil"] {
+            XCTAssertTrue(models.contains(part), "the rule of what the phone may open on a tap: «\(part)»")
+        }
     }
 
     func testTheReelTabReadsOnlyTheNetworkAndKeepsNothingOfAReelOnThePhone() throws {

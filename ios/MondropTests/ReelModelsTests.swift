@@ -182,4 +182,51 @@ final class ReelModelsTests: XCTestCase {
         XCTAssertFalse(try decode(ReelDetail.self, #"{"id":"r2"}"#).hasExplanation)
         XCTAssertFalse(try decode(ReelDetail.self, #"{"id":"r2","summary":"   "}"#).hasExplanation, "blanks are no explanation")
     }
+
+    // MARK: «Apri» on the sheet of a film («Q3 si apri sulla scheda», Michele, 12 November; ADR-0033 amended)
+
+    private func item(_ json: String) throws -> ReelItem { try decode(ReelItem.self, json) }
+
+    func testAFilmWithASheetCarriesItsAddressAndTheHostForTheLabel() throws {
+        let film = try item(#"{"title":"Dune","detail":"2021","openUrl":"https://www.imdb.com/title/tt1160419/"}"#)
+        XCTAssertEqual(film.openUrl?.absoluteString, "https://www.imdb.com/title/tt1160419/")
+        XCTAssertEqual(film.openHost, "imdb.com", "the button says where it goes, without the «www.»")
+        XCTAssertEqual(try item(#"{"title":"Dune","openUrl":"https://m.imdb.com/title/tt1160419/"}"#).openHost, "m.imdb.com")
+    }
+
+    func testAnItemWithoutASheetHasNoAddressAndNoHost() throws {
+        let plain = try item(#"{"title":"Notion","detail":"prodotto"}"#)
+        XCTAssertNil(plain.openUrl)
+        XCTAssertNil(plain.openHost)
+        XCTAssertNil(try item(#"{"title":"Notion","openUrl":null}"#).openUrl)
+        XCTAssertNil(ReelItem(title: "Notion").openUrl)
+    }
+
+    func testAnItemBuiltInCodeFollowsTheSameRuleAsOneReadFromTheServer() {
+        XCTAssertEqual(ReelItem(title: "Dune", openUrl: URL(string: "https://www.imdb.com/title/tt1160419/")).openUrl?.absoluteString, "https://www.imdb.com/title/tt1160419/")
+        XCTAssertNil(ReelItem(title: "Dune", openUrl: URL(string: "http://www.imdb.com/title/tt1160419/")).openUrl, "http is not opened, whoever built the item")
+        XCTAssertNil(ReelItem(title: "Dune", openUrl: URL(string: "javascript:alert(1)")).openUrl)
+    }
+
+    func testOnlyAWebPageOnHttpsIsEverOpenedAndABadAddressLeavesTheItemWithoutIt() throws {
+        let bad = [
+            "http://www.imdb.com/title/tt1160419/", "javascript:alert(1)", "file:///etc/passwd", "tel:+390000000", "mailto:a@b.it", "mondrop://x",
+            "https://user:pass@www.imdb.com/title/tt1160419/", "https://user@www.imdb.com/title/tt1160419/", "https://", "", "  ", "not a url", "/title/tt1160419/", "7",
+        ]
+        for address in bad {
+            let film = try item(#"{"title":"Dune","openUrl":"\#(address)"}"#)
+            XCTAssertEqual(film.title, "Dune", "the film stays whatever its address: \(address)")
+            XCTAssertNil(film.openUrl, "«\(address)» is not opened")
+            XCTAssertNil(film.openHost)
+        }
+        let notText = try item(#"{"title":"Dune","openUrl":42}"#)
+        XCTAssertEqual(notText.title, "Dune", "an address that is not even text does not spoil the item")
+        XCTAssertNil(notText.openUrl)
+    }
+
+    func testTheSheetComesBackOnTheItemItWasSentOn() throws {
+        let reel = try decode(ReelDetail.self, #"{"id":"r1","sections":[{"kind":"film","title":"Film","items":[{"title":"Dune","openUrl":"https://www.imdb.com/title/tt1160419/"},{"title":"Arrival"}]},{"kind":"software","title":"Software","items":[{"title":"Notion"}]}]}"#)
+        XCTAssertEqual(reel.sections[0].items.map { $0.openUrl != nil }, [true, false])
+        XCTAssertEqual(reel.sections[1].items.map { $0.openUrl != nil }, [false])
+    }
 }

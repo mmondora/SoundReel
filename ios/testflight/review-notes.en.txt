@@ -4,7 +4,7 @@ The server is private, so the app needs a personal key (entered in the Settings 
 
 Main features
 1. Share: the Share sheet extension "Mondrop" (and the "+" button of the Reel tab) sends a link to the family server; the outcome comes back in the Inbox ("Posta") tab.
-1b. Reel (new tab in build 20): the posts the family shared, explained and split by category (music, films, software, places, books…): what each post is about and what it contains, with category filters on top. There is no link to the post; only the music can be downloaded to the phone, the rest is text read from the family server.
+1b. Reel (new tab in build 20; build 21 adds an "Apri" (Open) button on each film that opens its page on IMDb in the browser, on a tap only): the posts the family shared, explained and split by category (music, films, software, places, books…): what each post is about and what it contains, with category filters on top. There is no link to the post; only the music can be downloaded to the phone, the rest is text read from the family server.
 2. Home and Search: search the family music library by song, artist or album; resume where you were; new songs and playlists; each playlist on the Home has a play button on its cover (a long press offers Shuffle and Repeat); "Tutte" on the Home opens the list of all playlists.
 3. Player: queue, mini player, cover art and lyrics; the queue is kept between launches and never starts playing by itself. From version 1.8.0 there is also a "like" heart and a repeat mode, available from the lock screen and from Bluetooth or car controls, and from a long press on the play button of the mini player.
 4. Playlists: the user's own and automatic ones, with search and sort by date. Each song shows whether it is on the phone, online or in error. The list of playlists and the songs of each playlist can be sorted from a menu (by state, name or date; they start with the songs on the phone first). The page of a playlist shows its list at once (it is kept on the phone), with three icon buttons on one line: Play, Shuffle and "Scarica tutta" (download all). From 1.8.0, when the user plays a playlist, its missing songs are downloaded in the background for offline listening, one at a time, in the order in which they are about to play (a warning appears above a size limit); Settings > Sync has a button, "Controlla le playlist sul telefono", that checks the playlists the phone holds and downloads what is missing.
@@ -17,4 +17,4 @@ d. In Settings > Sync, tap "Controlla le playlist sul telefono" and read the res
 e. On the page of a playlist, open the sort menu (top right) and choose another order; tap "Scarica tutta" to download what is missing.
 f. On the Home, tap the yellow play button on a playlist cover; open the Reel tab and open a post (the explanation, the categories and the songs).
 
-Version 1.8.0 (build 20).
+Version 1.8.0 (build 21).

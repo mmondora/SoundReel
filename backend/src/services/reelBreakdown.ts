@@ -9,6 +9,10 @@
  *
  * Rule P (ADR-0018): no field of an answer is an address — not the post's (`sourceUrl`), not a film's (`imdbUrl`, `posterUrl`), not a software's (`url`), and the
  * addresses written inside the words of the model are taken out of the words. The only paths are the ones of SoundReel itself (`imagePath`, the tracks).
+ *
+ * One exception, asked for by Michele on 12 November («Q3 si apri sulla scheda», ADR-0033 amended): a FILM may carry `openUrl`, the page of the film on IMDb, for an «Apri» on its
+ * sheet. It is never an address as the analysis or the post wrote it: `filmSheetUrl` builds it from the id of a title page of IMDb and gives nothing for anything else. A software
+ * has none (the analysis almost never has one: 1 of the 1 370 on the real reels), and the post has none.
  */
 import { isJunkSoftwareTitle, isPlaceholderValue } from './placeholderFilter';
 import { songKey } from './songMeta';
@@ -94,6 +98,8 @@ export interface ReelCard {
 export interface ReelItem {
   title: string;
   detail: string | null;
+  /** Only a film with a title page on IMDb: the address of that page, built by `filmSheetUrl`. Absent (no key) for everything else. */
+  openUrl?: string;
 }
 
 /** A track as the library has it, without the legacy `mediaUrl` (always null since 2.13.0 and never read by the app): an answer of the reels has no address at all. */
@@ -256,6 +262,19 @@ function yearOf(value: unknown): string | null {
   return typeof value === 'string' ? (/\b(?:1[89]|20)\d{2}\b/.exec(value)?.[0] ?? null) : null;
 }
 
+/**
+ * A title page of IMDb: https or http, `imdb.com` with at most `www.` or `m.` before it, nothing between the host and `/title/` (so no credentials, no port, no longer host), and the id
+ * (`tt` and 7 to 10 digits) closed by `/`, `?`, `#` or the end.
+ */
+const IMDB_TITLE = /^https?:\/\/(?:www\.|m\.)?imdb\.com\/title\/(tt\d{7,10})(?:[/?#]|$)/i;
+
+/** The sheet of a film («Apri»): `https://www.imdb.com/title/<id>/` built from the id of a title page of IMDb; null for any other text or address, whatever it says. */
+export function filmSheetUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const id = IMDB_TITLE.exec(value.trim())?.[1];
+  return id ? `https://www.imdb.com/title/${id.toLowerCase()}/` : null;
+}
+
 /** The songs of a post, once each, by the key the journal gives them (`aggregateSongs` keys the words as written, so the key is made from them, not from the cleaned ones). */
 export function reelSongs(results: unknown): ReelSong[] {
   const out: ReelSong[] = [];
@@ -281,15 +300,23 @@ export function reelSongs(results: unknown): ReelSong[] {
 function textItems(results: unknown): Map<TextKind, ReelItem[]> {
   const items = new Map<TextKind, ReelItem[]>();
   const seen = new Set<string>();
-  const add = (kind: TextKind, title: string, detail: string | null): void => {
+  /** The items that were really added, by identity: a film named twice keeps the first place and takes the sheet of the second when it had none. */
+  const added = new Map<string, ReelItem>();
+  const add = (kind: TextKind, title: string, detail: string | null, openUrl: string | null = null): void => {
     const identity = identityOf(title);
     if (!identity) return;
     const id = `${familyOf(kind)}:${identity}`;
-    if (seen.has(id)) return;
+    if (seen.has(id)) {
+      const kept = added.get(id);
+      if (kept && openUrl && kept.openUrl === undefined) kept.openUrl = openUrl;
+      return;
+    }
     seen.add(id);
     const list = items.get(kind) ?? [];
     if (list.length >= REEL_LIMITS.perSection) return;
-    list.push({ title, detail });
+    const item: ReelItem = openUrl ? { title, detail, openUrl } : { title, detail };
+    list.push(item);
+    added.set(id, item);
     items.set(kind, list);
   };
 
@@ -298,7 +325,7 @@ function textItems(results: unknown): Map<TextKind, ReelItem[]> {
     if (!title) continue;
     const director = cleanText(fieldOf(film, 'director'), 80);
     const words = [yearOf(fieldOf(film, 'year')), director ? `regia di ${director}` : null].filter((part): part is string => part !== null).join(' · ');
-    add('film', title, words ? cut(words, REEL_LIMITS.detail) : null);
+    add('film', title, words ? cut(words, REEL_LIMITS.detail) : null, filmSheetUrl(fieldOf(film, 'imdbUrl')));
   }
 
   for (const software of listOf(fieldOf(results, 'software'))) {

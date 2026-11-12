@@ -1,6 +1,6 @@
 // DemoData.swift — DEBUG builds only. Launching with `-MondropDemo` makes the Home draw the data below (no server needed) and starts the
 // player with a queue, so the screens can be looked at on a simulator: the Home with its rows, the mini player, «Riprendi», the Player.
-// `-MondropDemoTab search|playlists|reels|inbox|settings` opens another tab (`playlists` pushes the whole list from the Home: the tab is gone; `reels` is the tab «Reel», and `-MondropDemoPush reel` opens the page of its first reel), `-MondropDemoPlayer` opens the Player, `-MondropDemoSearch`
+// `-MondropDemoTab search|playlists|reels|inbox|settings` opens another tab (`playlists` pushes the whole list from the Home: the tab is gone; `reels` is the tab «Reel», and `-MondropDemoPush reel` opens the page of its first reel, `reelfilm` the one of the films with «Apri su imdb.com»), `-MondropDemoPlayer` opens the Player, `-MondropDemoSearch`
 // does what a tap on the field of the Home does; `-MondropDemoLiked`, `-MondropDemoRepeat off|all|one` and `-MondropDemoCommands` show
 // the hearts, the loop and the list of the commands received (spec 2026-11-10-mondrop-like-and-repeat-design.md). None of this exists in a Release build (TestFlight, the App Store).
 
@@ -116,7 +116,7 @@ enum DemoData {
             summary: "Il post promuove una guida gratuita per costruire sette tipi di agenti AI con Claude, spiegando le differenze e le applicazioni pratiche.",
             counts: [
                 ReelKindCount(kind: .music, label: "Musica", count: 2, names: ["Apple", "Billie Jean"]),
-                ReelKindCount(kind: .film, label: "Film", count: 1, names: ["Garden of Eden"]),
+                ReelKindCount(kind: .film, label: "Film", count: 2, names: ["Garden of Eden", "Arrival"]),
                 ReelKindCount(kind: .software, label: "Software", count: 5, names: ["Notion", "Gmail", "Slack"]),
                 ReelKindCount(kind: .brand, label: "Marchi", count: 1, names: ["AGENTI"]),
             ]
@@ -130,6 +130,11 @@ enum DemoData {
             ]
         ),
         ReelCard(id: "r3", createdAt: "2026-11-03T12:00:00.000Z", platform: "youtube", summary: nil, counts: []),
+        ReelCard(
+            id: "r4", createdAt: "2026-11-10T18:30:00.000Z", platform: "instagram",
+            summary: "Tre film di fantascienza da recuperare nel weekend, con il regista e l'anno di ognuno.",
+            counts: [ReelKindCount(kind: .film, label: "Film", count: 3, names: ["Arrival", "Dune", "Un film senza scheda"])]
+        ),
     ]
 
     private static let reelDetails: [String: ReelDetail] = [
@@ -139,7 +144,10 @@ enum DemoData {
             tags: ["claude", "agentiai", "automazioni"],
             sections: [
                 ReelSection(kind: .music, title: "Musica", tracks: [fresh[2], recent[0]]),
-                ReelSection(kind: .film, title: "Film", items: [ReelItem(title: "Garden of Eden", detail: "2025 · regia di Qualcuno")]),
+                ReelSection(kind: .film, title: "Film", items: [
+                    ReelItem(title: "Garden of Eden", detail: "2025 · regia di Qualcuno", openUrl: URL(string: "https://www.imdb.com/title/tt1160419/")),
+                    ReelItem(title: "Arrival", detail: "2016 · regia di Denis Villeneuve"),
+                ]),
                 ReelSection(kind: .software, title: "Software", items: [
                     ReelItem(title: "Notion", detail: "prodotto"), ReelItem(title: "Gmail", detail: "prodotto"), ReelItem(title: "Slack", detail: nil),
                     ReelItem(title: "Zapier", detail: "prodotto · automazioni tra app"), ReelItem(title: "Claude", detail: "prodotto · assistente AI"),
@@ -170,6 +178,18 @@ enum DemoData {
             ]
         ),
         "r3": ReelDetail(id: "r3", createdAt: "2026-11-03T12:00:00.000Z", platform: "youtube"),
+        // `-MondropDemoPush reelfilm`: the films at the top, to see «Apri su imdb.com» (build 21) without scrolling; the third has no sheet, so no button
+        "r4": ReelDetail(
+            id: "r4", createdAt: "2026-11-10T18:30:00.000Z", platform: "instagram",
+            summary: "Tre film di fantascienza da recuperare nel weekend, con il regista e l'anno di ognuno.",
+            sections: [
+                ReelSection(kind: .film, title: "Film", items: [
+                    ReelItem(title: "Arrival", detail: "2016 · regia di Denis Villeneuve", openUrl: URL(string: "https://www.imdb.com/title/tt2543164/")),
+                    ReelItem(title: "Dune", detail: "2021 · regia di Denis Villeneuve", openUrl: URL(string: "https://www.imdb.com/title/tt1160419/")),
+                    ReelItem(title: "Un film senza scheda", detail: "2024"),
+                ]),
+            ]
+        ),
     ]
 
     /// The tab «Reel» without a server.

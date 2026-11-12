@@ -132,13 +132,28 @@ struct ReelDetailView: View {
         } else if !section.items.isEmpty {
             Section {
                 ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title).font(.subheadline).foregroundStyle(Color(MondropPalette.text))
-                        if let extra = item.detail, !extra.isEmpty {
-                            Text(extra).font(.caption).foregroundStyle(secondary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title).font(.subheadline).foregroundStyle(Color(MondropPalette.text))
+                            if let extra = item.detail, !extra.isEmpty {
+                                Text(extra).font(.caption).foregroundStyle(secondary)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        // «Q3 si apri sulla scheda» (12 November): a film has «Apri» on its sheet — never the reel's address. The button says where it goes; the tap is the only thing that opens it.
+                        if let sheet = item.openUrl {
+                            Link(destination: sheet) {
+                                // an HStack, not a Label: in a row of a list a Label puts its icon in a column of its own, far from the words and moving the line between the rows (seen on the simulator)
+                                HStack(spacing: 4) {
+                                    Text("Apri su \(item.openHost ?? "il sito")")
+                                    Image(systemName: "arrow.up.right")
+                                }
+                            }
+                            .font(.caption.weight(.semibold))
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Apri la scheda di \(item.title) su \(item.openHost ?? "il sito")")
                         }
                     }
-                    .accessibilityElement(children: .combine)
                 }
             } header: {
                 Label(section.title, systemImage: section.kind.systemImage)

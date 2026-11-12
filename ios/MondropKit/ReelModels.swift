@@ -208,21 +208,40 @@ public struct ReelPage: Decodable, Equatable, Sendable {
 }
 
 /// A thing a reel mentions, in text: a film with its year and director, a software with what it is, a place, a book, a quote…
+///
+/// A film may carry `openUrl`: the sheet of the film, for an «Apri» (Michele, 12 November: «Q3 si apri sulla scheda»; ADR-0033 amended). It is never the reel's address — SoundReel builds it
+/// from the id of the film and sends it for films only — and the phone opens it only on a tap and only if it is a web page on https (`openable`).
 public struct ReelItem: Decodable, Equatable, Sendable {
     public let title: String
     public let detail: String?
+    public let openUrl: URL?
 
-    public init(title: String, detail: String? = nil) {
+    public init(title: String, detail: String? = nil, openUrl: URL? = nil) {
         self.title = title
         self.detail = detail
+        self.openUrl = ReelItem.openable(openUrl)
     }
 
-    enum CodingKeys: String, CodingKey { case title, detail }
+    enum CodingKeys: String, CodingKey { case title, detail, openUrl }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         title = try c.decode(String.self, forKey: .title)
         detail = try? c.decodeIfPresent(String.self, forKey: .detail)
+        // an address that is not text, or not an address, leaves the item without «Apri»: it never spoils the item
+        openUrl = ReelItem.openable((try? c.decodeIfPresent(URL.self, forKey: .openUrl)) ?? nil)
+    }
+
+    /// What the phone may open on a tap: a web page on https, with a host, and no credentials in it. Anything else is no address.
+    static func openable(_ address: URL?) -> URL? {
+        guard let url = address, url.scheme?.lowercased() == "https", let host = url.host, !host.isEmpty, url.user == nil, url.password == nil else { return nil }
+        return url
+    }
+
+    /// Where «Apri» goes, for the button to say (`imdb.com`): the host without «www.».
+    public var openHost: String? {
+        guard let host = openUrl?.host?.lowercased(), !host.isEmpty else { return nil }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 }
 
