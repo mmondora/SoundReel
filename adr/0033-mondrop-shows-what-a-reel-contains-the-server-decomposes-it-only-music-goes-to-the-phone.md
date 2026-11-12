@@ -1,7 +1,7 @@
 # ADR-0033: Mondrop shows what a reel contains, decomposed and explained by the server; only the music goes to the phone
 
 ## Status
-Accepted (12 November 2026), in production in SoundReel 2.27.0 (17:40) and on TestFlight in Mondrop 1.8.0 build 20 (internal group, 17:44), both with Michele's OK. Amends ADR-0020 (the Home no longer has the «recent» section) and the «every card links back to the post» rule of ADR-0017 **for Mondrop only** (the site keeps the links). **Amended the same day (evening) by Michele's answer to Q3, «si apri sulla scheda»** (decision 8): the page of a film has an «Apri» on its IMDb sheet — SoundReel 2.28.0 **in production since 13 November (00:15, revision `a290ace`), with Michele's OK**, and Mondrop build 21 built, waiting for his OK for TestFlight.
+Accepted (12 November 2026), in production in SoundReel 2.27.0 (17:40) and on TestFlight in Mondrop 1.8.0 build 20 (internal group, 17:44), both with Michele's OK. Amends ADR-0020 (the Home no longer has the «recent» section) and the «every card links back to the post» rule of ADR-0017 **for Mondrop only** (the site keeps the links). **Amended the same day (evening) by Michele's answer to Q3, «si apri sulla scheda»** (decision 8): the page of a film has an «Apri» on its IMDb sheet — SoundReel 2.28.0 **in production since 13 November (00:15, revision `a290ace`), with Michele's OK**, and Mondrop build 21 on TestFlight since 13 November (00:27, internal group Family only, with his OK).
 
 ## Date
 2026-11-12
